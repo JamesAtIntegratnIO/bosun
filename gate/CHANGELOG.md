@@ -7,6 +7,23 @@ All notable changes to `gitops-gate`. Format follows
 
 ### Fixed
 
+- **An OCI repository URL is the chart; stop appending the chart name to it.**
+  ArgoCD accepts a `repoURL` that already ends in the chart alongside a `chart`
+  field naming the same thing, and this repository's own addons are configured
+  that way. `chartRef` appended regardless, turning
+  `oci://ghcr.io/org/charts/bosun` + `bosun` into `.../charts/bosun/bosun` --
+  which the registry answers **403 denied**, not 404, so it reads like a
+  credentials problem and is not one.
+
+  The cost was quiet and total: chart-diff is skipped for any addon it cannot
+  render at both versions, so **every OCI-repo addon lost its resource-level
+  diff** while the gate stayed green and said only "NOT covered". Here that was
+  `bosun` and `kargo-pipelines` -- the two components that judge everything
+  else.
+
+  Verified against the live registry: `charts/bosun` answers 200 anonymously,
+  `charts/bosun/bosun` answers 403.
+
 - **A move between clusters is only reported when it is one.** Targeting
   removals and additions were bucketed by ApplicationSet and then paired
   positionally, so two departures and two arrivals became two confident

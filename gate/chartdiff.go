@@ -153,11 +153,26 @@ func renderChartVersion(repoRoot string, r Row) ([]Object, error) {
 // chartRef builds what `helm template` needs: an OCI URL renders directly,
 // a classic repo needs --repo rather than a pre-added repository, so nothing
 // has to mutate the runner's helm config.
+//
+// For OCI there is no separate chart name -- the repository URL IS the chart,
+// and ArgoCD accepts a `repoURL` that already ends in it alongside a `chart`
+// naming the same thing. Appending unconditionally turned
+//
+//	oci://ghcr.io/org/charts/bosun  +  bosun
+//
+// into `.../charts/bosun/bosun`, which the registry answers 403. The cost was
+// invisible in the worst way: chart-diff is skipped for that addon and the
+// report says only "NOT covered", so every OCI-repo addon quietly lost its
+// resource-level diff while the gate stayed green.
 func chartRef(r Row) string {
-	if strings.HasPrefix(r.ChartRepo, "oci://") {
-		return strings.TrimRight(r.ChartRepo, "/") + "/" + r.Chart
+	if !strings.HasPrefix(r.ChartRepo, "oci://") {
+		return r.Chart
 	}
-	return r.Chart
+	repo := strings.TrimRight(r.ChartRepo, "/")
+	if r.Chart == "" || strings.HasSuffix(repo, "/"+r.Chart) {
+		return repo
+	}
+	return repo + "/" + r.Chart
 }
 
 func releaseNameFor(r Row) string {
