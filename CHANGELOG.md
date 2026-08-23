@@ -5,6 +5,27 @@ All notable changes to `bosun`. Format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Licensed PolyForm Internal Use 1.0.0**, and the git history was rewritten
+  so that every commit carries it. There is no earlier commit to fork under
+  other terms.
+
+  The repository was briefly published under PolyForm Noncommercial. That is
+  stricter about commercial use, but it *grants a distribution licence* for
+  noncommercial purposes -- and Internal Use grants none at all. So an early
+  commit would have carried a redistribution right the current terms withhold,
+  which is the leak the rewrite closes.
+
+  What the rewrite does not do is recall anything already fetched, and GitHub
+  keeps unreferenced commits addressable by SHA. Treat this as closing the
+  front door, not as an unpublish.
+
+  The line itself: anyone may profit *using* this, nobody may profit *from*
+  it. Run it for your own business, commercially, in production, without
+  asking. Do not distribute it in any form, at any price.
+
+
 ### Added
 
 - The rest of the delivery kit moved in: [`gate/`](gate), `charts/kargo-pipelines`,
