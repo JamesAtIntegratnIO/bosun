@@ -26,7 +26,15 @@ type Fake struct {
 	Comments []Comment
 	Check    CheckState
 	CheckErr error
-	PushErr  error
+	// ChecksBefore is how many CheckStatus calls return CheckMissing before
+	// Check is served. It models the real race: Kargo calls the agent from the
+	// promotion, three seconds after the pull request opens, and CI has not
+	// registered a check that early.
+	ChecksBefore int
+	// CheckCalls counts CheckStatus calls, so a test can assert the agent
+	// actually polled rather than getting lucky on the first read.
+	CheckCalls int
+	PushErr    error
 
 	// Posted, Labelled and Pushes are what the run did. Everything the agent is
 	// allowed to change about a pull request lands in one of the three, so a
@@ -63,8 +71,12 @@ func (f *Fake) ListComments(_ context.Context, _ int) ([]Comment, error) {
 }
 
 func (f *Fake) CheckStatus(_ context.Context, _, _ string) (CheckState, error) {
+	f.CheckCalls++
 	if f.CheckErr != nil {
 		return CheckMissing, f.CheckErr
+	}
+	if f.CheckCalls <= f.ChecksBefore {
+		return CheckMissing, nil
 	}
 	if f.Check == "" {
 		return CheckMissing, nil

@@ -332,3 +332,66 @@ func equal(got, want []string) bool {
 	}
 	return true
 }
+
+// Kargo calls this service from the promotion, immediately after opening the
+// pull request. Measured in production: THREE SECONDS after. CI has not
+// registered a check that early, so the gate check does not exist yet -- and
+// "does not exist" is a different CheckState from "pending".
+//
+// The first triage that ever reached this code found no check, returned, and
+// did nothing. It looked like a successful no-op:
+//
+//	PR 109: no "addons-gate" check found
+//	PR 109: triage done in 2s
+//
+// A missing check and a pending one are the same thing to the caller: the gate
+// has not answered. The deadline is the only honest way to tell them apart.
+func TestWaitsForAGateThatHasNotReportedYet(t *testing.T) {
+	h := newHarness(t)
+	// Absent for the first three polls, then red -- the real sequence.
+	h.git.ChecksBefore = 3
+	h.git.Check = gitprovider.CheckFailure
+	h.triage.GateWait = time.Second
+	h.model.Verdict = &llm.Verdict{
+		Classification: llm.ClassEscalate,
+		EscalationReason: "the rendered speaker DaemonSet changed shape; " +
+			"that is not something a values edit can fix",
+	}
+
+	if err := h.triage.Run(context.Background(), Promotion{
+		PRNumber: 42, Branch: "kargo/metallb", Files: []string{valuesPath},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if h.git.CheckCalls <= h.git.ChecksBefore {
+		t.Fatalf("must poll past the missing check, got %d calls for %d absent",
+			h.git.CheckCalls, h.git.ChecksBefore)
+	}
+	// It got far enough to actually triage, rather than returning on a missing
+	// check. Anything posted proves the gate report was read.
+	if len(h.git.Posted) == 0 {
+		t.Fatal("triage produced nothing; it gave up before the gate reported")
+	}
+}
+
+// And a check that never appears is still reported as absent, or the wait
+// above would turn a misconfigured gate name into a ten-minute silence.
+func TestAGateThatNeverReportsIsStillMissing(t *testing.T) {
+	h := newHarness(t)
+	h.git.Check = "" // never appears
+	h.git.ChecksBefore = 0
+	h.triage.GateWait = 20 * time.Millisecond
+
+	if err := h.triage.Run(context.Background(), Promotion{
+		PRNumber: 42, Branch: "kargo/metallb", Files: []string{valuesPath},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.git.Posted) != 0 {
+		t.Fatalf("a gate that never reported must not be triaged, posted %+v", h.git.Posted)
+	}
+	if h.git.CheckCalls < 2 {
+		t.Fatalf("must have polled rather than giving up immediately, got %d", h.git.CheckCalls)
+	}
+}
