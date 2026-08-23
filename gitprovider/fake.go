@@ -36,6 +36,10 @@ type Fake struct {
 	CheckCalls int
 	PushErr    error
 
+	// Statuses are the commit statuses the run set, oldest first.
+	Statuses  []Status
+	StatusErr error
+
 	// Posted, Labelled and Pushes are what the run did. Everything the agent is
 	// allowed to change about a pull request lands in one of the three, so a
 	// test asserting all three has covered the whole write surface.
@@ -92,6 +96,16 @@ func (f *Fake) Comment(_ context.Context, _ int, body string) error {
 	return nil
 }
 
+// Statuses records every commit status set, in order, so a test can assert
+// both the final verdict and that a pending one preceded it.
+func (f *Fake) SetCommitStatus(_ context.Context, _, name, description string) error {
+	if f.StatusErr != nil {
+		return f.StatusErr
+	}
+	f.Statuses = append(f.Statuses, Status{Name: name, Description: description})
+	return nil
+}
+
 func (f *Fake) AddLabel(_ context.Context, _ int, label string) error {
 	f.Labelled = append(f.Labelled, label)
 	if f.PR != nil {
@@ -135,3 +149,6 @@ func (f *Fake) PushFix(_ context.Context, pr *PullRequest, root, message string)
 	f.Pushes = append(f.Pushes, Push{Branch: pr.Branch, Message: message, Tree: tree})
 	return nil
 }
+
+// Status is one commit status the fake recorded.
+type Status struct{ Name, Description string }

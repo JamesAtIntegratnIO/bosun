@@ -25,6 +25,8 @@ green by deleting the check, and that failure is indistinguishable from success.
 | Cannot escape the repository | path traversal is rejected after cleaning |
 | Cannot retry forever | attempt cap, tracked by pull-request label |
 | Cannot write to the default branch | the only push path targets the pull request's own branch |
+| Cannot block a merge | its commit status is always `success`, whatever the verdict. A red status here would make the agent a second gate; the description carries the meaning instead of the colour |
+| Cannot act without saying so | every exit path publishes a commit status, including the ones that do nothing. "Nothing needed triage", "I was never called" and "I crashed" used to be the same observation from outside |
 
 ## Why the deny-list is not configurable
 

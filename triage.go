@@ -74,6 +74,36 @@ func (t *Triage) logf(f string, a ...any) {
 	}
 }
 
+// statusName is what the agent's own commit status is called. It follows the
+// brand for the same reason the attempt label does: two agents on one
+// repository must not overwrite each other's verdict.
+func (t *Triage) statusName() string {
+	if t.Brand == "" {
+		return "bosun"
+	}
+	return strings.ToLower(t.Brand)
+}
+
+// say publishes the agent's verdict as a commit status, and logs it.
+//
+// EVERY exit path calls this, including the ones that do nothing. Before it
+// existed, "the gate was green so I stopped" and "I was never called" and "I
+// crashed" were the same observation from outside: nothing on the pull
+// request. The whole point is that a no-op is now something you can read.
+//
+// Never fatal. A status is a report, and a report that cannot be filed must
+// not take down the thing it was reporting on -- the most likely cause is a
+// token without the "Commit statuses" WRITE permission, which is worth a loud
+// log line and nothing more.
+func (t *Triage) say(ctx context.Context, pr *gitprovider.PullRequest, format string, a ...any) {
+	desc := fmt.Sprintf(format, a...)
+	t.logf("PR %d: %s", pr.Number, desc)
+	if err := t.Git.SetCommitStatus(ctx, pr.HeadSHA, t.statusName(), desc); err != nil {
+		t.logf("PR %d: could not set the %q status (needs Commit statuses: read+write): %v",
+			pr.Number, t.statusName(), err)
+	}
+}
+
 // Run is the whole workflow. Errors are returned for logging; the caller has
 // already answered Kargo, so nothing here can fail a promotion.
 func (t *Triage) Run(ctx context.Context, p Promotion) error {
@@ -83,12 +113,18 @@ func (t *Triage) Run(ctx context.Context, p Promotion) error {
 	}
 
 	if has(pr.Labels, labelNeedsHuman) {
-		t.logf("PR %d already needs a human; nothing to add", pr.Number)
+		t.say(ctx, pr, "already escalated; leaving it to a human")
 		return nil
 	}
+	// Say so before the first thing that can block. waitForGate can sit for ten
+	// minutes, and a reader in that window should see the agent working rather
+	// than an absence they cannot distinguish from never having been called.
+	t.say(ctx, pr, "reading %s", t.CheckName)
+
 	attempt := attemptsSoFar(pr.Labels, t.attemptPrefix()) + 1
 	if attempt > t.MaxAttempts {
-		t.logf("PR %d has used its %d attempts", pr.Number, t.MaxAttempts)
+		t.say(ctx, pr, "escalated: %d of %d fix attempts used without a green gate",
+			t.MaxAttempts, t.MaxAttempts)
 		return t.escalate(ctx, pr, fmt.Sprintf(
 			"Reached the limit of %d automatic fix attempts without a green gate.", t.MaxAttempts), nil)
 	}
@@ -99,13 +135,13 @@ func (t *Triage) Run(ctx context.Context, p Promotion) error {
 	}
 	switch state {
 	case gitprovider.CheckSuccess:
-		t.logf("PR %d: gate is green, nothing to triage", pr.Number)
+		t.say(ctx, pr, "%s is green; nothing to triage", t.CheckName)
 		return nil
 	case gitprovider.CheckMissing:
-		t.logf("PR %d: no %q check appeared within %s", pr.Number, t.CheckName, t.GateWait)
+		t.say(ctx, pr, "no %s check appeared within %s", t.CheckName, t.GateWait)
 		return nil
 	case gitprovider.CheckPending:
-		t.logf("PR %d: gate still pending after %s", pr.Number, t.GateWait)
+		t.say(ctx, pr, "%s still had no verdict after %s", t.CheckName, t.GateWait)
 		return nil
 	}
 
@@ -134,14 +170,17 @@ func (t *Triage) Run(ctx context.Context, p Promotion) error {
 		// A model that is down, slow, or misconfigured must not look like a
 		// verdict. Say so on the pull request rather than silently doing
 		// nothing, because silence here is indistinguishable from "fine".
+		t.say(ctx, pr, "could not reach the model (%s)", t.LLM.Name())
 		return t.escalate(ctx, pr, fmt.Sprintf("Could not reach the model (%s): %v", t.LLM.Name(), err), nil)
 	}
 
 	switch verdict.Classification {
 	case llm.ClassNoAction:
+		t.say(ctx, pr, "no action needed: %s", verdict.Summary)
 		return t.Git.Comment(ctx, pr.Number, t.render(verdict, nil, "No change proposed."))
 
 	case llm.ClassEscalate:
+		t.say(ctx, pr, "escalated: %s", verdict.EscalationReason)
 		return t.escalate(ctx, pr, verdict.EscalationReason, verdict)
 	}
 
@@ -171,6 +210,8 @@ func (t *Triage) Run(ctx context.Context, p Promotion) error {
 		// Every refusal is reported, not just the first. A reader told only
 		// about one of three rejected edits would reasonably conclude the
 		// other two were fine.
+		t.say(ctx, pr, "escalated: all %d proposed edits were refused before anything was written",
+			len(res.Rejected))
 		return t.escalateWith(ctx, pr,
 			"The proposed fix was rejected before anything was written.", verdict, res)
 	}
@@ -184,6 +225,7 @@ func (t *Triage) Run(ctx context.Context, p Promotion) error {
 	if err := t.Git.AddLabel(ctx, pr.Number, fmt.Sprintf("%s%d", t.attemptPrefix(), attempt)); err != nil {
 		t.logf("PR %d: could not label attempt %d: %v", pr.Number, attempt, err)
 	}
+	t.say(ctx, pr, "pushed a fix (attempt %d of %d): %s", attempt, t.MaxAttempts, verdict.Summary)
 	return t.Git.Comment(ctx, pr.Number, t.render(verdict, res, fmt.Sprintf(
 		"Pushed a fix to `%s` (attempt %d of %d). The gate will re-run.",
 		pr.Branch, attempt, t.MaxAttempts)))

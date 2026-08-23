@@ -52,7 +52,7 @@ For GitHub, a fine-grained token scoped to the repository:
 | Contents | read & write | push the fix to the bot branch |
 | Pull requests | read & write | comment |
 | Issues | read & write | labels, which carry the attempt cap |
-| Commit statuses | read | read the gate |
+| Commit statuses | read **and write** | read the gate, and publish the agent's own verdict beside it |
 | Metadata | read | required baseline |
 | Workflows | **none** | without it GitHub *rejects* any push touching `.github/workflows/**`, making "the agent cannot edit the gate" a server-side guarantee as well as a local one |
 
