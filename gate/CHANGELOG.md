@@ -5,6 +5,30 @@ All notable changes to `gitops-gate`. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **A move between clusters is only reported when it is one.** Targeting
+  removals and additions were bucketed by ApplicationSet and then paired
+  positionally, so two departures and two arrivals became two confident
+  "moved" rows. Nothing in the render says which arrival answers which
+  departure; the pairing was a guess presented as a finding.
+
+  Both slices were also built by ranging a Go map, so the guess was not stable:
+  identical input could describe two different moves on two runs. A report that
+  varies without its input varying is one nobody can review. There is now a
+  test that runs the same diff fifty times and compares the report, and it
+  fails against the old code on the second run.
+
+  A move is reported when there is exactly one candidate on each side.
+  Otherwise both sides are reported plainly and the reviewer draws the line.
+
+- **A move names the ApplicationSet, not the Application that arrived.** An
+  Application's name carries its cluster, so the row read
+  ``metrics-server-vcluster-media | no longer targets the-cluster`` -- naming a
+  departure by something that did not exist before the change. It reads as the
+  gate contradicting itself, and it is what prompted this fix. The
+  ApplicationSet is the identity that survives a move.
+
 ### Changed
 
 - Moved into the Bosun repository and now shares one Go module with the agent

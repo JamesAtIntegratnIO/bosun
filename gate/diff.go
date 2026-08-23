@@ -82,6 +82,13 @@ func Diff(base, head *Table) *DiffResult {
 	// An app that vanishes from one cluster and appears on another is one
 	// event, not two -- report it as a move so the reviewer sees the shape of
 	// what happened rather than two unrelated-looking lines.
+	//
+	// Only when there is one candidate on each side. Pairing two departures
+	// with two arrivals is a guess: nothing in the render says which arrival
+	// corresponds to which departure, and asserting one anyway produced a
+	// sentence the reader had no way to check. Worse, both slices were built
+	// by ranging a map, so the guess was not even stable -- identical input
+	// could describe two different moves on two runs.
 	removedByApp := map[string][]Row{}
 	addedByApp := map[string][]Row{}
 
@@ -98,22 +105,35 @@ func Diff(base, head *Table) *DiffResult {
 
 	for appset, removed := range removedByApp {
 		added := addedByApp[appset]
-		for len(removed) > 0 && len(added) > 0 {
+		byCluster(removed)
+		byCluster(added)
+
+		if len(removed) == 1 && len(added) == 1 {
 			r, a := removed[0], added[0]
-			removed, added = removed[1:], added[1:]
 			res.Targeting = append(res.Targeting, Change{
-				Kind: "moved", AppSet: appset, App: a.App,
+				// The AppSet, not the head Application. The Application name
+				// carries the cluster, so naming the head one describes a
+				// departure by something that did not exist before the change
+				// -- which reads as the gate being wrong about its own report.
+				// The ApplicationSet is the identity that survives the move.
+				Kind: "moved", AppSet: appset, App: appset,
 				From: r.Cluster, To: a.Cluster,
-				Detail: fmt.Sprintf("no longer targets %s, now targets %s", r.Cluster, a.Cluster),
+				Detail: fmt.Sprintf("ApplicationSet no longer generates for %s; now generates for %s",
+					r.Cluster, a.Cluster),
 			})
+			addedByApp[appset] = nil
+			continue
 		}
+
+		// Ambiguous, or one-sided. Say what happened and let the reviewer draw
+		// the line, rather than drawing an arbitrary one for them. Anything in
+		// `added` is left for the loop below to report on its own terms.
 		for _, r := range removed {
 			res.Targeting = append(res.Targeting, Change{
 				Kind: "removed", AppSet: appset, App: r.App, Cluster: r.Cluster,
 				From: r.Describe(), Detail: "no longer generated for this cluster",
 			})
 		}
-		addedByApp[appset] = added
 	}
 	for appset, added := range addedByApp {
 		for _, a := range added {
@@ -183,6 +203,18 @@ func Diff(base, head *Table) *DiffResult {
 		}
 	}
 	return res
+}
+
+// byCluster makes an order out of one that came from a Go map. Without it the
+// same two rows can be reported in either order, and a diff that describes
+// itself differently on identical input is a diff nobody can diff.
+func byCluster(rows []Row) {
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Cluster != rows[j].Cluster {
+			return rows[i].Cluster < rows[j].Cluster
+		}
+		return rows[i].App < rows[j].App
+	})
 }
 
 func sortChanges(c []Change) {
