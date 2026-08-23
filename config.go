@@ -55,9 +55,13 @@ type Config struct {
 	GateWait    time.Duration
 	GatePoll    time.Duration
 	Explain     bool
-	AllowPaths  []string
-	DenyPaths   []string
-	CloneRoot   string
+	// Upstream turns on reading the maintainers' release notes.
+	Upstream             bool
+	UpstreamMaxReleases  int
+	UpstreamMaxBodyChars int
+	AllowPaths           []string
+	DenyPaths            []string
+	CloneRoot            string
 }
 
 func LoadConfig() (*Config, error) {
@@ -96,6 +100,15 @@ func LoadConfig() (*Config, error) {
 	// spoke when something was wrong, and a green gate on a chart bump still
 	// changed something worth reading.
 	c.Explain = os.Getenv("EXPLAIN_GREEN") != "false"
+	// Default ON, and soft: everything it needs can fail without consequence
+	// beyond a less-informed explanation that says it is less informed.
+	c.Upstream = os.Getenv("UPSTREAM_NOTES") != "false"
+	if c.UpstreamMaxReleases, err = envInt("UPSTREAM_MAX_RELEASES", 5); err != nil {
+		return nil, err
+	}
+	if c.UpstreamMaxBodyChars, err = envInt("UPSTREAM_MAX_BODY_CHARS", 4000); err != nil {
+		return nil, err
+	}
 	if c.GatePoll, err = envDur("GATE_POLL", 30*time.Second); err != nil {
 		return nil, err
 	}

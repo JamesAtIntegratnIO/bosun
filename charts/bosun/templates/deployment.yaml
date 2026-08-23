@@ -100,6 +100,12 @@ spec:
               value: {{ .Values.gate.poll | quote }}
             - name: EXPLAIN_GREEN
               value: {{ .Values.triage.explainGreen | quote }}
+            - name: UPSTREAM_NOTES
+              value: {{ .Values.triage.upstreamNotes.enabled | quote }}
+            - name: UPSTREAM_MAX_RELEASES
+              value: {{ .Values.triage.upstreamNotes.maxReleases | quote }}
+            - name: UPSTREAM_MAX_BODY_CHARS
+              value: {{ .Values.triage.upstreamNotes.maxBodyChars | quote }}
             - name: MAX_ATTEMPTS
               value: {{ .Values.triage.maxAttempts | quote }}
             - name: ALLOW_PATHS

@@ -12,6 +12,7 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
+	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
 
 // Promotion is the context Kargo POSTs when a pull request opens.
@@ -51,6 +52,11 @@ type Triage struct {
 	// giving up on this run.
 	GateWait time.Duration
 	GatePoll time.Duration
+	// Upstream, when set, fetches what the maintainers wrote between the two
+	// versions. Optional: without it the explanation is grounded in the render
+	// alone, says so, and is still worth reading.
+	Upstream upstream.Resolver
+
 	// Explain turns on the green-gate explanation: when the gate passes but the
 	// render still changed, say what it changed. Off means the agent only ever
 	// speaks about failures, which is how it was until 0.3.0 -- and why a
@@ -477,6 +483,12 @@ func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, 
 		return nil
 	}
 
+	// What the maintainers said, if it can be found. Never fatal, and never
+	// silent about its absence: an explanation with no upstream context has to
+	// say so, or a reader credits it with evidence it does not have.
+	notes := t.upstreamNotes(ctx, p)
+	prompt += renderNotes(notes)
+
 	v, err := t.LLM.Classify(ctx, explainPrompt, prompt)
 	if err != nil {
 		// Explaining is a courtesy. A model that is down must not be the reason
@@ -486,7 +498,7 @@ func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, 
 	}
 
 	t.say(ctx, pr, "%s is green: %s", t.CheckName, v.Summary)
-	return t.Git.Comment(ctx, pr.Number, t.renderExplanation(v))
+	return t.Git.Comment(ctx, pr.Number, t.renderExplanation(v, notes))
 }
 
 // alreadyExplained keeps the agent to one explanation per pull request. Kargo
@@ -511,7 +523,7 @@ const explanationMarker = "<!-- bosun:explanation -->"
 // and nothing was refused, so there are no tables to show -- and a long comment
 // on a green pull request is the fastest way to teach people to ignore this
 // agent entirely.
-func (t *Triage) renderExplanation(v *llm.Verdict) string {
+func (t *Triage) renderExplanation(v *llm.Verdict, notes *upstream.Notes) string {
 	var b strings.Builder
 	b.WriteString(explanationMarker + "\n")
 	if t.Brand != "" {
@@ -522,8 +534,64 @@ func (t *Triage) renderExplanation(v *llm.Verdict) string {
 		fmt.Fprintf(&b, "%s**%s**\n\n", mark, t.Brand)
 	}
 	fmt.Fprintf(&b, "**%s**\n\n%s\n\n", v.Summary, v.Reasoning)
-	fmt.Fprintf(&b, "---\n_The gate passed; this is what it rendered, explained by %s. "+
-		"Grounded in the gate report only -- no upstream release notes were read._\n", t.LLM.Name())
+	// Provenance, always. A reader deciding how much to trust this needs to
+	// know whether it had the maintainers' own words or only the render.
+	b.WriteString("---\n")
+	if notes.Any() {
+		fmt.Fprintf(&b, "_Grounded in the gate's render diff and %d upstream release note(s)", len(notes.Releases))
+		if notes.SourceRepo != "" {
+			fmt.Fprintf(&b, " from [%s](https://github.com/%s/releases)", notes.SourceRepo, notes.SourceRepo)
+		}
+		if notes.Truncated {
+			b.WriteString(", truncated")
+		}
+		fmt.Fprintf(&b, ". Explained by %s._\n", t.LLM.Name())
+	} else {
+		reason := "no upstream release notes were read"
+		if notes != nil && notes.Note != "" {
+			reason = strings.TrimSuffix(strings.TrimPrefix(notes.Note, "No upstream release notes: "), ".")
+		}
+		fmt.Fprintf(&b, "_Grounded in the gate's render diff ONLY -- %s. Explained by %s._\n",
+			reason, t.LLM.Name())
+	}
+	return b.String()
+}
+
+// upstreamNotes never fails the explanation. A resolver that is misconfigured,
+// rate-limited or looking at an artifact with no source label produces an
+// explanation grounded in the render alone, which is the behaviour that existed
+// before this and is still useful.
+func (t *Triage) upstreamNotes(ctx context.Context, p Promotion) *upstream.Notes {
+	if t.Upstream == nil {
+		return &upstream.Notes{Note: "upstream lookup is not configured"}
+	}
+	n, err := t.Upstream.Notes(ctx, p.Artifact, p.From, p.To)
+	if err != nil || n == nil {
+		return &upstream.Notes{Note: fmt.Sprintf("upstream lookup failed (%v)", err)}
+	}
+	return n
+}
+
+// renderNotes puts the maintainers' words in the prompt, clearly labelled as
+// TESTIMONY rather than as the render. The distinction is the point: the gate
+// report is computed and the release notes are claimed, and an explanation that
+// blurs them will state an intention as an outcome.
+func renderNotes(n *upstream.Notes) string {
+	var b strings.Builder
+	b.WriteString("\n\nUPSTREAM RELEASE NOTES\n\n")
+	if !n.Any() {
+		fmt.Fprintf(&b, "None. %s\n\nSay what the render changed and do not supply a reason.\n", n.Note)
+		return b.String()
+	}
+	fmt.Fprintf(&b, "%s What the maintainers wrote, newest first. This is what they SAY they\n"+
+		"changed; the gate report above is what actually rendered.\n\n", n.Note)
+	for _, r := range n.Releases {
+		title := r.Tag
+		if r.Name != "" && r.Name != r.Tag {
+			title = r.Tag + " -- " + r.Name
+		}
+		fmt.Fprintf(&b, "--- %s ---\n%s\n\n", title, r.Body)
+	}
 	return b.String()
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
+	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
 
 const valuesPath = "addons/values.yaml"
@@ -540,8 +541,11 @@ func TestExplainsAGreenGateThatStillChangedSomething(t *testing.T) {
 	if !strings.Contains(body, explanationMarker) {
 		t.Error("explanation must be marked, or it cannot be found again")
 	}
-	if !strings.Contains(body, "no upstream release notes were read") {
-		t.Error("must say what it did NOT read; a grounded explanation says where its evidence stops")
+	// The exact wording moves; the property must not. An explanation with no
+	// upstream context has to say its evidence is the render alone, or a reader
+	// credits it with sources it never had.
+	if !strings.Contains(body, "render diff ONLY") {
+		t.Errorf("must say where its evidence stops, got:\n%s", body)
 	}
 }
 
@@ -619,5 +623,105 @@ func TestAModelOutageDoesNotBreakAGreenGate(t *testing.T) {
 	if len(h.git.Statuses) == 0 ||
 		!strings.Contains(h.git.Statuses[len(h.git.Statuses)-1].Description, "could not reach the model") {
 		t.Errorf("the outage should be visible in the status, got %+v", h.git.Statuses)
+	}
+}
+
+// fakeUpstream stands in for the maintainers' own words.
+type fakeUpstream struct {
+	notes *upstream.Notes
+	err   error
+	calls int
+}
+
+func (f *fakeUpstream) Name() string { return "fake-upstream" }
+func (f *fakeUpstream) Notes(context.Context, string, string, string) (*upstream.Notes, error) {
+	f.calls++
+	return f.notes, f.err
+}
+
+// With release notes, the explanation can say WHY -- and the comment has to
+// show its working, because "grounded in the render" and "grounded in the
+// render plus what the maintainers wrote" are very different claims.
+func TestAnExplanationCitesItsUpstreamSource(t *testing.T) {
+	h := newHarness(t)
+	h.triage.Brand = "Bosun"
+	h.triage.Explain = true
+	h.git.Check = gitprovider.CheckSuccess
+	h.git.Comments = []gitprovider.Comment{{
+		Author: "gitops-gate",
+		Body:   "<!-- gitops-gate -->\n### Resources\n\n**Added (5)**\n\n- `DaemonSet/frr-k8s`\n",
+	}}
+	up := &fakeUpstream{notes: &upstream.Notes{
+		SourceRepo: "metallb/metallb",
+		Releases: []upstream.Release{
+			{Tag: "v0.16.0", Body: "FRR is now a separate DaemonSet rather than a sidecar."},
+		},
+		Note: "Upstream notes from metallb/metallb.",
+	}}
+	h.triage.Upstream = up
+	h.model.Verdict = &llm.Verdict{
+		Classification: llm.ClassNoAction,
+		Summary:        "FRR moves from sidecars to its own DaemonSet",
+		Reasoning:      "Upstream split FRR out; that is the five new resources.",
+	}
+
+	if err := h.triage.Run(context.Background(), Promotion{
+		PRNumber: 42, Branch: "kargo/metallb", Files: []string{valuesPath},
+		Artifact: "quay.io/metallb/controller", From: "0.15.2", To: "0.16.0",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if up.calls != 1 {
+		t.Fatalf("upstream should be consulted exactly once, got %d", up.calls)
+	}
+	body := h.git.Posted[0]
+	if !strings.Contains(body, "metallb/metallb") {
+		t.Errorf("must cite where the notes came from, got:\n%s", body)
+	}
+	if strings.Contains(body, "render diff ONLY") {
+		t.Errorf("must not claim render-only when it had upstream notes, got:\n%s", body)
+	}
+}
+
+// Upstream lookup is best-effort. A rate limit, an unreachable registry or an
+// artifact with no source label must degrade to the render-only explanation --
+// which is exactly what this did before upstream notes existed, and is still
+// worth posting.
+func TestUpstreamFailureDegradesToRenderOnly(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		up   *fakeUpstream
+	}{
+		{"resolver errors", &fakeUpstream{err: errors.New("403 rate limited")}},
+		{"no source label", &fakeUpstream{notes: &upstream.Notes{
+			Note: "No upstream release notes: publishes no org.opencontainers.image.source."}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.triage.Explain = true
+			h.triage.Upstream = tc.up
+			h.git.Check = gitprovider.CheckSuccess
+			h.git.Comments = []gitprovider.Comment{{
+				Author: "gitops-gate",
+				Body:   "<!-- gitops-gate -->\n### Resources\n\n**Added (5)**\n",
+			}}
+			h.model.Verdict = &llm.Verdict{
+				Classification: llm.ClassNoAction,
+				Summary:        "five resources appear",
+				Reasoning:      "The render gains five resources. The report does not say why.",
+			}
+
+			if err := h.triage.Run(context.Background(), Promotion{
+				PRNumber: 42, Branch: "kargo/metallb", Files: []string{valuesPath},
+			}); err != nil {
+				t.Fatalf("an upstream failure must not fail the explanation: %v", err)
+			}
+			if len(h.git.Posted) != 1 {
+				t.Fatalf("should still explain from the render alone, posted %d", len(h.git.Posted))
+			}
+			if !strings.Contains(h.git.Posted[0], "render diff ONLY") {
+				t.Errorf("must say the evidence was render-only, got:\n%s", h.git.Posted[0])
+			}
+		})
 	}
 }

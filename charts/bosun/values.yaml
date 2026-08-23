@@ -91,6 +91,37 @@ triage:
   # called when the gate reports no change, and each pull request is explained
   # at most once.
   explainGreen: true
+
+  # Read what the maintainers wrote between the two versions, and use it to
+  # explain WHY the render changed rather than only what changed.
+  #
+  # HOW IT FINDS THEM, and why it is not a guess: an artifact reference is not
+  # a repository name -- ghcr.io/akuity/kargo-charts/kargo is published from
+  # github.com/akuity/kargo, and no string-munging discovers that. It reads the
+  # publisher's own `org.opencontainers.image.source` label off the image
+  # config. A guessed repository yields another project's release notes, which
+  # is worse than none because it reads exactly like the truth.
+  #
+  # EGRESS. This is the only part of the agent that talks to anything beyond
+  # your git host and your model. Release notes come from api.github.com, which
+  # it can already reach; finding WHICH repository needs a read against the
+  # registry the artifact lives in. Those hosts are knowable -- they are the
+  # repoURLs in your promotion pipeline's target list -- so keep them an
+  # explicit allow-list under networkPolicy.egress.fqdns rather than opening
+  # egress up. Without them this degrades to a render-only explanation that
+  # says so, which is the behaviour that existed before.
+  #
+  # GitHub-only today. A GitLab or Gitea source URL is refused rather than
+  # bent into an API this cannot read.
+  upstreamNotes:
+    enabled: true
+    # A bump crossing fourteen versions is when notes are most useful and least
+    # affordable. The newest are the ones that matter.
+    maxReleases: 5
+    # Some projects paste an entire commit log into a release. Left uncapped,
+    # that crowds the gate report out of the prompt -- and the gate report is
+    # what the explanation is actually grounded in.
+    maxBodyChars: 4000
   # Self-fix attempts per pull request, tracked by label so the cap survives a
   # restart or a rescheduled pod.
   maxAttempts: 2

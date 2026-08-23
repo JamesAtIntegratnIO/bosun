@@ -206,6 +206,23 @@
         "explainGreen": {
           "type": "boolean",
           "description": "Explain a green gate whose render still changed."
+        },
+        "upstreamNotes": {
+          "type": "object",
+          "description": "Read upstream release notes to explain why a bump changed the render.",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "maxReleases": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxBodyChars": {
+              "type": "integer",
+              "minimum": 200
+            }
+          }
         }
       }
     },
