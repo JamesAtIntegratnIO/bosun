@@ -16,6 +16,23 @@ Nothing in `charts/` or the service may assume:
 | A model provider | `LLMProvider`, with **no default**. The values file must name one. |
 | A repository layout | `triage.allowPaths` is a value. The service knows nothing about any particular repo. |
 
+## Rule 1a — the contracts between the halves are the fragile part
+
+There are no code dependencies between the gate, the agent and the charts.
+They are joined by **wire contracts**, and every one of them has broken
+silently at least once:
+
+| Contract | How it broke |
+|---|---|
+| The agent finds the gate's verdict by searching comments for `<!-- gitops-gate -->` | The marker lived in one demo script and in no CI adapter, so no agent could ever find a report CI published |
+| Any version the agent writes must appear verbatim in the gate's report | Still untested. Change how the report renders a version and every mechanical fix silently becomes an escalation |
+| `kargo-pipelines` POSTs a promotion body the agent's handler must parse | Untested |
+
+This is the reason both halves live in one repository. A boundary is safe
+where its contract can be tested; across two repositories, no CI run can check
+both sides. **A change to either side of a contract needs a test that sees
+both**, and adding one is worth more than almost any feature.
+
 ## Rule 2 — the safety model lives in code
 
 The model returns a verdict and an edit set. It does not edit files, and it
@@ -41,11 +58,19 @@ incomplete.
 ## Checks
 
 ```bash
-go test ./...       # unit tests and the eval suite
-gofmt -l .          # must print nothing
+go test ./...              # both commands, unit tests and the eval suite
+gofmt -l .                 # must print nothing
 go vet ./...
-hack/lint.sh        # helm lint + values.schema.json validation
+hack/lint.sh               # helm lint + values.schema.json validation
+hack/portability-test.sh   # no environment assumptions; everything renders
 ```
+
+`hack/extraction-test.sh` is gone. It proved this package could be lifted out
+of the platform repository that hosted it, and enforced a one-way link rule to
+keep the lift cheap. The lift has happened — this repository *is* the package,
+so a rule about escaping a directory that no longer exists fails on its own
+fixtures. `hack/portability-test.sh` keeps the checks that were never about
+extraction.
 
 The eval suite is the thing to watch. It measures classification against
 recorded incidents; a prompt or model change that moves those numbers should
