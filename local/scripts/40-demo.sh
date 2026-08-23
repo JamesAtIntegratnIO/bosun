@@ -94,21 +94,15 @@ say "8. verification -- the AnalysisRun asks Prometheus"
 kc -n "$KARGO_PROJECT" get analysisruns --no-headers 2>/dev/null | head -5 | sed 's/^/    /' \
   || step "no AnalysisRun yet"
 
-# ---------------------------------------------------------------------------
-say "9. observability -- the metrics must RETURN ROWS, not merely parse"
-# ---------------------------------------------------------------------------
-# This is the assertion the production incident earned. Every alert expression
-# parsed against a live Prometheus and matched nothing for hours, because
-# kube-state-metrics had prefixed every series. Parsing is not evidence.
-kc -n monitoring port-forward svc/monitoring-kube-prometheus-prometheus 19099:9090 >/dev/null 2>&1 &
-PF=$!; trap 'kill $PF 2>/dev/null' EXIT
-sleep 6
-for m in kargo_stage_condition kargo_promotion_phase kargo_warehouse_condition kargo_freight_discovered; do
-  n="$(curl -s --max-time 10 --data-urlencode "query=count($m)" \
-      http://127.0.0.1:19099/api/v1/query \
-      | python3 -c 'import json,sys; r=json.load(sys.stdin).get("data",{}).get("result",[]); print(r[0]["value"][1] if r else "0")')"
-  if [ "$n" != "0" ]; then ok "$m -> $n series"; else bad "$m returned NO ROWS"; FAIL=1; fi
-done
+# Step 9 was "observability -- the metrics must RETURN ROWS". It went with
+# charts/kargo-observability, which lives in the platform repository this kit
+# was written for: it shares no contract with the gate or the agent, so there
+# is nothing here for it to be checked against.
+#
+# The assertion it carried is worth restating wherever it now lives, because a
+# production incident earned it: every alert expression parsed against a live
+# Prometheus and matched nothing for hours, because kube-state-metrics had
+# prefixed every series. Parsing is not evidence.
 
 say "done"
 [ "$FAIL" -eq 0 ] && { echo "  the whole flow ran"; exit 0; } || { echo "  something above failed"; exit 1; }

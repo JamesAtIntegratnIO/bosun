@@ -15,13 +15,17 @@ pipeline that merges its own pull requests.
 | [`gate/`](gate) | **The inspection round.** Renders your ApplicationSets at base and at head, fails when an app's *cluster targeting* changes, diffs the old and new chart render, schema-validates the result. A container with an exit code — run it from any CI. |
 | the agent *(this module's root)* | **The repair.** Reads a red gate, explains it on the pull request, and fixes what the rendered diff *proves* is mechanical. Escalates everything else. |
 | [`charts/kargo-pipelines`](charts/kargo-pipelines) | Warehouses and Stages from one target list, with multi-stage promotion chains, verification gating and the triage hook that calls the agent. |
-| [`charts/kargo-observability`](charts/kargo-observability) | Kargo's own state as Prometheus metrics, alerts and a dashboard. Kargo ships no domain metrics of its own. |
 | [`charts/bosun`](charts/bosun) | Runs the agent in-cluster, triggered by Kargo rather than polled. |
 
 Kargo is very good at producing change. Left alone it opens more pull requests
-than anyone can read, merges a good share of them on a version-shaped policy
-that cannot see what is in the diff, and tells you nothing when a promotion
-breaks. This closes those three gaps.
+than anyone can read, and merges a good share of them on a version-shaped
+policy that cannot see what is in the diff. This closes those two gaps.
+
+> **Not here:** `kargo-observability`, which turns Kargo's own state into
+> Prometheus metrics and alerts. It shares no contract with the gate or the
+> agent, works for anyone running Kargo whether or not they want either, and
+> belongs to nothing in this repository. It stays in the platform repository
+> it was written for.
 
 **Status: running in production.** Measured 9/9 on the eval cases against
 `qwen/qwen3.8-27b` and 8/9 with zero unsafe actions against a 9B model on a

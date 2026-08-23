@@ -8,8 +8,14 @@ All notable changes to `bosun`. Format follows
 ### Added
 
 - The rest of the delivery kit moved in: [`gate/`](gate), `charts/kargo-pipelines`,
-  `charts/kargo-observability`, the CI adapters in `ci/`, ADR 0003, and a
-  proving ground that once again runs the whole flow rather than half of it.
+  the CI adapters in `ci/`, ADR 0003, and a proving ground that once again runs
+  the whole flow rather than half of it.
+
+  `kargo-observability` deliberately did NOT come. It shares no contract with
+  the gate or the agent, works for anyone running Kargo whether or not they
+  want either, and would only have been here because it used to sit in the same
+  directory. The rule for what belongs in this repository is a shared contract,
+  not a shared history.
 
   One Go module now serves both commands, so `go test ./...` covers the gate
   and the agent in a single run -- which is the only place their contracts can
