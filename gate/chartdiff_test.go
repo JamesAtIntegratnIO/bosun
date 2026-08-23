@@ -112,3 +112,57 @@ func TestIdenticalChangesAcrossClustersCollapse(t *testing.T) {
 		t.Errorf("both clusters must be named: %q", got[0].Cluster)
 	}
 }
+
+// An OCI repository URL IS the chart. ArgoCD accepts one that already ends in
+// the chart name alongside a `chart` field naming the same thing, and the gate
+// used to append regardless -- producing `.../charts/bosun/bosun`, a 403, and
+// an addon silently dropped from resource-level coverage.
+func TestOCIChartRefDoesNotDoubleTheChartName(t *testing.T) {
+	for _, tc := range []struct {
+		name, repo, chart, want string
+	}{
+		{
+			name:  "repo already ends in the chart name",
+			repo:  "oci://ghcr.io/org/charts/bosun",
+			chart: "bosun",
+			want:  "oci://ghcr.io/org/charts/bosun",
+		},
+		{
+			name:  "repo is the parent path",
+			repo:  "oci://ghcr.io/org/charts",
+			chart: "bosun",
+			want:  "oci://ghcr.io/org/charts/bosun",
+		},
+		{
+			name:  "trailing slash is not a path segment",
+			repo:  "oci://ghcr.io/org/charts/bosun/",
+			chart: "bosun",
+			want:  "oci://ghcr.io/org/charts/bosun",
+		},
+		{
+			name:  "a chart whose name is a suffix of the last segment is still appended",
+			repo:  "oci://ghcr.io/org/charts/kargo-pipelines",
+			chart: "pipelines",
+			want:  "oci://ghcr.io/org/charts/kargo-pipelines/pipelines",
+		},
+		{
+			name:  "no chart name",
+			repo:  "oci://ghcr.io/org/charts/bosun",
+			chart: "",
+			want:  "oci://ghcr.io/org/charts/bosun",
+		},
+		{
+			name:  "a classic repo passes the bare chart name and uses --repo",
+			repo:  "https://charts.example",
+			chart: "thing",
+			want:  "thing",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := chartRef(Row{ChartRepo: tc.repo, Chart: tc.chart})
+			if got != tc.want {
+				t.Errorf("chartRef(%q, %q) = %q, want %q", tc.repo, tc.chart, got, tc.want)
+			}
+		})
+	}
+}
