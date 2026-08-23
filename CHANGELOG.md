@@ -5,6 +5,35 @@ All notable changes to `bosun`. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **The agent reports every outcome as a commit status**, so it lands in the
+  same surface as the gate rather than only in a pod log.
+
+  `SetCommitStatus` is the method ADR 0004 named from the start and nobody
+  built. Its absence meant four outcomes -- gate green, gate absent, gate never
+  settled, attempts spent -- left *nothing at all* on the pull request. From
+  outside, "nothing needed triage", "I was never called" and "I crashed" were
+  the same observation, which is exactly how two defects in this call path
+  stayed invisible for a day.
+
+  Eleven verdicts now, each one line: `addons-gate is green; nothing to
+  triage`, `escalated: apiVersion migration is not a values fix`, `pushed a fix
+  (attempt 1 of 2): ...`, and so on.
+
+  The status is published **before** the gate wait, so a reader during a
+  ten-minute poll sees the agent working rather than an absence.
+
+  Two properties are enforced by test rather than convention. It is **always
+  `success`**, whatever the verdict -- a red status would make the agent a
+  second gate and block merges, which it expressly is not; the description
+  carries the meaning. And a status that **cannot be filed never fails the
+  triage it reports on** -- losing a fix because the report 403'd would be the
+  worst possible trade.
+
+  The status is named from `branding.name`, like the attempt label, so two
+  agents on one repository cannot overwrite each other's verdict.
+
 ### Fixed
 
 - **Triage gave up on a gate that had not reported yet**, which in practice

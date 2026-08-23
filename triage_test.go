@@ -395,3 +395,104 @@ func TestAGateThatNeverReportsIsStillMissing(t *testing.T) {
 		t.Fatalf("must have polled rather than giving up immediately, got %d", h.git.CheckCalls)
 	}
 }
+
+// Every outcome must leave a verdict on the pull request, including the ones
+// that do nothing.
+//
+// Before commit statuses existed, four paths -- gate green, gate absent, gate
+// never settled, attempts spent -- wrote only to a pod log. From outside,
+// "the gate was green so I stopped", "I was never called" and "I crashed"
+// produced identical evidence: nothing. That is precisely how two defects in
+// this call path stayed invisible for a day.
+func TestEveryOutcomeLeavesAVerdict(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		arrange func(*harness)
+		want    string
+	}{
+		{
+			name:    "gate green",
+			arrange: func(h *harness) { h.git.Check = gitprovider.CheckSuccess },
+			want:    "is green; nothing to triage",
+		},
+		{
+			name: "gate never appears",
+			arrange: func(h *harness) {
+				h.git.Check = ""
+				h.triage.GateWait = 10 * time.Millisecond
+			},
+			want: "no addons-gate check appeared",
+		},
+		{
+			name: "attempts spent",
+			arrange: func(h *harness) {
+				h.git.PR.Labels = []string{"bosun/attempt-1", "bosun/attempt-2"}
+			},
+			want: "fix attempts used without a green gate",
+		},
+		{
+			name:    "already escalated",
+			arrange: func(h *harness) { h.git.PR.Labels = []string{"needs-human"} },
+			want:    "already escalated",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.triage.Brand = "Bosun"
+			tc.arrange(h)
+
+			if err := h.triage.Run(context.Background(), Promotion{
+				PRNumber: 42, Branch: "kargo/metallb", Files: []string{valuesPath},
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			if len(h.git.Statuses) == 0 {
+				t.Fatal("no commit status: this outcome is invisible on the pull request")
+			}
+			final := h.git.Statuses[len(h.git.Statuses)-1]
+			if final.Name != "bosun" {
+				t.Errorf("status must carry the brand, got %q", final.Name)
+			}
+			if !strings.Contains(final.Description, tc.want) {
+				t.Errorf("want a verdict mentioning %q, got %q", tc.want, final.Description)
+			}
+		})
+	}
+}
+
+// The agent says it is working BEFORE the wait that can take ten minutes, or a
+// reader in that window cannot tell it apart from an agent that never ran.
+func TestSaysItIsWorkingBeforeTheWait(t *testing.T) {
+	h := newHarness(t)
+	h.triage.Brand = "Bosun"
+	h.git.Check = gitprovider.CheckSuccess
+
+	if err := h.triage.Run(context.Background(), Promotion{
+		PRNumber: 42, Branch: "kargo/metallb", Files: []string{valuesPath},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.git.Statuses) < 2 {
+		t.Fatalf("want a working status then a verdict, got %+v", h.git.Statuses)
+	}
+	if !strings.Contains(h.git.Statuses[0].Description, "reading addons-gate") {
+		t.Errorf("first status should say what it is waiting on, got %q",
+			h.git.Statuses[0].Description)
+	}
+}
+
+// A status that cannot be filed must never take down the triage it reports on.
+// The likely cause is a token missing "Commit statuses: write", and losing the
+// fix because the report failed would be the worst possible trade.
+func TestAFailingStatusDoesNotFailTriage(t *testing.T) {
+	h := newHarness(t)
+	h.git.StatusErr = errors.New("403 Resource not accessible by personal access token")
+	h.git.Check = gitprovider.CheckSuccess
+
+	if err := h.triage.Run(context.Background(), Promotion{
+		PRNumber: 42, Branch: "kargo/metallb", Files: []string{valuesPath},
+	}); err != nil {
+		t.Fatalf("a status failure must not fail triage: %v", err)
+	}
+}

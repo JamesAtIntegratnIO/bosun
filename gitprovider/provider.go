@@ -55,6 +55,21 @@ type Provider interface {
 	// Comment posts a comment.
 	Comment(ctx context.Context, number int, body string) error
 
+	// SetCommitStatus publishes the agent's OWN verdict as a commit status, so
+	// it lands in the same surface as the gate rather than only in a pod log.
+	//
+	// ADR 0004 named this as one of the four methods from the start; it went
+	// unimplemented until 2026-08-23, and the cost was that every outcome which
+	// did not warrant a comment -- gate green, gate absent, attempts spent --
+	// left no trace on the pull request at all. A reader could not tell whether
+	// the agent had run, decided nothing was needed, or never been called.
+	//
+	// This is NEVER a failure state, whatever the verdict. The agent is
+	// advisory: a red status here would block merges and quietly turn it into
+	// a second gate, which it is expressly not. The description carries the
+	// meaning; the colour stays out of the way.
+	SetCommitStatus(ctx context.Context, sha, name, description string) error
+
 	// AddLabel adds a label. Labels carry the attempt cap, so this has to be
 	// durable across restarts -- which is exactly why the cap is a label
 	// rather than in-memory state.
