@@ -76,12 +76,32 @@ The eval suite is the thing to watch. It measures classification against
 recorded incidents; a prompt or model change that moves those numbers should
 say so in the changelog with the model it was measured against.
 
-## Versioning
+## Versioning and releases
 
-The chart and the image are versioned independently, semver. The chart's
-`appVersion` tracks the image it deploys. Tagging `v<x.y.z>` publishes both:
-the image to `ghcr.io/jamesatintegratnio/bosun` and the chart to
-`oci://ghcr.io/jamesatintegratnio/charts/bosun`.
+**You do not cut releases. Bump a version and merge.**
+
+- **A chart publishes when its own `version` reaches main.** Chart versions are
+  independent of each other and of the agent's, so nothing waits on a shared
+  tag. Publishing refuses to overwrite, so re-running is harmless.
+- **A release is cut when `charts/bosun`'s `appVersion` changes on main.**
+  `release.yaml` tags it and publishes the images at that version. `appVersion`
+  is already the single source of truth for which image deploys -- the
+  consuming addon leaves `image.tag` unset -- so deriving the tag from the same
+  field means the tag, the chart and the running image cannot disagree.
+- **CI refuses a pull request that changes a chart without bumping its
+  version.** Publishing already refuses to overwrite, but silently and after
+  the fact: the pull request merges, publishes nothing, and looks exactly like
+  a release.
+
+That last one is not hypothetical. Releases used to be a pull request bumping a
+version, merged by a person, followed by someone remembering to push a tag.
+Nobody remembered: 0.2.0 merged and was never tagged, so nothing between 0.1.0
+and 0.3.0 was published and the cluster ran the first agent for a day while
+five fixes sat on main looking shipped.
+
+One trap if you change any of this: **a tag pushed with `GITHUB_TOKEN` does not
+trigger workflows.** GitHub blocks it to prevent recursion, so `release.yaml`
+*calls* the image workflow rather than tagging and hoping something notices.
 
 ## License
 

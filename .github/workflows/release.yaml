@@ -1,0 +1,87 @@
+name: Release
+
+# Cuts a release when the agent's version changes on main. No human step, and
+# no AI step either.
+#
+# WHY THIS EXISTS: releases used to be a pull request that bumped a version,
+# merged by a person, followed by someone remembering to push a tag. 0.2.0 was
+# merged and never tagged, so nothing between 0.1.0 and 0.3.0 was ever
+# published and the cluster ran the first agent for a day while five fixes sat
+# on main looking shipped. A release process that depends on anyone remembering
+# is not a process.
+#
+# THE VERSION IS NOT DECIDED HERE. It is charts/bosun's appVersion, which is
+# already the single source of truth for which image deploys -- the consuming
+# addon leaves image.tag unset so appVersion picks it. Deriving the tag from
+# the same field means the tag, the chart and the running image cannot
+# disagree.
+#
+# Charts are NOT published here. They publish from chart.yaml the moment their
+# own version reaches main, because chart versions are independent of each
+# other and of the agent's.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Is there a release to cut?
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      needed: ${{ steps.check.outputs.needed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # tags, to know what is already released
+      - id: check
+        run: |
+          set -euo pipefail
+          version=$(awk -F'"' '/^appVersion:/{print $2}' charts/bosun/Chart.yaml)
+          [ -n "$version" ] || { echo "::error::no appVersion in charts/bosun/Chart.yaml"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          if git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::v${version} is already tagged; nothing to release"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::releasing v${version}"
+          fi
+
+  tag:
+    name: Tag v${{ needs.version.outputs.version }}
+    needs: version
+    if: needs.version.outputs.needed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create the tag
+        env:
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Annotated, so `git describe` and the releases page both read well.
+          git tag -a "v${V}" -m "bosun ${V}"
+          git push origin "v${V}"
+
+  images:
+    name: Publish images at v${{ needs.version.outputs.version }}
+    needs: [version, tag]
+    # Called rather than triggered. A tag pushed with GITHUB_TOKEN does not
+    # start a workflow run, so waiting for image.yaml's `tags: ['v*']` trigger
+    # would wait forever.
+    uses: ./.github/workflows/image.yaml
+    with:
+      version: ${{ needs.version.outputs.version }}
+    permissions:
+      contents: read
+      packages: write
