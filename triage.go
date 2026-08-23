@@ -102,7 +102,7 @@ func (t *Triage) Run(ctx context.Context, p Promotion) error {
 		t.logf("PR %d: gate is green, nothing to triage", pr.Number)
 		return nil
 	case gitprovider.CheckMissing:
-		t.logf("PR %d: no %q check found", pr.Number, t.CheckName)
+		t.logf("PR %d: no %q check appeared within %s", pr.Number, t.CheckName, t.GateWait)
 		return nil
 	case gitprovider.CheckPending:
 		t.logf("PR %d: gate still pending after %s", pr.Number, t.GateWait)
@@ -254,6 +254,20 @@ func (t *Triage) render(v *llm.Verdict, res *edits.Result, headline string) stri
 	return b.String()
 }
 
+// waitForGate blocks until the gate reaches a verdict, the deadline passes, or
+// the context is cancelled.
+//
+// MISSING IS TREATED AS PENDING, and that is the whole subtlety. Kargo calls
+// this service from the promotion, immediately after opening the pull request
+// -- measured at THREE SECONDS after, in the first triage that ever reached
+// here. CI has not registered a check that early, so the check does not exist
+// rather than existing and being pending, and the first version of this
+// returned immediately and did nothing.
+//
+// From the caller's side those two states are the same thing: the gate has not
+// answered yet. The only honest distinction is time, and the deadline already
+// expresses it -- a check still missing after GateWait really is absent, and
+// gets reported as such.
 func (t *Triage) waitForGate(ctx context.Context, pr *gitprovider.PullRequest) (gitprovider.CheckState, error) {
 	deadline := time.Now().Add(t.GateWait)
 	for {
@@ -261,7 +275,8 @@ func (t *Triage) waitForGate(ctx context.Context, pr *gitprovider.PullRequest) (
 		if err != nil {
 			return gitprovider.CheckMissing, err
 		}
-		if state != gitprovider.CheckPending || time.Now().After(deadline) {
+		settled := state != gitprovider.CheckPending && state != gitprovider.CheckMissing
+		if settled || time.Now().After(deadline) {
 			return state, nil
 		}
 		select {

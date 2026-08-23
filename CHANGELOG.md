@@ -5,6 +5,28 @@ All notable changes to `bosun`. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Triage gave up on a gate that had not reported yet**, which in practice
+  meant every triage. Kargo calls this service from the promotion, immediately
+  after opening the pull request -- measured at **three seconds** after, in the
+  first triage that ever reached the code. CI has not registered a check that
+  early, so the check is *missing* rather than *pending*, and `waitForGate`
+  only ever polled on pending.
+
+  The first real triage looked like a clean no-op:
+
+      PR 109: no "addons-gate" check found
+      PR 109: triage done in 2s
+
+  A missing check and a pending one are the same thing to the caller: the gate
+  has not answered. `GateWait` is the only honest way to tell them apart, and a
+  check still absent when it expires is now reported as absent -- so a
+  misconfigured `gate.checkName` still surfaces rather than becoming a silent
+  ten-minute wait.
+
+  Two tests pin it, and both fail against the old code.
+
 ### Changed
 
 - **Licensed PolyForm Internal Use 1.0.0**, and the git history was rewritten
