@@ -49,8 +49,13 @@ type Triage struct {
 	MaxAttempts int
 	// GateWait is how long to wait for the gate to reach a verdict before
 	// giving up on this run.
-	GateWait  time.Duration
-	GatePoll  time.Duration
+	GateWait time.Duration
+	GatePoll time.Duration
+	// Explain turns on the green-gate explanation: when the gate passes but the
+	// render still changed, say what it changed. Off means the agent only ever
+	// speaks about failures, which is how it was until 0.3.0 -- and why a
+	// bump's real content stayed invisible behind a one-line version diff.
+	Explain   bool
 	CloneRoot string
 	RepoURL   string
 	Log       func(string, ...any)
@@ -135,8 +140,7 @@ func (t *Triage) Run(ctx context.Context, p Promotion) error {
 	}
 	switch state {
 	case gitprovider.CheckSuccess:
-		t.say(ctx, pr, "%s is green; nothing to triage", t.CheckName)
-		return nil
+		return t.explainGreen(ctx, pr, p)
 	case gitprovider.CheckMissing:
 		t.say(ctx, pr, "no %s check appeared within %s", t.CheckName, t.GateWait)
 		return nil
@@ -411,4 +415,122 @@ func attemptsSoFar(labels []string, prefix string) int {
 		}
 	}
 	return n
+}
+
+// gateSaidNothingChanged is what the gate writes when the render is identical.
+// Matching on it is how the agent avoids explaining a change that is not one.
+const gateSaidNothingChanged = "No change to what gets deployed"
+
+// explainGreen handles a gate that passed.
+//
+// A green gate is not the same as an uneventful change. The gate blocks on
+// structural things -- targeting, sources, apiVersion migrations -- and REPORTS
+// the rest: a chart that added four resources, moved a port, flipped a default.
+// All of that renders green and arrives as a pull request whose visible diff is
+// one version number.
+//
+// So this is the common case, not the boring one, and until now the agent
+// stopped here and said nothing.
+//
+// Three things it deliberately does not do:
+//
+//   - no model call when the gate reports no change at all. There is nothing to
+//     explain, and burning inference to say "nothing happened" is how a useful
+//     comment becomes noise people scroll past.
+//   - no comment on the same pull request twice. The status carries the verdict
+//     on every run; the comment is for when there is something to read.
+//   - no failure. Explanation is a courtesy on a green gate. If the model is
+//     down or the report is unreadable, the merge is not this agent's business
+//     to hold up.
+func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, p Promotion) error {
+	if !t.Explain {
+		t.say(ctx, pr, "%s is green; nothing to triage", t.CheckName)
+		return nil
+	}
+
+	report, err := t.gateReport(ctx, pr)
+	if err != nil {
+		// A green gate that published no report is normal on repositories where
+		// the gate only comments when it has something to say.
+		t.say(ctx, pr, "%s is green; no report to explain", t.CheckName)
+		return nil
+	}
+	if strings.Contains(report, gateSaidNothingChanged) {
+		t.say(ctx, pr, "%s is green; the render is unchanged", t.CheckName)
+		return nil
+	}
+	if t.alreadyExplained(ctx, pr) {
+		t.say(ctx, pr, "%s is green; already explained", t.CheckName)
+		return nil
+	}
+
+	root, cleanup, err := t.checkout(ctx, pr)
+	if err != nil {
+		t.say(ctx, pr, "%s is green; could not read the branch to explain it", t.CheckName)
+		return nil
+	}
+	defer cleanup()
+
+	prompt, err := buildUserPrompt(p, pr, report, root)
+	if err != nil {
+		t.say(ctx, pr, "%s is green; could not build the explanation", t.CheckName)
+		return nil
+	}
+
+	v, err := t.LLM.Classify(ctx, explainPrompt, prompt)
+	if err != nil {
+		// Explaining is a courtesy. A model that is down must not be the reason
+		// a green pull request looks unattended.
+		t.say(ctx, pr, "%s is green; could not reach the model to explain it", t.CheckName)
+		return nil
+	}
+
+	t.say(ctx, pr, "%s is green: %s", t.CheckName, v.Summary)
+	return t.Git.Comment(ctx, pr.Number, t.renderExplanation(v))
+}
+
+// alreadyExplained keeps the agent to one explanation per pull request. Kargo
+// can call more than once for the same promotion, and a bot that re-explains on
+// every retry is a bot people collapse.
+func (t *Triage) alreadyExplained(ctx context.Context, pr *gitprovider.PullRequest) bool {
+	comments, err := t.Git.ListComments(ctx, pr.Number)
+	if err != nil {
+		return false
+	}
+	for _, c := range comments {
+		if strings.Contains(c.Body, explanationMarker) {
+			return true
+		}
+	}
+	return false
+}
+
+const explanationMarker = "<!-- bosun:explanation -->"
+
+// renderExplanation is deliberately shorter than render(). Nothing was changed
+// and nothing was refused, so there are no tables to show -- and a long comment
+// on a green pull request is the fastest way to teach people to ignore this
+// agent entirely.
+func (t *Triage) renderExplanation(v *llm.Verdict) string {
+	var b strings.Builder
+	b.WriteString(explanationMarker + "\n")
+	if t.Brand != "" {
+		mark := t.BrandMark
+		if mark != "" {
+			mark += " "
+		}
+		fmt.Fprintf(&b, "%s**%s**\n\n", mark, t.Brand)
+	}
+	fmt.Fprintf(&b, "**%s**\n\n%s\n\n", v.Summary, v.Reasoning)
+	fmt.Fprintf(&b, "---\n_The gate passed; this is what it rendered, explained by %s. "+
+		"Grounded in the gate report only -- no upstream release notes were read._\n", t.LLM.Name())
+	return b.String()
+}
+
+// checkout is the working copy, however the caller supplies it.
+func (t *Triage) checkout(ctx context.Context, pr *gitprovider.PullRequest) (string, func(), error) {
+	if t.Checkout != nil {
+		return t.Checkout(ctx, pr)
+	}
+	return t.clone(ctx, pr)
 }

@@ -111,3 +111,63 @@ Never suggest closing the pull request.
 
 Answer only through the schema. Keep "summary" to one sentence -- it is the
 first line a human reads. Put the actual explanation in "reasoning".`
+
+// explainPrompt is used when the gate is GREEN but the render still changed --
+// a chart bump that adds resources, moves a port, or flips a default the gate
+// reports without blocking on.
+//
+// Nothing is being fixed here, so there is no schema to fill and no edit to
+// refuse. That removes every guard the triage path relies on, which makes the
+// grounding rule the only thing left standing between a useful explanation and
+// a confident invention. It is stated three times on purpose.
+//
+// The failure this guards against is specific: a plausible, fluent account of
+// what a version does, assembled from what the model remembers about the
+// project rather than from the diff in front of it. That is the same class of
+// error as an invented version number -- except an invented version gets
+// refused by the applier, and an invented explanation goes straight into a
+// human's head, where nothing checks it.
+const explainPrompt = `You explain what a dependency bump actually changes, to
+someone about to merge it.
+
+The gate is GREEN: nothing here is broken and nothing needs fixing. But the
+rendered output changed, and the pull request diff shows only a version number.
+Your job is to say what that version number actually did.
+
+## What to write
+
+Two or three sentences. What changed in the rendered manifests, and what a
+reader should look at because of it.
+
+Prefer the concrete: a resource that appeared or disappeared, a port that
+moved, a default that flipped, an apiVersion that shifted. "Adds a frr-k8s
+DaemonSet and four CRDs, and moves the speaker's metrics port from 7472 to
+9120" is worth reading. "Updates MetalLB to the latest version with various
+improvements" is not -- it tells the reader nothing they did not already know
+from the title.
+
+If something in the render deserves a second look before merging, say so
+plainly and say why.
+
+## Grounding -- this is the whole job
+
+ONLY state what the gate report in front of you supports. It is the entire
+evidence base. You have no release notes, no upstream changelog and no access
+to the project's history.
+
+If the report does not say WHY something changed, do not supply a reason. Say
+what changed and stop. "The report does not say why" is a complete and useful
+sentence.
+
+Do not describe features, fixes or motivations that are not in the report, even
+if you are confident you know the project. A fluent invention is worse than a
+short fact, because the reader cannot tell them apart and will act on it.
+
+Never guess a version number, a port, a resource name or a field path. If it is
+not written in the report, it does not go in your answer.
+
+## Answer
+
+Fill the schema. Put the explanation in "reasoning" and a one-sentence headline
+in "summary". Set "classification" to "no_action" and propose no edits: this
+path never changes anything.`

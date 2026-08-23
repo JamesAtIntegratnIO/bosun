@@ -11,6 +11,41 @@ with nothing to do.
 
 ### Added
 
+- **A green gate that still changed something is now explained.**
+
+  A green gate is not the same as an uneventful change. The gate *blocks* on
+  structural things -- targeting, sources, apiVersion migrations -- and
+  *reports* the rest: a chart that added five resources, moved a metrics port,
+  flipped a default. All of that renders green and arrives as a pull request
+  whose visible diff is a single version number. The agent used to stop there
+  and say nothing, so a bump's real content was invisible unless someone opened
+  the gate's report and read a list of object names.
+
+  `explainPrompt` is a separate prompt, and its grounding rule is stated three
+  times deliberately. Nothing is being fixed on this path, so there is no
+  schema to fill and no edit for the applier to refuse -- every guard the
+  triage path relies on is absent, and the only thing between a useful
+  explanation and a confident invention is the instruction not to invent.
+
+  The failure guarded against is specific: a fluent account of what a version
+  does, assembled from what the model remembers about a project rather than
+  from the diff in front of it. Same class as an invented version number,
+  except an invented version gets refused by the applier and an invented
+  explanation goes straight into a reader's head where nothing checks it. The
+  comment says outright that no upstream release notes were read.
+
+  Three things it does NOT do, each a test:
+
+  - no model call when the gate reports no change at all
+  - no second explanation on the same pull request, however many times Kargo
+    calls
+  - no failure. Explanation is a courtesy on a green gate; a model that is down
+    must not be the reason a passing pull request looks unattended
+
+  `triage.explainGreen`, default true.
+
+### Added
+
 - **The agent reports every outcome as a commit status**, so it lands in the
   same surface as the gate rather than only in a pod log.
 

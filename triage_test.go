@@ -496,3 +496,128 @@ func TestAFailingStatusDoesNotFailTriage(t *testing.T) {
 		t.Fatalf("a status failure must not fail triage: %v", err)
 	}
 }
+
+// A green gate is not the same as an uneventful change.
+//
+// The gate BLOCKS on structural things and REPORTS the rest -- a chart that
+// added four resources, moved a port, flipped a default. All of that renders
+// green and arrives as a pull request whose visible diff is one version number.
+// The agent used to stop here and say nothing, which is why a bump's real
+// content stayed invisible.
+func TestExplainsAGreenGateThatStillChangedSomething(t *testing.T) {
+	h := newHarness(t)
+	h.triage.Brand = "Bosun"
+	h.triage.Explain = true
+	h.git.Check = gitprovider.CheckSuccess
+	h.git.Comments = []gitprovider.Comment{{Author: "gitops-gate", Body: `<!-- gitops-gate -->
+### Versions
+
+| Application | From | To |
+|---|---|---|
+| metallb-hub | 0.15.2 | 0.16.0 |
+
+### Resources
+
+**Added (5)**
+
+- ` + "`DaemonSet/frr-k8s`" + `
+`}}
+	h.model.Verdict = &llm.Verdict{
+		Classification: llm.ClassNoAction,
+		Summary:        "adds an frr-k8s DaemonSet and four CRDs",
+		Reasoning:      "The render gains a DaemonSet and four CRDs. Nothing else moved.",
+	}
+
+	if err := h.triage.Run(context.Background(), Promotion{
+		PRNumber: 42, Branch: "kargo/metallb", Files: []string{valuesPath},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.git.Posted) != 1 {
+		t.Fatalf("a green gate with a changed render should be explained, posted %d", len(h.git.Posted))
+	}
+	body := h.git.Posted[0]
+	if !strings.Contains(body, explanationMarker) {
+		t.Error("explanation must be marked, or it cannot be found again")
+	}
+	if !strings.Contains(body, "no upstream release notes were read") {
+		t.Error("must say what it did NOT read; a grounded explanation says where its evidence stops")
+	}
+}
+
+// Nothing changed means nothing to say. Burning inference to announce that
+// nothing happened is how a useful comment becomes noise people scroll past.
+func TestSaysNothingWhenTheRenderIsUnchanged(t *testing.T) {
+	h := newHarness(t)
+	h.triage.Explain = true
+	h.git.Check = gitprovider.CheckSuccess
+	h.git.Comments = []gitprovider.Comment{{
+		Author: "gitops-gate",
+		Body:   "<!-- gitops-gate -->\nNo change to what gets deployed.\n",
+	}}
+	h.model.Verdict = &llm.Verdict{Classification: llm.ClassNoAction, Summary: "should never be asked"}
+
+	if err := h.triage.Run(context.Background(), Promotion{
+		PRNumber: 42, Branch: "kargo/metallb", Files: []string{valuesPath},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.git.Posted) != 0 {
+		t.Fatalf("must not comment when the render is unchanged, posted %+v", h.git.Posted)
+	}
+	if h.model.Calls != 0 {
+		t.Fatalf("must not call the model when there is nothing to explain, called %d", h.model.Calls)
+	}
+	// It still reports, so the run is not invisible.
+	if len(h.git.Statuses) == 0 {
+		t.Fatal("silence on the comment thread still needs a status")
+	}
+}
+
+// Kargo can call more than once for the same promotion. A bot that re-explains
+// on every retry is a bot people collapse.
+func TestExplainsOnlyOnce(t *testing.T) {
+	h := newHarness(t)
+	h.triage.Explain = true
+	h.git.Check = gitprovider.CheckSuccess
+	h.git.Comments = []gitprovider.Comment{
+		{Author: "gitops-gate", Body: "<!-- gitops-gate -->\n### Versions\n\nmetallb 0.15.2 -> 0.16.0\n"},
+		{Author: "bosun", Body: explanationMarker + "\nalready said it"},
+	}
+	h.model.Verdict = &llm.Verdict{Classification: llm.ClassNoAction, Summary: "should never be asked"}
+
+	if err := h.triage.Run(context.Background(), Promotion{
+		PRNumber: 42, Branch: "kargo/metallb", Files: []string{valuesPath},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.git.Posted) != 0 {
+		t.Fatalf("must not explain twice, posted %+v", h.git.Posted)
+	}
+	if h.model.Calls != 0 {
+		t.Fatalf("must not re-run the model on a second call, called %d", h.model.Calls)
+	}
+}
+
+// Explanation is a courtesy on a green gate. A model that is down must not be
+// the reason a passing pull request looks unattended.
+func TestAModelOutageDoesNotBreakAGreenGate(t *testing.T) {
+	h := newHarness(t)
+	h.triage.Explain = true
+	h.git.Check = gitprovider.CheckSuccess
+	h.git.Comments = []gitprovider.Comment{{
+		Author: "gitops-gate",
+		Body:   "<!-- gitops-gate -->\n### Versions\n\nmetallb 0.15.2 -> 0.16.0\n",
+	}}
+	h.model.Err = errors.New("connection refused")
+
+	if err := h.triage.Run(context.Background(), Promotion{
+		PRNumber: 42, Branch: "kargo/metallb", Files: []string{valuesPath},
+	}); err != nil {
+		t.Fatalf("a model outage must not fail a green gate: %v", err)
+	}
+	if len(h.git.Statuses) == 0 ||
+		!strings.Contains(h.git.Statuses[len(h.git.Statuses)-1].Description, "could not reach the model") {
+		t.Errorf("the outage should be visible in the status, got %+v", h.git.Statuses)
+	}
+}

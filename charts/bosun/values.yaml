@@ -79,6 +79,18 @@ gate:
   poll: 30s
 
 triage:
+  # Explain a GREEN gate that still changed the render.
+  #
+  # The gate blocks on structural changes and REPORTS the rest -- a chart that
+  # added resources, moved a port, flipped a default. All of that passes, and
+  # arrives as a pull request whose visible diff is one version number. With
+  # this off, the agent only ever speaks about failures and that content stays
+  # invisible.
+  #
+  # Costs one model call per bump whose render actually changed. Nothing is
+  # called when the gate reports no change, and each pull request is explained
+  # at most once.
+  explainGreen: true
   # Self-fix attempts per pull request, tracked by label so the cap survives a
   # restart or a rescheduled pod.
   maxAttempts: 2

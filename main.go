@@ -76,6 +76,7 @@ func main() {
 		MaxAttempts: cfg.MaxAttempts,
 		GateWait:    cfg.GateWait,
 		GatePoll:    cfg.GatePoll,
+		Explain:     cfg.Explain,
 		CloneRoot:   cfg.CloneRoot,
 		RepoURL:     cfg.GitRepoURL,
 		Log:         func(f string, a ...any) { logger.Printf(f, a...) },
