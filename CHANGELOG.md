@@ -3,6 +3,23 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.3.2] - 2026-08-23
+
+### Fixed
+
+- **A GitHub App private key whose newlines a secret store removed.** PEM is
+  line-structured; secret stores are not. A key pasted into a single-line
+  field -- the default in most vaults, 1Password included -- arrives with every
+  newline gone. It is byte for byte the right key, and `pem.Decode` refuses it.
+
+  0.3.1 crash-looped on exactly this, and the error message even guessed the
+  wrong cause: it blamed base64, because that is the failure everyone writes
+  the message for, while the real key was a good PEM flattened to one line.
+
+  The line breaks are now rebuilt, which is deterministic, so this class of
+  vault mangling stops being a support problem. Genuine rubbish is still
+  refused, and the message names both likely causes rather than one.
+
 ## [0.3.1] - 2026-08-23
 
 ### Fixed

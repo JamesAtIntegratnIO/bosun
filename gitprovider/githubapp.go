@@ -179,12 +179,28 @@ func (a *AppAuth) jwt() (string, error) {
 
 func b64(s string) string { return base64.RawURLEncoding.EncodeToString([]byte(s)) }
 
-// parseKey accepts both PEM encodings GitHub has issued over the years.
+// parseKey accepts both PEM encodings GitHub has issued, and repairs the one
+// way a valid key reliably arrives broken.
+//
+// PEM is line-structured, and secret stores are not. A key pasted into a
+// single-line field -- which is the default in most vaults, including
+// 1Password -- arrives with every newline gone. It is still the right key,
+// byte for byte, and pem.Decode refuses it.
+//
+// This cost a production crash-loop, and the error message even guessed the
+// wrong cause: it blamed base64, because that is the failure everyone writes
+// the message for, while the real key was a perfectly good PEM flattened to
+// one line. Rebuilding the line breaks is deterministic, so the honest thing
+// is to do it rather than make the next person find out the same way.
 func parseKey(pemBytes []byte) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil {
-		return nil, fmt.Errorf("the app private key is not PEM " +
-			"(a common cause is a secret holding the base64 of the PEM rather than the PEM)")
+		block, _ = pem.Decode(rewrap(pemBytes))
+	}
+	if block == nil {
+		return nil, fmt.Errorf("the app private key is not PEM: it must begin " +
+			"-----BEGIN ... PRIVATE KEY----- and contain base64 (a secret holding " +
+			"the base64 OF the PEM, rather than the PEM, is the usual cause)")
 	}
 	if k, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
 		return k, nil
@@ -198,4 +214,53 @@ func parseKey(pemBytes []byte) (*rsa.PrivateKey, error) {
 		return nil, fmt.Errorf("the app private key is not RSA")
 	}
 	return k, nil
+}
+
+// rewrap restores the line structure of a PEM whose newlines were stripped.
+//
+// Returns the input unchanged when it cannot find a BEGIN/END pair, so a blob
+// that is genuinely not PEM still fails with the message that says so.
+func rewrap(in []byte) []byte {
+	s := strings.TrimSpace(string(in))
+	begin := strings.Index(s, "-----BEGIN ")
+	if begin < 0 {
+		return in
+	}
+	hdrEnd := strings.Index(s[begin+11:], "-----")
+	if hdrEnd < 0 {
+		return in
+	}
+	kind := s[begin+11 : begin+11+hdrEnd]
+	header := "-----BEGIN " + kind + "-----"
+	footer := "-----END " + kind + "-----"
+
+	bodyStart := begin + len(header)
+	footIdx := strings.Index(s, footer)
+	if footIdx < 0 || footIdx <= bodyStart {
+		return in
+	}
+	// Everything between the markers, with all whitespace removed. What
+	// remains is the base64 payload, whatever the vault did to the layout.
+	body := strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\n' || r == '\r' || r == '\t' {
+			return -1
+		}
+		return r
+	}, s[bodyStart:footIdx])
+
+	var b strings.Builder
+	b.WriteString(header)
+	b.WriteByte('\n')
+	for len(body) > 64 {
+		b.WriteString(body[:64])
+		b.WriteByte('\n')
+		body = body[64:]
+	}
+	if body != "" {
+		b.WriteString(body)
+		b.WriteByte('\n')
+	}
+	b.WriteString(footer)
+	b.WriteByte('\n')
+	return []byte(b.String())
 }
