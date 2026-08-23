@@ -54,6 +54,7 @@ type Config struct {
 	MaxAttempts int
 	GateWait    time.Duration
 	GatePoll    time.Duration
+	Explain     bool
 	AllowPaths  []string
 	DenyPaths   []string
 	CloneRoot   string
@@ -91,6 +92,10 @@ func LoadConfig() (*Config, error) {
 	if c.GateWait, err = envDur("GATE_WAIT", 10*time.Minute); err != nil {
 		return nil, err
 	}
+	// Default ON. The agent's whole complaint about itself was that it only
+	// spoke when something was wrong, and a green gate on a chart bump still
+	// changed something worth reading.
+	c.Explain = os.Getenv("EXPLAIN_GREEN") != "false"
 	if c.GatePoll, err = envDur("GATE_POLL", 30*time.Second); err != nil {
 		return nil, err
 	}

@@ -202,6 +202,10 @@
             "type": "string"
           },
           "description": "Added to the built-in deny-list, which cannot be removed from."
+        },
+        "explainGreen": {
+          "type": "boolean",
+          "description": "Explain a green gate whose render still changed."
         }
       }
     },

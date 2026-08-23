@@ -98,6 +98,8 @@ spec:
               value: {{ .Values.gate.wait | quote }}
             - name: GATE_POLL
               value: {{ .Values.gate.poll | quote }}
+            - name: EXPLAIN_GREEN
+              value: {{ .Values.triage.explainGreen | quote }}
             - name: MAX_ATTEMPTS
               value: {{ .Values.triage.maxAttempts | quote }}
             - name: ALLOW_PATHS
