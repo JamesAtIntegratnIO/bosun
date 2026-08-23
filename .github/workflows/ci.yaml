@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "run gofmt"; exit 1; }
+      - run: go vet ./...
+      # The eval suite runs here too. It uses the recorded fixtures and a fake
+      # provider -- no model endpoint, no network, no spend.
+      - run: go test ./...
+
+  chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      # helm lint, plus `helm template` against values.schema.json -- a schema
+      # that has drifted from the chart is worse than no schema at all.
+      - run: hack/lint.sh
