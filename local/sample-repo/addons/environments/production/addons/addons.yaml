@@ -1,4 +1,0 @@
-# Overwritten by every scenario with that incident's recorded "before" state.
-# Present so the repository has the shape the fixtures expect on first clone.
-placeholder:
-  enabled: false

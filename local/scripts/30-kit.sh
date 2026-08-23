@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Builds Bosun from the working tree and installs it.
+# Installs the kit: Bosun and the pipelines.
 #
-# Built from the WORKING TREE rather than pulled. That is the point of a
-# proving ground -- it exercises the code in front of you, not whatever was
-# last published. It also sidesteps the architecture question entirely: the
-# published image is amd64 and this machine may not be.
+# Everything comes from the WORKING TREE -- the agent image is built here, and
+# the charts are the directories beside this one. That is the point of a
+# proving ground: it exercises the code in front of you, not whatever was last
+# published. It also sidesteps the architecture question, since the published
+# agent image is amd64 and this machine may not be.
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 load_credentials
@@ -13,9 +14,20 @@ load_credentials
 : "${KIND_CLUSTER:=localdev}"
 : "${AGENT_IMAGE:=bosun:local}"
 
-# Bosun runs in the cluster, so it takes the Service over plain HTTP: no
-# certificate, no trust store, nothing to configure.
+# Two addresses for one repository, because two consumers disagree about what
+# is acceptable:
+#
+#   ArgoCD and the agent take the Service over plain HTTP. No certificate, no
+#   trust store, nothing to configure.
+#
+#   Kargo will not. It REFUSES to send credentials to a plain-HTTP endpoint
+#   ("refused to get credentials for insecure HTTP endpoint"), which is a
+#   defensible rule and one you only discover from a controller log -- the
+#   promotion itself fails at `git push` with "could not read Username",
+#   naming nothing. So Kargo gets the ingress address over HTTPS, and skips
+#   verification of its self-signed certificate.
 REPO_URL="${GITEA_SVC}/${GITEA_OWNER}/${SAMPLE_REPO_NAME}.git"
+KARGO_REPO_URL="${GITEA_URL}/${GITEA_OWNER}/${SAMPLE_REPO_NAME}.git"
 GITEA_ROOT="${GITEA_SVC}"
 
 # The model endpoint is off-cluster, and the chart's allowPublicHTTPS rule
@@ -24,16 +36,6 @@ GITEA_ROOT="${GITEA_SVC}"
 LLM_HOST="$(printf '%s' "$LLM_BASE_URL" | sed -E 's#^https?://##; s#[:/].*$##')"
 LLM_PORT="$(printf '%s' "$LLM_BASE_URL" | sed -nE 's#^https?://[^:/]+:([0-9]+).*#\1#p')"
 : "${LLM_PORT:=80}"
-
-say "building the agent image from the working tree"
-docker build -q -t "$AGENT_IMAGE" "$ROOT/.." >/dev/null
-ok "built $AGENT_IMAGE"
-# kind nodes have their own image store; a locally built image is invisible
-# until it is loaded, and the pod would sit ImagePullBackOff against a
-# registry that has never heard of this tag.
-command -v kind >/dev/null 2>&1 || bad "kind is not on PATH -- idpbuilder embeds it but does not install it"
-kind load docker-image "$AGENT_IMAGE" --name "$KIND_CLUSTER" 2>&1 | sed 's/^/    /'
-ok "loaded into kind/$KIND_CLUSTER"
 
 say "the agent's own account"
 # The agent authenticates as whoever owns its token. Hand it the admin's and
@@ -79,6 +81,16 @@ kc -n bosun create secret generic agent-git \
   --from-literal=token="$AGENT_TOKEN" >/dev/null
 ok "agent-git"
 
+say "building the agent image from the working tree"
+docker build -q -t "$AGENT_IMAGE" "$ROOT/.." >/dev/null
+ok "built $AGENT_IMAGE"
+# kind nodes have their own image store; a locally built image is invisible
+# until it is loaded, and the pod would sit ImagePullBackOff against a registry
+# that has never heard of this tag.
+command -v kind >/dev/null 2>&1 || bad "kind is not on PATH -- idpbuilder embeds it but does not install it"
+kind load docker-image "$AGENT_IMAGE" --name "$KIND_CLUSTER" 2>&1 | sed 's/^/    /'
+ok "loaded into kind/$KIND_CLUSTER"
+
 say "bosun"
 helm upgrade --install bosun "$ROOT/../charts/bosun" \
   --kube-context "$CLUSTER_CONTEXT" \
@@ -107,15 +119,40 @@ helm upgrade --install bosun "$ROOT/../charts/bosun" \
   --set gate.checkName=gate \
   --set gate.wait=3m \
   --set gate.poll=10s \
-  --set 'triage.allowPaths[0]=addons/**' \
+  --set 'triage.allowPaths[0]=apps/**' \
+  --set 'triage.allowPaths[1]=addons/**' \
   --wait --timeout 5m >/dev/null
-# The image tag never changes, so helm sees an identical pod spec and keeps
-# the running pod -- with the OLD binary in it. Every rebuild therefore needs
-# an explicit rollout, or you spend an hour debugging code that is not
-# running.
+# The image tag never changes, so helm sees an identical pod spec and keeps the
+# running pod -- with the OLD binary in it. Every rebuild therefore needs an
+# explicit rollout, or you spend an hour debugging code that is not running.
 kc -n bosun rollout restart deploy/bosun-bosun >/dev/null
 kc -n bosun rollout status deploy/bosun-bosun --timeout=180s >/dev/null
 ok "bosun ready (restarted onto the freshly built image)"
 
-say "installed"
-kc -n bosun get deploy,svc,networkpolicy --no-headers 2>/dev/null | sed 's/^/  /' || true
+say "kargo-pipelines"
+helm upgrade --install kargo-pipelines "$ROOT/../charts/kargo-pipelines" \
+  --kube-context "$CLUSTER_CONTEXT" \
+  --namespace kargo \
+  -f "$ROOT/values/kargo-pipelines.yaml" \
+  --set git.repoURL="$KARGO_REPO_URL" \
+  --set git.insecureSkipTLSVerify=true \
+  --wait --timeout 5m >/dev/null
+ok "warehouse and stages created"
+
+say "kargo git credentials"
+# After the chart, never before: kargo-pipelines owns the Project namespace
+# and helm refuses to adopt one that already exists without its ownership
+# labels. Kargo also matches credentials to a repository by NORMALISED URL,
+# so this repoURL and the Warehouse's must agree down to the trailing .git.
+kc -n "$KARGO_PROJECT" delete secret sample-repo >/dev/null 2>&1 || true
+kc -n "$KARGO_PROJECT" create secret generic sample-repo \
+  --from-literal=repoURL="$KARGO_REPO_URL" \
+  --from-literal=username="$GITEA_OWNER" \
+  --from-literal=password="$GITEA_TOKEN" >/dev/null
+kc -n "$KARGO_PROJECT" label secret sample-repo \
+  kargo.akuity.io/cred-type=git --overwrite >/dev/null
+ok "git credentials in ${KARGO_PROJECT}"
+
+
+say "kit installed"
+kc -n kargo get warehouses,stages -A --no-headers 2>/dev/null | sed 's/^/  /' || true

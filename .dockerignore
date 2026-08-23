@@ -1,7 +1,8 @@
-# The build context is the repository root, and the image needs only the Go
-# module. Everything below would be copied into the build layer for nothing.
+# The build context is the repository root for both images. Neither needs the
+# charts, the docs or the proving ground, and the agent does not need the gate.
 local/
 charts/
+ci/
 docs/
 adr/
 hack/
@@ -10,3 +11,7 @@ scripts/
 *.md
 LICENSE
 .git
+
+# `go build` with no -o drops the binary next to the source.
+/bosun
+/gate/gitops-gate

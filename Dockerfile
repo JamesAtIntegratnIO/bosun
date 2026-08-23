@@ -1,4 +1,7 @@
-FROM golang:1.25-alpine AS build
+# Must not trail go.mod: one module now serves both the agent and the gate, and
+# the gate's dependencies set the floor. A stale tag here fails the build with
+# "go.mod requires go >= 1.26.0 (running go 1.25.x; GOTOOLCHAIN=local)".
+FROM golang:1.26-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

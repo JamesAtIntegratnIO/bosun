@@ -1,31 +1,46 @@
 # Bosun
 
-⚓ **The judgement half of a GitOps delivery gate.** It reads a red gate,
-explains it on the pull request, and fixes the cases that are mechanically
-provable from the rendered diff. Everything else it escalates to a human.
+⚓ **The crew for Argo and Kargo.** Gating, triage and visibility for a GitOps
+pipeline that merges its own pull requests.
 
-Triggered by Kargo's `http` promotion step — event-driven, never polled.
+> A boatswain's job is not repair — it is *inspection and repair*: daily rounds
+> of the hull, rigging and cables, fixing what they find on their own
+> authority, and reporting to the captain what they cannot. The inspection is
+> the larger half, and it is what makes the repair authority safe to grant.
+>
+> Bosun sits beside Argo (the ship) and Kargo (the cargo).
 
-> A bosun is the crew member who makes routine repairs on their own authority
-> and reports serious damage to the captain. That is exactly the split this
-> service draws between a mechanical fix and an escalation. It sits beside
-> Argo (the ship) and Kargo (the cargo).
+| Piece | What it does |
+|---|---|
+| [`gate/`](gate) | **The inspection round.** Renders your ApplicationSets at base and at head, fails when an app's *cluster targeting* changes, diffs the old and new chart render, schema-validates the result. A container with an exit code — run it from any CI. |
+| the agent *(this module's root)* | **The repair.** Reads a red gate, explains it on the pull request, and fixes what the rendered diff *proves* is mechanical. Escalates everything else. |
+| [`charts/kargo-pipelines`](charts/kargo-pipelines) | Warehouses and Stages from one target list, with multi-stage promotion chains, verification gating and the triage hook that calls the agent. |
+| [`charts/bosun`](charts/bosun) | Runs the agent in-cluster, triggered by Kargo rather than polled. |
+
+Kargo is very good at producing change. Left alone it opens more pull requests
+than anyone can read, and merges a good share of them on a version-shaped
+policy that cannot see what is in the diff. This closes those two gaps.
+
+> **Not here:** `kargo-observability`, which turns Kargo's own state into
+> Prometheus metrics and alerts. It shares no contract with the gate or the
+> agent, works for anyone running Kargo whether or not they want either, and
+> belongs to nothing in this repository. It stays in the platform repository
+> it was written for.
 
 **Status: running in production.** Measured 9/9 on the eval cases against
 `qwen/qwen3.8-27b` and 8/9 with zero unsafe actions against a 9B model on a
 workstation. See [`evals/`](evals) and [`local/`](local).
 
-## The problem
+## Why the two halves live together
 
-Kargo is very good at producing change. Left alone it opens more dependency-bump
-pull requests than anyone can read, and merges a good share of them on a
-version-shaped policy that cannot see what is actually in the diff.
+The gate and the agent are one loop — inspect, then repair — and they are
+joined by contracts that nothing else checks: the agent finds the gate's
+verdict by searching pull-request comments for a marker the gate emits, and
+any version it writes must appear *verbatim* in the gate's rendered report.
 
-A gate that renders both sides and diffs the *result* catches the dangerous
-ones — but now every red gate needs a human to read it. Most of those reds are
-mechanical: a chart minor flipped a default you depend on, a pin has to move
-with another pin, a metrics port moved while a NetworkPolicy still names the old
-number. Bosun handles that class and leaves the rest alone.
+Both of those broke, silently, while the two halves were separate packages.
+A boundary is safe where its contract can be tested; put the two sides in
+different repositories and no CI run can ever check them together.
 
 ## What it will and will not do
 
@@ -58,6 +73,18 @@ helm install bosun oci://ghcr.io/jamesatintegratnio/charts/bosun \
   --namespace bosun --create-namespace \
   -f my-values.yaml
 ```
+
+The gate runs in CI, not the cluster:
+
+```bash
+docker run --rm -v "$PWD:/repo" -w /repo \
+  ghcr.io/jamesatintegratnio/gitops-gate:main \
+  diff -base targets-base.json -head targets-head.json -repo . -report report.md
+```
+
+Ready-made CI adapters are in [`ci/`](ci). Multi-arch, so it runs on an arm64
+laptop as well as an amd64 runner — a gate you cannot reproduce locally is a
+gate nobody reproduces before pushing.
 
 The chart deploys the service, its RBAC and both halves of its NetworkPolicy.
 It consumes **existing Secrets by name** — bring your own secret manager. See
@@ -96,7 +123,9 @@ host or model provider. Those are values.
 | [`docs/prompt-contract.md`](docs/prompt-contract.md) | the prompt the eval numbers come from |
 | [`docs/llm-providers.md`](docs/llm-providers.md) | the `LLMProvider` interface; adding one |
 | [`docs/git-providers.md`](docs/git-providers.md) | the `GitProvider` interface; adding one |
-| [`local/`](local) | a disposable cluster that replays nine real incidents against the live service |
+| [`gate/README.md`](gate/README.md) | the gate: what it checks, and what it deliberately does not |
+| [`ci/`](ci) | CI adapters, and the contract an adapter must satisfy |
+| [`local/`](local) | a disposable cluster that runs the whole flow, and replays nine real incidents against the live agent |
 | [`adr/`](adr) | why it is built this way, and what each decision cost |
 
 ## Development
@@ -136,8 +165,11 @@ image from the registry is *use*, not distribution.
 
 ## Provenance
 
-Extracted from [`gitops_homelab_2_0`](https://github.com/JamesAtIntegratnIO/gitops_homelab_2_0)
-at `336d8df`, where it was developed as `delivery/images/bosun` and
-`delivery/charts/bosun`. It was called `delivery-agent` until 2026-08-23.
-The gate it reads, the Kargo pipeline chart that calls it, and the
-observability chart beside it still live there under `delivery/`.
+Developed inside [`gitops_homelab_2_0`](https://github.com/JamesAtIntegratnIO/gitops_homelab_2_0)
+as `delivery/`, and extracted here in two steps on 2026-08-23: the agent and
+its chart first, then the gate, both Kargo charts, the CI adapters and the
+proving ground. The agent was called `delivery-agent` until that day.
+
+That platform repository is still the reference consumer — it runs the gate in
+CI and the agent in-cluster, and every incident in [`evals/`](evals) came from
+it.

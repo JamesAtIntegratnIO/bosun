@@ -7,6 +7,37 @@ All notable changes to `bosun`. Format follows
 
 ### Added
 
+- The rest of the delivery kit moved in: [`gate/`](gate), `charts/kargo-pipelines`,
+  the CI adapters in `ci/`, ADR 0003, and a proving ground that once again runs
+  the whole flow rather than half of it.
+
+  `kargo-observability` deliberately did NOT come. It shares no contract with
+  the gate or the agent, works for anyone running Kargo whether or not they
+  want either, and would only have been here because it used to sit in the same
+  directory. The rule for what belongs in this repository is a shared contract,
+  not a shared history.
+
+  One Go module now serves both commands, so `go test ./...` covers the gate
+  and the agent in a single run -- which is the only place their contracts can
+  ever be checked. Bosun is the crew for Argo and Kargo: the gate is the
+  inspection round, the agent is the repair, and splitting them was reading the
+  deployment topology as if it were the role.
+
+  The agent's Dockerfile moves to `golang:1.26-alpine`: one module means the
+  gate's dependencies set the floor.
+
+### Changed
+
+- `hack/extraction-test.sh` becomes `hack/portability-test.sh`. The old script
+  proved `delivery/` could be lifted out of its host repository and enforced a
+  one-way link rule to keep that cheap. The lift has happened, so the rule
+  fails on its own fixtures; what survives is everything that was never about
+  extraction -- no environment assumptions, everything renders, every link
+  resolves, every unit documents itself.
+
+
+### Added
+
 - `edits.Policy.Scope` — the exact files this unit of work touched, set per
   request from the promotion's own file list. An edit outside it is refused
   even where the standing allowlist would permit it.
