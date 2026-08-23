@@ -26,6 +26,8 @@ green by deleting the check, and that failure is indistinguishable from success.
 | Cannot retry forever | attempt cap, tracked by pull-request label |
 | Cannot write to the default branch | the only push path targets the pull request's own branch |
 | Cannot block a merge | its commit status is always `success`, whatever the verdict. A red status here would make the agent a second gate; the description carries the meaning instead of the colour |
+| Cannot reach anything it was not given | upstream lookup talks to `api.github.com` and to the registries named in `networkPolicy.egress.fqdns`, and nothing else. Every failure degrades to a render-only explanation that says so |
+| Cannot present a guess as a source | the upstream repository comes from the publisher's own `org.opencontainers.image.source` label, never from parsing a registry path. A guessed repository returns another project's notes, which reads exactly like the truth |
 | Cannot act without saying so | every exit path publishes a commit status, including the ones that do nothing. "Nothing needed triage", "I was never called" and "I crashed" used to be the same observation from outside |
 
 ## Why the deny-list is not configurable

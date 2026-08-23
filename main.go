@@ -26,6 +26,7 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
+	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
 
 func main() {
@@ -77,6 +78,7 @@ func main() {
 		GateWait:    cfg.GateWait,
 		GatePoll:    cfg.GatePoll,
 		Explain:     cfg.Explain,
+		Upstream:    upstreamResolver(cfg),
 		CloneRoot:   cfg.CloneRoot,
 		RepoURL:     cfg.GitRepoURL,
 		Log:         func(f string, a ...any) { logger.Printf(f, a...) },
@@ -203,3 +205,22 @@ func (s *Server) PromotionOpened(w http.ResponseWriter, r *http.Request) {
 
 // Wait blocks until in-flight triage finishes.
 func (s *Server) Wait() { s.wg.Wait() }
+
+// upstreamResolver reads what maintainers wrote, when it can.
+//
+// GitHub-only, and deliberately so: it reuses the token and the api.github.com
+// egress the agent already has for reading the gate. The registry hops needed
+// to find WHICH GitHub repository an artifact comes from are the only new
+// network surface, and they fail softly -- an artifact whose registry is not
+// reachable produces an explanation grounded in the render alone, which is
+// what this did before upstream notes existed.
+func upstreamResolver(cfg *Config) upstream.Resolver {
+	if !cfg.Upstream {
+		return nil
+	}
+	return &upstream.GitHubReleases{
+		Token:        cfg.GitToken,
+		MaxReleases:  cfg.UpstreamMaxReleases,
+		MaxBodyChars: cfg.UpstreamMaxBodyChars,
+	}
+}
