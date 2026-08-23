@@ -16,11 +16,6 @@ the CRD addon is pinned at v1.4.0. Fix: move the CRD pin — *provided the exact
 target version appears in the evidence*. If it does not, this becomes an
 escalation, and the applier refuses the edit even if the model tries.
 
-**A port moved under a policy.** MetalLB 0.16.0 moves metrics from 7472 to
-9120 while a NetworkPolicy still names the old port. Scraping stops silently.
-Fix: the port number. Note this touches a *different* component and is still
-mechanical — what makes something escalate is the kind of change, not where
-the fix lives.
 
 ## Escalate
 
@@ -30,6 +25,26 @@ the fix lives.
 **Removed CRDs or dropped subcharts.** kyverno 3.9.0 drops the cleanup
 subcharts several values keys point at, with seven minors of generate-rule
 change behind a `failurePolicy: Fail` webhook.
+
+**A fix that lives outside the files the promotion touched.** MetalLB 0.16.0
+moves metrics from 7472 to 9120 while a NetworkPolicy still names the old
+port, and scraping stops silently. The fix is one number — but it is in a file
+the bump never opened, and the promotion's own file list is what bounds the
+agent.
+
+This was classified mechanical until 2026-08-23. Two things argue against it,
+and neither is about the model:
+
+- The MetalLB target rewrites `metallb.defaultVersion` and nothing else, so
+  the NetworkPolicy is never in the promotion's file list. The old eval
+  fixture listed only the NetworkPolicy, which granted an authority the live
+  pipeline does not — it passed for a reason that could not reproduce.
+- The value is a **port**, and corroboration only covers version shapes. An
+  invented port would have been written. This is the one edit with neither
+  guardrail, and the quietest failure mode of any of them.
+
+So it escalates: named precisely, with the port in the comment, for a human to
+apply in one keystroke. Nothing is lost except the pretence that it was safe.
 
 **One-way migrations.** authentik refuses to migrate across major.minor
 releases in one step — `ensure_allowed_version()` raises before

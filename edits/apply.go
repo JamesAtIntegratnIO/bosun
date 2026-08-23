@@ -29,6 +29,21 @@ type Policy struct {
 	// Allow are path globs an edit may target. Empty allows nothing, which is
 	// the correct default for a component that can write to a repository.
 	Allow []string
+	// Scope, when non-empty, is the exact set of paths THIS unit of work
+	// touched -- for a Kargo promotion, the files the promotion itself
+	// rewrote, which it already reports.
+	//
+	// Allow is a standing grant and is deliberately coarse. Scope is what this
+	// particular change is about, and it is much narrower. Without it the
+	// prompt tells the model "these are the files this pull request may
+	// change" while the applier accepts anything under the standing grant --
+	// an instruction where there should be a guarantee, which is the failure
+	// this package exists to rule out.
+	//
+	// Empty means unscoped, so a caller with no notion of "the files this
+	// change touched" keeps the old behaviour.
+	Scope []string
+
 	// Deny wins over Allow. These are the paths that must never move no
 	// matter how the allowlist is configured.
 	Deny []string
@@ -142,6 +157,21 @@ func (p Policy) check(path string) string {
 	for _, d := range append(append([]string{}, DefaultDeny...), p.Deny...) {
 		if matchGlob(d, clean) {
 			return fmt.Sprintf("path is denied (%s)", d)
+		}
+	}
+	// Scope is checked before Allow and is an exact-path test, not a glob:
+	// the promotion reports real paths, and widening them to patterns here
+	// would hand back the looseness this is meant to remove.
+	if len(p.Scope) > 0 {
+		inScope := false
+		for _, s := range p.Scope {
+			if strings.TrimPrefix(filepath.ToSlash(filepath.Clean(s)), "./") == clean {
+				inScope = true
+				break
+			}
+		}
+		if !inScope {
+			return "path is outside this change (the promotion did not touch it)"
 		}
 	}
 	for _, a := range p.Allow {
