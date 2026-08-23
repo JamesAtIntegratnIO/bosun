@@ -3,7 +3,11 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
-## [Unreleased]
+## [0.2.0] - 2026-08-23
+
+Everything below was found by running the thing, in one evening, after it had
+been "live" for a day doing nothing. Each defect looked exactly like a system
+with nothing to do.
 
 ### Added
 
