@@ -107,9 +107,26 @@ func (t *Triage) statusName() string {
 // token without the "Commit statuses" WRITE permission, which is worth a loud
 // log line and nothing more.
 func (t *Triage) say(ctx context.Context, pr *gitprovider.PullRequest, format string, a ...any) {
+	t.status(ctx, pr, gitprovider.StateSuccess, format, a...)
+}
+
+// working says the same thing, PENDING. Use it for anything that is not a
+// verdict.
+//
+// The distinction is the whole of this pair. say() used to serve both, writing
+// success on entry, so from the first second a reader saw a green `bosun` and
+// no comment -- which is exactly what a finished run with nothing to report
+// looks like. On a green gate that window is `GateWait` plus a model call: ten
+// minutes of a status claiming to be done. Silence that reads as completion is
+// the failure this whole service exists to find, and it was doing it.
+func (t *Triage) working(ctx context.Context, pr *gitprovider.PullRequest, format string, a ...any) {
+	t.status(ctx, pr, gitprovider.StatePending, format, a...)
+}
+
+func (t *Triage) status(ctx context.Context, pr *gitprovider.PullRequest, state gitprovider.CommitState, format string, a ...any) {
 	desc := fmt.Sprintf(format, a...)
 	t.logf("PR %d: %s", pr.Number, desc)
-	if err := t.Git.SetCommitStatus(ctx, pr.HeadSHA, t.statusName(), desc); err != nil {
+	if err := t.Git.SetCommitStatus(ctx, pr.HeadSHA, t.statusName(), state, desc); err != nil {
 		t.logf("PR %d: could not set the %q status (needs Commit statuses: read+write): %v",
 			pr.Number, t.statusName(), err)
 	}
@@ -120,9 +137,28 @@ func (t *Triage) say(ctx context.Context, pr *gitprovider.PullRequest, format st
 func (t *Triage) Run(ctx context.Context, p Promotion) error {
 	pr, err := t.Git.GetPullRequest(ctx, p.PRNumber)
 	if err != nil {
+		// Nothing to write a status on: without the pull request there is no
+		// head SHA to attach one to.
 		return fmt.Errorf("reading PR %d: %w", p.PRNumber, err)
 	}
 
+	err = t.run(ctx, p, pr)
+	if err != nil {
+		// Every error below this point used to reach a pod log and nothing
+		// else, leaving the status stuck on "reading <check>" -- which now
+		// means stuck PENDING, and a status that never resolves is as
+		// unreadable as one that lied about being finished.
+		//
+		// The likeliest error here is the gate breaking: `render` fails, the
+		// job that publishes the report is skipped, and gateReport finds a red
+		// check with nothing explaining it. That is worth saying where a human
+		// will see it.
+		t.say(ctx, pr, "triage did not finish: %v", err)
+	}
+	return err
+}
+
+func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullRequest) error {
 	if has(pr.Labels, labelNeedsHuman) {
 		t.say(ctx, pr, "already escalated; leaving it to a human")
 		return nil
@@ -130,7 +166,7 @@ func (t *Triage) Run(ctx context.Context, p Promotion) error {
 	// Say so before the first thing that can block. waitForGate can sit for ten
 	// minutes, and a reader in that window should see the agent working rather
 	// than an absence they cannot distinguish from never having been called.
-	t.say(ctx, pr, "reading %s", t.CheckName)
+	t.working(ctx, pr, "reading %s", t.CheckName)
 
 	attempt := attemptsSoFar(pr.Labels, t.attemptPrefix()) + 1
 	if attempt > t.MaxAttempts {

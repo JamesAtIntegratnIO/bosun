@@ -200,19 +200,20 @@ func (g *Gitea) Comment(ctx context.Context, number int, body string) error {
 		map[string]string{"body": body}, nil)
 }
 
-// SetCommitStatus posts a commit status. Always "success": see the interface.
+// SetCommitStatus posts a commit status. Never a failure state, and pending
+// until there is a verdict: see the interface.
 //
 // Gitea has no check-runs API, so a status is the ONLY way anything reports
 // beside the gate here -- which makes this the surface that matters most on a
 // self-hosted instance, not a nicety.
-func (g *Gitea) SetCommitStatus(ctx context.Context, sha, name, description string) error {
+func (g *Gitea) SetCommitStatus(ctx context.Context, sha, name string, state CommitState, description string) error {
 	if len(description) > 140 {
 		description = description[:137] + "..."
 	}
 	return g.do(ctx, http.MethodPost,
 		g.repoPath(fmt.Sprintf("/statuses/%s", sha)),
 		map[string]string{
-			"state":       "success",
+			"state":       string(state),
 			"context":     name,
 			"description": description,
 		}, nil)
