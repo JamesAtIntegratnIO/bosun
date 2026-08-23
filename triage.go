@@ -146,8 +146,16 @@ func (t *Triage) Run(ctx context.Context, p Promotion) error {
 	}
 
 	// Mechanical. The applier is what decides whether any of it happens.
+	//
+	// t.Policy is a value, so this copy is per-request and two concurrent
+	// triages cannot see each other's scope.
 	policy := t.Policy
 	policy.Evidence = prompt
+	// The promotion already reports which files it rewrote, and the prompt
+	// above already tells the model those are the files it may change. This is
+	// what makes that true rather than merely stated: an edit to anything else
+	// is refused, however well the standing allowlist would have permitted it.
+	policy.Scope = p.Files
 	in := make([]edits.Edit, 0, len(verdict.Edits))
 	for _, e := range verdict.Edits {
 		in = append(in, edits.Edit{Path: e.Path, Key: e.Key, From: e.From, To: e.To, Rationale: e.Rationale})

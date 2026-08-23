@@ -3,6 +3,47 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [Unreleased]
+
+### Added
+
+- `edits.Policy.Scope` — the exact files this unit of work touched, set per
+  request from the promotion's own file list. An edit outside it is refused
+  even where the standing allowlist would permit it.
+
+  The prompt has always told the model *"repository files this pull request
+  may change"* and listed exactly those files. Enforcement did not: the policy
+  was built once at start-up from `ALLOW_PATHS` and accepted anything under
+  it — about a third of the repository in a typical install. An instruction
+  where there should be a guarantee, which is the thing ADR 0001 exists to
+  rule out.
+
+  `Scope` is an exact-path test, not a glob: the promotion reports real paths,
+  and widening them to patterns would hand back the looseness. Empty means
+  unscoped, so callers with no notion of "the files this change touched" are
+  unaffected.
+
+  A side effect worth naming: Bosun can no longer reach its own configuration.
+  `allowPaths` lives under `addons/**`, so it was previously in reach of any
+  addon bump; it is not in any promotion's file list.
+
+### Changed
+
+- **`metrics-port-moved-under-a-netpol` is now an escalation, not a mechanical
+  fix.** It was the only case whose fix lands in a different file from the
+  bump, and it had neither guardrail: the file is never in the promotion's
+  list, and the value is a *port*, which `versionish` does not cover, so an
+  invented one would have been written.
+
+- `evals.Case.Changed` separates "what the repository contains" from "what the
+  promotion rewrote". Conflating them is why no fixture could model reality —
+  three did not. `metrics-port-moved-under-a-netpol` listed only the
+  NetworkPolicy the live pipeline never sends; `authentik-illegal-version-skip`
+  and `unrelated-preexisting-failure` named the production addons.yaml when
+  both charts are pinned in the control-plane layer. The eval harness and the
+  proving ground both send `Changed` now, so what the suite measures and what
+  the pipeline does cannot drift.
+
 ## [0.1.0] - 2026-08-23
 
 First release from the standalone repository. Extracted from
