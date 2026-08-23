@@ -134,8 +134,26 @@ func (c *Config) validate() error {
 	var missing []string
 	need := map[string]string{
 		"GIT_OWNER": c.GitOwner, "GIT_REPO": c.GitRepo,
-		"GIT_REPO_URL": c.GitRepoURL, "GIT_TOKEN": c.GitToken,
+		"GIT_REPO_URL": c.GitRepoURL,
 		"LLM_PROVIDER": c.LLMProvider, "LLM_MODEL": c.LLMModel,
+	}
+	// A credential is required; WHICH one depends on how the agent
+	// authenticates. App auth sets no GIT_TOKEN at all -- installation tokens
+	// are minted per use -- so requiring the token unconditionally made a
+	// correctly-configured App a pod that would not start:
+	//
+	//     configuration: missing required configuration: GIT_TOKEN
+	//
+	// The chart had already stopped setting it. This is the other half.
+	switch {
+	case c.AppID != "":
+		if strings.TrimSpace(c.AppPrivateKey) == "" {
+			missing = append(missing, "GITHUB_APP_PRIVATE_KEY (required with GITHUB_APP_ID)")
+		}
+	default:
+		if strings.TrimSpace(c.GitToken) == "" {
+			missing = append(missing, "GIT_TOKEN (or GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY)")
+		}
 	}
 	for k, v := range need {
 		if strings.TrimSpace(v) == "" {

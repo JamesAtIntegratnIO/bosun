@@ -3,6 +3,24 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.3.1] - 2026-08-23
+
+### Fixed
+
+- **A correctly-configured GitHub App would not start.** The chart stops
+  setting `GIT_TOKEN` under App auth -- installation tokens are minted per use,
+  so there is nothing static to set -- while `validate()` still demanded it:
+
+      configuration: missing required configuration: GIT_TOKEN
+
+  0.3.0 crash-looped on first deploy. Verifying the chart *render* was not the
+  same as running the binary without a token, and only the second would have
+  caught it.
+
+  The required credential now follows the auth mode, and says so: without
+  either, the error names both options rather than only the one that used to be
+  mandatory.
+
 ## [0.3.0] - 2026-08-23
 
 ### Added
