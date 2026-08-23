@@ -73,6 +73,33 @@ the agent escalates rather than reporting success. This is what converts
 miscalibration into a safe outcome automatically: the model can be wrong about
 the classification, and the result is still a human being asked.
 
+## Lever 5 — reject, don't accommodate
+
+Levers 1 to 4 are all about making a *correct* fix expressible and a *malformed*
+one harmless. None of them asks whether a well-formed fix points the right way,
+and on 2026-08-23 that turned out to matter.
+
+The first live run of the mechanical path met a bump whose render also moved an
+addon's namespace. The agent updated a reference to match the new namespace.
+One scalar, in scope, correct `from` — every guard in the table below was
+satisfied, because a guard checks the *shape* of an edit and this edit's shape
+was perfect. What was wrong was its direction: it accommodated a change nobody
+had explained instead of rejecting it, and burned an attempt doing so.
+
+The prompt had made this reasonable. It said each pull request "moves one pinned
+version" and then only ever described reds that the version had caused, so
+"make the pull request self-consistent" was a fair reading. It now names the
+changes a version *cannot* cause — a namespace, a project, a source, cluster
+targeting — and says outright that making the rest of the repository agree with
+one is the wrong answer even when it is the tidy one.
+
+**The suite could not have caught this.** All three mechanical cases are
+accommodations — flip a default back, move a coupled pin forward — where making
+the render agree with the bump is exactly right. None of them asks the agent to
+refuse anything, so a model that accommodates unconditionally scores full marks.
+`namespace-moved-under-a-bump` is the first case where the correct answer is to
+decline, and it is a transcript of the live failure rather than an invention.
+
 ## What the model is never trusted with
 
 Neither the prompt nor the model decides any of this:

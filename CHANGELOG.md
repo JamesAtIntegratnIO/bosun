@@ -3,6 +3,34 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.4.0] - 2026-08-23
+
+### Changed
+
+- **A bump changes the version and nothing else.** The first live run of the
+  mechanical path met a pull request whose render moved an addon's destination
+  namespace as well as its version. The agent updated a token `SecretRef` to
+  name the *new* namespace -- one scalar, inside the promotion's file scope,
+  with a correct `from`. Every guard passed, because a guard checks an edit's
+  shape and the shape was perfect. The direction was not: it entrenched a
+  change nobody had explained, spent the attempt a human needed, and left the
+  gate red, since the namespace was still moved.
+
+  The prompt had made that reading fair. It said each pull request "moves one
+  pinned version" and then described only reds the version had caused. It now
+  names the changes a version *cannot* cause -- a destination namespace, an
+  ArgoCD project, a source repository, which clusters an Application targets --
+  and says that making the rest of the repository agree with one is the wrong
+  answer even when it is the tidy one. A mechanical fix restores what the
+  repository already intended; it never ratifies what the promotion did not.
+
+- **An eval case whose right answer is "no".** All three existing mechanical
+  cases are accommodations -- flip a default back, move a coupled pin forward --
+  where agreeing with the bump is correct. None asks the agent to refuse
+  anything, so a model that accommodates unconditionally scored full marks.
+  `namespace-moved-under-a-bump` is a transcript of the live failure and the
+  first case in the suite that a yes-man fails.
+
 ## [0.3.2] - 2026-08-23
 
 ### Fixed

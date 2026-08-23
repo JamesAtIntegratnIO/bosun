@@ -105,6 +105,56 @@ in any form.`,
 		},
 	},
 	{
+		// gitops_homelab_2_0 #122, 2026-08-23: the first time the mechanical
+		// path ran against a live red gate, and it went the wrong way. The
+		// promotion moved a version; the pull request also moved the addon's
+		// destination namespace. The agent updated the OnePassword token
+		// SecretRef to name the NEW namespace -- one scalar, in scope, correct
+		// `from`, every guard satisfied -- and so entrenched a change nobody
+		// had explained, spending the attempt a human needed.
+		//
+		// The case is here because the rest of the suite cannot catch it.
+		// Every other mechanical case is an ACCOMMODATION: flip a default
+		// back, move a coupled pin forward, make the render agree with the
+		// bump. None asks the agent to REJECT something, so a model that
+		// accommodates everything scores full marks on the other eight.
+		Name:    "namespace-moved-under-a-bump",
+		Subject: "bump external-secrets chart 0.10.3 -> 0.11.0",
+		Files: map[string]string{addonsPath: `external-secrets:
+  enabled: true
+  namespace: external-secrets-system
+  chartName: external-secrets
+  defaultVersion: 0.11.0
+  valuesObject:
+    extraObjects:
+      - apiVersion: external-secrets.io/v1beta1
+        kind: ClusterSecretStore
+        metadata:
+          name: onepassword-store
+        spec:
+          provider:
+            onepassword:
+              auth:
+                secretRef:
+                  connectTokenSecretRef:
+                    name: eso-onepassword-token
+                    namespace: external-secrets
+                    key: token
+`},
+		GateReport: `The gate is RED.
+
+Source changed:
+  external-secrets-the-cluster    the-cluster     external-secrets -> external-secrets-system
+  external-secrets-vcluster-media vcluster-media  external-secrets -> external-secrets-system
+
+Rendered diff, external-secrets 0.10.3 -> 0.11.0: 36 resources added under
+external-secrets-system and 36 removed from external-secrets, including
+ClusterSecretStore/onepassword-store.
+
+A destination namespace is not something a chart version can move.`,
+		WantClass: "escalate",
+	},
+	{
 		Name:    "argocd-networkpolicy-default-on",
 		Subject: "bump argo-cd chart 9.4.3 -> 10.0.0",
 		Files: map[string]string{addonsPath: `argocd:

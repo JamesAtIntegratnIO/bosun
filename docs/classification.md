@@ -46,6 +46,23 @@ and neither is about the model:
 So it escalates: named precisely, with the port in the comment, for a human to
 apply in one keystroke. Nothing is lost except the pretence that it was safe.
 
+**A change the bump cannot have caused.** external-secrets 0.11.0 arrives with
+the addon's destination namespace moved from `external-secrets` to
+`external-secrets-system`. A chart version does not move a namespace, an ArgoCD
+project, a source repository, or which clusters an Application targets. Nobody
+explained the move, so nobody can say it was meant.
+
+The trap here is that the accommodating answer is *available and tidy*: the
+repository still pins a OnePassword token SecretRef to the old namespace, and
+updating it makes everything agree. That is what the agent did on
+gitops_homelab_2_0 #122 — one scalar, in scope, correct `from`, every guard
+satisfied — and it was wrong. It entrenched an unexplained change and spent the
+attempt a human needed. The gate stayed red, because the namespace was still
+moved.
+
+A mechanical fix restores what the repository already intended. It never
+ratifies a change the promotion did not intend.
+
 **One-way migrations.** authentik refuses to migrate across major.minor
 releases in one step — `ensure_allowed_version()` raises before
 `run_migrations()`, so the pods take the database lock, refuse, and crashloop
