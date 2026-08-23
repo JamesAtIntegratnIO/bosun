@@ -254,3 +254,79 @@ func TestCorroborationIgnoresNonVersionValues(t *testing.T) {
 		t.Fatalf("a boolean toggle must not need corroboration: %+v", res.Rejected)
 	}
 }
+
+// Scope is what makes "the files this pull request may change" a guarantee
+// rather than a line in a prompt.
+//
+// The concrete case: a MetalLB bump rewrites metallb.defaultVersion in
+// addons.yaml and nothing else, while the repository also holds a
+// NetworkPolicy naming the old metrics port. Before Scope, a model that
+// proposed editing that NetworkPolicy got it applied -- the standing
+// allowlist is addons/**, and the NetworkPolicy is under addons/.
+func TestScopeRefusesAFileThePromotionDidNotTouch(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, body string) {
+		full := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const bumped = "addons/environments/production/addons/addons.yaml"
+	const untouched = "addons/cluster-roles/control-plane/addons/network-policies/metallb-system.yaml"
+	write(bumped, "metallb:\n  defaultVersion: 0.16.0\n")
+	write(untouched, "spec:\n  ingress:\n    - ports:\n        - port: 7472\n")
+
+	policy := Policy{
+		Allow: []string{"addons/**"}, // would permit both
+		Scope: []string{bumped},      // the promotion touched only this
+	}
+
+	res, err := Apply(root, policy, []Edit{
+		{Path: untouched, Key: "spec.ingress.0.ports.0.port", From: "7472", To: "9120"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Applied) != 0 {
+		t.Fatalf("an edit outside the promotion's files must be refused, applied %+v", res.Applied)
+	}
+	if len(res.Rejected) != 1 || !strings.Contains(res.Rejected[0].Reason, "outside this change") {
+		t.Fatalf("want a scope refusal naming why, got %+v", res.Rejected)
+	}
+
+	// And the same policy still applies an edit to the file it DID touch,
+	// or scoping would just be a way to refuse everything.
+	res, err = Apply(root, policy, []Edit{
+		{Path: bumped, Key: "metallb.defaultVersion", From: "0.16.0", To: "0.16.1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Applied) != 1 {
+		t.Fatalf("an in-scope edit must still apply, got %+v rejected=%+v", res.Applied, res.Rejected)
+	}
+}
+
+// An empty Scope means unscoped, so callers with no notion of "the files this
+// change touched" keep working.
+func TestEmptyScopeIsUnscoped(t *testing.T) {
+	root := t.TempDir()
+	full := filepath.Join(root, "addons/a.yaml")
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte("k: 1.0.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Apply(root, Policy{Allow: []string{"addons/**"}},
+		[]Edit{{Path: "addons/a.yaml", Key: "k", From: "1.0.0", To: "1.0.1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Applied) != 1 {
+		t.Fatalf("empty Scope must not refuse anything, got %+v", res.Rejected)
+	}
+}

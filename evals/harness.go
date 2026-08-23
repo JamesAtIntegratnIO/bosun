@@ -47,10 +47,10 @@ func BuildPrompt(c Case, withInventory bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "PULL REQUEST: %s\n\n%s\n\n", c.Subject, c.GateReport)
 
-	paths := make([]string, 0, len(c.Files))
-	for p := range c.Files {
-		paths = append(paths, p)
-	}
+	// The files THIS promotion touched, not everything the repository holds.
+	// The live agent lists exactly this (the promotion's own file list), so a
+	// prompt built from every fixture file would measure a prompt nobody gets.
+	paths := append([]string{}, c.ChangedFiles()...)
 	sort.Strings(paths)
 
 	if withInventory {
@@ -109,7 +109,15 @@ func Run(ctx context.Context, p llm.Provider, system string, c Case, withInvento
 	// The same policy the agent runs with, including the evidence the model
 	// was shown -- so the eval measures what would actually land, not what the
 	// model wished for.
-	policy := edits.Policy{Allow: []string{"addons/**"}, Evidence: BuildPrompt(c, withInventory)}
+	// Scope is the point: the same standing allowlist the agent runs with,
+	// narrowed to the files this promotion actually rewrote. Without Scope the
+	// suite scores edits to files the live pipeline would never have put in
+	// reach, which is how the metallb NetworkPolicy case passed for years.
+	policy := edits.Policy{
+		Allow:    []string{"addons/**"},
+		Scope:    c.ChangedFiles(),
+		Evidence: BuildPrompt(c, withInventory),
+	}
 	applied, err := edits.Apply(root, policy, in)
 	if err != nil {
 		res.Notes = append(res.Notes, err.Error())

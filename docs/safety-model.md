@@ -18,6 +18,7 @@ green by deleting the check, and that failure is indistinguishable from success.
 |---|---|
 | Cannot edit CI config, the gate, or the merge policy | `edits.DefaultDeny`, checked before any write and not overridable by configuration |
 | Cannot edit outside the configured area | `Policy.Allow`; an empty allowlist refuses everything, and the process refuses to start with one |
+| Cannot edit a file this change did not touch | `Policy.Scope`, set per request from the promotion's own file list. `Allow` is a standing grant and deliberately coarse; `Scope` is what *this* pull request is about. Before it existed the prompt said "the files this pull request may change" while the applier accepted anything under the standing grant — an instruction where there should be a guarantee. |
 | Cannot overwrite a value it misread | the edit's `from` must equal what the file holds |
 | Cannot invent a version | version-shaped values must appear in the evidence the model was shown |
 | Cannot add or restructure | the key must already resolve to an existing scalar |
