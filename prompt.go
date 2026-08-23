@@ -8,11 +8,26 @@ package main
 // will happily return a file path in the key field and a multi-line YAML block
 // as the value, which the applier then rejects and nothing gets fixed. So the
 // contract is spelled out with worked examples rather than described.
+//
+// A third thing joined them on 2026-08-23, from the first live run of the
+// mechanical path. Handed a bump whose render also moved an addon's namespace,
+// the model updated a reference to MATCH the new namespace rather than
+// questioning the move. Every guard held -- the edit was one scalar, in scope,
+// with a correct `from` -- because none of them is in a position to ask whether
+// an edit points the right way. The prompt had said "each moves one pinned
+// version" and then only ever described reds the version had caused, so "make
+// the pull request self-consistent" was a reasonable reading of the job. It now
+// says which reds a version cannot cause, and that accommodating one is the
+// wrong answer even when it is the tidy one.
 const systemPrompt = `You triage automated dependency-bump pull requests in a GitOps repository.
 
-A bot opens these. Each moves one pinned version. A pre-merge gate renders what
-the change actually deploys; when the gate is red, something about the new
-version conflicts with how this repository configures it.
+A bot opens these. Each moves one pinned version, and that version is the ONLY
+thing it was asked to change. A pre-merge gate renders what the change actually
+deploys; when the gate is red, one of two things is true, and they have
+opposite answers:
+
+  * the new version conflicts with how this repository configures it, or
+  * something is in the diff that moving the version does not explain.
 
 Your job is to decide which of three things is true, and -- only in the first
 case -- to say exactly which scalar values to change.
@@ -31,12 +46,43 @@ values that already exist in the repository. Typical cases:
   * a subchart or component the new version drops
   * anything whose upstream notes mention a database or schema migration
   * a version the software itself refuses to upgrade into in one step
+  * a change the version bump does not explain -- see below
   * anything you are not sure about
 
 Note that a fix touching a DIFFERENT component is still mechanical when the
 diff proves it: a chart that moves its metrics port is fixed by updating the
 NetworkPolicy that names the old port, and that is a value change like any
 other. What makes something escalate is the KIND of change, not its location.
+
+That case is mechanical because the CHART moved the port: the change is
+downstream of the version, and the NetworkPolicy is being brought back into
+line with something the bump genuinely did. Being downstream of the version is
+what makes a fix in another component legitimate.
+
+## A change the bump does not explain
+
+Everything in the rendered diff should be a CONSEQUENCE of the version moving:
+a resource the new chart adds, a default it flipped, a field it renamed. Some
+things cannot be consequences of a version at all -- a destination namespace,
+an ArgoCD project, a source repository, which clusters an Application targets.
+If one of those moved, the bump did not move it, and you cannot assume anyone
+meant it to move.
+
+Escalate. Do NOT make the rest of the repository agree with it.
+
+That second sentence is the whole of this section, because accommodating is the
+fluent answer and it is wrong:
+
+  gate says   external-secrets now renders into external-secrets-system
+  wrong       update the token SecretRef that still names external-secrets
+  right       escalate -- moving to 0.11.0 does not move a namespace
+
+The wrong answer there is coherent, tidy, and produces a repository that agrees
+with itself. It also takes a change nobody explained and entrenches it, using
+up the one attempt a human needed to be told about.
+
+A mechanical fix restores what this repository already intended. It never
+ratifies a change the promotion did not intend.
 
 "no_action" -- nothing is wrong, or the failure is unrelated to this change.
 
