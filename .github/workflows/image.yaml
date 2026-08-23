@@ -1,9 +1,28 @@
 name: Image
 
+# Publishes the two images this repository ships: the agent (`bosun`) and the
+# gate (`gitops-gate`). They share one Go module and one workflow, but they do
+# NOT share a reason to be rebuilt.
+#
+# WHY THE SCOPE JOB EXISTS: both images used to be one matrix behind one
+# `paths-ignore`, so any commit touching Go source anywhere republished BOTH.
+# A triage-only fix would publish a byte-identical gate under a new
+# `main-<sha>` tag -- and the consumer of that tag
+# (gitops_homelab_2_0, Kargo target `gitops-gate`, strategy NewestBuild) opened
+# a pull request for every one of them. It cannot dedupe them either: the
+# `org.opencontainers.image.revision` label carries the commit sha, so even an
+# identical build has a different digest.
+#
+# That pin is `autoMerge: never` on purpose -- the gate judges every other
+# promotion, so a human has to read the bump. Bumps that change nothing about
+# the gate are exactly what teaches that human to stop reading them.
+
 on:
   push:
     branches: [main]
     tags: ['v*']
+    # A cheap pre-filter for what cannot affect EITHER image. Which of the two
+    # a qualifying push affects is the `scope` job's problem.
     paths-ignore:
       - 'local/**'
       - 'charts/**'
@@ -27,29 +46,119 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  scope:
+    name: Which images changed?
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+      any: ${{ steps.pick.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the pushed range, to diff against
+
+      - name: Pick the images this revision changed
+        id: pick
+        env:
+          # `inputs.version` is the ONLY reliable sign of a release call.
+          # A called workflow inherits the caller's event context: release.yaml
+          # runs on a push to main, so `github.event_name` reads `push` and
+          # `github.ref_type` reads `branch` inside this workflow too. Deciding
+          # from those would path-filter a release, which must ship both images
+          # at the tagged revision whatever the last commit touched.
+          VERSION: ${{ inputs.version }}
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          agent='{"name":"bosun","image":"jamesatintegratnio/bosun","dockerfile":"Dockerfile","platforms":"linux/amd64"}'
+          gate='{"name":"gitops-gate","image":"jamesatintegratnio/gitops-gate","dockerfile":"gate/Dockerfile","platforms":"linux/amd64,linux/arm64"}'
+
+          build_agent=false
+          build_gate=false
+          zero=0000000000000000000000000000000000000000
+
+          # Every "ship this revision" case builds both. Only an ordinary push
+          # to a branch has a diff worth reasoning about; guessing from one on
+          # a release or a manual run would publish half a release.
+          if [ -n "${VERSION}" ]; then
+            build_agent=true; build_gate=true
+            why="release build of ${VERSION}"
+          elif [ "${EVENT}" != push ] || [ "${REF_TYPE}" = tag ]; then
+            build_agent=true; build_gate=true
+            why="${EVENT} (${REF_TYPE}) -- no diff to reason from"
+          elif [ -z "${BEFORE}" ] || [ "${BEFORE}" = "${zero}" ] || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            # A new branch, a force-push, or history this checkout does not
+            # have. Unknown means build, never means skip.
+            build_agent=true; build_gate=true
+            why="no usable base commit (${BEFORE:-none})"
+          else
+            changed=$(git diff --name-only "${BEFORE}" "${SHA}")
+            echo "changed files:"
+            printf '%s\n' "${changed}" | sed 's/^/  /'
+
+            # Prose and charts reach no image. Repeated from `paths-ignore`
+            # rather than relying on it: a push that mixes charts with code
+            # passes that filter with the chart files still in the diff.
+            code=$(printf '%s\n' "${changed}" | grep -vE '(^|/)(docs|adr)/|\.md$|^charts/|^local/|^ci/' || true)
+
+            # The gate is self-contained: everything it compiles lives under
+            # gate/, and it imports nothing else from this module. Check that
+            # with `go list` before widening this, not by reading it.
+            if printf '%s\n' "${code}" | grep -qE '^gate/|^go\.(mod|sum)$|^\.github/workflows/image\.yaml$'; then
+              build_gate=true
+            fi
+
+            # Everything else in the module is the agent's. Deliberately the
+            # loose half of the pair: an unnecessary agent build costs a runner
+            # and nothing else, because nothing downstream tracks its
+            # `main-<sha>` tags -- the chart's appVersion decides what deploys.
+            if printf '%s\n' "${code}" | grep -qvE '^gate/|^$'; then
+              build_agent=true
+            fi
+
+            why="from the diff ${BEFORE:0:7}..${SHA:0:7}"
+          fi
+
+          # `if`, not `[ ... ] && ...`: under `set -e` a false test on the
+          # last-and-only command of the line ends the step.
+          entries=""
+          if [ "${build_agent}" = true ]; then entries="${agent}"; fi
+          if [ "${build_gate}" = true ]; then entries="${entries:+${entries},}${gate}"; fi
+
+          if [ -z "${entries}" ]; then
+            echo "any=false" >> "$GITHUB_OUTPUT"
+            echo "matrix=[]" >> "$GITHUB_OUTPUT"
+            echo "::notice::Nothing to publish (${why})."
+          else
+            echo "any=true" >> "$GITHUB_OUTPUT"
+            echo "matrix=[${entries}]" >> "$GITHUB_OUTPUT"
+            echo "::notice::Publishing agent=${build_agent} gate=${build_gate} (${why})."
+          fi
+
   build-and-push:
+    needs: scope
+    if: needs.scope.outputs.any == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     strategy:
       fail-fast: false
+      # The images, and their per-image build settings, come from the `scope`
+      # job: `on:` has no way to filter paths per matrix entry, which is the
+      # whole reason the two were entangled.
+      #
+      # bosun is amd64 only: it runs in a cluster whose nodes are all amd64, so
+      # an arm64 image has no consumer. gitops-gate is multi-arch, because that
+      # one never runs in the cluster -- its consumers are CI runners (amd64)
+      # and developer machines (arm64 Macs). An amd64-only gate cannot be
+      # reproduced locally except under emulation.
       matrix:
-        include:
-          # The agent. amd64 only: it runs in a cluster whose nodes are all
-          # amd64, so an arm64 image has no consumer.
-          - name: bosun
-            image: jamesatintegratnio/bosun
-            dockerfile: Dockerfile
-            platforms: linux/amd64
-          # The gate. Multi-arch, because this one never runs in the cluster --
-          # its consumers are CI runners (amd64) and developer machines
-          # (arm64 Macs). An amd64-only gate cannot be reproduced locally
-          # except under emulation.
-          - name: gitops-gate
-            image: jamesatintegratnio/gitops-gate
-            dockerfile: gate/Dockerfile
-            platforms: linux/amd64,linux/arm64
+        include: ${{ fromJSON(needs.scope.outputs.matrix) }}
     name: ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4
@@ -78,6 +187,11 @@ jobs:
           # no branch, `{{branch}}` expands to nothing, and the result is the
           # literal `:-<sha>` -- which buildx rejects as an invalid reference
           # and fails the whole build.
+          #
+          # `:main` moves only when the image it names is rebuilt, which is now
+          # only when that image changed. That is the point, not a regression:
+          # a gate whose source did not move should keep pointing at the build
+          # that was tested.
           tags: |
             type=raw,value=main,enable={{is_default_branch}}
             type=sha,prefix={{branch}}-,enable={{is_default_branch}}
