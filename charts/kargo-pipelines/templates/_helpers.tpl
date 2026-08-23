@@ -241,26 +241,54 @@ upstream one. See docs/chaining.md.
 {{/*
 kp.triageBody -- the JSON payload handed to the triage service.
 
-Assembled from strings, like the PR description, so Kargo's ${{ }} expressions
-never meet Helm's parser.
+ONE expression producing a map, handed to quote(). Not a hand-assembled JSON
+string, which is what this was until 2026-08-23 and which could never have
+worked.
+
+Kargo evaluates every ${{ }} in a step's config and then, in
+pkg/expressions/json_templates.go:
+
+    // If the result is valid JSON, return its unmarshaled value.
+    var resMap any
+    if err := json.Unmarshal([]byte(result), &resMap); err == nil {
+        return resMap, nil
+    }
+
+A body built by interpolating expressions into a JSON string is, by
+construction, always valid JSON -- so it was always unmarshalled into an object,
+and the http step's schema requires a string. Every triage call died at config
+validation with:
+
+    invalid http config: body: Invalid type. Expected: string, given: object
+
+and because the step is continueOnError, the promotion carried on and nothing
+said a word. The triage hook has never once reached the service.
+
+quote() on a non-string delegates to unsafeQuoteFunc, which marshals the value
+and returns it wrapped in quotes; Kargo strips those and makes no further
+attempt to parse. This is the pattern Kargo's own http step documentation uses
+for a JSON body.
+
+Values are native here rather than pre-quoted: prNumber stays a number, and the
+lists stay lists, because json.Marshal is doing the encoding now instead of us.
 */}}
 {{- define "kp.triageBody" -}}
 {{- $t := .target -}}
 {{- $n := .norm -}}
 {{- $pairs := list
-      (printf "\"project\": %s" (include "kp.expr" "quote(ctx.project)"))
-      (printf "\"stage\": %s" (include "kp.expr" "quote(ctx.stage)"))
-      (printf "\"promotion\": %s" (include "kp.expr" "quote(ctx.promotion)"))
+      "\"project\": ctx.project"
+      "\"stage\": ctx.stage"
+      "\"promotion\": ctx.promotion"
       (printf "\"artifact\": %s" (.artifact | quote))
-      (printf "\"from\": %s" (include "kp.expr" "quote(outputs.read.currentVersion)"))
-      (printf "\"to\": %s" (include "kp.expr" (printf "quote(%s)" (include "kp.newVersionDisplayExpr" $t))))
+      "\"from\": outputs.read.currentVersion"
+      (printf "\"to\": %s" (include "kp.newVersionDisplayExpr" $t))
       (printf "\"autoMerge\": %s" ($n.autoMerge | quote))
-      (printf "\"prNumber\": %s" (include "kp.expr" "outputs.pr.pr.id"))
-      (printf "\"prURL\": %s" (include "kp.expr" "quote(outputs.pr.pr.url)"))
-      (printf "\"branch\": %s" (include "kp.expr" "quote(outputs.push.branch)"))
+      "\"prNumber\": outputs.pr.pr.id"
+      "\"prURL\": outputs.pr.pr.url"
+      "\"branch\": outputs.push.branch"
       (printf "\"files\": %s" (.files | toJson))
       (printf "\"verifyApps\": %s" (.verifyApps | toJson)) -}}
-{{- printf "{%s}" (join ", " $pairs) -}}
+{{- include "kp.expr" (printf "quote({%s})" (join ", " $pairs)) -}}
 {{- end -}}
 
 {{/* kp.stageFiles -- the files one stage touches, for the triage payload. */}}

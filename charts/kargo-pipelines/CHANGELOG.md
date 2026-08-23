@@ -3,6 +3,38 @@
 All notable changes to `kargo-pipelines`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.1.1] - 2026-08-23
+
+### Fixed
+
+- **The triage hook has never once reached the triage service.** Every call
+  died at config validation:
+
+      invalid http config: body: Invalid type. Expected: string, given: object
+
+  Kargo evaluates the `${{ }}` expressions in a step's config and then, in
+  `pkg/expressions/json_templates.go`, unmarshals the result if it happens to
+  be valid JSON. A body assembled by interpolating expressions into a JSON
+  string is *by construction* always valid JSON, so it was always turned into
+  an object -- and the `http` step's schema requires a string.
+
+  The step is `continueOnError: true`, deliberately, so that a slow or absent
+  triage service can never fail a promotion. The cost of that is exactly this:
+  the promotion carried on, the pull request opened, and nothing anywhere said
+  the call had not been made. It took the first gated promotion after the
+  service went live to surface it, and only by reading the Promotion object.
+
+  The body is now a single `quote({...})` over a native map, which is the
+  pattern Kargo's own `http` step documentation uses for a JSON body:
+  `quote()` on a non-string marshals it and wraps it, and Kargo strips the
+  wrapping without parsing further.
+
+  Values are native rather than pre-quoted now -- `prNumber` stays a number,
+  lists stay lists -- because `json.Marshal` does the encoding instead of us.
+
+  Rendered output is otherwise untouched: 124 objects before and after, and no
+  differing line outside the 59 `body:` fields.
+
 ## [Unreleased]
 
 Generalized from a working single-cluster chart. A repository migrating from
