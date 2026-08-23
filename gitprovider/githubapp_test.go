@@ -157,3 +157,47 @@ func TestAnUninstalledAppSaysSo(t *testing.T) {
 		t.Errorf("the error should point at the likely cause, got %q", err)
 	}
 }
+
+// The exact shape that crash-looped production: a valid PEM whose newlines a
+// secret store removed. Byte for byte the right key, and pem.Decode refuses it.
+func TestAPEMFlattenedToOneLineStillParses(t *testing.T) {
+	good := testKey(t, false)
+	flat := strings.ReplaceAll(string(good), "\n", "")
+	if strings.Contains(flat, "\n") {
+		t.Fatal("fixture is not flat")
+	}
+	k, err := parseKey([]byte(flat))
+	if err != nil {
+		t.Fatalf("a flattened PEM must still parse: %v", err)
+	}
+	orig, err := parseKey(good)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k.N.Cmp(orig.N) != 0 {
+		t.Fatal("repaired key differs from the original")
+	}
+}
+
+// Spaces instead of newlines is the other way vaults mangle a PEM.
+func TestAPEMWithSpacesForNewlinesStillParses(t *testing.T) {
+	flat := strings.ReplaceAll(string(testKey(t, true)), "\n", " ")
+	if _, err := parseKey([]byte(flat)); err != nil {
+		t.Fatalf("a space-separated PEM must still parse: %v", err)
+	}
+}
+
+// Repair must not turn genuine rubbish into a confusing success, and the error
+// still has to name the likely cause.
+func TestRepairDoesNotRescueSomethingThatIsNotAKey(t *testing.T) {
+	for _, bad := range [][]byte{
+		[]byte("not a key at all"),
+		[]byte(base64.StdEncoding.EncodeToString(testKey(t, false))),
+		[]byte("-----BEGIN RSA PRIVATE KEY----- ohno -----END RSA PRIVATE KEY-----"),
+		{},
+	} {
+		if _, err := parseKey(bad); err == nil {
+			t.Errorf("should have been refused: %.40q", bad)
+		}
+	}
+}
