@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -30,6 +31,16 @@ type Object struct {
 	// storing the object itself. The table is an artifact a pull request
 	// carries around; embedding every manifest would make it enormous.
 	Hash string `json:"hash"`
+
+	// Body is the normalised object, carried in memory ONLY -- `json:"-"` is
+	// load-bearing. It exists so a "changed" finding can say WHICH fields
+	// changed, and it must never reach the target table, or the artifact that
+	// Hash was invented to keep small becomes the manifests all over again.
+	//
+	// Populated by chart-diff, which renders both versions in the same process
+	// that diffs them. A table loaded from JSON has none, and the field diff is
+	// simply omitted -- the finding is still reported.
+	Body map[string]any `json:"-"`
 }
 
 // ID identifies an object across revisions. Deliberately excludes apiVersion:
@@ -106,7 +117,19 @@ func objectFrom(source, cluster, defaultNS string, obj map[string]any) (Object, 
 		Source: source, Cluster: cluster,
 		APIVersion: apiVersion, Kind: kind, Namespace: ns, Name: name,
 		Hash: hex.EncodeToString(sum[:8]),
+		Body: normalise(obj),
 	}, true
+}
+
+// FieldChange is one leaf that differs between two renders of an object.
+//
+// Paths are dotted with numeric list indices --
+// `spec.template.spec.containers.0.image` -- the same shape the agent's edit
+// inventory uses, so a human and an agent read the report the same way.
+type FieldChange struct {
+	Path string `json:"path"`
+	From string `json:"from,omitempty"`
+	To   string `json:"to,omitempty"`
 }
 
 // ObjectChange is one difference between two renders of the same object set.
@@ -116,6 +139,115 @@ type ObjectChange struct {
 	Cluster string `json:"cluster,omitempty"`
 	From    string `json:"from,omitempty"`
 	To      string `json:"to,omitempty"`
+
+	// Fields are the leaves that differ, when both renders were available in
+	// process. Empty is not "nothing changed" -- it is "not computed here".
+	Fields []FieldChange `json:"fields,omitempty"`
+	// Truncated counts further leaves beyond MaxFieldsPerObject.
+	Truncated int `json:"truncatedFields,omitempty"`
+}
+
+// MaxFieldsPerObject bounds one object's field list. A chart that rewrites
+// every label would otherwise produce a report longer than any comment box
+// accepts, and a report nobody can open is worth less than a short one.
+const MaxFieldsPerObject = 12
+
+// diffFields walks two normalised objects and returns the leaves that differ.
+//
+// Leaves only: a map or list that gained members reports the members, not the
+// container, because "spec.template.spec.containers changed" is the same
+// non-answer the object-level diff already gives.
+func diffFields(before, after map[string]any) ([]FieldChange, int) {
+	var out []FieldChange
+	// A leaf is usually a scalar, but a whole map or list arrives here when one
+	// side gained an element. Go's %v prints those as `map[name:mcp port:8081]`,
+	// which is not a shape anyone reading Kubernetes manifests recognises.
+	// Compact JSON is.
+	scalar := func(v any) string {
+		if v == nil {
+			return ""
+		}
+		var s string
+		switch v.(type) {
+		case map[string]any, []any:
+			if b, err := json.Marshal(v); err == nil {
+				s = string(b)
+			} else {
+				s = fmt.Sprintf("%v", v)
+			}
+		default:
+			s = fmt.Sprintf("%v", v)
+		}
+		if len(s) > 120 {
+			s = s[:117] + "..."
+		}
+		return s
+	}
+	join := func(p, k string) string {
+		if p == "" {
+			return k
+		}
+		return p + "." + k
+	}
+	var walk func(path string, b, a any)
+	walk = func(path string, b, a any) {
+		switch bb := b.(type) {
+		case map[string]any:
+			aa, ok := a.(map[string]any)
+			if !ok {
+				out = append(out, FieldChange{Path: path, From: scalar(b), To: scalar(a)})
+				return
+			}
+			seen := map[string]bool{}
+			var names []string
+			for k := range bb {
+				if !seen[k] {
+					seen[k] = true
+					names = append(names, k)
+				}
+			}
+			for k := range aa {
+				if !seen[k] {
+					seen[k] = true
+					names = append(names, k)
+				}
+			}
+			sort.Strings(names)
+			for _, k := range names {
+				walk(join(path, k), bb[k], aa[k])
+			}
+		case []any:
+			aa, ok := a.([]any)
+			if !ok {
+				out = append(out, FieldChange{Path: path, From: scalar(b), To: scalar(a)})
+				return
+			}
+			n := len(bb)
+			if len(aa) > n {
+				n = len(aa)
+			}
+			for i := 0; i < n; i++ {
+				var bv, av any
+				if i < len(bb) {
+					bv = bb[i]
+				}
+				if i < len(aa) {
+					av = aa[i]
+				}
+				walk(fmt.Sprintf("%s.%d", path, i), bv, av)
+			}
+		default:
+			if fmt.Sprintf("%v", b) != fmt.Sprintf("%v", a) {
+				out = append(out, FieldChange{Path: path, From: scalar(b), To: scalar(a)})
+			}
+		}
+	}
+	walk("", before, after)
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	if len(out) > MaxFieldsPerObject {
+		return out[:MaxFieldsPerObject], len(out) - MaxFieldsPerObject
+	}
+	return out, 0
 }
 
 // diffObjects compares two object sets.
@@ -144,7 +276,11 @@ func diffObjects(base, head []Object) []ObjectChange {
 				From: prev.APIVersion, To: o.APIVersion,
 			})
 		case prev.Hash != o.Hash:
-			out = append(out, ObjectChange{Kind: "changed", Object: o.Describe(), Cluster: o.Cluster})
+			c := ObjectChange{Kind: "changed", Object: o.Describe(), Cluster: o.Cluster}
+			if prev.Body != nil && o.Body != nil {
+				c.Fields, c.Truncated = diffFields(prev.Body, o.Body)
+			}
+			out = append(out, c)
 		}
 	}
 	for id, o := range b {

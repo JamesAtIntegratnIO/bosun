@@ -217,6 +217,32 @@ func byCluster(rows []Row) {
 	})
 }
 
+// writeFields renders one object's changed leaves, folded.
+func writeFields(w io.Writer, o ObjectChange) {
+	if len(o.Fields) == 0 {
+		return
+	}
+	label := fmt.Sprintf("%d field", len(o.Fields))
+	if len(o.Fields) != 1 {
+		label += "s"
+	}
+	if o.Truncated > 0 {
+		label += fmt.Sprintf(" (+%d more)", o.Truncated)
+	}
+	fmt.Fprintf(w, "  <details><summary>%s</summary>\n\n", label)
+	for _, f := range o.Fields {
+		switch {
+		case f.From == "":
+			fmt.Fprintf(w, "  - `%s`: set to `%s`\n", f.Path, f.To)
+		case f.To == "":
+			fmt.Fprintf(w, "  - `%s`: removed (was `%s`)\n", f.Path, f.From)
+		default:
+			fmt.Fprintf(w, "  - `%s`: `%s` → `%s`\n", f.Path, f.From, f.To)
+		}
+	}
+	fmt.Fprintf(w, "\n  </details>\n")
+}
+
 func sortChanges(c []Change) {
 	sort.Slice(c, func(i, j int) bool {
 		if c[i].Cluster != c[j].Cluster {
@@ -304,6 +330,12 @@ func (d *DiffResult) Report(w io.Writer) {
 					break
 				}
 				fmt.Fprintf(w, "- `%s`\n", o.Object)
+				// The whole point of rendering both versions is knowing WHICH
+				// fields moved. Reporting only that an object "changed" hands
+				// the reader the same non-answer the version number already
+				// gave, and asks for human eyes while withholding what those
+				// eyes need. Folded, so twelve of these stay readable.
+				writeFields(w, o)
 			}
 			fmt.Fprintln(w)
 		}

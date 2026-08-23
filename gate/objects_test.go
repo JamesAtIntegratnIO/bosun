@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -227,5 +228,87 @@ func TestHelmTestHooksAreExcludedButOtherHooksAreNot(t *testing.T) {
 		if _, ok := objectFrom("app", "local", "ns", hooked(v)); !ok {
 			t.Errorf("helm.sh/hook %q was dropped; it IS applied by a sync", v)
 		}
+	}
+}
+
+func objWith(name string, body map[string]any) Object {
+	o, ok := objectFrom("src", "prod", "ns", body)
+	if !ok {
+		panic("fixture did not parse: " + name)
+	}
+	return o
+}
+
+// "changed" without saying what changed is the same non-answer the version
+// number already gave. The reader is asked for judgement and denied the
+// evidence for it.
+func TestChangedObjectReportsWhichFieldsMoved(t *testing.T) {
+	mk := func(image string, replicas int) map[string]any {
+		return map[string]any{
+			"apiVersion": "apps/v1", "kind": "Deployment",
+			"metadata": map[string]any{"name": "explorer"},
+			"spec": map[string]any{
+				"replicas": replicas,
+				"template": map[string]any{"spec": map[string]any{
+					"containers": []any{map[string]any{"name": "app", "image": image}},
+				}},
+			},
+		}
+	}
+	got := diffObjects(
+		[]Object{objWith("before", mk("explorer:0.4.6", 1))},
+		[]Object{objWith("after", mk("explorer:0.5.1", 2))},
+	)
+	if len(got) != 1 || got[0].Kind != "changed" {
+		t.Fatalf("want one changed object, got %+v", got)
+	}
+	paths := map[string]string{}
+	for _, f := range got[0].Fields {
+		paths[f.Path] = f.From + " -> " + f.To
+	}
+	if v := paths["spec.template.spec.containers.0.image"]; v != "explorer:0.4.6 -> explorer:0.5.1" {
+		t.Errorf("want the image move reported, got %q from %+v", v, got[0].Fields)
+	}
+	if v := paths["spec.replicas"]; v != "1 -> 2" {
+		t.Errorf("want the replica move reported, got %q", v)
+	}
+	if _, ok := paths["spec.template.spec.containers"]; ok {
+		t.Error("the container list itself should not be reported; its leaves should")
+	}
+}
+
+// A table loaded from the JSON artifact has no bodies -- Hash exists precisely
+// so the artifact stays small. The finding must still be reported; only the
+// field list is absent.
+func TestFieldDiffIsOmittedWhenBodiesWereNotCarried(t *testing.T) {
+	got := diffObjects(
+		[]Object{{Cluster: "prod", Kind: "Deployment", Name: "explorer", APIVersion: "apps/v1", Hash: "aaa"}},
+		[]Object{{Cluster: "prod", Kind: "Deployment", Name: "explorer", APIVersion: "apps/v1", Hash: "bbb"}},
+	)
+	if len(got) != 1 || got[0].Kind != "changed" {
+		t.Fatalf("the change must still be reported, got %+v", got)
+	}
+	if len(got[0].Fields) != 0 {
+		t.Errorf("no bodies were carried, so no fields can be claimed: %+v", got[0].Fields)
+	}
+}
+
+// The body must never reach the target table. Hash exists so the artifact a
+// pull request carries between jobs stays small.
+func TestObjectBodyIsNeverSerialised(t *testing.T) {
+	o := objWith("x", map[string]any{
+		"apiVersion": "v1", "kind": "ConfigMap",
+		"metadata": map[string]any{"name": "c"},
+		"data":     map[string]any{"needle": "do-not-serialise-me"},
+	})
+	if o.Body == nil {
+		t.Fatal("the body should be carried in memory")
+	}
+	blob, err := json.Marshal(Table{Objects: []Object{o}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(blob), "do-not-serialise-me") {
+		t.Errorf("the object body reached the table artifact: %s", blob)
 	}
 }
