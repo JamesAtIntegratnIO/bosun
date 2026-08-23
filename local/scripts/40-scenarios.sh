@@ -105,7 +105,11 @@ print(json.dumps({
   "project": "bosun", "stage": "scenario", "promotion": case["Name"],
   "artifact": case["Subject"], "from": "", "to": "", "autoMerge": "never",
   "prNumber": int(sys.argv[3]), "branch": sys.argv[4],
-  "files": sorted((case.get("Files") or {}).keys()),
+  # What the PROMOTION rewrote, not everything the fixture writes into the
+  # repository. Kargo reports only the files its `updates:` block touched, and
+  # the agent scopes its edits to exactly that -- sending the full fixture
+  # here would hand it an authority the live pipeline never grants.
+  "files": sorted(case.get("Changed") or (case.get("Files") or {}).keys()),
   "verifyApps": [],
 }))
 PY

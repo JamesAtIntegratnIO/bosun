@@ -6,12 +6,28 @@
 // particular shape that made-up examples do not reproduce.
 package evals
 
+import "sort"
+
 // Case is one triage scenario.
 type Case struct {
 	Name string
 
-	// Files are the repository fixture, path -> content.
+	// Files are the repository fixture, path -> content. This is what the
+	// repository CONTAINS, not what the change touched.
 	Files map[string]string
+
+	// Changed are the files the promotion itself rewrote -- exactly what
+	// Kargo reports in its triage call, which is derived from the `updates:`
+	// block of that target. Empty means "all of Files", which is what every
+	// case assumed before the two were distinguished.
+	//
+	// They are not the same thing, and conflating them made the fixtures
+	// unable to model reality: a MetalLB bump rewrites the addon's version in
+	// addons.yaml and nothing else, while the repository also contains the
+	// NetworkPolicy that names the old metrics port. A fixture that lists the
+	// NetworkPolicy as a changed file hands the agent an authority the live
+	// pipeline never grants it.
+	Changed []string
 
 	// Subject is the bump: what moved, from where to where.
 	Subject string
@@ -30,7 +46,26 @@ type Case struct {
 	EditFile string
 }
 
+// ChangedFiles is what the promotion reports it rewrote. Defaults to every
+// fixture file, which is what a case means when it does not distinguish them.
+func (c Case) ChangedFiles() []string {
+	if len(c.Changed) > 0 {
+		return c.Changed
+	}
+	out := make([]string, 0, len(c.Files))
+	for p := range c.Files {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
+}
+
 const addonsPath = "addons/environments/production/addons/addons.yaml"
+
+// Control-plane-layer addons. Which layer a chart is pinned in decides which
+// file Kargo rewrites, so a fixture that names the wrong one is not modelling
+// the promotion it claims to.
+const cpAddonsPath = "addons/cluster-roles/control-plane/addons/addons.yaml"
 
 // Cases are ordered roughly by how much judgement they need.
 var Cases = []Case{
@@ -129,9 +164,35 @@ not a storage migration.`,
 		},
 	},
 	{
+		// This case USED to be scored as mechanical, and it was the only one
+		// whose fix lands in a different file from the bump. It is an
+		// escalation now, for two reasons that are both about the live
+		// pipeline rather than about the model:
+		//
+		//  1. The MetalLB target rewrites `metallb.defaultVersion` in
+		//     addons.yaml and nothing else, so the NetworkPolicy is never in
+		//     the promotion's file list. The old fixture listed ONLY the
+		//     NetworkPolicy, which handed the agent an authority Kargo does
+		//     not grant -- the eval passed for a reason that could not
+		//     reproduce in production.
+		//
+		//  2. The value being written is a PORT. `versionish` matches version
+		//     shapes only, so the corroboration check does not cover it and
+		//     an invented port would be applied. This is the one edit in the
+		//     suite with neither guardrail, and it is also the one with the
+		//     quietest failure: scraping simply stops.
+		//
+		// Escalating is not a capability lost. It was never safely mechanical.
 		Name:    "metrics-port-moved-under-a-netpol",
 		Subject: "bump metallb chart 0.15.2 -> 0.16.0 (metrics ports)",
-		Files: map[string]string{"addons/cluster-roles/control-plane/addons/network-policies/metallb-system.yaml": `apiVersion: networking.k8s.io/v1
+		Changed: []string{addonsPath},
+		Files: map[string]string{
+			addonsPath: `metallb:
+  enabled: true
+  namespace: metallb-system
+  defaultVersion: 0.16.0
+`,
+			"addons/cluster-roles/control-plane/addons/network-policies/metallb-system.yaml": `apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-monitoring-metallb
@@ -151,11 +212,7 @@ Rendered diff, metallb 0.15.2 -> 0.16.0:
 The NetworkPolicy allow-monitoring-metallb still names port 7472, so Prometheus
 will be unable to scrape either component. Nothing reports an error -- scraping
 simply stops.`,
-		WantClass: "mechanical",
-		EditFile:  "addons/cluster-roles/control-plane/addons/network-policies/metallb-system.yaml",
-		WantEdits: map[string]string{
-			"spec.ingress.0.ports.0.port": "9120",
-		},
+		WantClass: "escalate",
 	},
 	{
 		// The same shape as the case above with one thing removed: the exact
@@ -185,7 +242,9 @@ No specific patch release of Gateway API is named anywhere in this report.`,
 	{
 		Name:    "authentik-illegal-version-skip",
 		Subject: "bump authentik chart 2025.12.4 -> 2026.8.0",
-		Files: map[string]string{addonsPath: `authentik:
+		// authentik is pinned in the control-plane layer, so that is the
+		// file the promotion rewrites -- not the production one.
+		Files: map[string]string{cpAddonsPath: `authentik:
   enabled: true
   namespace: authentik
   chartName: authentik
@@ -248,7 +307,8 @@ sit between these versions, under a webhook with failurePolicy: Fail.`,
 	{
 		Name:    "unrelated-preexisting-failure",
 		Subject: "bump qdrant chart 1.15.0 -> 1.15.1",
-		Files: map[string]string{addonsPath: `qdrant:
+		// qdrant is pinned in the control-plane layer.
+		Files: map[string]string{cpAddonsPath: `qdrant:
   enabled: true
   namespace: ai
   chartName: qdrant
