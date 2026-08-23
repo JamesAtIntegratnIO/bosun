@@ -15,7 +15,7 @@ No promotion had traversed a chain. The agent had never triaged anything.
 |---|---|
 | kind cluster, ArgoCD, Gitea, ingress | [idpbuilder](https://cnoe.io/docs/reference-implementation/local) |
 | cert-manager, Argo Rollouts, Prometheus, Grafana, Kargo | helm |
-| kargo-pipelines, kargo-observability | helm, from **this working tree** |
+| kargo-pipelines | helm, from **this working tree** |
 | bosun | helm, **pulled** from `oci://ghcr.io/jamesatintegratnio/charts/bosun` |
 | the repository under test | `sample-repo/`, pushed into Gitea |
 
@@ -54,12 +54,13 @@ money against a vendor you did not choose is a bad default.
 6. **Merge**
 7. **Reconcile** — ArgoCD syncs podinfo to the new version
 8. **Verify** — the AnalysisRun asks Prometheus whether the app is healthy
-9. **Observe** — every `kargo_*` metric must **return rows**
 
-Step 9 is the one that earned its place. In production every alert expression
-parsed against a live Prometheus and matched nothing for hours, because
-kube-state-metrics prefixes custom-resource metrics unless told not to. Parsing
-is not evidence. The demo asserts a non-empty result.
+There used to be a step 9, asserting that every `kargo_*` metric **returned
+rows** rather than merely parsing — an assertion a production incident earned,
+where every alert expression parsed against a live Prometheus and matched
+nothing for hours because kube-state-metrics prefixes custom-resource metrics
+unless told not to. It went with `kargo-observability`, which is not part of
+this repository: it shares no contract with the gate or the agent.
 
 ## Where this is a stand-in rather than the real thing
 

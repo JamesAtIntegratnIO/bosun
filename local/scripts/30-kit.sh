@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs the kit: Bosun, the pipelines, the observability.
+# Installs the kit: Bosun and the pipelines.
 #
 # Everything comes from the WORKING TREE -- the agent image is built here, and
 # the charts are the directories beside this one. That is the point of a
@@ -153,33 +153,6 @@ kc -n "$KARGO_PROJECT" label secret sample-repo \
   kargo.akuity.io/cred-type=git --overwrite >/dev/null
 ok "git credentials in ${KARGO_PROJECT}"
 
-say "kargo-observability"
-helm upgrade --install kargo-observability "$ROOT/../charts/kargo-observability" \
-  --kube-context "$CLUSTER_CONTEXT" \
-  --namespace monitoring \
-  -f "$ROOT/values/kargo-observability.yaml" \
-  --wait --timeout 5m >/dev/null
-ok "custom-resource-state config and alerts installed"
-
-say "pointing kube-state-metrics at the config"
-# kube-state-metrics reads this file ONCE, at startup, and nothing watches it.
-# In production this cost a rollout to notice: the ConfigMap was correct and
-# the running pod kept emitting the old series.
-helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
-  --kube-context "$CLUSTER_CONTEXT" --namespace monitoring --reuse-values \
-  --set kube-state-metrics.customResourceState.enabled=true \
-  --set kube-state-metrics.customResourceState.create=false \
-  --set kube-state-metrics.customResourceState.name=kargo-custom-resource-state \
-  --set kube-state-metrics.rbac.extraRules[0].apiGroups[0]=kargo.akuity.io \
-  --set kube-state-metrics.rbac.extraRules[0].resources[0]=* \
-  --set kube-state-metrics.rbac.extraRules[0].verbs[0]=list \
-  --set kube-state-metrics.rbac.extraRules[1].apiGroups[0]=kargo.akuity.io \
-  --set kube-state-metrics.rbac.extraRules[1].resources[0]=* \
-  --set kube-state-metrics.rbac.extraRules[1].verbs[0]=watch \
-  --wait --timeout 8m >/dev/null
-kc -n monitoring rollout restart deploy/monitoring-kube-state-metrics >/dev/null
-kc -n monitoring rollout status deploy/monitoring-kube-state-metrics --timeout=180s >/dev/null
-ok "kube-state-metrics restarted onto the new config"
 
 say "kit installed"
 kc -n kargo get warehouses,stages -A --no-headers 2>/dev/null | sed 's/^/  /' || true
