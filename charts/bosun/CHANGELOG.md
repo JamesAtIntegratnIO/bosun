@@ -3,6 +3,28 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.6.0]
+
+### Added
+
+- **`networkPolicy.egress.fqdnPatterns`** -- Cilium `matchPattern` entries,
+  merged into the same rule as `fqdns`.
+
+  A registry needs two hosts, not one. `ghcr.io` serves the manifest and
+  redirects the blob -- which is where an image's labels live, and therefore
+  where the upstream-notes lookup has to go -- to
+  `pkg-containers.githubusercontent.com`. Allowing only the registry host means
+  that fetch hangs until it times out. Observed in production: the agent
+  reported `context deadline exceeded (Client.Timeout exceeded while awaiting
+  headers)` and fell back to a render-only explanation, which is indistinguishable
+  from an artifact that simply has no release notes.
+
+  Some of these hosts are a SET rather than a name -- quay serves blobs from
+  `cdn01.quay.io`, `cdn02…` -- and `matchName` cannot express that without
+  asserting how many there are. Guessing at the membership is how the
+  allow-list silently stops covering something, so patterns are the honest
+  shape.
+
 ## [0.1.0] - 2026-08-23
 
 First release from the standalone repository. Extracted from

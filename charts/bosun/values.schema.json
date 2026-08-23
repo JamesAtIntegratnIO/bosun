@@ -356,6 +356,12 @@
                   }
                 }
               }
+            },
+            "fqdnPatterns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           }
         }
