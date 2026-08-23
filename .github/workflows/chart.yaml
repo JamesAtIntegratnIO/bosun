@@ -1,17 +1,22 @@
-name: Chart
+name: Charts
 
-# Publishes charts/bosun as an OCI package on a v* tag.
+# Publishes every chart under charts/ as an OCI package.
 #
-# The tag is the release, not the branch: ArgoCD consumes this by version and a
-# chart that moved underneath a pinned version would defeat the point.
+# Each chart carries its OWN version in its Chart.yaml and is published at that
+# version. The git tag marks a release of the repository, not of any one chart
+# -- three charts that must all bump together because they share a tag is a
+# versioning scheme that lies about what changed.
+#
+# A version already in the registry is SKIPPED, never overwritten. ArgoCD
+# consumes these by version, and a chart that moved underneath a pinned version
+# is the exact failure this whole repository exists to prevent.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
 
 env:
-  REGISTRY: ghcr.io
-  # Owner must be lowercase -- OCI reference grammar rejects capitals, and the
+  # Owner must be lowercase: OCI reference grammar rejects capitals and the
   # GitHub account is mixed case.
   CHART_REPO: ghcr.io/jamesatintegratnio/charts
 
@@ -28,24 +33,34 @@ jobs:
       - name: Lint before publishing
         run: hack/lint.sh
 
-      - name: Refuse a tag that disagrees with Chart.yaml
-        # A chart published as 0.2.0 from a tag reading v0.3.0 is a debugging
-        # session six months from now. Fail loudly instead.
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          chart="$(helm show chart charts/bosun | awk '/^version:/{print $2}')"
-          if [ "$tag" != "$chart" ]; then
-            echo "tag v${tag} does not match charts/bosun/Chart.yaml version ${chart}" >&2
-            exit 1
-          fi
-          echo "publishing bosun ${chart}"
-
       - name: Log in to GHCR
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" \
             | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Package and push
+      - name: Package and push each chart at its own version
         run: |
-          helm package charts/bosun -d dist
-          helm push dist/bosun-*.tgz "oci://${CHART_REPO}"
+          set -euo pipefail
+          mkdir -p dist
+          published=0 skipped=0
+          for chart in charts/*/; do
+            name=$(helm show chart "$chart" | awk '/^name:/{print $2}')
+            version=$(helm show chart "$chart" | awk '/^version:/{print $2}')
+
+            # Already in the registry? Leave it alone. Overwriting a published
+            # version silently changes what every pinned consumer resolves to.
+            if helm show chart "oci://${CHART_REPO}/${name}" --version "$version" >/dev/null 2>&1; then
+              echo "::notice::${name} ${version} already published; skipping"
+              skipped=$((skipped + 1))
+              continue
+            fi
+
+            helm package "$chart" -d dist
+            helm push "dist/${name}-${version}.tgz" "oci://${CHART_REPO}"
+            echo "::notice::published ${name} ${version}"
+            published=$((published + 1))
+          done
+          echo "published ${published}, skipped ${skipped}"
+          if [ "$published" -eq 0 ]; then
+            echo "::warning::no chart version was new; nothing was published"
+          fi

@@ -7,6 +7,7 @@ on:
     paths-ignore:
       - 'local/**'
       - 'charts/**'
+      - 'ci/**'
       - 'docs/**'
       - 'adr/**'
       - '**.md'
@@ -14,7 +15,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-push:
@@ -22,6 +22,25 @@ jobs:
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The agent. amd64 only: it runs in a cluster whose nodes are all
+          # amd64, so an arm64 image has no consumer.
+          - name: bosun
+            image: jamesatintegratnio/bosun
+            dockerfile: Dockerfile
+            platforms: linux/amd64
+          # The gate. Multi-arch, because this one never runs in the cluster --
+          # its consumers are CI runners (amd64) and developer machines
+          # (arm64 Macs). An amd64-only gate cannot be reproduced locally
+          # except under emulation.
+          - name: gitops-gate
+            image: jamesatintegratnio/gitops-gate
+            dockerfile: gate/Dockerfile
+            platforms: linux/amd64,linux/arm64
+    name: ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -35,7 +54,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ matrix.image }}
           # No 'latest'. An unpinned tag is how an image silently changes
           # underneath a cluster, which is the incident class this service
           # exists to prevent -- shipping one here would be embarrassing.
@@ -58,12 +77,13 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
+          # Root context for both: one module, and go.mod lives here.
           context: .
-          # amd64 only: every consumer today is amd64, so an arm64 image has no
-          # user and doubles the build.
-          platforms: linux/amd64
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platforms }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          # Scoped per image or the two overwrite each other's cache.
+          cache-from: type=gha,scope=${{ matrix.name }}

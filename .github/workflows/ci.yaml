@@ -19,7 +19,8 @@ jobs:
         run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "run gofmt"; exit 1; }
       - run: go vet ./...
       # The eval suite runs here too. It uses the recorded fixtures and a fake
-      # provider -- no model endpoint, no network, no spend.
+      # provider -- no model endpoint, no network, no spend. `./...` now covers
+      # the gate as well: one module, one command, both halves of the kit.
       - run: go test ./...
 
   chart:
@@ -30,3 +31,6 @@ jobs:
       # helm lint, plus `helm template` against values.schema.json -- a schema
       # that has drifted from the chart is worse than no schema at all.
       - run: hack/lint.sh
+      # Portability: no cluster names, domains or owner defaults baked in, every
+      # chart renders, every link resolves, every unit documents itself.
+      - run: hack/portability-test.sh

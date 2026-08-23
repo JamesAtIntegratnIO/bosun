@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared settings and helpers for Bosun's local proving ground.
+# Shared settings and helpers for the local proving ground.
 #
 # Sourced, never executed. Everything here is deliberately overridable from the
 # environment so the same scripts work against a cluster you built by hand.
@@ -12,7 +12,8 @@ set -euo pipefail
 : "${GITEA_URL:=https://gitea.${IDP_HOST}:${IDP_PORT}}"
 : "${ARGOCD_URL:=https://argocd.${IDP_HOST}:${IDP_PORT}}"
 : "${GITEA_OWNER:=giteaAdmin}"
-: "${SAMPLE_REPO_NAME:=bosun-sample}"
+: "${SAMPLE_REPO_NAME:=delivery-sample}"
+: "${KARGO_PROJECT:=delivery}"
 
 # The same repository has two addresses, and which one you want depends on
 # where you are standing.
@@ -20,13 +21,19 @@ set -euo pipefail
 #   GITEA_URL     through the ingress, TLS with a self-signed certificate.
 #                 For anything running on the HOST -- the seed push, the gate.
 #   GITEA_SVC     the Service, plain HTTP, no certificate involved.
-#                 For anything running IN the cluster -- Bosun. Teaching an
-#                 in-cluster component to trust a throwaway CA is a lot of
-#                 plumbing to reach a service two hops away.
+#                 For anything running IN the cluster -- Kargo, ArgoCD, the
+#                 agent. Kargo's git-clone fails on the ingress address with
+#                 `SSL certificate ... self-signed certificate (18)`, and
+#                 teaching every in-cluster component to trust a throwaway CA
+#                 is a lot of plumbing to reach a service two hops away.
 : "${GITEA_SVC:=http://my-gitea-http.gitea.svc.cluster.local:3000}"
 : "${GITEA_NAMESPACE:=gitea}"
 : "${GITEA_SVC_PORT:=3000}"
 
+# The chart the demo keeps current. Public, tiny, and with enough published
+# versions that a bump is always available.
+: "${DEMO_CHART_REPO:=https://stefanprodan.github.io/podinfo}"
+: "${DEMO_CHART:=podinfo}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 

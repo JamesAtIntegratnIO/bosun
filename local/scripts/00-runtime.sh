@@ -8,8 +8,8 @@
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 : "${RUNTIME_CPU:=4}"
-: "${RUNTIME_MEMORY:=8}"    # CNOE's floor is 6; kind plus Bosun wants a little more
-: "${RUNTIME_DISK:=40}"
+: "${RUNTIME_MEMORY:=10}"   # CNOE's floor is 6; the kit adds Prometheus
+: "${RUNTIME_DISK:=60}"
 
 say "container runtime"
 if ! command -v colima >/dev/null 2>&1; then
