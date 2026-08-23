@@ -1,13 +1,22 @@
 # The gate shells out to helm and kubeconform rather than vendoring their
 # libraries: chart rendering has to match what the cluster's own Helm does, and
 # pinning a library version is a slower way to drift away from that.
-# Deliberately NOT `FROM --platform=$BUILDPLATFORM`, which would cross-compile
-# and skip emulating this stage. The legacy builder does not substitute
-# $BUILDPLATFORM, so the flag becomes `--platform=` and the build dies with
-# "invalid OS component" -- breaking every `docker build` run without buildx,
-# which is the common case on a developer machine. A minute of emulated Go
-# build in CI is the cheaper trade.
-FROM golang:1.26-alpine AS build
+# Pinned to the BUILD platform and cross-compiled, rather than emulating this
+# stage once per target architecture. Go cross-compiles natively, so this is
+# the difference between one fast build and one very slow one -- measured at
+# 336s emulated against a fraction of that cross-compiled.
+#
+# THIS REQUIRES BUILDKIT. The legacy builder does not substitute $BUILDPLATFORM,
+# so the flag becomes `--platform=` and the build dies with a genuinely opaque
+# "invalid OS component" error. If you hit that, you are on the legacy builder:
+#
+#     brew install docker-buildx
+#     mkdir -p ~/.docker/cli-plugins
+#     ln -sf /opt/homebrew/lib/docker/cli-plugins/docker-buildx \
+#            ~/.docker/cli-plugins/docker-buildx
+#
+# then build with `docker buildx build`. CI always uses buildx.
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
 ARG TARGETARCH
 # Build context is the REPOSITORY ROOT, not this directory: the gate shares one
 # Go module with the agent, so go.mod lives a level up.
