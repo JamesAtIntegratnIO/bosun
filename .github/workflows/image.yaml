@@ -12,6 +12,16 @@ on:
       - 'adr/**'
       - '**.md'
   workflow_dispatch:
+  # Called by release.yaml once it has cut a tag. It cannot rely on the tag
+  # push to trigger this workflow: a tag created with GITHUB_TOKEN does NOT
+  # start a new workflow run -- GitHub blocks that to prevent recursion -- so
+  # "push a tag and let the existing workflows fire" silently does nothing.
+  workflow_call:
+    inputs:
+      version:
+        description: Semver to publish alongside the branch tags, e.g. 0.3.0
+        required: true
+        type: string
 
 env:
   REGISTRY: ghcr.io
@@ -73,6 +83,7 @@ jobs:
             type=sha,prefix={{branch}}-,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
 
       - name: Build and push
         uses: docker/build-push-action@v6

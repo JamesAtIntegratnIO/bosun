@@ -27,6 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The published-version guard diffs against the base commit, which a
+          # depth-1 checkout does not have.
+          fetch-depth: 0
       - uses: azure/setup-helm@v4
       # helm lint, plus `helm template` against values.schema.json -- a schema
       # that has drifted from the chart is worse than no schema at all.
@@ -34,3 +38,34 @@ jobs:
       # Portability: no cluster names, domains or owner defaults baked in, every
       # chart renders, every link resolves, every unit documents itself.
       - run: hack/portability-test.sh
+
+      # Catch the version mistake BEFORE it merges, in both directions.
+      #
+      # Publishing refuses to overwrite an existing version, which is correct
+      # and silent -- a pull request that forgets to bump merges, publishes
+      # nothing, and looks exactly like a release. That is how 0.2.0 shipped
+      # nowhere for a day. This says so while there is still a pull request to
+      # say it on.
+      - name: A changed chart must carry an unpublished version
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          base='${{ github.event.pull_request.base.sha }}'
+          fail=0
+          for chart in charts/*/; do
+            name=$(helm show chart "$chart" | awk '/^name:/{print $2}')
+            version=$(helm show chart "$chart" | awk '/^version:/{print $2}')
+
+            # Only charts this pull request actually touches.
+            git diff --quiet "$base" -- "$chart" && continue
+
+            if helm show chart "oci://ghcr.io/jamesatintegratnio/charts/${name}"                  --version "$version" >/dev/null 2>&1; then
+              echo "::error file=${chart}Chart.yaml::${name} ${version} is already published, and this pull request changes the chart. Bump the version, or the change will merge and publish nothing."
+              fail=1
+            else
+              echo "::notice::${name} ${version} is unpublished; it will publish on merge"
+            fi
+          done
+          exit $fail

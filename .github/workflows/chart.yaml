@@ -2,17 +2,23 @@ name: Charts
 
 # Publishes every chart under charts/ as an OCI package.
 #
-# Each chart carries its OWN version in its Chart.yaml and is published at that
-# version. The git tag marks a release of the repository, not of any one chart
-# -- three charts that must all bump together because they share a tag is a
-# versioning scheme that lies about what changed.
+# Each chart carries its OWN version in its Chart.yaml and publishes at that
+# version, the moment that version reaches main. NOT on a release tag: chart
+# versions are independent of each other and of the agent's, and tying them to
+# a shared tag meant a chart-only bump published NOTHING until somebody
+# remembered to tag. kargo-pipelines 0.1.1 sat unpublished for exactly that
+# reason.
 #
-# A version already in the registry is SKIPPED, never overwritten. ArgoCD
-# consumes these by version, and a chart that moved underneath a pinned version
-# is the exact failure this whole repository exists to prevent.
+# Safe to run on every push because publishing is idempotent: a version already
+# in the registry is SKIPPED, never overwritten. ArgoCD consumes these by
+# version, and a chart that moved underneath a pinned version is the precise
+# failure this repository exists to prevent.
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths:
+      - 'charts/**'
+      - '.github/workflows/chart.yaml'
   workflow_dispatch:
 
 env:
