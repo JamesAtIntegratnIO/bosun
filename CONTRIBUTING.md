@@ -88,6 +88,19 @@ say so in the changelog with the model it was measured against.
   is already the single source of truth for which image deploys -- the
   consuming addon leaves `image.tag` unset -- so deriving the tag from the same
   field means the tag, the chart and the running image cannot disagree.
+- **A merge publishes only the images it changed.** `image.yaml` diffs the
+  push: `gate/**` (plus `go.mod`/`go.sum`) rebuilds `gitops-gate`, anything
+  else in the module rebuilds `bosun`, a release or a manual run builds both.
+  Rule 1a cuts both ways -- with no code dependencies between the halves, a
+  triage fix is not a reason to republish the gate.
+
+  It used to publish both from one matrix, and that was not merely wasteful.
+  The consumer pins the gate by `main-<sha>` and will not auto-merge it,
+  because the gate judges every other promotion and a human has to read the
+  bump. Republishing an identical gate under a new sha -- and it is never
+  byte-identical, the revision label carries the commit -- spent that
+  attention on nothing.
+
 - **CI refuses a pull request that changes a chart without bumping its
   version.** Publishing already refuses to overwrite, but silently and after
   the fact: the pull request merges, publishes nothing, and looks exactly like
