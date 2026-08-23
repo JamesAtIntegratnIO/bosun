@@ -3,6 +3,34 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.5.0] - 2026-08-23
+
+### Changed
+
+- **The `bosun` status is pending until there is a verdict.** It was written
+  `success` on entry -- before the gate had been read, anything cloned, or the
+  model called -- so from the first second a reader saw a green check and no
+  comment. That is precisely what a finished run with nothing to report looks
+  like. On a green gate the window is `gate.wait` plus a model call: ten
+  minutes of a status claiming to be done.
+
+  Silence that reads as completion is the failure this service exists to find,
+  and the status was producing it. `pending` on a check nobody requires blocks
+  no merge; it only stops the report lying about having finished. The rule that
+  it is never a FAILURE state is unchanged and deliberate -- a red status would
+  make an advisory agent a second gate.
+
+### Fixed
+
+- **An error now resolves the status and reaches the pull request.** Every
+  failure after the pull request was read returned to a pod log and nowhere
+  else, which with the change above would have left `pending` set for ever.
+
+  The live shape: the gate's `render` job fails, the job that publishes the
+  report is skipped, and `gateReport` finds a red check with nothing explaining
+  it. A human watching the pull request saw the agent apparently still reading.
+  It now says `triage did not finish: <reason>`.
+
 ## [0.4.0] - 2026-08-23
 
 ### Changed

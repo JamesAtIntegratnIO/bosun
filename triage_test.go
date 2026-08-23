@@ -481,6 +481,44 @@ func TestSaysItIsWorkingBeforeTheWait(t *testing.T) {
 		t.Errorf("first status should say what it is waiting on, got %q",
 			h.git.Statuses[0].Description)
 	}
+	// The colour is the half that matters. A green "reading addons-gate" is
+	// indistinguishable from a finished run with nothing to say.
+	if h.git.Statuses[0].State != gitprovider.StatePending {
+		t.Errorf("the working status must be pending, got %q", h.git.Statuses[0].State)
+	}
+	last := h.git.Statuses[len(h.git.Statuses)-1]
+	if last.State != gitprovider.StateSuccess {
+		t.Errorf("the verdict must resolve the status, got %q", last.State)
+	}
+}
+
+// An error anywhere in triage must still resolve the status. Otherwise the
+// pending written on entry never clears, and "the gate broke" looks like "the
+// agent is still thinking" -- for ever.
+//
+// The live shape of this: `render` fails, the job that publishes the gate
+// report is skipped, and gateReport finds a red check with nothing explaining
+// it. Before this, that reached a pod log and nowhere else.
+func TestAnErrorResolvesTheStatus(t *testing.T) {
+	h := newHarness(t)
+	h.git.Check = gitprovider.CheckFailure
+	h.git.Comments = nil // a red gate that published no report
+
+	if err := h.triage.Run(context.Background(), Promotion{
+		PRNumber: 42, Branch: "kargo/metallb", Files: []string{valuesPath},
+	}); err == nil {
+		t.Fatal("want an error when the gate is red with no report")
+	}
+	if len(h.git.Statuses) == 0 {
+		t.Fatal("want a status")
+	}
+	last := h.git.Statuses[len(h.git.Statuses)-1]
+	if last.State != gitprovider.StateSuccess {
+		t.Errorf("a failed run must still resolve the status, got %q", last.State)
+	}
+	if !strings.Contains(last.Description, "did not finish") {
+		t.Errorf("the status should say triage did not finish, got %q", last.Description)
+	}
 }
 
 // A status that cannot be filed must never take down the triage it reports on.

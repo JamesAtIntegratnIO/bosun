@@ -41,6 +41,19 @@ const (
 	CheckMissing CheckState = "missing"
 )
 
+// CommitState is the colour of a commit status. Two values, deliberately:
+// the agent is advisory, so it never reports a failure, and everything that is
+// not "still working" is a verdict.
+type CommitState string
+
+const (
+	// StatePending -- triage is running. Not a verdict.
+	StatePending CommitState = "pending"
+	// StateSuccess -- triage finished. The description says what it decided,
+	// including when what it decided was "a human needs to look at this".
+	StateSuccess CommitState = "success"
+)
+
 // Provider is one git host.
 type Provider interface {
 	// GetPullRequest reads a pull request.
@@ -68,7 +81,14 @@ type Provider interface {
 	// advisory: a red status here would block merges and quietly turn it into
 	// a second gate, which it is expressly not. The description carries the
 	// meaning; the colour stays out of the way.
-	SetCommitStatus(ctx context.Context, sha, name, description string) error
+	//
+	// It is, however, PENDING until there is a verdict. Writing success on
+	// entry -- which is what this did until 2026-08-23 -- makes "still
+	// thinking" and "looked, nothing to say" the same observation, which is
+	// the exact failure this method was added to end. Pending on a check
+	// nobody requires blocks nothing; it only stops the status claiming to be
+	// finished before it is.
+	SetCommitStatus(ctx context.Context, sha, name string, state CommitState, description string) error
 
 	// AddLabel adds a label. Labels carry the attempt cap, so this has to be
 	// durable across restarts -- which is exactly why the cap is a label

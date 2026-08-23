@@ -98,11 +98,11 @@ func (f *Fake) Comment(_ context.Context, _ int, body string) error {
 
 // Statuses records every commit status set, in order, so a test can assert
 // both the final verdict and that a pending one preceded it.
-func (f *Fake) SetCommitStatus(_ context.Context, _, name, description string) error {
+func (f *Fake) SetCommitStatus(_ context.Context, _, name string, state CommitState, description string) error {
 	if f.StatusErr != nil {
 		return f.StatusErr
 	}
-	f.Statuses = append(f.Statuses, Status{Name: name, Description: description})
+	f.Statuses = append(f.Statuses, Status{Name: name, State: state, Description: description})
 	return nil
 }
 
@@ -151,4 +151,8 @@ func (f *Fake) PushFix(_ context.Context, pr *PullRequest, root, message string)
 }
 
 // Status is one commit status the fake recorded.
-type Status struct{ Name, Description string }
+type Status struct {
+	Name        string
+	State       CommitState
+	Description string
+}

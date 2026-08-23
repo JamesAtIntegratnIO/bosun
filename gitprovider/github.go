@@ -215,13 +215,14 @@ func (g *GitHub) Comment(ctx context.Context, number int, body string) error {
 		map[string]string{"body": body}, nil)
 }
 
-// SetCommitStatus posts a commit status. Always "success": see the interface.
+// SetCommitStatus posts a commit status. Never a failure state, and pending
+// until there is a verdict: see the interface.
 //
 // Needs the token's "Commit statuses" permission at read+WRITE. Read alone is
 // enough to find the gate and not enough to answer beside it, and the failure
 // is a 403 on a call nothing waits for -- so it is logged by the caller rather
 // than allowed to fail a triage.
-func (g *GitHub) SetCommitStatus(ctx context.Context, sha, name, description string) error {
+func (g *GitHub) SetCommitStatus(ctx context.Context, sha, name string, state CommitState, description string) error {
 	// GitHub truncates descriptions at 140 characters and rejects longer ones
 	// on some paths; trim rather than let a long verdict lose the whole status.
 	if len(description) > 140 {
@@ -230,7 +231,7 @@ func (g *GitHub) SetCommitStatus(ctx context.Context, sha, name, description str
 	return g.do(ctx, http.MethodPost,
 		g.repoPath(fmt.Sprintf("/statuses/%s", sha)),
 		map[string]string{
-			"state":       "success",
+			"state":       string(state),
 			"context":     name,
 			"description": description,
 		}, nil)
