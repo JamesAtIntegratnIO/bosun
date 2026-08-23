@@ -73,6 +73,74 @@ func TestMoveBetweenClustersIsOneChange(t *testing.T) {
 	if d.Targeting[0].Kind != "moved" {
 		t.Fatalf("want kind=moved, got %q", d.Targeting[0].Kind)
 	}
+	if got := d.Targeting[0].App; got != "addons" {
+		t.Errorf("a move should name the ApplicationSet, not an Application that "+
+			"did not exist before the change; got %q", got)
+	}
+}
+
+// Two departures and two arrivals is not two moves -- nothing in the render
+// says which arrival answers which departure. Reporting them plainly is the
+// honest answer; pairing them is a guess dressed as a finding.
+func TestAnAmbiguousMoveIsNotReportedAsAMove(t *testing.T) {
+	base := &Table{Rows: []Row{
+		row("hub-a", "thing-hub-a", "1.0.0"),
+		row("hub-b", "thing-hub-b", "1.0.0"),
+	}}
+	head := &Table{Rows: []Row{
+		row("tenant-a", "thing-tenant-a", "1.0.0"),
+		row("tenant-b", "thing-tenant-b", "1.0.0"),
+	}}
+
+	d := Diff(base, head)
+	if !d.Blocking() {
+		t.Fatal("targeting moved on four rows; this must block")
+	}
+	for _, c := range d.Targeting {
+		if c.Kind == "moved" {
+			t.Fatalf("want no invented move, got %+v", c)
+		}
+	}
+	var removed, added int
+	for _, c := range d.Targeting {
+		switch c.Kind {
+		case "removed":
+			removed++
+		case "added":
+			added++
+		}
+	}
+	if removed != 2 || added != 2 {
+		t.Fatalf("want 2 removed and 2 added, got %d and %d: %+v", removed, added, d.Targeting)
+	}
+}
+
+// Both sides of the pairing were built by ranging a map. Identical input could
+// therefore describe two different moves on two runs, and a report that varies
+// without its input varying is one nobody can review.
+func TestDiffIsDeterministic(t *testing.T) {
+	base := &Table{Rows: []Row{
+		row("hub-a", "thing-hub-a", "1.0.0"),
+		row("hub-b", "thing-hub-b", "1.0.0"),
+		row("hub-c", "thing-hub-c", "1.0.0"),
+	}}
+	head := &Table{Rows: []Row{
+		row("tenant-a", "thing-tenant-a", "1.0.0"),
+		row("tenant-b", "thing-tenant-b", "1.0.0"),
+	}}
+
+	var first string
+	for i := 0; i < 50; i++ {
+		var b strings.Builder
+		Diff(base, head).Report(&b)
+		if i == 0 {
+			first = b.String()
+			continue
+		}
+		if b.String() != first {
+			t.Fatalf("run %d differs from the first:\n%s\n--- want ---\n%s", i, b.String(), first)
+		}
+	}
 }
 
 // A chart swapped underneath an unchanged Application name is not a version
