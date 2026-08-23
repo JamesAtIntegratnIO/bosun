@@ -63,10 +63,35 @@ func main() {
 			InsecureSkipTLSVerify: cfg.GitInsecureSkipTLSVerify,
 		}
 	default:
-		git = &gitprovider.GitHub{
+		gh := &gitprovider.GitHub{
 			APIBase: cfg.GitAPIBase, Owner: cfg.GitOwner, Repo: cfg.GitRepo,
 			Token: cfg.GitToken, AuthorName: cfg.AuthorName, AuthorEmail: cfg.AuthorEmail,
 		}
+		// Acting as an App is about IDENTITY, not access. A token grants the
+		// same rights but belongs to whoever minted it, so every comment
+		// carries that person's name and avatar and reads like a colleague's
+		// until you reach the footer. An App has a face of its own.
+		if cfg.AppID != "" {
+			app := &gitprovider.AppAuth{
+				AppID:          cfg.AppID,
+				PrivateKey:     []byte(cfg.AppPrivateKey),
+				InstallationID: cfg.AppInstallID,
+				Owner:          cfg.GitOwner,
+				Repo:           cfg.GitRepo,
+				APIBase:        cfg.GitAPIBase,
+			}
+			// Fail at start-up, not on the first pull request. A bad key or an
+			// app installed on the wrong repository should be a pod that will
+			// not start, which somebody notices, rather than a triage that
+			// quietly does nothing -- which is the failure mode this whole
+			// service keeps finding in itself.
+			if _, err := app.Token(context.Background()); err != nil {
+				log.Fatalf("github app authentication failed: %v", err)
+			}
+			gh.TokenSource = app.Token
+			log.Printf("authenticating as GitHub App %s", cfg.AppID)
+		}
+		git = gh
 	}
 
 	t := &Triage{

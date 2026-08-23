@@ -2,6 +2,14 @@
 
 Four methods, chosen because they are what the workflow needs and nothing more.
 
+**On identity.** A token grants the right access and the wrong name: it belongs
+to whoever minted it, so the agent's comments arrive under that person's avatar
+and read like a colleague's until the footer. On GitHub, set `git.app.appId` and
+give it a private key -- an App comments as `yourapp[bot]`, with a face of its
+own, and its installation tokens expire hourly instead of never. On Gitea,
+create a dedicated bot user and mint the token as that user; `local/` does
+exactly this.
+
 ```go
 GetPullRequest(ctx, number)          // title, branch, head SHA, labels
 ListComments(ctx, number)            // to find the gate's report

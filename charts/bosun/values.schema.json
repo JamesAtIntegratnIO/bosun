@@ -118,6 +118,24 @@
         },
         "insecureSkipTLSVerify": {
           "type": "boolean"
+        },
+        "app": {
+          "type": "object",
+          "description": "Authenticate as a GitHub App, so the agent has an identity of its own.",
+          "properties": {
+            "appId": {
+              "type": "string"
+            },
+            "installationId": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "privateKeyKey": {
+              "type": "string"
+            }
+          }
         }
       }
     },
