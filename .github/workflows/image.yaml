@@ -39,9 +39,19 @@ jobs:
           # No 'latest'. An unpinned tag is how an image silently changes
           # underneath a cluster, which is the incident class this service
           # exists to prevent -- shipping one here would be embarrassing.
+          #
+          # metadata-action adds `latest` on its own for any semver tag, so
+          # saying nothing is not the same as saying no. It did exactly that on
+          # the first v0.1.0 build.
+          flavor: |
+            latest=false
+          # The branch-prefixed sha tag is guarded too: on a TAG push there is
+          # no branch, `{{branch}}` expands to nothing, and the result is the
+          # literal `:-<sha>` -- which buildx rejects as an invalid reference
+          # and fails the whole build.
           tags: |
             type=raw,value=main,enable={{is_default_branch}}
-            type=sha,prefix={{branch}}-
+            type=sha,prefix={{branch}}-,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
