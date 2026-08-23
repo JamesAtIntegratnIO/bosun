@@ -1,0 +1,12 @@
+# The build context is the repository root, and the image needs only the Go
+# module. Everything below would be copied into the build layer for nothing.
+local/
+charts/
+docs/
+adr/
+hack/
+scripts/
+.github/
+*.md
+LICENSE
+.git
