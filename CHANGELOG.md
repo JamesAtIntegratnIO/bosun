@@ -3,6 +3,35 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.3.0] - 2026-08-23
+
+### Added
+
+- **Authenticate as a GitHub App.** `git.app.appId` plus a private key.
+
+  This is about IDENTITY, not access. A token grants exactly the same rights,
+  but it belongs to whoever minted it -- so every comment arrived under that
+  person's name and avatar and read like a colleague's review until you reached
+  the footer. `branding` exists to compensate for that, and compensating is all
+  it could do.
+
+  An App has a face: comments come from `yourapp[bot]`, with its own avatar and
+  its own timeline entry. Nobody has to be told what wrote them.
+
+  Two things follow. Installation tokens **expire**, in about an hour, and are
+  minted on demand from the key -- a leaked one is a bad hour rather than a
+  standing grant, where the PAT this replaces had no expiry at all. And the App
+  is its own principal, so revoking it disturbs nobody and its actions are
+  attributable to it alone.
+
+  `installationId` is optional: left empty it is discovered from the repository,
+  which removes a value that can be silently wrong. Authentication is checked at
+  **start-up**, so a bad key or an app installed on the wrong repository is a
+  pod that will not start rather than a triage that quietly does nothing.
+
+  No JWT dependency -- the exchange is a signed header, a signed claim set and
+  one HTTP call.
+
 ## [0.2.0] - 2026-08-23
 
 Everything below was found by running the thing, in one evening, after it had

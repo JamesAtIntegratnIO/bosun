@@ -55,6 +55,36 @@ git:
   existingSecret: ""      # REQUIRED
   tokenKey: token
 
+  # Act as a GitHub App instead of as the owner of a token.
+  #
+  # THIS IS ABOUT IDENTITY, not access. A token grants exactly the same rights
+  # -- but it belongs to whoever minted it, so every comment the agent writes
+  # arrives under that person's name and avatar and reads like a colleague's
+  # review until you reach the footer. `branding` exists to compensate for
+  # that, and compensating is all it can do.
+  #
+  # An App has a face: comments come from `yourapp[bot]`, with its own avatar
+  # and its own timeline entry. Nobody has to be told what wrote them.
+  #
+  # Two things follow that matter more than they sound. Installation tokens
+  # EXPIRE, in about an hour, and are minted on demand from the key -- a leaked
+  # one is a bad hour, not a standing grant. And the App is its own principal,
+  # so revoking it disturbs nobody and its actions are attributable to it
+  # alone.
+  #
+  # Needs these repository permissions, the same set the token needed:
+  #   Contents read+write, Pull requests read+write, Issues read+write,
+  #   Commit statuses read+write, Metadata read. Workflows: NONE.
+  #
+  # installationId is optional: left empty it is discovered from the repository
+  # itself, which removes a value that can be silently wrong.
+  app:
+    appId: ""
+    installationId: ""
+    # Defaults to git.existingSecret when unset.
+    existingSecret: ""
+    privateKeyKey: private-key
+
 llm:
   # openai | anthropic. NO DEFAULT: a component that installs cleanly and then
   # quietly spends money against a vendor you did not choose is a bad default.

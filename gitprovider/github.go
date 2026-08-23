@@ -23,7 +23,12 @@ type GitHub struct {
 	APIBase string
 	Owner   string
 	Repo    string
-	Token   string
+	// Token is a static credential -- a PAT, or a bot user's token.
+	Token string
+	// TokenSource supersedes Token when set, and is how App authentication
+	// arrives: installation tokens live about an hour, so the credential has
+	// to be fetched per use rather than held. See AppAuth.
+	TokenSource func(ctx context.Context) (string, error)
 	// AuthorName and AuthorEmail identify the agent's commits. Worth setting
 	// to something recognisable -- these commits land on a bot branch and a
 	// reviewer should be able to tell instantly who wrote them.
@@ -33,6 +38,15 @@ type GitHub struct {
 }
 
 func (g *GitHub) Name() string { return "github" }
+
+// token resolves the credential for one call. An App's installation token is
+// minted on demand and cached by AppAuth; a static token is returned as-is.
+func (g *GitHub) token(ctx context.Context) (string, error) {
+	if g.TokenSource != nil {
+		return g.TokenSource(ctx)
+	}
+	return g.Token, nil
+}
 
 func (g *GitHub) base() string {
 	if g.APIBase != "" {
@@ -63,8 +77,12 @@ func (g *GitHub) do(ctx context.Context, method, path string, body any, out any)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	if g.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+g.Token)
+	tok, err := g.token(ctx)
+	if err != nil {
+		return err
+	}
+	if tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -244,7 +262,13 @@ func (g *GitHub) PushFix(ctx context.Context, pr *PullRequest, root, message str
 	if email == "" {
 		email = "bosun@users.noreply.github.com"
 	}
-	remote := fmt.Sprintf("https://x-access-token:%s@github.com/%s/%s.git", g.Token, g.Owner, g.Repo)
+	// The push needs a credential too, and for an App that means a token
+	// minted now rather than one held since start-up.
+	tok, err := g.token(ctx)
+	if err != nil {
+		return err
+	}
+	remote := fmt.Sprintf("https://x-access-token:%s@github.com/%s/%s.git", tok, g.Owner, g.Repo)
 
 	steps := [][]string{
 		{"git", "-C", root, "config", "user.name", name},
@@ -259,7 +283,17 @@ func (g *GitHub) PushFix(ctx context.Context, pr *PullRequest, root, message str
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
 			// Redact the token before this reaches a log or a PR comment.
-			msg := strings.ReplaceAll(stderr.String(), g.Token, "***")
+			// Redact the token that was actually used, not the configured
+			// one -- with an App they are different, and leaking a live
+			// installation token into a pull-request comment would be a poor
+			// way to learn that.
+			msg := stderr.String()
+			if tok != "" {
+				msg = strings.ReplaceAll(msg, tok, "***")
+			}
+			if g.Token != "" {
+				msg = strings.ReplaceAll(msg, g.Token, "***")
+			}
 			return fmt.Errorf("%s: %w: %s", s[1], err, snippet([]byte(msg)))
 		}
 	}
