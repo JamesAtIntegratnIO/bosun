@@ -133,6 +133,10 @@ spec:
               value: {{ .Values.triage.explainGreen | quote }}
             - name: MIGRATE_DROPPED_VERSIONS
               value: {{ .Values.triage.migrateDroppedVersions | quote }}
+            {{- with .Values.triage.egressDeny }}
+            - name: EGRESS_DENY
+              value: {{ join "," . | quote }}
+            {{- end }}
             - name: STRUCTURAL_MIGRATION
               value: {{ .Values.triage.structuralMigration | quote }}
             - name: MIGRATE_MAX_DOCS

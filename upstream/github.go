@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/JamesAtIntegratnIO/bosun/egress"
 )
 
 // GitHubReleases reads what maintainers wrote in their GitHub releases.
@@ -36,8 +38,12 @@ type GitHubReleases struct {
 	TokenSource func(ctx context.Context) (string, error)
 	// APIBase defaults to https://api.github.com.
 	APIBase string
-	// HTTP is injectable for tests.
+	// HTTP is injectable for tests. When nil, Egress builds one.
 	HTTP *http.Client
+	// Egress logs every destination and refuses the denied ones. Applied to
+	// the client this package builds, so the registry walk, the API reads and
+	// -- the part no call site can name -- every redirect target go through it.
+	Egress egress.Policy
 
 	// MaxReleases caps how many releases reach a prompt. A bump that crosses
 	// fourteen versions is exactly when the notes are most useful and least

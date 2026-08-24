@@ -91,6 +91,11 @@ type Config struct {
 	// MaxRestructured caps document migrations per pull request.
 	MaxRestructured int
 
+	// EgressDeny are hosts the agent must not contact. Empty permits
+	// everything, which is the default: the agent reads public metadata about
+	// public artifacts, and every outbound request is logged.
+	EgressDeny []string
+
 	// LiveReads turns on reading the cluster the agent runs in: how many
 	// objects are stored on a version a chart is about to stop serving, and
 	// whether the Applications a promotion says it will verify were already
@@ -195,6 +200,7 @@ func LoadConfig() (*Config, error) {
 	}
 	c.LiveReads = os.Getenv("LIVE_READS") == "true"
 	c.LiveReadsArgoCDNamespace = env("LIVE_READS_ARGOCD_NS", "argocd")
+	c.EgressDeny = envList("EGRESS_DENY")
 	c.AllowPaths = envList("ALLOW_PATHS")
 	c.DenyPaths = envList("DENY_PATHS")
 

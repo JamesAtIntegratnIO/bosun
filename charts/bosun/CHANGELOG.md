@@ -3,6 +3,28 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.15.0]
+
+### Added
+
+- **`networkPolicy.egress.allowInternet`** and **`triage.egressDeny`** -- reach
+  the internet on 443, log every destination, forbid hosts by name.
+
+  The allow-list it replaces was correct and was a full-time job: every chart
+  repository, registry blob CDN and redirect target had to be named before the
+  agent could read it, and three separate incidents in this project added a host
+  after the fact. The symptom each time was a two-minute timeout and a brief
+  saying it had no evidence -- the quiet failure this component exists to end.
+
+  `allowInternet` emits `toFQDNs: [matchPattern: "*"]` on 443 for the `cilium`
+  flavor; `standard` keeps `allowPublicHTTPS`, since an ipBlock cannot express
+  "any name". `egressDeny` takes an exact host or a `*.suffix` pattern, and a
+  pattern forbids the apex too.
+
+  **This widens what the agent may READ, not what it may DO.** It still writes
+  only to the pull request's own branch, still refuses paths on a deny-list it
+  cannot configure away, and still never mutates the cluster.
+
 ## [0.14.2]
 
 ### Fixed

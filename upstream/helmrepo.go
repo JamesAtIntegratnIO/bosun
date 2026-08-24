@@ -82,7 +82,7 @@ func (g *GitHubReleases) helmIndexSource(ctx context.Context, repoURL, chart, ve
 	}
 	cl := g.HTTP
 	if cl == nil {
-		cl = &http.Client{Timeout: 45 * time.Second}
+		cl = g.Egress.Client(&http.Client{Timeout: 45 * time.Second})
 	}
 	resp, err := cl.Do(req)
 	if err != nil {

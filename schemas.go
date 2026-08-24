@@ -141,6 +141,26 @@ func (t *Triage) renderTargetCRDs(ctx context.Context, p Promotion) (map[string]
 	}
 	args = append(args, "--version", p.To, "--include-crds", "--skip-tests")
 
+	// helm is a SUBPROCESS. The egress transport cannot see inside it, so the
+	// destination is checked and recorded here instead -- otherwise the one
+	// outbound path that downloads an archive would be the one path with no
+	// record.
+	//
+	// Only the repository is known in advance; helm follows the index to
+	// wherever the archive is served, and that hop is invisible from here. The
+	// log says so rather than implying this is the whole story.
+	target := ref
+	if upstream.IsHelmRepo(ref) {
+		target = ref
+	}
+	if host := hostOf(target); host != "" {
+		if rule, denied := t.Egress.Denied(host); denied {
+			return nil, fmt.Sprintf("egress to %s is denied by policy (rule %q), so the target schema was not read", host, rule)
+		}
+		t.logf("outbound helm template %s (chart %s %s; it will follow the index to wherever the archive is served)",
+			host, firstNonEmpty(chart, ref), p.To)
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, helmTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "helm", args...)
@@ -194,6 +214,18 @@ func crdSchemasFromStream(stream string) map[string]map[string]map[string]any {
 		}
 	}
 	return found
+}
+
+// hostOf is the host of a chart reference, however it is written.
+func hostOf(ref string) string {
+	s := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(ref, "oci://"), "https://"), "http://")
+	if i := strings.IndexAny(s, "/"); i >= 0 {
+		s = s[:i]
+	}
+	if i := strings.IndexByte(s, ':'); i >= 0 {
+		s = s[:i]
+	}
+	return s
 }
 
 func firstNonEmpty(vals ...string) string {

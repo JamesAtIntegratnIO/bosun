@@ -105,7 +105,7 @@ spec:
           port: 443
     {{- end }}
 {{- if eq $np.flavor "cilium" }}
-{{- if or $np.egress.fqdns $np.egress.fqdnPatterns $.Values.liveReads.enabled }}
+{{- if or $np.egress.fqdns $np.egress.fqdnPatterns $np.egress.allowInternet $.Values.liveReads.enabled }}
 ---
 {{- /* FQDN egress is materially tighter than an ipBlock: it names the hosts
      the agent may reach rather than a range that happens to contain them. */}}
@@ -124,6 +124,20 @@ spec:
     matchLabels:
       {{- include "bosun.selectorLabels" $ | nindent 6 }}
   egress:
+    {{- if $np.egress.allowInternet }}
+    {{- /* Everything, on 443. The agent reads public metadata about public
+           artifacts -- chart indexes, registry manifests, release notes -- and
+           naming every host in advance proved to be a full-time job whose
+           failure mode was a two-minute timeout and a brief with no evidence.
+           The record moved into the agent instead: it logs every outbound
+           request and refuses the hosts in `triage.egressDeny`. */}}
+    - toFQDNs:
+        - matchPattern: "*"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    {{- end }}
     {{- if $.Values.liveReads.enabled }}
     {{- /* The idiomatic Cilium answer to "reach the apiserver": an entity,
            resolved by the agent on every node, rather than a list of

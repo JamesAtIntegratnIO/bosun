@@ -28,6 +28,7 @@ import (
 
 	"github.com/JamesAtIntegratnIO/bosun/cluster"
 	"github.com/JamesAtIntegratnIO/bosun/edits"
+	"github.com/JamesAtIntegratnIO/bosun/egress"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
@@ -126,6 +127,13 @@ func main() {
 		git = gh
 	}
 
+	// Where it may go, and the record of where it went. Open with a deny-list:
+	// see the egress package for why that replaced an allow-list.
+	egressPolicy := egress.Policy{
+		Deny: cfg.EgressDeny,
+		Log:  func(f string, a ...any) { logger.Printf(f, a...) },
+	}
+
 	t := &Triage{
 		Git: git, LLM: model,
 		Brand: cfg.Brand, BrandMark: cfg.BrandMark,
@@ -139,7 +147,8 @@ func main() {
 		Migrate:          cfg.Migrate,
 		Structural:       cfg.Structural,
 		MaxRestructured:  cfg.MaxRestructured,
-		Upstream:         upstreamResolver(cfg, upstreamToken),
+		Upstream:         upstreamResolver(cfg, upstreamToken, egressPolicy),
+		Egress:           egressPolicy,
 		CloneRoot:        cfg.CloneRoot,
 		RepoURL:          cfg.GitRepoURL,
 		Log:              func(f string, a ...any) { logger.Printf(f, a...) },
@@ -180,6 +189,13 @@ func main() {
 			"to the account your gate comments as")
 	} else {
 		logger.Printf("gate reports are read only from %q", t.GateReportAuthor)
+	}
+
+	if len(cfg.EgressDeny) == 0 {
+		logger.Print("egress: open, and every outbound request is logged. " +
+			"Set triage.egressDeny to forbid a host.")
+	} else {
+		logger.Printf("egress: open except %v, and every outbound request is logged", cfg.EgressDeny)
 	}
 
 	srv := &Server{Triage: t, Log: logger, Timeout: cfg.LLMTimeout + 5*time.Minute}
@@ -312,7 +328,8 @@ func (s *Server) Wait() { s.wg.Wait() }
 // network surface, and they fail softly -- an artifact whose registry is not
 // reachable produces an explanation grounded in the render alone, which is
 // what this did before upstream notes existed.
-func upstreamResolver(cfg *Config, tokenSource func(context.Context) (string, error)) upstream.Resolver {
+func upstreamResolver(cfg *Config, tokenSource func(context.Context) (string, error),
+	eg egress.Policy) upstream.Resolver {
 	if !cfg.Upstream {
 		return nil
 	}
@@ -326,5 +343,6 @@ func upstreamResolver(cfg *Config, tokenSource func(context.Context) (string, er
 		MaxReleases:  cfg.UpstreamMaxReleases,
 		MaxBodyChars: cfg.UpstreamMaxBodyChars,
 		MaxCommits:   cfg.UpstreamMaxCommits,
+		Egress:       eg,
 	}
 }

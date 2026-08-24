@@ -264,6 +264,13 @@
           "minimum": 0,
           "maximum": 50,
           "description": "Documents reshaped per pull request. Past it the remainder is escalated."
+        },
+        "egressDeny": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Hosts the agent must not contact. Exact host or *.suffix; a pattern also forbids the apex."
         }
       }
     },
@@ -410,6 +417,10 @@
                   }
                 }
               }
+            },
+            "allowInternet": {
+              "type": "boolean",
+              "description": "Let the agent reach the internet on 443. Every outbound request is logged; forbid hosts with triage.egressDeny."
             }
           }
         }

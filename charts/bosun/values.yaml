@@ -276,6 +276,19 @@ triage:
   # and the merge policy and cannot be removed from.
   denyPaths: []
 
+  # Hosts the agent must not contact, whatever the NetworkPolicy permits.
+  #
+  # The other half of `networkPolicy.egress.allowInternet`: egress is open, so
+  # this is where a destination gets forbidden by name. An entry is an exact
+  # host or a `*.suffix` pattern, and a pattern forbids the apex too --
+  # `*.example.com` also stops `example.com`, because an operator blocking a
+  # domain means the domain.
+  #
+  # A refused request is logged as REFUSED with the rule that stopped it, and
+  # degrades the same way any other unreachable host does: a shorter brief that
+  # says what it could not read.
+  egressDeny: []
+
 resources:
   requests:
     cpu: 25m
@@ -414,6 +427,34 @@ networkPolicy:
     # Allow outbound 443 to everything except private ranges. Convenient for
     # reaching a public git host; unnecessary if you list FQDNs.
     allowPublicHTTPS: false
+
+    # Let the agent reach the internet on 443, and hold it to account in the
+    # log instead of in this file.
+    #
+    # WHY THIS EXISTS. The allow-list above is correct and it is a full-time
+    # job. Every chart repository, every registry's blob CDN and every redirect
+    # target has to be named before the agent can read it -- and a chart
+    # repository redirects its index, publishes its archive on a release-asset
+    # CDN, and changes that CDN's hostname without telling anyone. Three
+    # separate incidents in this project added a host after the fact. The
+    # symptom each time was a two-minute timeout and a brief that said it had
+    # no evidence, which is the quiet failure this whole component exists to
+    # end.
+    #
+    # WHAT YOU GET INSTEAD. The agent logs EVERY outbound request -- method,
+    # host and path, with the query string redacted because release-asset URLs
+    # carry signed tokens -- and refuses any host in `triage.egressDeny`.
+    # Accountability after the fact rather than permission before it.
+    #
+    # WHAT THIS DOES NOT WIDEN. The agent still writes only to the pull
+    # request's own branch, still refuses paths on a deny-list it cannot
+    # configure away, and still never mutates the cluster. This widens what it
+    # may READ, not what it may DO.
+    #
+    # Cilium emits `toFQDNs: [matchPattern: "*"]` on 443. For the `standard`
+    # flavor, use `allowPublicHTTPS` above -- an ipBlock cannot express "any
+    # name", so that is the nearest equivalent and it excludes RFC1918.
+    allowInternet: false
 
 metrics:
   serviceMonitor:

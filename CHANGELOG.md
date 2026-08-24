@@ -3,6 +3,40 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.15.0] - 2026-08-24
+
+### Added
+
+- **Egress is open, logged, and deniable by name.** The allow-list is gone.
+
+  It was correct and it was a full-time job. Every chart repository, every
+  registry's blob CDN and every redirect target had to be named before the agent
+  could read it -- and a chart repository redirects its index
+  (`charts.external-secrets.io` -> `external-secrets.io`), publishes its archive
+  on a release-asset CDN (15 of 21 use
+  `release-assets.githubusercontent.com`), and changes that CDN's hostname
+  without telling anyone. Three separate incidents added a host after the fact.
+  The symptom each time was a two-minute timeout and a brief that said it had no
+  evidence, which is the quiet failure this whole component exists to end.
+
+  The record moves into the agent. Every outbound request is logged -- method,
+  host and path, with the **query string redacted**, because release-asset URLs
+  are pre-signed and carry a JWT. `triage.egressDeny` forbids a host by name or
+  by `*.suffix`; a pattern forbids the apex too, because an operator blocking a
+  domain means the domain. A refused request never leaves the process and is
+  logged as `REFUSED` with the rule that stopped it.
+
+  **Enforced where the connection is made**, as an `http.RoundTripper` rather
+  than a check at each call site -- the call sites are the problem, since a
+  redirect reaches a host no call site ever named. The one path a transport
+  cannot see is `helm template`, a subprocess: its repository is checked and
+  logged before it is invoked, and the log says plainly that helm will follow
+  the index to wherever the archive is served.
+
+  **This widens what the agent may READ, not what it may DO.** It still writes
+  only to the pull request's own branch, still refuses paths on `edits.DefaultDeny`
+  which no configuration can remove from, and still never mutates the cluster.
+
 ## [0.14.2] - 2026-08-24
 
 Both found by watching a live replay round, not by reading the code back.
