@@ -5,6 +5,42 @@ All notable changes to `gitops-gate`. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **A changed resource now says WHICH fields changed.** The gate rendered both
+  versions, compared them, and then reported `Changed (25)` -- a list of names.
+  That is the same non-answer the version number already gave, and it asks a
+  reviewer for judgement while withholding the evidence for it. The agent said
+  so on every green pull request it explained: *the report does not say which
+  fields changed or why*. It was right.
+
+  Each changed object now carries its differing leaves, as dotted paths with
+  before and after values, folded into a `<details>` block. Paths use the same
+  shape as the agent's edit inventory -- `spec.template.spec.containers.0.image`
+  -- so a human and an agent read the report the same way.
+
+  Run against a real promotion (trivy-operator-explorer chart 0.4.6 -> 0.5.1,
+  previously reported as two changed objects and nothing else), it surfaced
+  three things nobody knew were in it:
+
+      spec.template.spec.containers.0.image:
+        ghcr.io/…/trivy-operator-explorer:v0.5.8 -> :v1.0.0
+      spec.template.spec.containers.0.ports.1:
+        set to {"containerPort":8081,"name":"mcp","protocol":"TCP"}
+      spec.template.spec.containers.0.resources.limits.cpu:
+        removed (was 500m)
+
+  A **major** application version inside a minor chart bump, a new port that
+  needs a NetworkPolicy half, and a dropped CPU limit.
+
+  `Object.Body` carries the parsed manifest in memory and is `json:"-"`, which
+  is load-bearing: `Hash` exists so the target table stays small enough to pass
+  between CI jobs, and serialising bodies would undo exactly that. A table
+  loaded from JSON has no bodies, so the field list is omitted and the finding
+  is still reported -- never silently downgraded. Bounded at
+  `MaxFieldsPerObject` per object, because a report nobody can open is worth
+  less than a short one.
+
 ### Fixed
 
 - **An OCI repository URL is the chart; stop appending the chart name to it.**
