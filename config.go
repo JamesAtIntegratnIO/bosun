@@ -85,6 +85,20 @@ type Config struct {
 	AllowPaths         []string
 	DenyPaths          []string
 	CloneRoot          string
+
+	// LiveReads turns on reading the cluster the agent runs in: how many
+	// objects are stored on a version a chart is about to stop serving, and
+	// whether the Applications a promotion says it will verify were already
+	// unhealthy before it.
+	//
+	// OFF by default, and that is a deliberate asymmetry with everything else
+	// here. The rest of what the agent reads is public or already in the pull
+	// request; this reads the cluster, and a component that starts doing that
+	// because somebody upgraded a chart has made a decision that belongs to an
+	// operator.
+	LiveReads bool
+	// LiveReadsArgoCDNamespace is where Applications live.
+	LiveReadsArgoCDNamespace string
 }
 
 func LoadConfig() (*Config, error) {
@@ -166,6 +180,8 @@ func LoadConfig() (*Config, error) {
 	if c.LLMTimeout, err = envDur("LLM_TIMEOUT", 10*time.Minute); err != nil {
 		return nil, err
 	}
+	c.LiveReads = os.Getenv("LIVE_READS") == "true"
+	c.LiveReadsArgoCDNamespace = env("LIVE_READS_ARGOCD_NS", "argocd")
 	c.AllowPaths = envList("ALLOW_PATHS")
 	c.DenyPaths = envList("DENY_PATHS")
 

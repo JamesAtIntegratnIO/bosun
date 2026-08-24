@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/JamesAtIntegratnIO/bosun/cluster"
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
@@ -137,6 +138,33 @@ func main() {
 		CloneRoot:        cfg.CloneRoot,
 		RepoURL:          cfg.GitRepoURL,
 		Log:              func(f string, a ...any) { logger.Printf(f, a...) },
+	}
+
+	if cfg.LiveReads {
+		reader := &cluster.APIServer{ArgoCDNamespace: cfg.LiveReadsArgoCDNamespace}
+		// Fail at start-up, the same rule as the App's key -- and here it
+		// matters more, not less. Every failure inside this reader is
+		// deliberately soft: an unreachable apiserver reports "not permitted
+		// to check", a sentence designed to be harmless and therefore a
+		// sentence nobody would ever chase. Proving the path works once,
+		// loudly, is what stops a misconfiguration becoming a permanent quiet
+		// shrug.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		err := reader.Check(ctx)
+		cancel()
+		if err != nil {
+			logger.Fatalf("live cluster reads are enabled and the apiserver could not be read: %v\n"+
+				"  the NetworkPolicy needs an explicit egress rule for the apiserver: a ClusterIP is "+
+				"DNAT'd before policy is evaluated, so kubernetes.default.svc is not reachable by "+
+				"default and the symptom is a hang with zero bytes", err)
+		}
+		ns, _ := reader.Namespace()
+		logger.Printf("reading the cluster read-only from %s (Applications in %s)",
+			ns, cfg.LiveReadsArgoCDNamespace)
+		t.Cluster = reader
+	} else {
+		logger.Print("live cluster reads are off; briefs say what the repository holds " +
+			"and nothing about what is running")
 	}
 
 	// Said at start-up, because the alternative is a deployment that silently

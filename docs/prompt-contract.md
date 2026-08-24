@@ -174,15 +174,33 @@ Score three things, in order of importance:
 A model with UNSAFE 0 is usable even if its classification is mediocre; a model
 with UNSAFE above 0 is not usable at any accuracy.
 
-### Two kinds of testimony
-
-The explain prompt is given at most three things, and it is told which is
-which:
+### Four kinds of evidence, and the prompt says which is which
 
 1. **The gate report** — fact. Somebody rendered both versions and diffed them.
-2. **Release notes** — testimony. Somebody wrote down what they meant to do.
-3. **Upstream commits** — testimony, of a different quality. Somebody wrote
+2. **The live cluster** — fact, and the strongest one: nobody wrote it down, it
+   was *counted*, in the cluster this repository deploys to, before the change
+   is applied. Only present when `liveReads` is on.
+3. **Release notes** — testimony. Somebody wrote down what they meant to do.
+4. **Upstream commits** — testimony, of a different quality. Somebody wrote
    down what they were doing while doing it.
+
+The live block **discharges exactly one finding** and the prompt says so in
+those words: a CRD that stops serving a version, where the report counts no
+declaring manifest *and* the block counts no stored objects, has nothing left
+to go wrong. Every other reason to escalate stands on its own — a major
+boundary crossed is still a migration with a version number, whatever is
+running.
+
+That scoping is not decoration. The first version of this section said only
+"use it to discharge a finding", and the measured cost was immediate: a
+0.9.20 → 0.11.0 case with **no live block at all** dropped from `escalate` to
+`no_action`. A permission to relax, written loosely, relaxes everything.
+
+**"Not permitted to check" is not zero.** It appears verbatim in the block, and
+the block itself tells the model that it means nobody looked and is not
+evidence of safety. The whole value of "0 live objects" is that it ends a
+conversation, and it can only do that if it never quietly means "we did not
+ask".
 
 The third exists because of the findings the second cannot explain. A chart
 drops its `ClusterRole` and ships a release note about performance; the render

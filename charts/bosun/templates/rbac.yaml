@@ -24,6 +24,46 @@ rules:
   - apiGroups: [apps]
     resources: [deployments, statefulsets, daemonsets]
     verbs: [get, list, watch]
+{{- if .Values.liveReads.enabled }}
+{{- /*
+Live reads. Which custom resources the agent may COUNT is the one genuinely
+interesting access question in this chart, and Kubernetes RBAC constrains the
+answer more than people expect.
+
+There are no deny rules. `apiGroups: ["*"]` includes the core group, and the
+core group contains Secrets -- so "everything except core" is not expressible,
+however reasonable it sounds. The two shapes below are what can actually be
+written down.
+*/ -}}
+  # Reading a CustomResourceDefinition is how the agent learns which versions a
+  # definition serves, for the case where a chart stops shipping one entirely
+  # and the report names the object without its versions. The definition itself
+  # holds no data.
+  - apiGroups: [apiextensions.k8s.io]
+    resources: [customresourcedefinitions]
+    verbs: [get, list]
+{{- if eq .Values.liveReads.scope "wide" }}
+  # WIDE. Answers every question, and can read Secret contents -- `*` includes
+  # the core group and there is no way to subtract it. Chosen deliberately or
+  # not at all.
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: [get, list]
+{{- else }}
+  # GROUPS. Named API groups only, so the core group is never granted beyond
+  # the `pods, events` above and Secrets stay unreadable. A group nobody listed
+  # degrades to "not permitted to check" in the brief -- soft, honest, and a
+  # values edit rather than an incident.
+  {{- with .Values.liveReads.apiGroups }}
+  - apiGroups:
+      {{- range . }}
+      - {{ . | quote }}
+      {{- end }}
+    resources: ["*"]
+    verbs: [get, list]
+  {{- end }}
+{{- end }}
+{{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

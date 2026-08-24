@@ -85,6 +85,63 @@ edit's evidence is the gate report alone.
 No new egress: it is `api.github.com`, the same host the gate's checks come
 from. `maxCommits` caps how many reach a prompt or a comment.
 
+## What is actually running
+
+`liveReads` lets a brief carry facts the gate structurally cannot have:
+
+```
+- externalsecrets.external-secrets.io on v1beta1 — 0 live object(s)
+- Application external-secrets-host — Degraded / OutOfSync
+```
+
+The gate renders a repository and compares, so everything it knows is a
+property of text. "Three manifests still declare a version this chart stops
+serving" is a fact about the repository. Whether anything is *stored* on that
+version usually decides whether a human needs waking, and CI cannot answer it.
+
+**Off by default**, unlike everything else here — the rest of what the agent
+reads is public or already in the pull request, and this reads your cluster.
+
+**`scope` has two settings, because two are what RBAC can express.** "Everything
+except the core group" is the intent most people have and it cannot be written
+down: there are no deny rules, and `apiGroups: ["*"]` includes the core group,
+which contains Secrets.
+
+| `scope` | Grants | Secrets |
+|---|---|---|
+| `groups` (default) | `get`/`list` on the API groups you list | unreadable — the core group is never granted |
+| `wide` | `get`/`list` on everything | **readable** |
+
+With `groups`, an unlisted group shows up in the brief as *"not permitted to
+check"* — honest, harmless, and a one-line values fix. A refusal is never
+printed as a zero.
+
+**It needs egress the chart cannot infer.** The apiserver is
+`kubernetes.default.svc`, and a ClusterIP **cannot** be an `ipBlock` — it is
+DNAT'd to a real endpoint before policy is evaluated, so a rule naming it
+matches nothing and the connection hangs with zero bytes. Give the real
+endpoints:
+
+```bash
+kubectl get endpoints kubernetes -n default
+```
+
+```yaml
+networkPolicy:
+  egress:
+    apiServer:
+      ipBlocks:
+        - {cidr: 198.51.100.11/32, port: 6443}
+```
+
+With `flavor: cilium` you need none of that — the policy names the apiserver as
+an entity, which survives a control-plane node being replaced.
+
+The pod **refuses to start** if it cannot read the API, so a missing rule is a
+crash loop with an explanation rather than a permanent quiet shrug.
+
+See [`adr/0006-live-reads-are-scoped-by-group.md`](../../adr/0006-live-reads-are-scoped-by-group.md).
+
 ## The other half of the network path
 
 This chart writes the policy governing what reaches the agent. It cannot write

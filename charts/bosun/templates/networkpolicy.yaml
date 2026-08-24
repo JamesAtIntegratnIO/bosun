@@ -76,6 +76,22 @@ spec:
         - protocol: TCP
           port: {{ .port }}
     {{- end }}
+    {{- /* The apiserver, for live cluster reads. Its own key because it is the
+           destination people get wrong: `kubernetes.default.svc` is a
+           ClusterIP, and a ClusterIP is DNAT'd to a real endpoint before
+           policy is evaluated -- so a rule naming it matches nothing and the
+           connection hangs with zero bytes rather than being refused. These
+           are the endpoints the Service points at. The cilium flavor below
+           needs none of this and does not go stale when a control-plane node
+           is replaced. */}}
+    {{- range $np.egress.apiServer.ipBlocks }}
+    - to:
+        - ipBlock:
+            cidr: {{ .cidr }}
+      ports:
+        - protocol: TCP
+          port: {{ .port | default 6443 }}
+    {{- end }}
     {{- if $np.egress.allowPublicHTTPS }}
     - to:
         - ipBlock:
@@ -89,13 +105,17 @@ spec:
           port: 443
     {{- end }}
 {{- if eq $np.flavor "cilium" }}
-{{- if or $np.egress.fqdns $np.egress.fqdnPatterns }}
+{{- if or $np.egress.fqdns $np.egress.fqdnPatterns $.Values.liveReads.enabled }}
 ---
 {{- /* FQDN egress is materially tighter than an ipBlock: it names the hosts
      the agent may reach rather than a range that happens to contain them. */}}
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
+  # The `-fqdn` suffix is historical: this policy started as the FQDN
+  # allow-list and now also carries the apiserver entity rule. Renaming it
+  # would delete and recreate a live policy on every existing install, which
+  # is a worse trade than a slightly narrow name.
   name: {{ include "bosun.fullname" $ }}-fqdn
   labels:
     {{- include "bosun.labels" $ | nindent 4 }}
@@ -104,6 +124,14 @@ spec:
     matchLabels:
       {{- include "bosun.selectorLabels" $ | nindent 6 }}
   egress:
+    {{- if $.Values.liveReads.enabled }}
+    {{- /* The idiomatic Cilium answer to "reach the apiserver": an entity,
+           resolved by the agent on every node, rather than a list of
+           control-plane addresses that goes stale the first time one is
+           replaced. This is why `cilium` needs no egress.apiServer.ipBlocks. */}}
+    - toEntities: [kube-apiserver]
+    {{- end }}
+    {{- if or $np.egress.fqdns $np.egress.fqdnPatterns }}
     - toFQDNs:
         {{- range $np.egress.fqdns }}
         - matchName: {{ . | quote }}
@@ -121,6 +149,7 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
+    {{- end }}
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: {{ $np.egress.dnsNamespace }}

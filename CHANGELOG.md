@@ -3,6 +3,65 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.12.0] - 2026-08-24
+
+### Added
+
+- **What is actually running.** [ADR 0002](adr/0002-triage-in-cluster-not-ci.md)
+  put triage in the cluster rather than in CI on a structural argument: a CI job
+  can read a repository and a pull request, and it cannot read what is running.
+  The chart has shipped a read-only ClusterRole since its first release and no
+  Go code had ever used it. The promotion has carried `verifyApps` on the wire
+  since the first version and nothing had ever read it. Both are spent now.
+
+  A brief gains lines like:
+
+  ```
+  - externalsecrets.external-secrets.io on v1beta1 — 0 live object(s)
+  - Application external-secrets-host — Degraded / OutOfSync
+  ```
+
+  Counted by code against a read-only view and labelled **fact** — the
+  strongest evidence in a brief, because nobody wrote it down.
+
+  The explain prompt learned to spend it. A CustomResourceDefinition that stops
+  serving a version, where the report counts no declaring manifest **and** the
+  live block counts no stored objects, now has nothing left to go wrong and is
+  a `no_action` rather than a human's afternoon. That finding always needed a
+  human before, and the answer was always the same.
+
+  **"Not permitted" is never a zero.** `cluster.Count` carries a `Known` flag
+  and its rendering prefers the note over the number, so a refusal, an
+  unreachable apiserver, or a count where one version answered and another did
+  not all say what was *not* checked. The prompt tells the model in those words
+  that "not permitted to check" means nobody looked and is not evidence of
+  safety. The whole value of "0 live objects" is that it ends a conversation,
+  and it can only do that if it never quietly means "we did not ask".
+
+  Hand-rolled over `net/http`, no `client-go` — the same call this project made
+  for the GitHub client and the App JWT. The service-account token is re-read
+  from disk on every request, because projected tokens are bound and rotate
+  roughly hourly: a client that read one at start-up works for fifty minutes
+  and then 401s forever, which on a service called a few times a day looks fine
+  in every test.
+
+  **Measured on `qwen/qwen3.8-27b`:** classification **19/19**, full pass
+  **19/19**, **UNSAFE 0**, with two new cases -- 0 objects on the version being
+  removed must not be escalated, and "not permitted to check" must not be
+  converted into reassurance.
+
+  The prompt change cost one measured regression before it was right, and it is
+  worth recording. The first wording said only "use the live block to discharge
+  a finding", and a 0.9.20 -> 0.11.0 case with **no live block at all** dropped
+  from `escalate` to `no_action`. A permission to relax, written loosely,
+  relaxes everything. The rule now names the single finding it discharges and
+  says explicitly that every other reason to escalate stands on its own.
+
+  Off by default. See
+  [`adr/0006-live-reads-are-scoped-by-group.md`](adr/0006-live-reads-are-scoped-by-group.md)
+  for why "everything except Secrets" is not a setting, and the chart changelog
+  for the two scopes and the egress it needs.
+
 ## [0.11.0] - 2026-08-24
 
 ### Added
