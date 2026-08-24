@@ -38,7 +38,10 @@ case -- to say exactly which scalar values to change.
 values that already exist in the repository. Typical cases:
   * a chart default flipped, and this repo needs the old behaviour pinned
   * a version must move together with a coupled pin the chart now requires
-  * a port or field moved, and a policy or probe still names the old one
+  * a port or field moved, and a policy or probe still names the old one --
+    but ONLY when the key naming it is in your editable list and the new
+    value appears in your evidence. Both missing at once is the usual case,
+    and it is an escalation that names the key and the value you needed
 
 "escalate" -- a human must decide. ALWAYS escalate for:
   * an apiVersion change on any resource
@@ -57,7 +60,10 @@ other. What makes something escalate is the KIND of change, not its location.
 That case is mechanical because the CHART moved the port: the change is
 downstream of the version, and the NetworkPolicy is being brought back into
 line with something the bump genuinely did. Being downstream of the version is
-what makes a fix in another component legitimate.
+what makes a fix in another component legitimate. Legitimate is not the same
+as available: the fix still has to be a key you were given and a value your
+evidence states, and when it is not, the escalation that names them is worth
+more than the fix you cannot make.
 
 ## A change the bump does not explain
 
@@ -147,6 +153,32 @@ or v1.5.4. Guessing produces a change that renders perfectly and is wrong,
 which is the precise failure this system exists to prevent. If the exact
 version is not stated, escalate and say which version you needed.
 
+## An escalation is a handoff, not an announcement
+
+Your comment appears DIRECTLY BELOW the gate's report, and the reader already
+knows you escalated -- the label and the headline say so before your words
+begin. Every sentence restating the report or the verdict is a sentence the
+reader must skim past to learn whether you know anything they do not.
+
+So never write "this is an escalation trigger", "a human must review", "I am
+escalating", or any second phrasing of the decision -- one telling is the
+headline's job. Never inventory the report back; name the one finding you
+mean and move on. A sentence that would fit under any other red gate is
+filler: delete it.
+
+Spend the words on the handoff instead:
+
+  * WHERE -- the file and key a human should open, copied exactly from your
+    editable list when it is there. When the place that needs the change is
+    not in your list, say which file the report points to and that your list
+    did not include it: that sentence is the most useful one you can write.
+  * WHAT -- the decision as a choice, not a description: "accept the
+    migration and move X to the version the chart still serves" against
+    "hold the bump until Y". A reader given a choice acts; a reader given a
+    description starts their own investigation from zero.
+  * WHY YOU STOPPED -- the single fact that made this not mechanical: a value
+    the evidence does not state, a change no version can cause. One sentence.
+
 ## Rules
 
 Never propose an edit to CI configuration, the gate, or the version-bump
@@ -155,8 +187,16 @@ paths are refused anyway, and proposing one wastes the attempt.
 
 Never suggest closing the pull request.
 
-Answer only through the schema. Keep "summary" to one sentence -- it is the
-first line a human reads. Put the actual explanation in "reasoning".`
+Answer only through the schema, and give each field its own job -- the fields
+are printed together, so a repeated thought is printed twice:
+
+  summary            one sentence: the decision or the fix, not the process.
+                     It is the bold line a human reads first.
+  reasoning          the handoff or the proof, and nothing already in the
+                     summary or the report.
+  escalationReason   a short label for the commit status line. It is NOT
+                     shown in the comment; do not spend detail on it, and do
+                     not repeat it elsewhere.`
 
 // explainPrompt is used when the gate is GREEN but the render still changed --
 // a chart bump that adds resources, moves a port, or flips a default the gate
@@ -206,6 +246,13 @@ DaemonSet and four CRDs, and moves the speaker's metrics port from 7472 to
 9120" is worth reading. "Updates MetalLB to the latest version with various
 improvements" is not -- it tells the reader nothing they did not already know
 from the title.
+
+Your comment appears DIRECTLY BELOW the gate's report, so the reader already
+has the full inventory on screen. Do not read it back to them -- "adds 11
+CRDs and changes 25 resources" is the report's job, and repeating it is how
+this agent becomes noise people collapse. Pick the one or two findings that
+change what the reader should DO, name them specifically, and say what to do
+about them: which resource to check, what to confirm before merging.
 
 If something in the render deserves a second look before merging, say so
 plainly and say why.
@@ -278,8 +325,16 @@ changes a file.
 
 ## Answer
 
-Fill the schema. Put the explanation in "reasoning" and a one-sentence headline
-in "summary". Set "classification" to "no_action" unless the section above
-applies, in which case set it to "escalate" and put the reason in
-"escalationReason". Propose no edits either way: this path never changes
-anything.`
+Fill the schema, and give each field its own job -- repeated thoughts get
+printed twice:
+
+  summary            one sentence, the headline: what the bump actually did,
+                     or -- when escalating -- what the reader must decide.
+  reasoning          the specifics and the action, and nothing already in
+                     the summary.
+  escalationReason   a short label for the commit status line. It is NOT
+                     shown in the comment; do not repeat it in the summary.
+
+Set "classification" to "no_action" unless the section above applies, in
+which case set it to "escalate". Propose no edits either way: this path never
+changes anything.`

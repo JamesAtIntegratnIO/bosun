@@ -246,7 +246,12 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 
 	case llm.ClassEscalate:
 		t.say(ctx, pr, "escalated: %s", verdict.EscalationReason)
-		return t.escalate(ctx, pr, verdict.EscalationReason, verdict)
+		// The reason goes to the status and NOT into the comment headline: a
+		// model's escalationReason is reliably a paraphrase of its summary,
+		// and printing both had every escalation announcing itself twice
+		// before the reasoning announced it a third time. The comment leads
+		// with the verdict marker and the summary; the handoff follows.
+		return t.escalate(ctx, pr, "", verdict)
 	}
 
 	// Mechanical. The applier is what decides whether any of it happens.
@@ -302,10 +307,19 @@ func (t *Triage) escalate(ctx context.Context, pr *gitprovider.PullRequest, reas
 
 // escalateWith is escalate plus the applier's result, so a comment can list
 // every refused edit rather than summarising one of them.
+//
+// reason is for PROCESS facts the verdict does not carry -- "rejected before
+// anything was written", "could not push". A model's own escalation reason is
+// passed as "" on purpose: the verdict's summary says the same thing, and the
+// comment should say it once.
 func (t *Triage) escalateWith(ctx context.Context, pr *gitprovider.PullRequest, reason string, v *llm.Verdict, res *edits.Result) error {
 	body := "### Needs a human\n\n" + reason + "\n"
 	if v != nil {
-		body = t.render(v, res, "**Needs a human.** "+reason)
+		head := "**Needs a human.**"
+		if reason != "" {
+			head += " " + reason
+		}
+		body = t.render(v, res, head)
 	}
 	if err := t.Git.Comment(ctx, pr.Number, body); err != nil {
 		return err
@@ -705,13 +719,12 @@ func (t *Triage) renderExplanation(v *llm.Verdict, notes *upstream.Notes) string
 		fmt.Fprintf(&b, "%s**%s**\n\n", mark, t.Brand)
 	}
 	if v.Classification == llm.ClassEscalate {
-		// Say it before the summary, not after. A reader who stops at the
-		// first bold line must still learn that this one wants their eyes.
-		reason := v.EscalationReason
-		if reason == "" {
-			reason = v.Summary
-		}
-		fmt.Fprintf(&b, "**Worth a look before merging.** %s\n\n", reason)
+		// The marker alone, before the summary: a reader who stops at the
+		// first bold line must still learn this one wants their eyes. The
+		// escalation reason itself stays on the commit status -- it is
+		// reliably a paraphrase of the summary printed on the next line, and
+		// printing both was the agent announcing itself twice.
+		b.WriteString("**Worth a look before merging.**\n\n")
 	}
 	fmt.Fprintf(&b, "**%s**\n\n%s\n\n", v.Summary, v.Reasoning)
 	// Provenance, always. A reader deciding how much to trust this needs to

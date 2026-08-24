@@ -152,7 +152,7 @@ func TestTriageRun(t *testing.T) {
 			verdict:         &llm.Verdict{Classification: llm.ClassEscalate, Summary: "This is a migration.", Reasoning: "The CRD schema changed.", EscalationReason: "The upgrade needs a CRD migration."},
 			wantModelCalled: true,
 			wantComments:    1,
-			wantSaying:      []string{"Needs a human.", "The upgrade needs a CRD migration."},
+			wantSaying:      []string{"Needs a human.", "This is a migration.", "The CRD schema changed."},
 			wantLabels:      []string{labelNeedsHuman},
 			wantVersion:     "0.16.0",
 		},
@@ -280,6 +280,39 @@ func TestTriageRun(t *testing.T) {
 
 // The evidence check only works if the model's own prompt is what the applier
 // corroborates against, so the gate report has to reach both.
+// The escalation reason is the commit status's line, not the comment's: it is
+// reliably a paraphrase of the summary printed right below the headline, and
+// printing both had every escalation announcing itself twice before the
+// reasoning announced it a third time.
+func TestTheEscalationReasonStaysOnTheStatus(t *testing.T) {
+	h := newHarness(t)
+	h.git.Check = gitprovider.CheckFailure
+	h.model.Verdict = &llm.Verdict{
+		Classification:   llm.ClassEscalate,
+		Summary:          "Decide whether to accept the PodDisruptionBudget migration.",
+		Reasoning:        "Nothing in the editable list can express an apiVersion move.",
+		EscalationReason: "apiVersion migration on a PodDisruptionBudget",
+	}
+	if err := h.triage.Run(context.Background(), promotion()); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.git.Posted) != 1 {
+		t.Fatalf("want one comment, got %v", h.git.Posted)
+	}
+	if strings.Contains(h.git.Posted[0], "apiVersion migration on a PodDisruptionBudget") {
+		t.Errorf("the escalation reason belongs on the status, not in the comment:\n%s", h.git.Posted[0])
+	}
+	var sawReason bool
+	for _, s := range h.git.Statuses {
+		if strings.Contains(s.Description, "apiVersion migration on a PodDisruptionBudget") {
+			sawReason = true
+		}
+	}
+	if !sawReason {
+		t.Error("the escalation reason must still reach the commit status")
+	}
+}
+
 func TestTheModelIsShownTheGateReport(t *testing.T) {
 	h := newHarness(t)
 	h.model.Verdict = &llm.Verdict{Classification: llm.ClassNoAction, Summary: "Nothing to do.", Reasoning: "n/a"}
