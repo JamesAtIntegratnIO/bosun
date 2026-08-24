@@ -23,6 +23,34 @@ type Fake struct {
 	System string
 	User   string
 	Calls  int
+
+	// Migration is what Restructure returns. A test asserting what the harness
+	// does with a badly shaped document has to be able to supply one -- and
+	// that is most of what the structural path's tests are: crafted proposals
+	// aimed at each validator in turn.
+	Migration *Migration
+	// Migrations, when non-empty, is returned one per call, so a test can
+	// exercise a pass over several documents.
+	Migrations []*Migration
+	// MigrationErr stands in for a model that is down on this path only.
+	MigrationErr error
+
+	MigrationCalls  int
+	MigrationPrompt string
+}
+
+func (f *Fake) Restructure(_ context.Context, system, user string) (*Migration, error) {
+	f.MigrationCalls++
+	f.System, f.MigrationPrompt = system, user
+	if f.MigrationErr != nil {
+		return nil, f.MigrationErr
+	}
+	if len(f.Migrations) > 0 {
+		m := f.Migrations[0]
+		f.Migrations = f.Migrations[1:]
+		return m, nil
+	}
+	return f.Migration, nil
 }
 
 func (f *Fake) Classify(_ context.Context, system, user string) (*Verdict, error) {

@@ -98,10 +98,21 @@ type Triage struct {
 	// when that is the only reason the gate is red, rewrite the declaring
 	// manifests to the version the gate says survives. No model is involved
 	// on this path -- see repairDropped.
-	Migrate   bool
-	CloneRoot string
-	RepoURL   string
-	Log       func(string, ...any)
+	Migrate bool
+	// Structural turns on the schema-guided half of the repair: when the
+	// apiVersion swap leaves a document the target schema no longer accepts,
+	// show the model both schemas and validate what it returns.
+	//
+	// Default ON, and the reason is that it only runs where the deterministic
+	// path already had authority and the checks in front of it are stricter
+	// than anywhere else in this service.
+	Structural bool
+	// MaxRestructured caps document migrations per pull request. Past it the
+	// remainder are named and escalated rather than attempted.
+	MaxRestructured int
+	CloneRoot       string
+	RepoURL         string
+	Log             func(string, ...any)
 
 	// Checkout produces a working copy of the pull request's branch and a
 	// function that discards it. Defaults to a shallow clone; tests substitute
@@ -412,10 +423,41 @@ func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider
 		return fmt.Errorf("migrating consumers: %w", err)
 	}
 
+	// The swap is done. Now: did it finish the job?
+	//
+	// A version that moved a field leaves a document that parses, applies, and
+	// has that field pruned on the way in -- green render, green gate, missing
+	// value. This is where that is caught, and it runs only over files the
+	// swap already rewrote and policy already permitted.
+	var rr *restructureResult
+	if t.Structural && len(total.Applied) > 0 {
+		rr = t.restructureAll(ctx, root, drops,
+			t.schemasFor(ctx, p, drops), migratedPaths(total), t.maxRestructured())
+	}
+	if rr != nil && len(rr.Refused) > 0 {
+		// NOTHING is pushed, including the swaps that were fine.
+		//
+		// A partial push is the worst available outcome here and not the
+		// obvious one, so it is worth saying why. The swap alone makes the
+		// gate GREEN -- the manifests no longer declare a dropped version --
+		// while a document the target schema rejects sits in the tree with a
+		// value the apiserver will silently drop. Pushing 27 correct files and
+		// escalating one would produce a green gate over a broken change,
+		// which is precisely the shape of failure this whole service exists to
+		// find.
+		t.say(ctx, pr, "escalated: %d document(s) need reshaping and the proposal was refused", len(rr.Refused))
+		return t.escalateInformed(ctx, pr,
+			t.renderMigration(drops, total, rr,
+				"**Needs a human.** The chart moved fields between these API versions. "+
+					"Swapping the version alone would leave manifests the new schema does not accept, "+
+					"so nothing was pushed.", live),
+			nil, nil, nil, live)
+	}
+
 	if len(total.Applied) == 0 {
 		if len(total.Refused) > 0 {
 			t.say(ctx, pr, "escalated: every consumer the gate named was refused by policy")
-			return t.escalateInformed(ctx, pr, t.renderMigration(drops, total,
+			return t.escalateInformed(ctx, pr, t.renderMigration(drops, total, nil,
 				"**Needs a human.** The gate names manifests that must move off a dropped API version, but policy refuses every one of them.",
 				live), nil, nil, t.upstreamFor(ctx, p, report), live)
 		}
@@ -436,9 +478,13 @@ func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider
 			files++
 		}
 	}
+	how := "Deterministic rewrite by bosun -- no model involved.\n"
+	if rr != nil && len(rr.Applied) > 0 {
+		how = fmt.Sprintf("Deterministic rewrite by bosun. %d document(s) also needed reshaping for the\n"+
+			"new schema; those were proposed by %s and validated before writing.\n", len(rr.Applied), t.LLM.Name())
+	}
 	msg := fmt.Sprintf("fix(%s): migrate %d manifest(s) off dropped API version(s)\n\n"+
-		"The chart stopped serving them; destinations from the gate's report.\n"+
-		"Deterministic rewrite by bosun -- no model involved.\n", p.Stage, files)
+		"The chart stopped serving them; destinations from the gate's report.\n%s", p.Stage, files, how)
 	if err := t.Git.PushFix(ctx, pr, root, msg); err != nil {
 		return t.escalate(ctx, pr, fmt.Sprintf("Could not push the migration: %v", err), nil)
 	}
@@ -447,7 +493,7 @@ func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider
 	}
 	t.say(ctx, pr, "migrated %d manifest(s) off dropped API version(s) (attempt %d of %d)",
 		files, attempt, t.MaxAttempts)
-	return t.Git.Comment(ctx, pr.Number, t.renderMigration(drops, total, fmt.Sprintf(
+	return t.Git.Comment(ctx, pr.Number, t.renderMigration(drops, total, rr, fmt.Sprintf(
 		"Pushed a migration to `%s` (attempt %d of %d). The gate will re-run and re-count.",
 		pr.Branch, attempt, t.MaxAttempts), live))
 }
@@ -455,7 +501,8 @@ func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider
 // renderMigration is the comment for the deterministic path. Its footer names
 // no model, because none was involved -- a reader deciding how much to trust
 // this needs to know it is arithmetic, not judgement.
-func (t *Triage) renderMigration(drops []migrate.Dropped, res *migrate.Result, headline string, live *liveFacts) string {
+func (t *Triage) renderMigration(drops []migrate.Dropped, res *migrate.Result, rr *restructureResult,
+	headline string, live *liveFacts) string {
 	var b strings.Builder
 	if t.Brand != "" {
 		mark := t.BrandMark
@@ -483,12 +530,96 @@ func (t *Triage) renderMigration(drops []migrate.Dropped, res *migrate.Result, h
 			fmt.Fprintf(&b, "- `%s` — %s\n", r.Path, r.Reason)
 		}
 	}
+	b.WriteString(renderRestructured(rr))
 	b.WriteString(renderLive(live))
 	brand := t.Brand
 	if brand == "" {
 		brand = "bosun"
 	}
-	fmt.Fprintf(&b, "\n<sub>%s · deterministic repair, no model · automated triage, not a review</sub>\n", brand)
+	// The footer says honestly which kind of work this was. "No model" is a
+	// claim a reader uses to decide how carefully to look, and it stops being
+	// true the moment a document was reshaped.
+	how := "deterministic repair, no model"
+	if rr != nil && rr.Called > 0 {
+		how = "schema-guided migration · " + t.LLM.Name()
+	}
+	fmt.Fprintf(&b, "\n<sub>%s · %s · automated triage, not a review</sub>\n", brand, how)
+	return b.String()
+}
+
+// migratedPaths is the files the swap rewrote, deduplicated. The structural
+// pass looks at these and nothing else: they are already policy-checked, and a
+// file the swap did not touch has no dropped version in it to reshape.
+func migratedPaths(res *migrate.Result) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, a := range res.Applied {
+		if !seen[a.Path] {
+			seen[a.Path] = true
+			out = append(out, a.Path)
+		}
+	}
+	return out
+}
+
+func (t *Triage) maxRestructured() int {
+	if t.MaxRestructured > 0 {
+		return t.MaxRestructured
+	}
+	return 5
+}
+
+// renderRestructured shows exactly what a model reshaped, and what it could
+// not.
+//
+// The diff is folded but present. A reader who trusts the harness never opens
+// it; a reader who does not can see every line that moved, which is the only
+// basis on which trusting it is reasonable.
+func renderRestructured(rr *restructureResult) string {
+	if rr == nil || (!rr.touched() && len(rr.Skipped) == 0) {
+		return ""
+	}
+	var b strings.Builder
+	if len(rr.Applied) > 0 {
+		b.WriteString("\n**Reshaped for the new schema**\n\n")
+		b.WriteString("The chart moved fields between these versions, so swapping the version alone " +
+			"would have left manifests the new schema does not accept. Each document below was " +
+			"proposed by the model and then checked: identity unchanged, valid against the new " +
+			"schema, and every value present in the original or dictated by the schema itself.\n\n")
+		for _, a := range rr.Applied {
+			fmt.Fprintf(&b, "<details><summary><code>%s</code> — %s/%s", a.Path, a.Kind, a.Name)
+			if a.Notes != "" {
+				fmt.Fprintf(&b, " — %s", a.Notes)
+			}
+			b.WriteString("</summary>\n\n")
+			for _, f := range a.Reasons {
+				fmt.Fprintf(&b, "- %s\n", f)
+			}
+			fmt.Fprintf(&b, "\n```diff\n%s```\n", a.Diff)
+			if len(a.Lost) > 0 {
+				fmt.Fprintf(&b, "\n**Values not carried across:** `%s`\n", strings.Join(a.Lost, "`, `"))
+			}
+			b.WriteString("\n</details>\n")
+		}
+	}
+	if len(rr.Refused) > 0 {
+		b.WriteString("\n**Refused before anything was written**\n\n")
+		for _, r := range rr.Refused {
+			fmt.Fprintf(&b, "- `%s` — %s/%s\n", r.Path, r.Kind, r.Name)
+			for _, w := range r.Why {
+				fmt.Fprintf(&b, "  - %s\n", w)
+			}
+			for _, f := range r.Findings {
+				fmt.Fprintf(&b, "  - still does not fit: %s\n", f)
+			}
+		}
+	}
+	if len(rr.Skipped) > 0 {
+		b.WriteString("\n**Not checked for structural changes**\n\n")
+		for _, s := range rr.Skipped {
+			fmt.Fprintf(&b, "- %s\n", s)
+		}
+	}
 	return b.String()
 }
 

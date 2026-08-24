@@ -5,11 +5,14 @@
 // default that flipped, a pin that must move with another, a port a policy
 // still names. Everything else it hands to a human.
 //
-// The model never edits a file. It returns a structured verdict and a proposed
-// edit set; this process applies them, behind an allowlist, a from-value check
-// and a corroboration check. So "never edit the gate" and "never invent a
-// version" are properties of the code, not requests in a prompt. See
-// docs/safety-model.md and docs/prompt-contract.md.
+// The model never WRITES. It returns a structured proposal -- a verdict with a
+// set of scalar edits, or one whole document reshaped for a schema that moved
+// its fields -- and this process applies it, behind an allowlist, a from-value
+// check and a corroboration check for a scalar, and behind identity,
+// schema-validity and value-provenance checks for a document. So "never edit
+// the gate", "never invent a version" and "never invent data" are properties of
+// the code, not requests in a prompt. See docs/safety-model.md,
+// docs/prompt-contract.md and adr/0007.
 package main
 
 import (
@@ -134,6 +137,8 @@ func main() {
 		GatePoll:         cfg.GatePoll,
 		Explain:          cfg.Explain,
 		Migrate:          cfg.Migrate,
+		Structural:       cfg.Structural,
+		MaxRestructured:  cfg.MaxRestructured,
 		Upstream:         upstreamResolver(cfg, upstreamToken),
 		CloneRoot:        cfg.CloneRoot,
 		RepoURL:          cfg.GitRepoURL,

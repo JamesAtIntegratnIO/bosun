@@ -254,6 +254,9 @@ func (a *APIServer) CRD(ctx context.Context, name string) CRD {
 			Versions []struct {
 				Name   string `json:"name"`
 				Served bool   `json:"served"`
+				Schema struct {
+					OpenAPIV3Schema map[string]any `json:"openAPIV3Schema"`
+				} `json:"schema"`
 			} `json:"versions"`
 		} `json:"spec"`
 	}
@@ -270,10 +273,17 @@ func (a *APIServer) CRD(ctx context.Context, name string) CRD {
 			return CRD{Note: fmt.Sprintf("could not read %s (%v)", name, err)}
 		}
 	}
-	out := CRD{Known: true}
+	out := CRD{Known: true, Schemas: map[string]map[string]any{}}
 	for _, v := range crd.Spec.Versions {
 		if v.Served {
 			out.Versions = append(out.Versions, v.Name)
+		}
+		// Schemas for every version, served or not. The version a document is
+		// migrating OFF may already be unserved in this cluster while the
+		// repository still declares it, and that is the shape most worth
+		// having.
+		if len(v.Schema.OpenAPIV3Schema) > 0 {
+			out.Schemas[v.Name] = v.Schema.OpenAPIV3Schema
 		}
 	}
 	return out

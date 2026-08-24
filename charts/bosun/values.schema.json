@@ -254,6 +254,16 @@
               "description": "Upstream commits between the two tags that may reach a prompt or comment. Read only on escalation paths."
             }
           }
+        },
+        "structuralMigration": {
+          "type": "boolean",
+          "description": "When the apiVersion swap leaves a document the target schema no longer accepts, show the model both schemas and validate what it returns. Needs liveReads and registry egress; degrades to the plain swap without them."
+        },
+        "migrateMaxDocs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 50,
+          "description": "Documents reshaped per pull request. Past it the remainder is escalated."
         }
       }
     },

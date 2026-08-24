@@ -45,6 +45,43 @@ func (o *OpenAI) client() *http.Client {
 }
 
 func (o *OpenAI) Classify(ctx context.Context, systemPrompt, userPrompt string) (*Verdict, error) {
+	candidates, err := o.structured(ctx, systemPrompt, userPrompt, "verdict", VerdictSchema())
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range candidates {
+		if v, err := parseVerdict(c); err == nil {
+			return v, nil
+		}
+	}
+	return nil, fmt.Errorf("no parseable verdict in the response")
+}
+
+// Restructure asks for one migrated document.
+//
+// The same request shape as Classify against a different schema, deliberately:
+// one code path decides timeouts, credentials and how a reasoning model's
+// answer is found, so a second question cannot quietly acquire different
+// behaviour on any of the three.
+func (o *OpenAI) Restructure(ctx context.Context, systemPrompt, userPrompt string) (*Migration, error) {
+	candidates, err := o.structured(ctx, systemPrompt, userPrompt, "migration", MigrationSchema())
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range candidates {
+		var m Migration
+		if err := json.Unmarshal([]byte(stripFence(c)), &m); err == nil && strings.TrimSpace(m.Document) != "" {
+			return &m, nil
+		}
+	}
+	return nil, fmt.Errorf("no parseable migration in the response")
+}
+
+// structured runs one schema-constrained completion and returns every place the
+// answer might be, in the order worth trying.
+func (o *OpenAI) structured(ctx context.Context, systemPrompt, userPrompt, name string,
+	schema map[string]any) ([]string, error) {
+
 	body := map[string]any{
 		"model": o.Model,
 		"messages": []map[string]string{
@@ -56,9 +93,9 @@ func (o *OpenAI) Classify(ctx context.Context, systemPrompt, userPrompt string) 
 		"response_format": map[string]any{
 			"type": "json_schema",
 			"json_schema": map[string]any{
-				"name":   "verdict",
+				"name":   name,
 				"strict": true,
-				"schema": VerdictSchema(),
+				"schema": schema,
 			},
 		},
 		"temperature": 0,
@@ -113,22 +150,38 @@ func (o *OpenAI) Classify(ctx context.Context, systemPrompt, userPrompt string) 
 		return nil, fmt.Errorf("no choices in response")
 	}
 	msg := out.Choices[0].Message
-	for _, candidate := range []string{msg.Content, msg.ReasoningContent, msg.Reasoning} {
-		if strings.TrimSpace(candidate) == "" {
-			continue
-		}
-		if v, err := parseVerdict(candidate); err == nil {
-			return v, nil
+	var candidates []string
+	for _, c := range []string{msg.Content, msg.ReasoningContent, msg.Reasoning} {
+		if strings.TrimSpace(c) != "" {
+			candidates = append(candidates, c)
 		}
 	}
-	return nil, fmt.Errorf("no parseable verdict in the response (content %d bytes, reasoning_content %d bytes)",
-		len(msg.Content), len(msg.ReasoningContent))
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("the response carried no content (content %d bytes, reasoning_content %d bytes)",
+			len(msg.Content), len(msg.ReasoningContent))
+	}
+	return candidates, nil
 }
 
 // parseVerdict tolerates the two things that survive constrained decoding on
 // looser backends: a fenced code block, and a reasoning model that emits its
 // thinking before the JSON.
 func parseVerdict(content string) (*Verdict, error) {
+	s := stripFence(content)
+	var v Verdict
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return nil, fmt.Errorf("model did not return a parseable verdict: %w (got %q)", err, truncate(s, 300))
+	}
+	if err := v.Valid(); err != nil {
+		return nil, fmt.Errorf("model returned an unusable verdict: %w", err)
+	}
+	return &v, nil
+}
+
+// stripFence pulls the JSON out of the two wrappers that survive constrained
+// decoding on looser backends: a fenced code block, and a reasoning model that
+// emits its thinking before the answer.
+func stripFence(content string) string {
 	s := strings.TrimSpace(content)
 	if i := strings.Index(s, "```"); i >= 0 {
 		s = s[i+3:]
@@ -143,14 +196,7 @@ func parseVerdict(content string) (*Verdict, error) {
 	if i := strings.IndexByte(s, '{'); i > 0 {
 		s = s[i:]
 	}
-	var v Verdict
-	if err := json.Unmarshal([]byte(s), &v); err != nil {
-		return nil, fmt.Errorf("model did not return a parseable verdict: %w (got %q)", err, truncate(s, 300))
-	}
-	if err := v.Valid(); err != nil {
-		return nil, fmt.Errorf("model returned an unusable verdict: %w", err)
-	}
-	return &v, nil
+	return s
 }
 
 func truncate(s string, n int) string {

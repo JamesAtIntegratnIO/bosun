@@ -99,8 +99,17 @@ func (h Health) String() string {
 // versions objects are stored under.
 type CRD struct {
 	Versions []string
-	Known    bool
-	Note     string
+	// Schemas are the OpenAPI schemas the cluster serves, keyed by version
+	// name. Populated for the same reason the versions are: when a chart moves
+	// a field between versions, the OLD shape is only knowable from the
+	// definition that is installed right now, and after the merge it is gone.
+	//
+	// Decoded maps rather than a typed struct -- these carry vendor extensions
+	// no generic OpenAPI struct models, and a field this code does not
+	// understand must survive rather than be dropped.
+	Schemas map[string]map[string]any
+	Known   bool
+	Note    string
 }
 
 // Reader is the read-only view of the cluster the agent is allowed.

@@ -157,6 +157,49 @@ triage:
   # those reds go to the model, which can only escalate them.
   migrateDroppedVersions: true
 
+  # The second half of that repair, for the bumps where swapping the version is
+  # not the whole job.
+  #
+  # A chart that moves `spec.store` to `spec.secretStoreRef.name` between two
+  # versions leaves, after a plain swap, a document that parses, applies, and
+  # has that field pruned by the apiserver on the way in. The render is fine.
+  # The gate goes green. The value is gone, and nothing in the repository can
+  # see it.
+  #
+  # Enumerating every upstream's structural changes is impossible, so this shows
+  # the model the OLD schema, the NEW schema and the document, and asks it to
+  # translate. What makes that safe is not the prompt. Every proposal is checked
+  # before anything is written:
+  #
+  #   identity     apiVersion is the target; kind, metadata.name and
+  #                metadata.namespace are byte-identical to the original.
+  #   schema       the proposal validates against the target schema -- the
+  #                apiserver's objection, raised before the apply.
+  #   provenance   every value in the proposal appears in the ORIGINAL document
+  #                or is dictated by the target schema itself (a default, an
+  #                enum member, a const). Structure comes from the schema; data
+  #                comes only from the document.
+  #
+  # A proposal that fails any of them is refused whole and escalated with the
+  # refusal, and NOTHING is pushed -- not even the plain swaps that were fine,
+  # because a swap alone turns the gate green over a document the apiserver
+  # will silently prune.
+  #
+  # WHAT IT NEEDS. `liveReads.enabled`, for the schema of the version being
+  # left -- only the CustomResourceDefinition installed right now knows it, and
+  # after the merge it is gone. And egress to the chart registry, to render the
+  # target version: the same hosts the upstream-notes lookup already needs.
+  # Without either it degrades to the plain swap and the comment says which
+  # check it could not make.
+  #
+  # DEFAULT ON. It runs only where the deterministic repair already had
+  # authority, over files the path policy already permitted, and behind
+  # stricter checks than anything else here.
+  structuralMigration: true
+  # Documents reshaped per pull request. Past it the remainder is named and
+  # escalated rather than quietly left behind.
+  migrateMaxDocs: 5
+
   # Explain a GREEN gate that still changed the render.
   #
   # The gate blocks on structural changes and REPORTS the rest -- a chart that

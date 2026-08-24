@@ -23,6 +23,7 @@ import (
 //	DELIVERY_AGENT_MODELS=qwen/qwen3.8-27b \
 //	DELIVERY_AGENT_PROMPT="$(scripts/extract-prompt.sh)" \
 //	DELIVERY_AGENT_EXPLAIN_PROMPT="$(scripts/extract-prompt.sh explainPrompt)" \
+//	DELIVERY_AGENT_RESTRUCTURE_PROMPT="$(scripts/extract-prompt.sh restructurePrompt)" \
 //	go test ./evals -run Eval -v -timeout 60m
 func TestEval(t *testing.T) {
 	base := os.Getenv("DELIVERY_AGENT_LIVE")
@@ -44,8 +45,14 @@ func TestEval(t *testing.T) {
 	// whole suite every time.
 	only := os.Getenv("DELIVERY_AGENT_CASES")
 
+	restructure := os.Getenv("DELIVERY_AGENT_RESTRUCTURE_PROMPT")
+
 	// A prompt per path, so a case can never be scored against the wrong one.
-	prompts := map[string]string{PathTriage: system, PathExplain: explain}
+	prompts := map[string]string{
+		PathTriage:      system,
+		PathExplain:     explain,
+		PathRestructure: restructure,
+	}
 
 	skipped := 0
 	for _, c := range Cases {
@@ -55,7 +62,7 @@ func TestEval(t *testing.T) {
 	}
 	if skipped > 0 {
 		t.Logf("skipping %d case(s): no prompt supplied for their path "+
-			"(set DELIVERY_AGENT_EXPLAIN_PROMPT to measure the explain path)", skipped)
+			"(DELIVERY_AGENT_EXPLAIN_PROMPT, DELIVERY_AGENT_RESTRUCTURE_PROMPT)", skipped)
 	}
 
 	for _, model := range models {
