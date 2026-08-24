@@ -28,6 +28,8 @@ llm:
   provider: openai            # no default; you must choose
   baseURL: http://model.internal:1234/v1
   model: your-model
+gate:
+  reportAuthor: ""            # empty = per-host default; see below
 triage:
   allowPaths: [addons/**]     # empty means it can fix nothing
 networkPolicy:
@@ -45,6 +47,22 @@ triage:
   enabled: true
   url: http://<release>-bosun.<namespace>.svc:8080/v1/promotion-opened
 ```
+
+## Whose report the agent believes
+
+The gate publishes its verdict as a pull-request comment carrying a marker, and
+the agent reads that comment to decide what to do. A comment is a surface
+anybody with write access can publish to, so the marker alone is not a
+provenance — `gate.reportAuthor` is the account the report has to come from.
+
+Left empty it defaults per host: `github-actions[bot]` on GitHub, because a gate
+running in GitHub Actions comments through `github.token` and therefore as that
+account; **unchecked on Gitea**, which has no equivalent fixed identity — set it
+to whichever user minted your CI token. `"*"` reads the report whoever wrote it.
+
+If your gate comments as something else — a bot user, a PAT's owner — the
+symptom is the agent saying it ignored a report and naming the author it saw.
+That message is the fix instruction.
 
 ## The other half of the network path
 

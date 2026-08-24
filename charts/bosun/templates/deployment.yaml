@@ -121,6 +121,14 @@ spec:
               value: {{ .Values.gate.wait | quote }}
             - name: GATE_POLL
               value: {{ .Values.gate.poll | quote }}
+            {{- with .Values.gate.reportAuthor }}
+            # Only when set. Empty is not "trust nobody" -- it is "use the
+            # per-host default", and the binary is where that lives, because
+            # which account a gate comments as is a property of the host and
+            # not of this chart.
+            - name: GATE_REPORT_AUTHOR
+              value: {{ . | quote }}
+            {{- end }}
             - name: EXPLAIN_GREEN
               value: {{ .Values.triage.explainGreen | quote }}
             - name: MIGRATE_DROPPED_VERSIONS

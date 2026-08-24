@@ -138,18 +138,52 @@ func (g *GitHub) GetPullRequest(ctx context.Context, number int) (*PullRequest, 
 	return out, nil
 }
 
+// maxCommentPages bounds the walk at 100 comments a page. Reaching it means a
+// pull request with several thousand comments, which is not a thing this agent
+// is called about -- the bound exists so a paging bug cannot become an endless
+// loop against somebody's API quota, not because the limit is expected.
+const maxCommentPages = 20
+
+// ListComments returns every comment on the pull request, oldest last.
+//
+// PAGED, and fetched NEWEST FIRST. Both halves of that are load-bearing.
+//
+// This asked for one page of a hundred and returned it. On a pull request past
+// that mark the gate's report was simply not in the list, and the agent --
+// which finds the report by scanning it -- reported that the gate had
+// published nothing. That reads as a broken gate and it is nothing of the
+// sort, which is the worst kind of wrong answer: confident, plausible, and
+// pointing at the wrong component.
+//
+// Newest first, because a bound has to truncate somewhere and the direction is
+// a choice. The report the agent wants is minutes old; the comments it can
+// afford to lose are the ones from last quarter. Paging forward would spend
+// the whole budget on history and drop exactly the comment it came for.
 func (g *GitHub) ListComments(ctx context.Context, number int) ([]Comment, error) {
-	var raw []struct {
-		Body string                 `json:"body"`
-		User struct{ Login string } `json:"user"`
+	var out []Comment
+	for page := 1; page <= maxCommentPages; page++ {
+		var raw []struct {
+			ID      int64                  `json:"id"`
+			Body    string                 `json:"body"`
+			User    struct{ Login string } `json:"user"`
+			Created time.Time              `json:"created_at"`
+		}
+		if err := g.do(ctx, http.MethodGet, g.repoPath(fmt.Sprintf(
+			"/issues/%d/comments?per_page=100&sort=created&direction=desc&page=%d", number, page)),
+			nil, &raw); err != nil {
+			return nil, err
+		}
+		for _, c := range raw {
+			out = append(out, Comment{ID: c.ID, Author: c.User.Login, Body: c.Body, CreatedAt: c.Created})
+		}
+		if len(raw) < 100 {
+			break
+		}
 	}
-	if err := g.do(ctx, http.MethodGet,
-		g.repoPath(fmt.Sprintf("/issues/%d/comments?per_page=100", number)), nil, &raw); err != nil {
-		return nil, err
-	}
-	out := make([]Comment, 0, len(raw))
-	for _, c := range raw {
-		out = append(out, Comment{Author: c.User.Login, Body: c.Body})
+	// Back to oldest-last, which is the interface's contract and what every
+	// caller's "the last one wins" reading depends on.
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
 	}
 	return out, nil
 }

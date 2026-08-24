@@ -117,6 +117,33 @@ gate:
   wait: 10m
   poll: 30s
 
+  # The account whose gate report the agent will believe.
+  #
+  # The gate publishes its verdict as a pull-request comment carrying a marker,
+  # and until this existed the marker was the whole of the check. Anyone who can
+  # comment on the pull request can write that marker -- and the report under it
+  # is what the agent reads to decide which manifests to rewrite, which version
+  # strings it will accept as corroborated, and what it tells the model actually
+  # rendered. A forged report is not a wrong opinion; it is an instruction
+  # wearing the gate's authority.
+  #
+  # EMPTY MEANS PER-HOST DEFAULT, because the answer is a fact about the host:
+  #   github -- `github-actions[bot]`. A gate running in GitHub Actions comments
+  #             through `github.token` and therefore as that account, every time.
+  #   gitea  -- unchecked. Gitea Actions has no equivalent fixed identity; the
+  #             report arrives as whichever user minted the CI token, which this
+  #             chart cannot know. Set it to that user.
+  #
+  # Set it to "*" to read the report whoever wrote it. That is the behaviour
+  # that existed before this value, and there are deployments where it is the
+  # only expressible answer -- but it should be a decision in this file rather
+  # than an absence.
+  #
+  # If your gate comments as a bot user or a PAT's owner rather than through
+  # Actions, name that account here: the symptom of getting it wrong is the
+  # agent saying it ignored a report and naming the author it saw.
+  reportAuthor: ""
+
 triage:
   # Repair a RED gate whose only cause is a CRD that stopped serving versions:
   # rewrite every manifest in the repository that still declares one to the

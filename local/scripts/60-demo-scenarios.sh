@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Nine real incidents, replayed against the LIVE agent, on real pull requests.
+# The recorded incidents, replayed against the LIVE agent, on real pull requests.
 #
 # These are not invented scenarios. Each one is something that actually
 # happened to this platform -- MetalLB swapping its FRR sidecars for a
@@ -22,7 +22,12 @@ FILTER="${1:-}"
 CASES_JSON="$(mktemp)"; trap 'rm -f "$CASES_JSON"' EXIT
 (cd "$ROOT/.." && GOTOOLCHAIN=auto go run ./evals/export) > "$CASES_JSON"
 TOTAL=$(python3 -c "import json;print(len(json.load(open('$CASES_JSON'))))")
-say "$TOTAL recorded incidents; agent is live"
+# The suite measures two prompts. This replays the RED-GATE path -- it seeds a
+# failing gate and a blocking report -- so a case written for the green-gate
+# explanation would be replayed under the wrong conditions and score nothing
+# meaningful. Those are skipped by name below rather than silently mis-run.
+REPLAYABLE=$(python3 -c "import json;print(sum(1 for c in json.load(open('$CASES_JSON')) if not c.get('Path')))")
+say "$REPLAYABLE of $TOTAL recorded incidents replay against a red gate; agent is live"
 
 AGENT_POD="$(kc -n bosun get pod -l app.kubernetes.io/name=bosun -o name | head -1)"
 [ -n "$AGENT_POD" ] || bad "no agent pod"
@@ -36,6 +41,14 @@ RESULTS="$(mktemp)"
 for i in $(seq 0 $((TOTAL - 1))); do
   NAME=$(python3 -c "import json;print(json.load(open('$CASES_JSON'))[$i]['Name'])")
   [ -n "$FILTER" ] && case "$NAME" in *"$FILTER"*) ;; *) continue ;; esac
+
+  # Which prompt this case measures. Empty is triage, which is what this
+  # replays; anything else needs a gate in a state this script does not seed.
+  CASE_PATH=$(python3 -c "import json;print(json.load(open('$CASES_JSON'))[$i].get('Path') or '')")
+  if [ -n "$CASE_PATH" ]; then
+    step "skipping ${NAME}: measures the ${CASE_PATH} prompt, which needs a green gate"
+    continue
+  fi
 
   WANT=$(python3 -c "import json;print(json.load(open('$CASES_JSON'))[$i]['WantClass'])")
   SUBJECT=$(python3 -c "import json;print(json.load(open('$CASES_JSON'))[$i]['Subject'])")
@@ -157,6 +170,7 @@ while IFS=$'\t' read -r n w g p; do
 done < "$RESULTS"
 echo
 echo "  + means the agent's ACTION matched the case's class."
+echo "  Explain-path cases are not replayed here; they need a green gate."
 echo "  This shows whether it edited, not whether the edit was right --"
 echo "  the eval suite checks the exact scalars. Run: go test ./evals/..."
 rm -f "$RESULTS"

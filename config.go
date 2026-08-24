@@ -50,12 +50,22 @@ type Config struct {
 	BrandMark string
 
 	// Behaviour.
-	CheckName   string
-	MaxAttempts int
-	GateWait    time.Duration
-	GatePoll    time.Duration
-	Explain     bool
-	Migrate     bool
+	CheckName string
+	// GateReportAuthor is the only account whose gate report the agent will
+	// read. The gate publishes its verdict as a pull-request comment, and a
+	// comment is something anybody with write access can write -- including a
+	// comment carrying the gate's own marker and a report that says everything
+	// is fine. See Triage.GateReportAuthor.
+	//
+	// "*" trusts any author, which is the behaviour that existed before this
+	// value and is still the only thing a host with no stable bot identity can
+	// express.
+	GateReportAuthor string
+	MaxAttempts      int
+	GateWait         time.Duration
+	GatePoll         time.Duration
+	Explain          bool
+	Migrate          bool
 	// App authentication. When AppID is set the agent acts as a GitHub App
 	// installation instead of as the owner of a token -- see gitprovider.AppAuth
 	// for why that is about identity rather than access.
@@ -99,6 +109,19 @@ func LoadConfig() (*Config, error) {
 
 		CheckName: env("GATE_CHECK_NAME", "addons-gate"),
 		CloneRoot: env("CLONE_ROOT", ""),
+	}
+
+	// Defaulted per host rather than globally, because the answer is a fact
+	// about the host and not a preference. A gate running in GitHub Actions
+	// comments through `github.token` and therefore as `github-actions[bot]`,
+	// every time, on every repository -- so GitHub gets a default that is
+	// simply correct. Gitea Actions has no equivalent fixed identity: the
+	// report arrives as whichever user minted the CI token, which this cannot
+	// know. Defaulting that to a GitHub name would break every Gitea install
+	// on upgrade in the name of a check it could not perform.
+	c.GateReportAuthor = os.Getenv("GATE_REPORT_AUTHOR")
+	if c.GateReportAuthor == "" && c.GitProvider == "github" {
+		c.GateReportAuthor = "github-actions[bot]"
 	}
 
 	var err error

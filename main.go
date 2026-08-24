@@ -113,17 +113,28 @@ func main() {
 	t := &Triage{
 		Git: git, LLM: model,
 		Brand: cfg.Brand, BrandMark: cfg.BrandMark,
-		Policy:      edits.Policy{Allow: cfg.AllowPaths, Deny: cfg.DenyPaths},
-		CheckName:   cfg.CheckName,
-		MaxAttempts: cfg.MaxAttempts,
-		GateWait:    cfg.GateWait,
-		GatePoll:    cfg.GatePoll,
-		Explain:     cfg.Explain,
-		Migrate:     cfg.Migrate,
-		Upstream:    upstreamResolver(cfg),
-		CloneRoot:   cfg.CloneRoot,
-		RepoURL:     cfg.GitRepoURL,
-		Log:         func(f string, a ...any) { logger.Printf(f, a...) },
+		Policy:           edits.Policy{Allow: cfg.AllowPaths, Deny: cfg.DenyPaths},
+		CheckName:        cfg.CheckName,
+		GateReportAuthor: cfg.GateReportAuthor,
+		MaxAttempts:      cfg.MaxAttempts,
+		GateWait:         cfg.GateWait,
+		GatePoll:         cfg.GatePoll,
+		Explain:          cfg.Explain,
+		Migrate:          cfg.Migrate,
+		Upstream:         upstreamResolver(cfg),
+		CloneRoot:        cfg.CloneRoot,
+		RepoURL:          cfg.GitRepoURL,
+		Log:              func(f string, a ...any) { logger.Printf(f, a...) },
+	}
+
+	// Said at start-up, because the alternative is a deployment that silently
+	// believes any comment carrying the gate's marker and nobody finding out
+	// until it matters.
+	if t.GateReportAuthor == "" || t.GateReportAuthor == "*" {
+		logger.Printf("gate reports are read from ANY author: set gate.reportAuthor " +
+			"to the account your gate comments as")
+	} else {
+		logger.Printf("gate reports are read only from %q", t.GateReportAuthor)
 	}
 
 	srv := &Server{Triage: t, Log: logger, Timeout: cfg.LLMTimeout + 5*time.Minute}

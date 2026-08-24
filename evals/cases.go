@@ -6,11 +6,30 @@
 // particular shape that made-up examples do not reproduce.
 package evals
 
-import "sort"
+import (
+	"sort"
+
+	"github.com/JamesAtIntegratnIO/bosun/upstream"
+)
+
+// Path names which prompt a case measures. Two prompts ship and they fail
+// differently: triage can write the wrong thing to a file, and explain can
+// write the wrong thing into a reader's head. Only the first has an applier
+// standing in front of it, which is precisely why the second needs measuring.
+const (
+	// PathTriage is the default: the red-gate classifier, scored on what the
+	// applier would actually have written.
+	PathTriage = ""
+	// PathExplain is the green-gate explanation, scored on grounding.
+	PathExplain = "explain"
+)
 
 // Case is one triage scenario.
 type Case struct {
 	Name string
+
+	// Path selects the prompt under measurement. Empty is triage.
+	Path string
 
 	// Files are the repository fixture, path -> content. This is what the
 	// repository CONTAINS, not what the change touched.
@@ -44,6 +63,32 @@ type Case struct {
 
 	// EditFile is the path every expected edit targets.
 	EditFile string
+
+	// Notes is the upstream testimony the explain path is given, rendered into
+	// the prompt by the same function the live agent uses. Nil is the case
+	// that matters most: with no maintainer account of WHY the render changed,
+	// a model either says so or invents one, and inventing one is this path's
+	// whole failure mode.
+	Notes *upstream.Notes
+
+	// MustMention are strings the answer has to contain -- the grounded reason
+	// it was given and should have cited. Matched case-insensitively as
+	// substrings.
+	//
+	// Paired with MustNotMention on purpose. A purely negative probe passes for
+	// an answer that said nothing at all, and a purely positive one passes for
+	// an answer that said the right thing surrounded by three inventions.
+	MustMention []string
+
+	// MustNotMention are strings that cannot legitimately appear: the
+	// distinctive noun of a reason the model was never shown, a component name
+	// nothing in the evidence names.
+	//
+	// Matched on WORD BOUNDARIES, and every entry must be a word that could
+	// only arrive by invention. Never a common word ("safe", "change"), never a
+	// version the report itself contains -- a probe that fires on the evidence
+	// measures the fixture rather than the model.
+	MustNotMention []string
 }
 
 // ChangedFiles is what the promotion reports it rewrote. Defaults to every
@@ -117,7 +162,7 @@ in any form.`,
 		// Every other mechanical case is an ACCOMMODATION: flip a default
 		// back, move a coupled pin forward, make the render agree with the
 		// bump. None asks the agent to REJECT something, so a model that
-		// accommodates everything scores full marks on the other eight.
+		// accommodates everything scores full marks on every other one.
 		Name:    "namespace-moved-under-a-bump",
 		Subject: "bump external-secrets chart 0.10.3 -> 0.11.0",
 		Files: map[string]string{addonsPath: `external-secrets:

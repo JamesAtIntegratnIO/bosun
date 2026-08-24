@@ -7,7 +7,10 @@
 // syntax.
 package gitprovider
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // PullRequest is the subset of a pull request the agent reasons about.
 type PullRequest struct {
@@ -27,8 +30,23 @@ type PullRequest struct {
 // every git host has, which keeps the gate's output reachable without a
 // provider-specific artifacts API.
 type Comment struct {
+	// ID is the host's own identifier. Both implemented hosts return one and
+	// both were throwing it away; it is what lets a log line name WHICH
+	// comment the agent read rather than quoting it back.
+	ID int64
+	// Author is the account that wrote it. Load-bearing: the agent reads the
+	// gate's verdict out of a comment, and a comment is something anyone with
+	// write access to the pull request can forge. See Triage.GateReportAuthor.
 	Author string
 	Body   string
+	// CreatedAt is when the host recorded it. The agent wants the NEWEST
+	// report -- a gate that re-ran leaves two -- and until this existed the
+	// only available proxy was the order the API happened to return, which is
+	// a property of the request rather than of the comments.
+	//
+	// Zero when the host did not say, which is not an error: callers break
+	// ties on position, the way they did before.
+	CreatedAt time.Time
 }
 
 // CheckState is the aggregate state of the gate on a commit.
@@ -59,7 +77,14 @@ type Provider interface {
 	// GetPullRequest reads a pull request.
 	GetPullRequest(ctx context.Context, number int) (*PullRequest, error)
 
-	// ListComments returns the pull request's comments, oldest first.
+	// ListComments returns the pull request's comments, oldest last.
+	//
+	// EVERY comment, not the first page of them. The gate publishes its report
+	// as a comment and the agent finds it by scanning this list, so a list
+	// that silently stops at one hundred is a gate report that silently
+	// vanishes on a busy pull request -- and the agent cannot tell that from a
+	// gate that published nothing, which is a different situation with a
+	// different answer.
 	ListComments(ctx context.Context, number int) ([]Comment, error)
 
 	// CheckStatus reports the aggregate state of the named check on a commit.
