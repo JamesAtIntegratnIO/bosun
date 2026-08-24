@@ -84,10 +84,32 @@ jobs:
           name: targets-${{ matrix.ref }}
           path: targets-${{ matrix.ref }}.json
 
+  # Schema validation. A separate job because it needs neither render output
+  # nor the diff -- it reads the repository -- so it runs beside them rather
+  # than after, and a schema error is reported even when the render fails.
+  #
+  # No setup-go, no setup-helm, no kubeconform download: the image carries all
+  # three, at the versions the gate was built and tested against.
+  schema:
+    name: Schema validation
+    runs-on: ubuntu-latest
+    needs: scope
+    if: needs.scope.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -v "$PWD:/repo" -w /repo "$GATE_IMAGE" \
+            validate -repo . -report schema.md
+          cat schema.md >> "$GITHUB_STEP_SUMMARY"
+
   addons-gate:
     name: addons-gate
     runs-on: ubuntu-latest
-    needs: [scope, render]
+    needs: [scope, render, schema]
     # always(), or this inherits the never-reports problem from its own
     # dependencies and blocks the pull request just as a paths filter would.
     if: always()
@@ -103,9 +125,25 @@ jobs:
         if: needs.scope.outputs.relevant != 'true'
         run: |
           echo "gate is green (no rendering-affecting paths in this change)"
+      # Every dependency, not a named one. This checked `render` alone, so a
+      # job added later -- `schema` was -- could fail while the required check
+      # stayed green. Looping over `needs.*` means adding a job never requires
+      # remembering to edit this step, which is the same reason the whole gate
+      # is one aggregate check rather than several required ones.
       - name: Fail if a needed job did not succeed
-        if: needs.scope.outputs.relevant == 'true' && needs.render.result != 'success'
-        run: echo "::error::render did not succeed (${{ needs.render.result }})" && exit 1
+        if: needs.scope.outputs.relevant == 'true'
+        run: |
+          set -euo pipefail
+          results='${{ join(needs.*.result, ' ') }}'
+          echo "job results: $results"
+          for r in $results; do
+            # `skipped` is a pass: it means this change cannot affect what gets
+            # deployed. `cancelled` is not -- that is an unknown answer.
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::A gate job did not succeed ($r)."; exit 1 ;;
+            esac
+          done
       - uses: actions/checkout@v4
         if: needs.scope.outputs.relevant == 'true'
       - uses: actions/download-artifact@v4
@@ -120,8 +158,19 @@ jobs:
         run: |
           set -euo pipefail
           set +e
+          # -repo enables CHART-DIFF, and without it this gate reports far
+          # less than it looks like it does. With the flag, every chart whose
+          # version moved is rendered at BOTH versions and the resources are
+          # compared -- which is what produces the resource findings, the
+          # "a CustomResourceDefinition stopped serving a version" finding, and
+          # the consumer count that decides whether that blocks.
+          #
+          # Without it the report says "a version changed" and stops. Nothing
+          # errors, no warning appears, and the gate goes green on exactly the
+          # class of change it exists to catch. This template shipped that way.
           docker run --rm -v "$PWD:/repo" -w /repo "$GATE_IMAGE" \
             diff -base targets-base.json -head targets-head.json \
+                 -repo . \
                  -report report.md -json render-diff.json
           echo "exit=$?" >> "$GITHUB_OUTPUT"
           set -e
