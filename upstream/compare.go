@@ -58,9 +58,21 @@ type Compare struct {
 	Files []string
 	// Note explains an empty or partial result in one sentence.
 	Note string
-	// Truncated is set when the range was larger than one API answer, or when
-	// the relevant list was capped.
+	// Truncated means the range was LARGER THAN COULD BE READ -- GitHub answers
+	// a compare with at most 250 commits and reports the real total separately,
+	// so a bigger range was filtered over a partial list.
+	//
+	// Strictly about coverage. It is what licenses the phrase "more than could
+	// be read", and a brief that says that about a range it read completely is
+	// lying in the direction of "we might have missed it".
 	Truncated bool
+	// Capped means everything was read and this is showing fewer -- the
+	// relevant or file list hit MaxCommits.
+	//
+	// A different fact from Truncated and it took a live run to notice they had
+	// been sharing a flag: a fully-read three-commit range reported "more than
+	// could be read" because eleven FILES matched the search terms.
+	Capped bool
 }
 
 // Any reports whether there is anything worth showing.
@@ -169,7 +181,7 @@ func (g *GitHubReleases) Compare(ctx context.Context, artifact, from, to string,
 			continue
 		}
 		if len(c.Relevant) >= max {
-			c.Truncated = true
+			c.Capped = true
 			break
 		}
 		c.Relevant = append(c.Relevant, Commit{
@@ -181,7 +193,7 @@ func (g *GitHubReleases) Compare(ctx context.Context, artifact, from, to string,
 			continue
 		}
 		if len(c.Files) >= max {
-			c.Truncated = true
+			c.Capped = true
 			break
 		}
 		c.Files = append(c.Files, f.Filename)

@@ -3,6 +3,13 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.13.2]
+
+### Fixed
+
+- A fully-read commit range no longer reports itself as "more than could be
+  read". No values change; see the agent changelog.
+
 ## [0.13.1]
 
 ### Fixed

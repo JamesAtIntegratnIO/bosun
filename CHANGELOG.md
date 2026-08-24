@@ -3,6 +3,26 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.13.2] - 2026-08-24
+
+### Fixed
+
+- **"More than could be read" and "showing fewer than we found" are different
+  facts, and they were sharing a flag.** Found by running the live resolver
+  against this project's own 0.13.0 → 0.13.1 bump: a three-commit range, all
+  three read and all three relevant, reported `truncated=true` — because eleven
+  *files* in the upstream diff matched the search terms and hit `MaxCommits`.
+
+  It fails in the direction that matters. `Truncated` is what licenses the
+  phrase "more than could be read", and saying that about a range read in full
+  tells a reader the evidence might be incomplete when it is not — which is the
+  one thing an evidence label must never do.
+
+  `Truncated` now means coverage only: GitHub answers a compare with at most 250
+  commits, so a larger range really was filtered over a partial list. `Capped`
+  is the new, separate flag for "everything was read, this is showing the first
+  few", and the brief says which.
+
 ## [0.13.1] - 2026-08-24
 
 ### Fixed
