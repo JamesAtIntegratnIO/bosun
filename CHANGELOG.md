@@ -3,6 +3,46 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.9.0] - 2026-08-24
+
+### Changed
+
+- **An escalation is a handoff, not an announcement.** Read back from the
+  first live runs on real held promotions: every escalation said the same
+  thing three times -- the headline carried the escalation reason, the
+  summary paraphrased it, and the reasoning restated both before restating
+  the gate report -- and named nothing the reader could open. "This needs
+  escalation, so I am escalating, and to be sure you know, I have escalated"
+  is how its owner summarised it, accurately.
+
+  Two structural fixes and one contract. The comment renderers now print the
+  verdict marker once: the model's `escalationReason` goes to the commit
+  status line and is no longer duplicated into the comment, on the red path
+  and the green explain path both. (Process reasons -- "rejected before
+  anything was written", "could not push" -- still lead the headline; those
+  are facts the verdict does not carry.)
+
+  And the prompts now state what the fields are FOR and what an escalation
+  owes the reader: summary is the decision in one sentence; reasoning is the
+  handoff -- WHERE (the file and key to open, copied from the editable list,
+  or the honest sentence that the list did not include the place that needs
+  the change), WHAT (the decision as a choice, not a description), and WHY
+  it stopped (the one fact that made this not mechanical) -- and never a
+  restatement of the report sitting directly above the comment. The explain
+  path gets the matching rule: no reading the report's inventory back; name
+  the finding that changes what the reader should do.
+
+  Also corrected while in there: the mechanical-case list still taught the
+  moved-port case unconditionally, arguing the opposite of what the eval
+  suite has scored since the 0.4.0 reclassification. It now states the
+  precondition -- the key must be in the editable list and the value in the
+  evidence -- and that the escalation naming them is worth more than the fix
+  it cannot make.
+
+  Measured after the change on qwen3.8-27b: classification **10/10**, full
+  pass **10/10**, **UNSAFE 0** (3m13s), with the three accommodation cases
+  still classifying mechanical -- spending the words on the handoff did not
+  push the model toward escalating everything.
 ## [0.8.0] - 2026-08-23
 
 ### Added
@@ -49,7 +89,6 @@ All notable changes to `bosun`. Format follows
 
   Off switch: `triage.migrateDroppedVersions` (env
   `MIGRATE_DROPPED_VERSIONS=false`), default on.
-
 ## [0.7.0] - 2026-08-23
 
 There is no 0.6.0 here. Chart 0.6.0 was a chart-only release -- FQDN egress
