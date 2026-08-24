@@ -52,6 +52,7 @@ jobs:
     outputs:
       matrix: ${{ steps.pick.outputs.matrix }}
       any: ${{ steps.pick.outputs.any }}
+      retagGate: ${{ steps.pick.outputs.retagGate }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -79,14 +80,44 @@ jobs:
 
           build_agent=false
           build_gate=false
+          retag_gate=false
           zero=0000000000000000000000000000000000000000
 
-          # Every "ship this revision" case builds both. Only an ordinary push
-          # to a branch has a diff worth reasoning about; guessing from one on
-          # a release or a manual run would publish half a release.
+          # A RELEASE IS NOT A REASON TO REBUILD THE GATE.
+          #
+          # This built both on every release, and the comment defending it said
+          # a release "must ship both images at the tagged revision whatever the
+          # last commit touched". The tagged revision part is right. The REBUILD
+          # is not, and it costs exactly what the scope job was created to stop:
+          #
+          # `is_default_branch` is true inside a release call, so the tag list
+          # below publishes a fresh `main-<sha>` for both images. That tag is
+          # what the consumer's Kargo target tracks with NewestBuild, and the
+          # `org.opencontainers.image.revision` label means a byte-identical
+          # gate still gets a new digest. Every agent-only release therefore
+          # opened a gate bump pull request -- `autoMerge: never`, so a human
+          # reads it -- describing no change to the gate. Bumps that change
+          # nothing are what teach that human to stop reading them, which is the
+          # exact failure this file already argues against one paragraph up.
+          #
+          # So: on a release the gate is rebuilt only if the gate MOVED since
+          # the previous release. If it did not, the existing image is given the
+          # release tag with `imagetools create` -- same digest, no new
+          # `main-<sha>`, nothing for Kargo to notice.
           if [ -n "${VERSION}" ]; then
-            build_agent=true; build_gate=true
-            why="release build of ${VERSION}"
+            build_agent=true
+            prev=$(git tag --list 'v*' --sort=-v:refname | grep -v "^v${VERSION}$" | head -1)
+            if [ -z "${prev}" ] || ! git cat-file -e "${prev}^{commit}" 2>/dev/null; then
+              build_gate=true
+              why="release build of ${VERSION} (no previous release tag to diff against)"
+            elif git diff --name-only "${prev}" "${SHA}" \
+                 | grep -qE '^gate/|^migrate/|^go\.(mod|sum)$|^\.github/workflows/image\.yaml$'; then
+              build_gate=true
+              why="release build of ${VERSION} (the gate moved since ${prev})"
+            else
+              retag_gate=true
+              why="release build of ${VERSION} (the gate is unchanged since ${prev}; re-tagging, not rebuilding)"
+            fi
           elif [ "${EVENT}" != push ] || [ "${REF_TYPE}" = tag ]; then
             build_agent=true; build_gate=true
             why="${EVENT} (${REF_TYPE}) -- no diff to reason from"
@@ -132,6 +163,8 @@ jobs:
           if [ "${build_agent}" = true ]; then entries="${agent}"; fi
           if [ "${build_gate}" = true ]; then entries="${entries:+${entries},}${gate}"; fi
 
+          echo "retagGate=${retag_gate}" >> "$GITHUB_OUTPUT"
+
           if [ -z "${entries}" ]; then
             echo "any=false" >> "$GITHUB_OUTPUT"
             echo "matrix=[]" >> "$GITHUB_OUTPUT"
@@ -139,8 +172,39 @@ jobs:
           else
             echo "any=true" >> "$GITHUB_OUTPUT"
             echo "matrix=[${entries}]" >> "$GITHUB_OUTPUT"
-            echo "::notice::Publishing agent=${build_agent} gate=${build_gate} (${why})."
+            echo "::notice::Publishing agent=${build_agent} gate=${build_gate} retag=${retag_gate} (${why})."
           fi
+
+  # The release tag for a gate that did not change.
+  #
+  # `imagetools create` writes a new tag pointing at an EXISTING manifest. No
+  # rebuild, no new digest, and -- the point of all this -- no new `main-<sha>`
+  # for the consumer's Kargo target to open a pull request about.
+  retag-gate:
+    name: Tag the unchanged gate at ${{ inputs.version }}
+    needs: scope
+    if: needs.scope.outputs.retagGate == 'true' && inputs.version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Point the release tag at the gate that is already published
+        env:
+          IMAGE: ghcr.io/jamesatintegratnio/gitops-gate
+          V: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          # `:main` is the gate that was last built, which -- because it did not
+          # change -- is the gate this release ships.
+          docker buildx imagetools create -t "${IMAGE}:${V}" "${IMAGE}:main"
+          docker buildx imagetools inspect "${IMAGE}:${V}" --format '{{.Manifest.Digest}}'
+          echo "::notice::${IMAGE}:${V} now points at the existing :main build; no new image was published."
 
   build-and-push:
     needs: scope
