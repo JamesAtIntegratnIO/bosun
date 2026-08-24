@@ -142,20 +142,41 @@ func (g *Gitea) GetPullRequest(ctx context.Context, number int) (*PullRequest, e
 	return out, nil
 }
 
+// ListComments returns every comment on the pull request, oldest last.
+//
+// Paged, like GitHub's, and for the same reason: a list that stops at a
+// hundred is a gate report that disappears on a busy pull request, reported as
+// a gate that published nothing.
+//
+// Paged FORWARD, unlike GitHub's, because Gitea's issue-comments endpoint has
+// no direction parameter -- it returns oldest first and that is the only order
+// on offer. So the bound cannot be made to truncate the half nobody needs, and
+// a pull request that reaches it is an ERROR rather than a short list. Handing
+// back the oldest two thousand comments and calling it "every comment" is the
+// exact silence this change exists to remove.
 func (g *Gitea) ListComments(ctx context.Context, number int) ([]Comment, error) {
-	var raw []struct {
-		Body string                 `json:"body"`
-		User struct{ Login string } `json:"user"`
+	var out []Comment
+	for page := 1; page <= maxCommentPages; page++ {
+		var raw []struct {
+			ID      int64                  `json:"id"`
+			Body    string                 `json:"body"`
+			User    struct{ Login string } `json:"user"`
+			Created time.Time              `json:"created_at"`
+		}
+		if err := g.do(ctx, http.MethodGet, g.repoPath(fmt.Sprintf(
+			"/issues/%d/comments?limit=100&page=%d", number, page)), nil, &raw); err != nil {
+			return nil, err
+		}
+		for _, c := range raw {
+			out = append(out, Comment{ID: c.ID, Author: c.User.Login, Body: c.Body, CreatedAt: c.Created})
+		}
+		if len(raw) < 100 {
+			return out, nil
+		}
 	}
-	if err := g.do(ctx, http.MethodGet,
-		g.repoPath(fmt.Sprintf("/issues/%d/comments?limit=100", number)), nil, &raw); err != nil {
-		return nil, err
-	}
-	out := make([]Comment, 0, len(raw))
-	for _, c := range raw {
-		out = append(out, Comment{Author: c.User.Login, Body: c.Body})
-	}
-	return out, nil
+	return nil, fmt.Errorf("pull request %d has more than %d comments: this client pages oldest-first, "+
+		"so the newest -- including the gate's report -- are past the end of what it read",
+		number, maxCommentPages*100)
 }
 
 // CheckStatus reports the aggregate state of one named check.
