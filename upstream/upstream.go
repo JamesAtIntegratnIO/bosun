@@ -41,6 +41,12 @@ type Notes struct {
 	Releases []Release
 	// Note explains an empty or partial result in one sentence, for the reader.
 	Note string
+	// Origin says WHERE the notes came from -- "releases" or a changelog's
+	// path. Not decoration: a GitHub Release is written once at the moment of
+	// release, and a changelog is a file at the default branch that can have
+	// been edited since. A reader weighing an explanation should know which
+	// they got.
+	Origin string
 	// Truncated is set when releases or bodies were cut to fit a prompt.
 	Truncated bool
 	// Compare is what the maintainers CHANGED between the two tags, when a

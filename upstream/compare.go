@@ -228,26 +228,24 @@ func (g *GitHubReleases) Compare(ctx context.Context, artifact, from, to string,
 func (g *GitHubReleases) compareTags(ctx context.Context, repo, artifact, from, to string) (base, head, note string, err error) {
 	lo, hi := normalise(from), normalise(to)
 	if releases, rerr := g.releasePages(ctx, repo, lo, 10); rerr == nil {
-		var newestInRange, newestAtOrBelow string
+		names := make([]string, 0, len(releases))
 		for _, r := range releases {
-			if r.Draft {
-				continue
-			}
-			v := normalise(r.TagName)
-			if v == "" {
-				continue
-			}
-			// The list is newest-first, so the first match in each direction
-			// is the one wanted.
-			if newestInRange == "" && inRange(v, lo, hi) {
-				newestInRange = r.TagName
-			}
-			if newestAtOrBelow == "" && lo != "" && cmpVer(v, lo) <= 0 {
-				newestAtOrBelow = r.TagName
+			if !r.Draft {
+				names = append(names, r.TagName)
 			}
 		}
-		if newestInRange != "" && newestAtOrBelow != "" && newestAtOrBelow != newestInRange {
-			return newestAtOrBelow, newestInRange, "", nil
+		if base, head := framing(names, lo, hi); base != "" && head != "" {
+			return base, head, "", nil
+		}
+	}
+
+	// A project that tags without releasing. Same arithmetic as above against
+	// a different list, because a compare range wants refs and a tag is a ref
+	// -- the release OBJECT was only ever a convenient place to find one.
+	if tags, terr := g.tagNames(ctx, repo); terr == nil {
+		if base, head := framing(tags, lo, hi); base != "" && head != "" {
+			return base, head,
+				"Compared between git tags: this project publishes no GitHub releases, so there are no notes to go with them.", nil
 		}
 	}
 
@@ -262,6 +260,39 @@ func (g *GitHubReleases) compareTags(ctx context.Context, repo, artifact, from, 
 	return "", "", "", fmt.Errorf(
 		"no two refs in %s match the promotion's %s -> %s: the project's release tags are not in that "+
 			"numbering and the artifact records no build revision", repo, from, to)
+}
+
+// framing picks the two refs to compare from a newest-first list of tag names.
+//
+// Base is the newest ref AT OR BELOW `from` -- the version the repository is
+// actually leaving -- and head is the newest one in range. Base is not "the
+// oldest in range", and the difference is the whole point: the commits that
+// did the damage usually sit between the version being left and the first one
+// in range, so the narrower window would exclude exactly what was wanted.
+//
+// Shared by the release list and the tag list, because they are the same
+// question asked of two sources and two implementations would eventually
+// disagree about it.
+func framing(names []string, lo, hi string) (base, head string) {
+	for _, name := range names {
+		v := normalise(name)
+		if v == "" {
+			continue
+		}
+		// Newest-first, so the first match in each direction is the one wanted.
+		if head == "" && inRange(v, lo, hi) {
+			head = name
+		}
+		if base == "" && lo != "" && cmpVer(v, lo) <= 0 {
+			base = name
+		}
+	}
+	// Both or neither. A half-answer here would be a range with one end, and
+	// every caller would have to remember to check for it.
+	if base == "" || head == "" || base == head {
+		return "", ""
+	}
+	return base, head
 }
 
 // firstLine is the commit subject. Bodies are prose for other maintainers and

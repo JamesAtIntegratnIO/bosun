@@ -165,13 +165,41 @@ func (g *GitHubReleases) Notes(ctx context.Context, artifact, from, to string) (
 		}
 	}
 
+	if len(n.Releases) > 0 {
+		n.Origin = "releases"
+	}
+
+	// No release objects in range is the COMMON case, not a failure: creating
+	// a Release is an optional step a great many projects never take, and a
+	// chart's own version numbers frequently appear nowhere else at all. The
+	// changelog is where those projects write the same thing down, in the same
+	// commit as the change.
+	if len(n.Releases) == 0 && hi != "" {
+		if picked, path := g.changelogNotes(ctx, repo, chartNameOf(artifact), lo, hi); len(picked) > 0 {
+			n.Releases, n.Origin = picked, path
+			n.Note = fmt.Sprintf("Upstream notes from %s in %s.", path, repo)
+			return n, nil
+		}
+	}
+
 	switch {
 	case len(n.Releases) == 0 && hi == "":
 		n.Note = fmt.Sprintf(
 			"No upstream release notes: could not read %q as a version, so no release range could be selected.", to)
+	case len(n.Releases) == 0 && len(raw) == 0:
+		// Different situation, and the old wording asserted the opposite of it.
+		// A project that tags without ever creating a GitHub Release has no
+		// release notes to read at all, and saying "publishes releases, but
+		// none in range" sends a reader to check the version numbers rather
+		// than to the actual answer. This project is one of them: 8 tags, 0
+		// releases.
+		n.Note = fmt.Sprintf(
+			"No upstream release notes: %s publishes no GitHub releases and no changelog entry "+
+				"for this range.", repo)
 	case len(n.Releases) == 0:
 		n.Note = fmt.Sprintf(
-			"No upstream release notes: %s publishes releases, but none tagged between %s and %s.", repo, from, to)
+			"No upstream release notes: %s has neither a release nor a changelog entry between %s and %s.",
+			repo, from, to)
 	case n.Truncated:
 		n.Note = fmt.Sprintf("Upstream notes from %s, truncated to the %d most recent.", repo, len(n.Releases))
 	default:
@@ -269,6 +297,39 @@ func (g *GitHubReleases) releasePages(ctx context.Context, repo, lo string, maxP
 		}
 	}
 	return all, nil
+}
+
+// tagNames lists the repository's git tags, newest first.
+//
+// The fallback for a project that TAGS but never creates a GitHub Release --
+// which is a common shape and, as it turns out, this project's own. Tags carry
+// no notes, so they are useless to Notes; they are exactly what Compare needs,
+// because a compare range is two refs and a tag is a ref.
+//
+// Bounded to one page. A hundred newest tags reaches back further than any
+// promotion range worth explaining, and paging a repository with ten thousand
+// tags to answer "what changed between two adjacent versions" is not a trade
+// worth making.
+func (g *GitHubReleases) tagNames(ctx context.Context, repo string) ([]string, error) {
+	url := fmt.Sprintf("%s/repos/%s/tags?per_page=100", g.apiBase(), repo)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	g.authorise(ctx, req)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	var raw []struct {
+		Name string `json:"name"`
+	}
+	if err := g.getJSONReq(req, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(raw))
+	for _, t := range raw {
+		out = append(out, t.Name)
+	}
+	return out, nil
 }
 
 // looksPrerelease reports whether a version string carries a prerelease

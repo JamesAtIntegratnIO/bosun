@@ -26,6 +26,8 @@ type registryAndAPI struct {
 	releases []map[string]any
 	// compares keyed by "base...head".
 	compares map[string]map[string]any
+	// tags is what /repos/{r}/tags answers, newest first.
+	tags []string
 
 	// asked records the compare ranges requested, so a test can assert WHICH
 	// two refs were chosen rather than only that something came back.
@@ -55,6 +57,13 @@ func (s *registryAndAPI) server(t *testing.T) *GitHubReleases {
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"config": map[string]any{"Labels": s.labels[tag]},
 			})
+
+		case strings.HasSuffix(path, "/tags"):
+			out := make([]map[string]string, 0, len(s.tags))
+			for _, t := range s.tags {
+				out = append(out, map[string]string{"name": t})
+			}
+			_ = json.NewEncoder(w).Encode(out)
 
 		case strings.HasSuffix(path, "/releases"):
 			if s.rateLimit != 0 {
@@ -320,3 +329,57 @@ func registryClient(t *testing.T, g *GitHubReleases) *http.Client {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// A project that TAGS but never creates a GitHub Release. Common, and -- as it
+// turned out -- this project's own shape: 8 tags, 0 releases. The release list
+// is empty, so the compare range has to come from somewhere else, and a tag is
+// a ref like any other.
+func TestARangeCanBeFramedByTagsWhenAProjectPublishesNoReleases(t *testing.T) {
+	s := &registryAndAPI{
+		labels: map[string]map[string]string{
+			"0.13.0": {"org.opencontainers.image.source": "https://github.com/example-org/thing"},
+		},
+		releases: []map[string]any{}, // publishes none
+		tags:     []string{"v0.13.0", "v0.12.0", "v0.10.0", "v0.9.3"},
+		compares: map[string]map[string]any{
+			"v0.12.0...v0.13.0": {
+				"total_commits": 2,
+				"commits":       []any{commit("aaaaaaaaaaaa", "feat(structural): reshape documents for a moved schema")},
+			},
+		},
+	}
+	g := s.server(t)
+	g.HTTP = registryClient(t, g)
+
+	c, err := g.Compare(context.Background(), "oci://ghcr.io/example-org/charts/thing", "0.12.0", "0.13.0",
+		[]string{"structural"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.asked) != 1 || s.asked[0] != "v0.12.0...v0.13.0" {
+		t.Fatalf("compared %v, want the two adjacent tags", s.asked)
+	}
+	if len(c.Relevant) != 1 {
+		t.Fatalf("relevant = %+v (note %q)", c.Relevant, c.Note)
+	}
+	if !strings.Contains(c.Note, "no GitHub releases") {
+		t.Errorf("the note does not say why there are no notes to go with the commits: %q", c.Note)
+	}
+}
+
+// Base is the version being LEFT, not the oldest tag that happens to fall in
+// range -- the commits that did the damage usually sit between the two.
+func TestFramingStartsAtTheVersionBeingLeft(t *testing.T) {
+	names := []string{"v1.0.0", "v0.9.0", "v0.5.8", "v0.5.0"}
+	base, head := framing(names, normalise("0.5.8"), normalise("1.0.0"))
+	if base != "v0.5.8" || head != "v1.0.0" {
+		t.Fatalf("framing = %q...%q, want v0.5.8...v1.0.0", base, head)
+	}
+}
+
+// Nothing to compare is not a range of length zero.
+func TestFramingRefusesWhenBothEndsAreTheSameRef(t *testing.T) {
+	if base, head := framing([]string{"v1.0.0"}, normalise("1.0.0"), normalise("1.0.0")); base != "" || head != "" {
+		t.Fatalf("framing = %q...%q, want nothing", base, head)
+	}
+}

@@ -3,6 +3,83 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.13.1] - 2026-08-24
+
+### Fixed
+
+- **A chart is not an image, and upstream notes had never worked for one.**
+
+  OCI lets a publisher say where an artifact came from in two places, and which
+  one they use depends on what the artifact is. This read one of them:
+
+  | Artifact | Where the source label lives |
+  |---|---|
+  | image | the image config blob, as Docker-style `Labels` |
+  | **Helm chart** | the **manifest annotations** — `helm push` maps `Chart.yaml`'s `sources[0]` there, and its config blob is Chart.yaml metadata with no `Labels` map at all |
+
+  So every chart promotion resolved to *"publishes no
+  org.opencontainers.image.source"* — a sentence that is not merely unhelpful
+  but **false**, and false in the direction that sends a reader off to check
+  their chart's metadata. Chart promotions are the majority of what this
+  pipeline does, so upstream notes have never worked for the common case and
+  said so in words that pointed at the wrong component.
+
+  Found on `gitops_homelab_2_0#164` — the pull request that upgraded the agent
+  to 0.13.0 — where this project's own chart, which publishes the label
+  correctly, was reported as not publishing it.
+
+  Annotations are now read at every level (index, then child manifest), with the
+  config blob's `Labels` still winning where they exist, so every image that
+  worked before behaves identically. A Helm config's media type is recognised
+  and its blob is not fetched at all, which also drops the second registry host
+  a blob redirect needs in an egress allow-list.
+
+- **Maintainer notes no longer depend on GitHub Releases existing.** Creating a
+  Release is an optional step plenty of projects never take — this one included
+  — and the resolver treated it as the only place notes could be. There are
+  three sources and they are now tried in order of how much they say:
+
+  | Source | Availability |
+  |---|---|
+  | GitHub Releases | richest, and the least reliable |
+  | **a CHANGELOG in the repository** | kept by most projects that keep anything, written in the same commit as the change |
+  | commits between the two tags | always there, never polished |
+
+  **A chart's own changelog is preferred to the repository's**, and that
+  ordering is the point rather than a nicety: a chart's version numbers and its
+  application's are different sequences, and a repository that publishes both
+  has a file for each. Reading the root changelog for a chart bump answers with
+  the wrong project's versions — confidently, and in exactly the right shape.
+  `charts/<name>/CHANGELOG.md` is tried first for a chart artifact, then
+  `CHANGELOG.md`, `CHANGES.md`, `HISTORY.md`, `docs/CHANGELOG.md`.
+
+  Heading parsing is deliberately tolerant — `## [1.2.3] - date`, `## v1.2.3`,
+  `# 1.2.3 (date)` and `## Release 2.0` are all in the wild — and a section runs
+  to the next heading *at the same level or higher*, so an entry keeps its
+  `### Added` subsections instead of being truncated to a blank line.
+
+  `Notes.Origin` records which source was used, and both the prompt and the
+  pull-request comment say so. A Release is written once at the moment of
+  release; a changelog is read at the default branch and can have been edited
+  since. That is a small difference and a reader weighing an explanation should
+  still be told which one they got.
+
+- **A project that tags without releasing now gets its commits read.** With the
+  label fixed, this repository's own bumps still found nothing: it publishes
+  **8 git tags and 0 GitHub Releases**, and the resolver only read
+  `/repos/{r}/releases`. A compare range wants two refs, and a tag is a ref —
+  the release object was only ever a convenient place to find one. `Compare`
+  now falls back to `/repos/{r}/tags`, so `v0.12.0...v0.13.0` resolves and the
+  commits are read even where there are no notes to go with them.
+
+  Release notes still require actual GitHub Releases; that is a publisher's
+  choice, and the note now says which of the two situations it is in rather
+  than asserting the wrong one.
+
+- **The "no releases in range" note no longer claims a project publishes
+  releases** when it publishes none. Two different situations, one of which
+  sends a reader to check version numbers that are fine.
+
 ## [0.13.0] - 2026-08-24
 
 ### Added
