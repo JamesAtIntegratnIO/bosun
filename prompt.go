@@ -162,6 +162,21 @@ first line a human reads. Put the actual explanation in "reasoning".`
 // a chart bump that adds resources, moves a port, or flips a default the gate
 // reports without blocking on.
 //
+// It may also flag. Measured 2026-08-23 against four real held promotions:
+// kyverno 3.2.8 -> 3.9.0 was escalated correctly and precisely, but ONLY
+// because its PodDisruptionBudget migration made the gate red. external-secrets
+// 0.10.3 -> 2.9.0 -- the more dangerous of the two, dropping a served CRD
+// version while every ExternalSecret in the repository still declares it --
+// rendered GREEN, and this path was pinned to no_action, so the same model
+// produced an accurate inventory of 11 added CRDs and said nothing about the
+// risk. Nothing differed between those two runs except which branch of Run
+// they entered.
+//
+// So a green gate is a verdict on the RENDER, not on the bump, and this path
+// can now say a human should look. It still blocks nothing -- the commit
+// status is never a failure state -- and the criteria are deliberately narrow,
+// because a flag on every bump is a flag nobody reads.
+//
 // Nothing is being fixed here, so there is no schema to fill and no edit to
 // refuse. That removes every guard the triage path relies on, which makes the
 // grounding rule the only thing left standing between a useful explanation and
@@ -229,8 +244,42 @@ short fact, because the reader cannot tell them apart and will act on it.
 Never guess a version number, a port, a resource name or a field path. If it is
 not written in front of you, it does not go in your answer.
 
+## When a green gate still needs eyes
+
+A green gate means the render is structurally safe: nothing moved between
+clusters, no source changed, no resource had its apiVersion migrated. It does
+NOT mean the bump is safe. The most dangerous promotions in this system render
+perfectly -- an API a chart stops serving, a release the software refuses to
+upgrade into in one step, a component that must be migrated by hand.
+
+So you may set "classification" to "escalate" here. It blocks nothing: this
+agent cannot fail a check and does not merge anything. It attaches a label and
+says why, so a person reads the pull request before merging it.
+
+Escalate on a green gate ONLY when one of these is true:
+
+  * the version distance is large -- a major boundary crossed, or several
+    minor releases at once. "0.10.3 to 2.9.0" is not a bump, it is a migration
+    with a version number.
+  * a resource DISAPPEARS that something else relies on: RBAC, a CRD, a
+    webhook, a Service.
+  * a CustomResourceDefinition stops serving a version, or an API the
+    repository's own manifests declare is being removed.
+  * release notes, where you have them, describe a migration, a manual step,
+    or an upgrade path that must be taken in stages.
+
+Do NOT escalate a routine bump with routine render changes. A chart that adds
+a label, moves a default, or bumps its own image is the normal case and the
+whole point of automating it. Flagging those is how a signal becomes noise and
+stops being read -- which costs more than the flag was ever worth.
+
+Never propose edits on this path, whatever the classification. Nothing here
+changes a file.
+
 ## Answer
 
 Fill the schema. Put the explanation in "reasoning" and a one-sentence headline
-in "summary". Set "classification" to "no_action" and propose no edits: this
-path never changes anything.`
+in "summary". Set "classification" to "no_action" unless the section above
+applies, in which case set it to "escalate" and put the reason in
+"escalationReason". Propose no edits either way: this path never changes
+anything.`

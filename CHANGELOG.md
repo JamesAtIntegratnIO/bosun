@@ -3,6 +3,38 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.7.0] - 2026-08-23
+
+### Changed
+
+- **A green gate is a verdict on the render, not on the bump.** The explain
+  path was pinned to `no_action`, so a green gate meant the agent could
+  describe a promotion but never ask anyone to look at it.
+
+  Measured against four real held promotions. kyverno 3.2.8 -> 3.9.0 was
+  escalated correctly and precisely -- but only because its PodDisruptionBudget
+  migration turned the gate red. external-secrets 0.10.3 -> **2.9.0**, the more
+  dangerous of the two, rendered **green**, and the same model on the same day
+  produced an accurate inventory of eleven added CRDs and said nothing about
+  the risk. Nothing differed between those two runs except which branch of
+  `Run` they entered.
+
+  The explain path may now classify `escalate`. It blocks nothing -- the commit
+  status is still never a failure state -- but it labels the pull request and
+  leads the comment with **Worth a look before merging**. Edits are ignored
+  here whatever the model returns, and that is enforced in the function rather
+  than requested in the prompt.
+
+  The criteria are deliberately narrow: a large version distance, a resource
+  disappearing that something relies on, a CRD dropping a served version, or
+  release notes describing a migration. A routine bump must not be flagged,
+  because a flag on everything is a flag nobody reads.
+
+  Re-measured on the same three green reports with the new prompt: ESO now
+  escalates on the major boundary; trivy-operator-explorer escalates on its
+  removed ClusterRole and ClusterRoleBinding; authentik stays `no_action`,
+  reasoning that the render is structurally safe. Three samples, one run each.
+
 ## [0.5.0] - 2026-08-23
 
 ### Changed

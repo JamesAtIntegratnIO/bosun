@@ -763,3 +763,82 @@ func TestUpstreamFailureDegradesToRenderOnly(t *testing.T) {
 		})
 	}
 }
+
+// A green gate is a verdict on the RENDER, not on the bump. Measured against
+// four real held promotions: kyverno 3.2.8 -> 3.9.0 was escalated correctly and
+// precisely, but only because its PodDisruptionBudget migration turned the gate
+// red. external-secrets 0.10.3 -> 2.9.0 -- the more dangerous of the two --
+// rendered GREEN, and this path was pinned to no_action, so the same model
+// produced an accurate inventory and said nothing about the risk.
+func TestAGreenGateCanStillAskForAHuman(t *testing.T) {
+	h := newHarness(t)
+	h.triage.Brand = "Bosun"
+	h.triage.Explain = true
+	h.git.Check = gitprovider.CheckSuccess
+	h.git.Comments = []gitprovider.Comment{{Author: "gitops-gate", Body: `<!-- gitops-gate -->
+### Versions
+
+| Application | From | To |
+|---|---|---|
+| external-secrets | 0.10.3 | 2.9.0 |
+
+### Resources
+
+**Changed (25)**
+`}}
+	h.model.Verdict = &llm.Verdict{
+		Classification:   llm.ClassEscalate,
+		Summary:          "external-secrets 0.10.3 to 2.9.0 crosses two major versions",
+		Reasoning:        "The render changes 25 resources including the CRDs that serve the API this repository's manifests declare.",
+		EscalationReason: "a two-major-version jump that changes the CRDs serving an API the repository still declares",
+	}
+
+	if err := h.triage.Run(context.Background(), Promotion{
+		PRNumber: 42, Branch: "kargo/eso", Files: []string{valuesPath},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !has(h.git.Labelled, labelNeedsHuman) {
+		t.Errorf("a flagged green gate must label the pull request, got %v", h.git.Labelled)
+	}
+	if len(h.git.Posted) != 1 {
+		t.Fatalf("want one comment, got %d", len(h.git.Posted))
+	}
+	// The flag has to survive a reader who stops at the first bold line.
+	if !strings.Contains(h.git.Posted[0], "Worth a look before merging") {
+		t.Errorf("the flag must lead the comment, got:\n%s", h.git.Posted[0])
+	}
+	final := h.git.Statuses[len(h.git.Statuses)-1]
+	if final.State != gitprovider.StateSuccess {
+		t.Errorf("flagging must not fail the status -- the agent is advisory, got %q", final.State)
+	}
+	if !strings.Contains(final.Description, "flagged") {
+		t.Errorf("the status should say it flagged, got %q", final.Description)
+	}
+}
+
+// The other half of the same rule: a routine bump must NOT be flagged, or the
+// label stops meaning anything and people stop reading it.
+func TestARoutineGreenBumpIsNotFlagged(t *testing.T) {
+	h := newHarness(t)
+	h.triage.Explain = true
+	h.git.Check = gitprovider.CheckSuccess
+	h.git.Comments = []gitprovider.Comment{{Author: "gitops-gate", Body: "<!-- gitops-gate -->\n### Resources\n\n**Changed (1)**\n"}}
+	h.model.Verdict = &llm.Verdict{
+		Classification: llm.ClassNoAction,
+		Summary:        "bumps its own image tag",
+		Reasoning:      "One container image moved. Nothing else changed.",
+	}
+
+	if err := h.triage.Run(context.Background(), Promotion{
+		PRNumber: 42, Branch: "kargo/thing", Files: []string{valuesPath},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if has(h.git.Labelled, labelNeedsHuman) {
+		t.Error("a routine bump must not be labelled; a flag on everything is a flag on nothing")
+	}
+	if strings.Contains(h.git.Posted[0], "Worth a look before merging") {
+		t.Error("a routine bump must not carry the flag banner")
+	}
+}
