@@ -8,7 +8,10 @@ All notable changes to the `bosun` chart. Format follows
 ### Fixed
 
 - **Upstream notes never worked for Helm charts**, which is most of what a Kargo
-  pipeline promotes. No values change; see the agent changelog.
+  pipeline promotes, and they no longer require GitHub Releases to exist at all
+  -- a changelog in the repository is read when there is no Release, and the
+  commits between two tags when there is neither. No values change; see the
+  agent changelog.
 
 ## [0.13.0]
 

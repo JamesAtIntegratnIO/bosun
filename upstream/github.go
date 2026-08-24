@@ -165,6 +165,23 @@ func (g *GitHubReleases) Notes(ctx context.Context, artifact, from, to string) (
 		}
 	}
 
+	if len(n.Releases) > 0 {
+		n.Origin = "releases"
+	}
+
+	// No release objects in range is the COMMON case, not a failure: creating
+	// a Release is an optional step a great many projects never take, and a
+	// chart's own version numbers frequently appear nowhere else at all. The
+	// changelog is where those projects write the same thing down, in the same
+	// commit as the change.
+	if len(n.Releases) == 0 && hi != "" {
+		if picked, path := g.changelogNotes(ctx, repo, chartNameOf(artifact), lo, hi); len(picked) > 0 {
+			n.Releases, n.Origin = picked, path
+			n.Note = fmt.Sprintf("Upstream notes from %s in %s.", path, repo)
+			return n, nil
+		}
+	}
+
 	switch {
 	case len(n.Releases) == 0 && hi == "":
 		n.Note = fmt.Sprintf(
@@ -177,10 +194,12 @@ func (g *GitHubReleases) Notes(ctx context.Context, artifact, from, to string) (
 		// than to the actual answer. This project is one of them: 8 tags, 0
 		// releases.
 		n.Note = fmt.Sprintf(
-			"No upstream release notes: %s publishes no GitHub releases (its tags carry no notes).", repo)
+			"No upstream release notes: %s publishes no GitHub releases and no changelog entry "+
+				"for this range.", repo)
 	case len(n.Releases) == 0:
 		n.Note = fmt.Sprintf(
-			"No upstream release notes: %s publishes releases, but none tagged between %s and %s.", repo, from, to)
+			"No upstream release notes: %s has neither a release nor a changelog entry between %s and %s.",
+			repo, from, to)
 	case n.Truncated:
 		n.Note = fmt.Sprintf("Upstream notes from %s, truncated to the %d most recent.", repo, len(n.Releases))
 	default:

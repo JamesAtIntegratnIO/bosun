@@ -31,8 +31,13 @@ func Render(n *Notes) string {
 			b.WriteString("\nSay what the render changed and do not supply a reason.\n")
 		}
 	} else {
-		fmt.Fprintf(&b, "%s What the maintainers wrote, newest first. This is what they SAY they\n"+
-			"changed; the gate report above is what actually rendered.\n\n", n.Note)
+		where := "in their releases"
+		if n.Origin != "" && n.Origin != "releases" {
+			where = "in " + n.Origin
+		}
+		fmt.Fprintf(&b, "%s What the maintainers wrote %s, newest first. This is what\n"+
+			"they SAY they changed; the gate report above is what actually rendered.\n\n",
+			n.Note, where)
 		for _, r := range n.Releases {
 			title := r.Tag
 			if r.Name != "" && r.Name != r.Tag {

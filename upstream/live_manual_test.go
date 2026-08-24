@@ -39,9 +39,13 @@ func TestLiveResolve(t *testing.T) {
 	t.Logf("source repository: %s", repo)
 
 	n, _ := g.Notes(ctx, artifact, from, to)
-	t.Logf("notes: %d release(s) -- %s", len(n.Releases), n.Note)
+	t.Logf("notes: %d entr(ies) from %q -- %s", len(n.Releases), n.Origin, n.Note)
 	for _, r := range n.Releases {
-		t.Logf("  %s", r.Tag)
+		head := strings.SplitN(strings.TrimSpace(r.Body), "\n", 2)[0]
+		if len(head) > 100 {
+			head = head[:100] + "..."
+		}
+		t.Logf("  %s (%d bytes) %s", r.Tag, len(r.Body), head)
 	}
 
 	terms := []string{"Deployment", "env"}
