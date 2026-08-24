@@ -3,6 +3,13 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.13.1]
+
+### Fixed
+
+- **Upstream notes never worked for Helm charts**, which is most of what a Kargo
+  pipeline promotes. No values change; see the agent changelog.
+
 ## [0.13.0]
 
 ### Added

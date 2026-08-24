@@ -13,13 +13,6 @@ import (
 // sourceRepo reads org.opencontainers.image.source off an artifact and returns
 // it as "owner/repo".
 //
-// Four hops, because that is where OCI puts it:
-//
-//	token   -> anonymous pull token for this repository
-//	index   -> the multi-arch index (or a plain manifest, for single-arch)
-//	child   -> one platform's manifest, if it was an index
-//	config  -> the image config blob, whose Labels carry the annotation
-//
 // Anonymous throughout. These are public artifacts, and a resolver that needed
 // credentials for every upstream registry would be a credential-management
 // problem wearing an explanation feature's clothes.
@@ -35,10 +28,30 @@ func (g *GitHubReleases) sourceRepo(ctx context.Context, artifact, version strin
 	return githubPath(src)
 }
 
-// artifactLabels walks the registry to the image config and returns its
-// labels. Split out from sourceRepo because more than one label on that blob
-// is now worth reading, and walking four hops twice to collect two strings
-// from the same object would be silly.
+// helmConfigMediaType is what `helm push` writes as an OCI artifact's config.
+// It is Chart.yaml metadata -- name, version, description -- and it has no
+// `config.Labels` map, because it is not an image config and never claimed to
+// be.
+const helmConfigMediaType = "application/vnd.cncf.helm.config.v1+json"
+
+// artifactLabels walks the registry and returns everything the publisher said
+// about an artifact, from BOTH of the places OCI lets them say it.
+//
+// This read one place for its whole life, and that place is the wrong one for
+// most of what a Kargo pipeline promotes.
+//
+//	IMAGES      keep them in the image config blob, as Docker-style `Labels`.
+//	HELM CHARTS keep them in the MANIFEST ANNOTATIONS. `helm push` maps
+//	            Chart.yaml's `sources[0]` to org.opencontainers.image.source
+//	            there, and its config blob is Chart.yaml metadata with no
+//	            Labels map at all.
+//
+// So every chart promotion resolved to "publishes no
+// org.opencontainers.image.source" -- a sentence that is not merely unhelpful
+// but FALSE, and false in the direction that sends a reader to go and check
+// their chart's metadata. This project's own chart publishes that label
+// correctly and was reported as not publishing it, on the pull request that
+// upgraded the agent to the release which said so.
 func (g *GitHubReleases) artifactLabels(ctx context.Context, artifact, version string) (map[string]string, error) {
 	host, repo, ref := splitRef(artifact)
 	// A promotion names the artifact WITHOUT a tag -- the tag is the thing
@@ -60,6 +73,10 @@ func (g *GitHubReleases) artifactLabels(ctx context.Context, artifact, version s
 	if err != nil {
 		return nil, err
 	}
+
+	out := map[string]string{}
+	mergeLabels(out, man.Annotations)
+
 	// An index points at per-platform manifests. Any of them carries the same
 	// label, so take the first with a real platform rather than preferring one
 	// -- an arm64-only publisher is as valid as an amd64 one.
@@ -77,9 +94,17 @@ func (g *GitHubReleases) artifactLabels(ctx context.Context, artifact, version s
 		if man, err = g.manifest(ctx, host, repo, child, tok); err != nil {
 			return nil, err
 		}
+		// A child's annotations are more specific than the index's.
+		mergeLabels(out, man.Annotations)
 	}
-	if man.Config.Digest == "" {
-		return nil, fmt.Errorf("no image config for %s", artifact)
+
+	// The blob is where an IMAGE keeps its labels. Skipped for a Helm chart,
+	// whose config blob is Chart.yaml metadata by declared media type and
+	// cannot carry Labels -- which also spares the blob hop entirely, and with
+	// it the second registry host a blob redirect needs in an egress
+	// allow-list.
+	if man.Config.Digest == "" || man.Config.MediaType == helmConfigMediaType {
+		return out, nil
 	}
 
 	var cfg struct {
@@ -90,17 +115,39 @@ func (g *GitHubReleases) artifactLabels(ctx context.Context, artifact, version s
 	if err := g.getJSON(ctx,
 		fmt.Sprintf("https://%s/v2/%s/blobs/%s", host, repo, man.Config.Digest),
 		tok, "", &cfg); err != nil {
+		// Annotations already in hand are a complete answer for many
+		// artifacts. Losing them because the blob hop was blocked or slow
+		// would reintroduce the exact silence this fix removes.
+		if len(out) > 0 {
+			return out, nil
+		}
 		return nil, err
 	}
-	if cfg.Config.Labels == nil {
-		return map[string]string{}, nil
+	// Labels win over annotations: they are the image-native form, and they
+	// are the source that already worked for every image promotion.
+	mergeLabels(out, cfg.Config.Labels)
+	return out, nil
+}
+
+// mergeLabels copies non-empty entries, so a later, more specific source
+// overrides an earlier one without an empty string erasing a real value.
+func mergeLabels(dst, src map[string]string) {
+	for k, v := range src {
+		if v != "" {
+			dst[k] = v
+		}
 	}
-	return cfg.Config.Labels, nil
 }
 
 type ociManifest struct {
-	Config struct {
+	// Annotations are where a Helm chart's org.opencontainers.image.* live,
+	// and increasingly where an image's do too.
+	Annotations map[string]string `json:"annotations"`
+	Config      struct {
 		Digest string `json:"digest"`
+		// MediaType distinguishes an image config, which has Labels, from a
+		// Helm chart config, which is Chart.yaml metadata and never will.
+		MediaType string `json:"mediaType"`
 	} `json:"config"`
 	Manifests []struct {
 		Digest   string `json:"digest"`
