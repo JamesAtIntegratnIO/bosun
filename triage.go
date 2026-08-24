@@ -1094,6 +1094,13 @@ func commitProvenance(c *upstream.Compare) string {
 		// ClusterRole, and the template it deleted does. Claiming nothing
 		// mentions it here would disown the evidence the explanation used.
 		return fmt.Sprintf(", and %d file(s) in the upstream diff for `%s`", len(c.Files), c.Range)
+	case c.Total > 0 && c.Truncated:
+		// "None of the 1896 mentions it" claims a search nobody ran: GitHub
+		// answers a compare with at most 250 commits, so the filter saw a
+		// fraction of them. Same rule as everywhere else here -- a provenance
+		// line may not describe evidence it did not have.
+		return fmt.Sprintf(", and none of the %d commit(s) read from `%s` (of %d) mentions it",
+			upstream.CompareReadCap, c.Range, c.Total)
 	case c.Total > 0:
 		return fmt.Sprintf(", and none of the %d commit(s) in `%s` mentions it", c.Total, c.Range)
 	default:

@@ -459,3 +459,41 @@ func TestARangeBiggerThanOneAnswerIsStillTruncated(t *testing.T) {
 		t.Error("nothing was capped")
 	}
 }
+
+// GitHub returns releases in PUBLISH-DATE order, and any project that backports
+// interleaves them. Taking the first match in each direction therefore frames
+// the wrong window -- measured live on authentik, which published
+// `version/2026.5.5` one minute after `version/2026.2.6`.
+//
+// The real promotion this came from, 2025.12.4 -> 2026.2.3, framed itself as
+// `version/2025.8.6...version/2025.12.6`: a window ending BELOW the version
+// being adopted. 1896 commits were read over it and reported as evidence.
+func TestFramingPicksByVersionNotByTheOrderTheListArrivedIn(t *testing.T) {
+	// Publish order, exactly as the API returns it: a backport lands after a
+	// newer minor.
+	names := []string{
+		"version/2026.5.5",
+		"version/2026.2.6",
+		"version/2026.2.3",
+		"version/2025.12.6",
+		"version/2025.12.4",
+		"version/2025.8.6",
+	}
+	base, head := framing(names, normalise("2025.12.4"), normalise("2026.2.3"))
+	if base != "version/2025.12.4" {
+		t.Errorf("base = %q, want the version being left", base)
+	}
+	if head != "version/2026.2.3" {
+		t.Errorf("head = %q, want the highest version in range", head)
+	}
+}
+
+// The same rule on the way down: base is the highest tag at or below the
+// version being left, not the first one encountered under it.
+func TestFramingTakesTheClosestBaseNotTheFirstOneSeen(t *testing.T) {
+	names := []string{"v0.5.0", "v0.9.0", "v1.0.0", "v0.5.8"}
+	base, head := framing(names, normalise("0.5.8"), normalise("1.0.0"))
+	if base != "v0.5.8" || head != "v1.0.0" {
+		t.Fatalf("framing = %q...%q, want v0.5.8...v1.0.0", base, head)
+	}
+}
