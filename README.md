@@ -1,5 +1,9 @@
 # Bosun
 
+<p align="center">
+  <img src="docs/avatar/bosun.png" alt="Bosun — an octopus in a sailor cap, wrench raised, inside a life ring" width="220"/>
+</p>
+
 ⚓ **The crew for Argo and Kargo.** Gating, triage and visibility for a GitOps
 pipeline that merges its own pull requests.
 
