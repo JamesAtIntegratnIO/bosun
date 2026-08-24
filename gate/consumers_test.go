@@ -130,3 +130,58 @@ func TestTheReportNamesTheConsumers(t *testing.T) {
 		t.Errorf("want the consumer named in the report:\n%s", report)
 	}
 }
+
+// The live scenario that forced this: the repair migrated every consumer to
+// the survivor, and the re-run gate blocked on the migration's own apiVersion
+// moves. A move the findings themselves demand is the repair, not a new
+// migration -- and a move they do not name still blocks, exactly as before.
+func TestTheRepairsOwnMoveDoesNotReBlock(t *testing.T) {
+	crdFinding := func() ObjectChange {
+		before := []Object{objWith("before", crdWithNames("clustersecretstores.external-secrets.io", "ClusterSecretStore",
+			map[string]any{"name": "v1beta1", "served": true},
+			map[string]any{"name": "v1", "served": true}))}
+		after := []Object{objWith("after", crdWithNames("clustersecretstores.external-secrets.io", "ClusterSecretStore",
+			map[string]any{"name": "v1", "served": true}))}
+		got := diffObjects(before, after)
+		if len(got) != 1 || got[0].Kind != "crdVersionRemoved" {
+			t.Fatalf("want one crdVersionRemoved finding, got %+v", got)
+		}
+		return got[0]
+	}
+
+	repair := ObjectChange{Kind: "apiVersion", Object: "ClusterSecretStore/central-store in secrets",
+		From: "external-secrets.io/v1beta1", To: "external-secrets.io/v1"}
+	wrongTarget := ObjectChange{Kind: "apiVersion", Object: "ClusterSecretStore/other in secrets",
+		From: "external-secrets.io/v1beta1", To: "external-secrets.io/v2"}
+	wrongKind := ObjectChange{Kind: "apiVersion", Object: "PushSecret/other in secrets",
+		From: "external-secrets.io/v1beta1", To: "external-secrets.io/v1"}
+
+	objects := []ObjectChange{crdFinding(), repair, wrongTarget, wrongKind}
+	markMigrationConsistent(objects)
+
+	if !objects[1].PartOfMigration {
+		t.Error("the move the finding demands must be marked as the repair")
+	}
+	if objects[2].PartOfMigration || objects[3].PartOfMigration {
+		t.Error("a move to another version, or of another kind, is still unexplained")
+	}
+
+	// With consumers counted at zero, the repaired diff is green; the two
+	// unexplained moves each keep it red on their own.
+	res := &DiffResult{Objects: []ObjectChange{objects[0], objects[1]}}
+	AnnotateConsumers(res, t.TempDir())
+	if res.Blocking() {
+		t.Error("a completed repair must go green: consumers at zero and only the demanded move")
+	}
+	still := &DiffResult{Objects: []ObjectChange{objects[0], objects[1], objects[2]}}
+	AnnotateConsumers(still, t.TempDir())
+	if !still.Blocking() {
+		t.Error("an unexplained apiVersion move must still block")
+	}
+
+	var b strings.Builder
+	res.Report(&b)
+	if !strings.Contains(b.String(), "the repair, not a new migration") {
+		t.Errorf("the report must say why the move is not blocking:\n%s", b.String())
+	}
+}

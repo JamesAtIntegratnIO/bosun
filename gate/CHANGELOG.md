@@ -7,6 +7,17 @@ All notable changes to `gitops-gate`. Format follows
 
 ### Fixed
 
+- **The repair's own apiVersion moves no longer re-block the gate.** The
+  first live repair migrated every consumer to the survivor, the recount
+  found zero -- and the gate went red anyway, on the migration itself: each
+  rewritten manifest is an object whose apiVersion moved, and the apiVersion
+  rule cannot tell an unexplained migration from the one its own report
+  demanded. A move is now marked as part of the migration when a
+  crdVersionRemoved finding in the same diff names exactly it -- same
+  consumer kind, from a dropped version, to the named survivor -- and such
+  moves are reported (with the reason) but do not block. The match is exact
+  on purpose: another target version, or another kind, still blocks.
+
 - **The image copies the module it builds.** The Dockerfile hand-picked
   `gate/` into the build stage, and the day the gate first imported a sibling
   package -- `migrate`, in the very release that shipped consumer-aware
