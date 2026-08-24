@@ -3,6 +3,55 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.15.2] - 2026-08-24
+
+### Fixed
+
+- **"Values not carried across" named values the migration had carried.** The
+  check compared scalar strings exactly, so a value the TARGET SCHEMA respells
+  read as a value the migration dropped.
+
+  cert-manager v1 spells the key algorithm `ECDSA` where v1alpha2 spelled it
+  `ecdsa`, and the enum is what dictates the new spelling -- the same schema
+  authority that let the value be written at all. The comment announced
+  **Values not carried across: `ecdsa`, `pkcs8`** directly beneath the diff that
+  carried them into `privateKey.algorithm` and `privateKey.encoding`.
+
+  Respelled values are now reported separately, as **Respelled by the new
+  schema: `ecdsa -> ECDSA`**, and only a value with nowhere to go is called
+  lost. The escape hatch is narrow on purpose: a differing-case value counts as
+  a respelling only if it is a member of the target schema's own vocabulary --
+  an enum member, a const, a declared default. A model that quietly lowercased
+  a name it invented still reads as loss, which is what that warning is for.
+
+## [0.15.1] - 2026-08-24
+
+### Fixed
+
+- **The reshape comment's diff hid the value it had just preserved.** It was a
+  set difference on line text, so any line whose exact text appeared on both
+  sides was printed on neither -- which is precisely what happens when a value
+  MOVES without changing column, the normal case for the migrations this path
+  performs.
+
+  cert-manager v1 moves `organization` under `subject.organizations`. The list
+  item stays at the same indent, so it was invisible and the comment rendered
+  the key being deleted into an empty field:
+
+  ```diff
+  -  organization:
+  +  subject:
+  +    organizations:
+  ```
+
+  The value survived. Directly below sat "Values not carried across", which a
+  reader has every reason to read as confirmation that it had not. The one
+  thing this diff must never do is make a preserved value look dropped, since a
+  reader's decision to trust the harness rests on it. Replaced with a
+  longest-common-subsequence diff that emits three lines of context around each
+  change, so a moved value appears under its new key. Also fixes multiplicity:
+  removing one of two identical lines used to show as no change at all.
+
 ## [0.15.0] - 2026-08-24
 
 ### Added

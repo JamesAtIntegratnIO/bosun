@@ -1,0 +1,46 @@
+# What the delivery kit needs underneath it, reconciled rather than installed.
+#
+# These used to go in with `helm upgrade` from a script, on the argument that
+# they are "the platform the thing under test runs on" and a reconcile loop
+# only added a minute. That was the wrong call twice over: this repository's
+# whole pattern is app-of-apps, and a proving ground that installs its platform
+# by hand is not proving the pattern it exists to demonstrate.
+#
+# They live in platform/ rather than apps/ deliberately. The gate's sources are
+# `apps/*.yaml`, so a demo pull request renders podinfo and not
+# kube-prometheus-stack -- rendering a 50-object monitoring chart at two
+# versions on every pin bump costs minutes and proves nothing. One line in
+# .gitops-gate.yaml if you ever want them gated.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+  annotations:
+    # Kargo's webhooks need cert-manager ALREADY SERVING, not merely applied.
+    # Wave 0 must go Healthy before wave 1 is touched.
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  source:
+    repoURL: https://charts.jetstack.io
+    chart: cert-manager
+    targetRevision: v1.21.1
+    helm:
+      values: |
+        crds:
+          enabled: true
+        resources:
+          requests:
+            cpu: 10m
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions:
+      - CreateNamespace=true
+      # cert-manager's own CRDs are large enough that a client-side apply
+      # writes a last-applied-configuration past the 262144-byte annotation
+      # limit. The error names the annotation, not the chart.
+      - ServerSideApply=true

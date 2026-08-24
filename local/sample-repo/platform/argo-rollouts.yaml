@@ -1,0 +1,28 @@
+# Kargo only CREATES AnalysisRuns; it does not run them. Without a Rollouts
+# controller they sit Pending forever and every Stage reports unverified with
+# no error anywhere naming the reason. Learned in production.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argo-rollouts
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argo-rollouts
+  source:
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argo-rollouts
+    targetRevision: 2.41.1
+    helm:
+      values: |
+        controller:
+          resources:
+            requests:
+              cpu: 10m
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true]

@@ -1,0 +1,73 @@
+# Trimmed hard for kind: no Alertmanager, no node exporter, two hours of
+# retention. kube-state-metrics stays because the kit's whole metric surface is
+# a CustomResourceState config it reads.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 88.5.4
+    helm:
+      values: |
+        alertmanager: {enabled: false}
+        nodeExporter: {enabled: false}
+        prometheus:
+          prometheusSpec:
+            retention: 2h
+            resources:
+              requests:
+                cpu: 50m
+            # Without these two, Prometheus adopts only the rules and monitors
+            # the chart itself installed -- so the ServiceMonitor beside this
+            # file is created, ignored, and every AnalysisRun fails with an
+            # empty message.
+            ruleSelectorNilUsesHelmValues: false
+            serviceMonitorSelectorNilUsesHelmValues: false
+            # Verification silently requires Prometheus to scrape ArgoCD.
+            # kargo-pipelines' AnalysisTemplate asks
+            #   sum(max by (name) (argocd_app_info{health_status="Healthy", sync_status="Synced"}))
+            # and idpbuilder ships ArgoCD's metrics Services but no
+            # ServiceMonitor -- so the query returned no rows, every
+            # AnalysisRun failed, and nothing named the reason.
+            # `count(argocd_app_info)` went 0 -> 6 the moment one existed.
+            #
+            # It lives HERE, as a value of the chart that installs its own CRD,
+            # rather than as a manifest beside these Applications. As a
+            # manifest it broke the whole root sync: ArgoCD validates every
+            # task BEFORE the first sync wave runs, so a ServiceMonitor whose
+            # CRD a later wave installs is not "applied late", it is an unknown
+            # kind that invalidates the entire operation. The root reported
+            # "one or more synchronization tasks are not valid" and not one
+            # child Application was ever created. Sync waves order applies;
+            # they do not defer validation.
+          additionalServiceMonitors:
+            - name: argocd-metrics
+              namespaceSelector:
+                matchNames: [argocd]
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: argocd-metrics
+              endpoints:
+                - port: metrics
+                  interval: 15s
+        grafana:
+          sidecar:
+            dashboards:
+              searchNamespace: ALL
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions:
+      - CreateNamespace=true
+      # The Prometheus operator CRDs are far past the 262144-byte annotation
+      # limit a client-side apply writes into last-applied-configuration.
+      - ServerSideApply=true

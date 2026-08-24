@@ -14,7 +14,7 @@ No promotion had traversed a chain. The agent had never triaged anything.
 | Piece | What runs it |
 |---|---|
 | kind cluster, ArgoCD, Gitea, ingress | [idpbuilder](https://cnoe.io/docs/reference-implementation/local) |
-| cert-manager, Argo Rollouts, Prometheus, Grafana, Kargo | helm |
+| cert-manager, Argo Rollouts, Prometheus, Grafana, Kargo | **ArgoCD**, from `sample-repo/platform/` |
 | bosun | its **image built from this working tree**, its chart installed from `../charts/bosun` |
 | kargo-pipelines | helm, from `../charts/kargo-pipelines` in **this working tree** |
 | the repository under test | `sample-repo/`, pushed into Gitea |
@@ -24,6 +24,59 @@ a release — the agent image is built locally and force-rolled, the charts
 install from the checkout. A proving ground that tests the last published
 version is testing the past, and this one exists precisely to prove the change
 you have not shipped yet.
+
+**The platform is reconciled, not installed.** It used to go in with a hundred
+and twenty lines of `helm upgrade --install`, on the argument that it is the
+equivalent of what idpbuilder itself installed and a reconcile loop only cost a
+minute per run. That was wrong twice: this project's pattern is app-of-apps,
+and a proving ground that installs its own platform by hand is not proving the
+pattern it exists to demonstrate. `helm list -A` should show exactly two
+releases, and both are there because they are built from your checkout and
+there is no git ref for ArgoCD to point at:
+
+```
+bosun            bosun   bosun-0.15.2
+kargo-pipelines  kargo   kargo-pipelines-0.1.2
+```
+
+Two things that shape `platform/`, both learned by getting them wrong:
+
+- **`platform/`, not `apps/`.** The gate's sources are `apps/*.yaml`, so a demo
+  pull request renders podinfo and not a fifty-object monitoring chart at two
+  versions. It also keeps the real cert-manager separate from the
+  `apps/cert-manager.yaml` the structural demo writes at v1.5.5 — a 2021 chart
+  it needs the gate to *render*, never to install. One line in
+  `.gitops-gate.yaml` if you ever want the platform gated too.
+- **Sync waves order applies; they do not defer validation.** The ArgoCD
+  ServiceMonitor started life as a manifest beside these Applications, in a
+  later wave than the chart that installs its CRD. ArgoCD validates every task
+  in an operation *before the first wave runs*, so it was not applied late — it
+  was an unknown kind that invalidated the whole sync, and not one child
+  Application was created. The root said only `one or more synchronization
+  tasks are not valid`. It is a value of the monitoring chart now
+  (`prometheus.additionalServiceMonitors`), created by the chart that owns its
+  own CRD, which removes the ordering question instead of sequencing around it.
+
+## What the agent is installed with
+
+Everything the chart ships, on. The kit used to install the agent roughly as it
+was before the four authorities landed — no live reads, no report-author trust,
+no egress past the git host and the model — which made this a proving ground for
+last month's agent.
+
+| Setting | Here | Why it is not a default |
+|---|---|---|
+| `liveReads.enabled` | on, `groups` scope | "everything except the core group" is not expressible in Kubernetes RBAC, so the API groups this cluster ships CRDs for are named. Secrets stay unreadable. |
+| `networkPolicy.egress.apiServer` | discovered | read from the `kubernetes` Service's own endpoints. A ClusterIP is DNAT'd before policy evaluation, so an ipBlock naming it matches nothing. |
+| `gate.reportAuthor` | the account `gate-run.sh` posts as | Gitea has no fixed CI identity the chart could default to, and anyone who can comment can write the gate's marker. |
+| `networkPolicy.egress.allowPublicHTTPS` | on | the upstream lookup has to reach a registry at all. |
+| `triage.egressDeny` | one host | so the refusal path is exercised rather than described. |
+
+**The NetworkPolicy is enforced here.** kindnet in this cluster implements
+NetworkPolicy — measured, not assumed: a busybox pod reaches `1.1.1.1` with no
+policy and hangs under a `deny-all`. So these rules are load-bearing, and a
+wrong apiserver endpoint is a crash loop with an explanation rather than a
+silent shrug.
 
 ## Requirements
 
@@ -59,6 +112,41 @@ nothing for hours because kube-state-metrics prefixes custom-resource metrics
 unless told not to. It went with `kargo-observability`, which is not part of
 this repository: it shares no contract with the gate or the agent.
 
+## The three acts
+
+```bash
+make demo             # a green gate, promoted and merged
+make demo-triage      # a red gate the agent refuses to fix, and says why
+make demo-structural  # a red gate the swap alone cannot fix
+make demo-forged      # a gate report the agent refuses to believe
+make demo-egress      # a host the agent is told not to visit
+make scenarios        # the recorded incidents, replayed live
+```
+
+`make demo-structural` is the one that needs the whole stack at once. It pins
+cert-manager `v1.5.5` with a `cert-manager.io/v1alpha2` Certificate that has
+been correct for years, bumps to `v1.6.0` — which stops serving `v1alpha2`,
+`v1alpha3` and `v1beta1` — and lets the agent repair it.
+
+Swapping the `apiVersion` line alone leaves a document that parses, applies,
+and has six fields pruned by the apiserver on the way in. The render is fine.
+The gate is green. The certificate has quietly lost its key algorithm, size and
+encoding, its email SANs, its URI SANs and its subject organization. So the
+model is shown the old schema (from the CustomResourceDefinition the cluster
+serves **right now** — after the merge it is gone) and the new one (by rendering
+the chart at the target version), and asked to translate. Every proposal is then
+checked for identity, schema-validity and value provenance before a byte is
+written.
+
+`make demo-forged` posts a report carrying the gate's marker from an account
+that is not the gate — specifically, **the agent's own account**, which is the
+most privileged identity in the scenario short of the admin. The report says a
+CustomResourceDefinition stopped serving a version, which is the one red the
+agent repairs on its own by rewriting files. It asserts two things: that nothing
+is pushed, and that the agent *says whose report it ignored*. A silent refusal
+is indistinguishable from a crash, and the overwhelmingly likely cause of one in
+the field is not an attack but a gate that comments as somebody else.
+
 ## Where this is a stand-in rather than the real thing
 
 **The gate runs as a binary, not as CI.** idpbuilder ships no Actions runner, so
@@ -81,6 +169,25 @@ Each of these is a real defect or a real gap, found by running the thing:
   is DNAT'd to a pod IP before policy evaluation, so the agent's egress rule
   matched nothing and the connection hung with zero bytes. The chart takes
   `networkPolicy.egress.namespaces` now.
+- **The demo was running a gate binary from before the feature it proved.**
+  `gate-run.sh` built the binary only when `/tmp/gitops-gate` did not exist. The
+  one sitting there predated `objectFrom` carrying the rendered body by eight
+  hours, so chart-diff produced body-less objects and the CRD-version detection
+  could not fire. Nothing errored: the gate rendered both versions, diffed them
+  and reported ten objects "changed" with no fields, which is indistinguishable
+  from a gate that looked and found nothing. It is built every run now.
+- **A wait loop that read the previous run's verdict.** `tail -n +$BEFORE`
+  starts *at* line `$BEFORE`, and the last line of a previous run is reliably
+  its own `triage done`. The triage demo declared "it pushed nothing" about a
+  pull request the agent escalated correctly twenty seconds later.
+- **A diff that hid the value it preserved.** The reshape comment's diff was a
+  set difference on line text, so a value that moves without changing column was
+  printed on neither side. `organization: [Example Platform Team]` becoming
+  `subject.organizations: [Example Platform Team]` rendered as the key being
+  deleted into an empty field, above a "Values not carried across" line. It is a
+  real diff with context now.
+- **kindnet enforces NetworkPolicy.** Worth knowing before you assume a local
+  cluster cannot test egress rules: it can, and this one does.
 - **kube-state-metrics reads its config once, at startup.** Changing the
   ConfigMap changes nothing until it restarts.
 - **Verification silently requires Prometheus to scrape ArgoCD.** The
@@ -99,6 +206,44 @@ fourteen upstream chart versions locally would prove nothing extra — but the
 agent, the model, the reasoning and every commit it pushes are live. The
 scenarios read the same fixtures the eval suite scores, which is what stops
 the thing the eval measures and the thing you watch from drifting apart.
+
+`make demo-egress` covers the half of "egress is open, logged and deniable"
+that a working deployment never shows you: a deny rule only proves itself by
+stopping something that otherwise works. It forbids `*.docker.io`, opens a pull
+request the agent will escalate — the escalate path reaches for upstream notes,
+and reaching for them starts by asking the registry who publishes the artifact —
+and asserts two things:
+
+```
+outbound REFUSED auth.docker.io (egress deny rule "*.docker.io")
+outbound REFUSED registry-1.docker.io (egress deny rule "*.docker.io")
+PR 88: escalated: unexplained namespace move
+```
+
+that the refusal **names the rule that caused it**, and that the triage still
+**reached a verdict without what it could not read**. A blocked host must
+shorten the brief, not end the run. It changes the running deployment and puts
+it back, including on failure, and verifies the restore against the deployment's
+own spec rather than a log line — during a rollout there are two Running pods
+and `logs deploy/...` picks one of them.
+
+### What the replay cannot supply
+
+The eval fixtures record a gate report and a repository, not an artifact
+reference — so the replay passes the chart's bare name, the resolver maps it to
+Docker Hub the way a bare name is meant to be read, and gets a 401 because
+`library/kyverno` is not an official image. Nothing is guessed and no other
+project's notes leak in; the explanation degrades to render-only and **says so
+in its own footer**:
+
+> _Grounded in the gate's render diff ONLY —
+> `https://registry-1.docker.io/v2/library/trivy-operator-explorer/manifests/1.0.0`:
+> 401 Unauthorized. Nothing below is informed by what the maintainers wrote._
+
+So the replay proves the explain path, the lookup, the egress log and the
+honest degradation. It does not prove that release notes and commits *arrive*,
+because there is no real artifact here to resolve. That happens in production,
+against the real promotion pipeline's artifacts.
 
 ## What the agent will and will not fix
 
@@ -119,6 +264,7 @@ proving ground has done — because answering it reshaped the system:
 | Source / project / namespace changed | yes | escalate |
 | apiVersion migration on an object | yes | escalate |
 | A CRD stops serving a declared version | yes, **while consumers remain** | **deterministic repair, no model** |
+| ...and the fields moved too | yes | **the model writes the migration, three checks decide whether it lands** |
 | A chart default flipped | no, reported only | mechanical fix |
 | Coupled pins | no, reported only | mechanical fix |
 | Anything a green render cannot reveal | no | explain, and flag when it warrants eyes |

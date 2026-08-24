@@ -606,6 +606,14 @@ func renderRestructured(rr *restructureResult) string {
 				fmt.Fprintf(&b, "- %s\n", f)
 			}
 			fmt.Fprintf(&b, "\n```diff\n%s```\n", a.Diff)
+			// Respelled BEFORE lost, and named differently, because they are
+			// different news. A value the target schema spells another way
+			// survived; a value with nowhere to go did not. Printed together
+			// under one heading, the first kind made the migration look lossy
+			// on exactly the bumps where it had done its job.
+			if len(a.Respelled) > 0 {
+				fmt.Fprintf(&b, "\n**Respelled by the new schema:** `%s`\n", strings.Join(a.Respelled, "`, `"))
+			}
 			if len(a.Lost) > 0 {
 				fmt.Fprintf(&b, "\n**Values not carried across:** `%s`\n", strings.Join(a.Lost, "`, `"))
 			}

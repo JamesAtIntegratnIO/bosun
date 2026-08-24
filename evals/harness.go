@@ -414,6 +414,9 @@ func runRestructure(ctx context.Context, p llm.Provider, system string, c Case) 
 			res.Notes = append(res.Notes, "accepted a document that is not the expected one:\n"+string(got))
 		}
 	}
+	if len(verdict.Respelled) > 0 {
+		res.Notes = append(res.Notes, fmt.Sprintf("respelled by the target schema: %v", verdict.Respelled))
+	}
 	if len(verdict.Lost) > 0 {
 		res.Notes = append(res.Notes, fmt.Sprintf("values not carried across: %v", verdict.Lost))
 	}
