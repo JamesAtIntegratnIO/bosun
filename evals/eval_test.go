@@ -39,13 +39,17 @@ func TestEval(t *testing.T) {
 	}
 	explain := os.Getenv("DELIVERY_AGENT_EXPLAIN_PROMPT")
 	withInventory := os.Getenv("DELIVERY_AGENT_NO_INVENTORY") == ""
+	// A substring filter, because the loop worth running most often is one
+	// case against a prompt you just edited -- and without this that costs the
+	// whole suite every time.
+	only := os.Getenv("DELIVERY_AGENT_CASES")
 
 	// A prompt per path, so a case can never be scored against the wrong one.
 	prompts := map[string]string{PathTriage: system, PathExplain: explain}
 
 	skipped := 0
 	for _, c := range Cases {
-		if prompts[c.Path] == "" {
+		if prompts[c.Path] == "" && (only == "" || strings.Contains(c.Name, only)) {
 			skipped++
 		}
 	}
@@ -67,6 +71,9 @@ func TestEval(t *testing.T) {
 		}
 		var results []Result
 		for _, c := range Cases {
+			if only != "" && !strings.Contains(c.Name, only) {
+				continue
+			}
 			prompt := prompts[c.Path]
 			if prompt == "" {
 				continue

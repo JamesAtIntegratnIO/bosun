@@ -236,6 +236,14 @@ func runExplain(ctx context.Context, p llm.Provider, system string, c Case, with
 			res.Notes = append(res.Notes, fmt.Sprintf("stated %q, which is in neither source", never))
 		}
 	}
+	if !res.Grounded {
+		// The sentence, not just the word. A grounding failure is a judgement
+		// call about whether the claim was derivable from the evidence, and
+		// that cannot be made from the probe alone -- the first run of this
+		// suite produced a hit that turned out to be the probe's fault, and
+		// finding that out meant running the case again by hand.
+		res.Notes = append(res.Notes, "answer: "+strings.Join(strings.Fields(answer), " "))
+	}
 	return res
 }
 

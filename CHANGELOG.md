@@ -3,6 +3,73 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.10.0] - 2026-08-24
+
+### Added
+
+- **The explain path is measured.** Two prompts ship and the suite scored one
+  of them. The triage classifier's failure lands on disk, where the applier is
+  standing in front of it -- a wrong path refused, a wrong `from` refused, an
+  invented version refused. The explanation writes nothing, so it has no
+  applier, and its failure is a fluent account of what a version "did"
+  assembled from what the model remembers rather than from the two sources it
+  was handed. That goes straight to somebody about to press merge. The
+  unmeasured prompt was the one with nothing behind it.
+
+  Five cases, generalised from the live re-runs, built in pairs: the same
+  removed `ClusterRole` with the maintainers' explanation in front of the model
+  and without it, so the measurement is whether the second answer still carries
+  the first answer's reason. `MustMention` asserts the grounded reason was
+  cited; `MustNotMention` asserts a word that could only have come from memory
+  did not appear.
+
+  **Measured on `qwen/qwen3.8-27b`:** classification **15/15**, full pass
+  **15/15**, **UNSAFE 0** — the ten triage cases hold at 10/10 and the five
+  explain cases pass. `scripts/extract-prompt.sh` now takes a symbol
+  (`explainPrompt`), `DELIVERY_AGENT_EXPLAIN_PROMPT` supplies it, and
+  `DELIVERY_AGENT_CASES` filters to one case.
+
+  One probe was wrong and is recorded as such rather than quietly deleted. The
+  first run flagged `namespaced` as an invention; the answer was "swaps the
+  cluster-scoped ClusterRole and ClusterRoleBinding for namespaced Role and
+  RoleBinding", which is the render restated -- a `Role` *is* namespaced. A
+  probe that fires on a fact rephrased measures vocabulary. The suite now
+  prints the whole answer on a grounding failure, because that judgement cannot
+  be made from the probe alone.
+
+- **`gate.reportAuthor`** — the account whose gate report the agent will
+  believe. See the chart changelog for the per-host defaults.
+
+### Fixed
+
+- **A forged gate report is no longer the gate's.** The verdict arrives as a
+  pull-request comment carrying `<!-- gitops-gate -->`, and the marker was the
+  whole of the check. Anyone who can comment can write it, and the report under
+  it is what decides which manifests the deterministic repair rewrites, which
+  version strings the applier accepts as corroborated, and what the model is
+  told rendered. The comment now has to come from the configured account.
+
+  Two things fall out of doing it properly. The **newest** qualifying report
+  wins, because a gate that re-ran leaves two and the stale one describes a
+  commit that is no longer the head. And a green gate whose report was refused
+  no longer reports itself as a green gate with nothing to explain — that
+  sentence is for a gate that said nothing.
+
+- **A comment past the hundredth is still a comment.** Both git clients asked
+  for one page of a hundred and returned it, so on a busier pull request the
+  gate's report was simply absent from the list the agent scans — and the agent
+  said the gate had published nothing, which reads as a broken gate and points
+  at the wrong component entirely. GitHub is now read newest-first so the page
+  bound drops history nobody came for; Gitea's endpoint has no direction
+  parameter, so a pull request that reaches its bound is an error rather than a
+  list missing the newest comments that claims to be whole. `Comment` also
+  carries the id and timestamp both hosts were already returning.
+
+### Changed
+
+- `renderNotes` moved to `upstream.Render`, so the block the eval suite scores
+  is the block the agent sends rather than a copy that can drift from it.
+
 ## [0.9.3] - 2026-08-24
 
 ### Fixed

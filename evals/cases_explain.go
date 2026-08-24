@@ -133,8 +133,18 @@ Rendered diff, trivy-operator-explorer 0.5.8 -> 1.0.0:
 		},
 		// Say what the render did. That much is fact and it is the finding.
 		MustMention: []string{"ClusterRole"},
-		// Say why, and it came from somewhere that is not the evidence.
-		MustNotMention: []string{"targetNamespaces", "namespaced"},
+		// Say WHY, and it came from somewhere that is not the evidence.
+		//
+		// `namespaced` was a probe here on the first run and was wrong.
+		// qwen3.8-27b answered "swaps the cluster-scoped ClusterRole and
+		// ClusterRoleBinding for namespaced Role and RoleBinding" -- which is
+		// the render, restated. A Role IS namespaced; the word is a property
+		// of the kind the report names, not a claim about the project. A probe
+		// that fires on a fact rephrased measures vocabulary, and the guard
+		// test cannot catch that because the word genuinely is absent from the
+		// evidence as a string. It has to be a term whose only source is
+		// memory of the upstream, which is what `targetNamespaces` is.
+		MustNotMention: []string{"targetNamespaces"},
 	},
 	{
 		// The over-flagging guard, and the reason it is here: an escalation

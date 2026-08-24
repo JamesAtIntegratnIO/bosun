@@ -3,6 +3,39 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.10.0]
+
+### Added
+
+- **`gate.reportAuthor`** -- the account whose gate report the agent will
+  believe.
+
+  The gate publishes its verdict as a pull-request comment carrying a marker,
+  and until now the marker was the whole of the check. Anyone who can comment
+  on the pull request can write that marker, and the report under it is what
+  the agent reads to decide which manifests to rewrite, which version strings
+  it will accept as corroborated, and what it tells the model actually
+  rendered. A forged report is not a wrong opinion; it is an instruction
+  wearing the gate's authority.
+
+  **Empty means per-host default**, because the answer is a fact about the host
+  rather than a preference:
+
+  | Host | Default | Why |
+  |---|---|---|
+  | `github` | `github-actions[bot]` | a gate in GitHub Actions comments through `github.token`, so it is that account every time |
+  | `gitea` | unchecked | Gitea Actions has no equivalent fixed identity -- the report arrives as whichever user minted the CI token |
+
+  Set it to `"*"` to read the report whoever wrote it. That is the behaviour
+  that existed before this value, and on some hosts it is the only expressible
+  answer -- but it should be a decision in a values file rather than an
+  absence.
+
+  **If your GitHub gate does not comment through Actions** -- a bot user, a
+  PAT's owner -- set this to that account. The symptom of getting it wrong is
+  the agent reporting that it ignored a report and naming the author it saw,
+  which is the fix instruction.
+
 ## [0.6.0]
 
 ### Added
