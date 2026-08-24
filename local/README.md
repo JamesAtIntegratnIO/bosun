@@ -86,6 +86,7 @@ this repository: it shares no contract with the gate or the agent.
 make demo             # a green gate, promoted and merged
 make demo-triage      # a red gate the agent refuses to fix, and says why
 make demo-structural  # a red gate the swap alone cannot fix
+make demo-forged      # a gate report the agent refuses to believe
 make scenarios        # the recorded incidents, replayed live
 ```
 
@@ -103,6 +104,15 @@ serves **right now** — after the merge it is gone) and the new one (by renderi
 the chart at the target version), and asked to translate. Every proposal is then
 checked for identity, schema-validity and value provenance before a byte is
 written.
+
+`make demo-forged` posts a report carrying the gate's marker from an account
+that is not the gate — specifically, **the agent's own account**, which is the
+most privileged identity in the scenario short of the admin. The report says a
+CustomResourceDefinition stopped serving a version, which is the one red the
+agent repairs on its own by rewriting files. It asserts two things: that nothing
+is pushed, and that the agent *says whose report it ignored*. A silent refusal
+is indistinguishable from a crash, and the overwhelmingly likely cause of one in
+the field is not an attack but a gate that comments as somebody else.
 
 ## Where this is a stand-in rather than the real thing
 

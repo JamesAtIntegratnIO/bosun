@@ -13,6 +13,7 @@ help:
 	@echo "make demo-triage  a PR the gate REFUSES, and the agent's verdict on it"
 	@echo "make scenarios    replay the ten recorded incidents against the live agent"
 	@echo "make demo-structural  a bump the swap cannot fix, and the model that can"
+	@echo "make demo-forged  a gate report the agent refuses to believe"
 	@echo "make reset   put the flow back to the start so demo can run again"
 	@echo "make down    delete the cluster; colima keeps running"
 	@echo "make clean   down, and stop colima too"
@@ -72,6 +73,13 @@ scenarios:
 .PHONY: demo-structural
 demo-structural:
 	@bash $(SCRIPTS)/70-demo-structural.sh
+
+# Act four: a report carrying the gate's marker, written by an account that is
+# not the gate. Asserts the refusal AND that it says whose report it ignored --
+# a silent refusal is indistinguishable from a crash.
+.PHONY: demo-forged
+demo-forged:
+	@bash $(SCRIPTS)/80-demo-forged-report.sh
 
 
 .PHONY: reset
