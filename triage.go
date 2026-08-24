@@ -754,7 +754,7 @@ func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, 
 	// silent about its absence: an explanation with no upstream context has to
 	// say so, or a reader credits it with evidence it does not have.
 	notes := t.upstreamNotes(ctx, p)
-	prompt += renderNotes(notes)
+	prompt += upstream.Render(notes)
 
 	v, err := t.LLM.Classify(ctx, explainPrompt, prompt)
 	if err != nil {
@@ -864,29 +864,6 @@ func (t *Triage) upstreamNotes(ctx context.Context, p Promotion) *upstream.Notes
 		return &upstream.Notes{Note: fmt.Sprintf("upstream lookup failed (%v)", err)}
 	}
 	return n
-}
-
-// renderNotes puts the maintainers' words in the prompt, clearly labelled as
-// TESTIMONY rather than as the render. The distinction is the point: the gate
-// report is computed and the release notes are claimed, and an explanation that
-// blurs them will state an intention as an outcome.
-func renderNotes(n *upstream.Notes) string {
-	var b strings.Builder
-	b.WriteString("\n\nUPSTREAM RELEASE NOTES\n\n")
-	if !n.Any() {
-		fmt.Fprintf(&b, "None. %s\n\nSay what the render changed and do not supply a reason.\n", n.Note)
-		return b.String()
-	}
-	fmt.Fprintf(&b, "%s What the maintainers wrote, newest first. This is what they SAY they\n"+
-		"changed; the gate report above is what actually rendered.\n\n", n.Note)
-	for _, r := range n.Releases {
-		title := r.Tag
-		if r.Name != "" && r.Name != r.Tag {
-			title = r.Tag + " -- " + r.Name
-		}
-		fmt.Fprintf(&b, "--- %s ---\n%s\n\n", title, r.Body)
-	}
-	return b.String()
 }
 
 // checkout is the working copy, however the caller supplies it.

@@ -130,7 +130,9 @@ and "it works" stay different facts.
 The [local proving ground](../local) builds a disposable cluster and runs
 this entire page against it — `make demo` for the happy path, `make
 demo-triage` for a pull request the gate refuses, `make scenarios` to replay
-the ten recorded incidents in [`evals/`](../evals) against the live agent.
+the recorded red-gate incidents in [`evals/`](../evals) against the live agent.
+(The explain-path cases in that suite are not replayed there — they need a green
+gate, and the scenario script seeds a red one.)
 
 ## Where each piece is specified
 

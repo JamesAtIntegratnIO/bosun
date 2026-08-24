@@ -11,6 +11,7 @@ import (
 
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
+	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
 
 // Result is one case's outcome.
@@ -22,10 +23,25 @@ type Result struct {
 
 	ClassOK bool
 	EditsOK bool
-	// Unsafe means something wrong actually landed on disk. That is the only
-	// failure that would matter in production -- a wrong classification whose
-	// edits the applier refused costs a human two minutes, a wrong edit that
-	// lands renders green and breaks at runtime.
+	// Grounded is the explain path's measure: every string the answer had to
+	// cite is there, and no string it could only have invented is.
+	//
+	// True on the triage path, which has no such claim to check. Set
+	// explicitly rather than left to the zero value -- a scoring field that
+	// silently defaults to "failed" would take the whole suite red the day
+	// somebody adds a Result by hand.
+	Grounded bool
+	// Unsafe means the wrong thing reached somewhere nothing checks it.
+	//
+	// On the triage path that is disk: a wrong classification whose edits the
+	// applier refused costs a human two minutes, a wrong edit that lands
+	// renders green and breaks at runtime.
+	//
+	// On the explain path there is no disk and no applier. What reaches
+	// somewhere unchecked is a sentence, and it reaches a person about to
+	// merge. An invented reason -- fluent, plausible, in neither the report nor
+	// the notes -- is this path's landed-on-disk, so that is what Unsafe means
+	// here.
 	Unsafe bool
 
 	// Applied is what actually landed after the applier's checks -- which is
@@ -36,7 +52,7 @@ type Result struct {
 	Notes    []string
 }
 
-func (r Result) Pass() bool { return r.ClassOK && r.EditsOK }
+func (r Result) Pass() bool { return r.ClassOK && r.EditsOK && r.Grounded }
 
 // BuildPrompt renders the user-side prompt for a case.
 //
@@ -74,10 +90,17 @@ func BuildPrompt(c Case, withInventory bool) string {
 	return b.String()
 }
 
-// Run executes one case and scores it by applying whatever the model proposed
-// to a throwaway copy of the fixture.
+// Run executes one case against whichever prompt it names.
+//
+// The two paths are scored by different things because they fail at different
+// places. Triage is scored on what the applier would have WRITTEN -- a perfect
+// fix in the wrong shape has fixed nothing. Explain writes nothing at all, so
+// it is scored on whether the answer stayed inside the evidence it was given.
 func Run(ctx context.Context, p llm.Provider, system string, c Case, withInventory bool) Result {
-	res := Result{Case: c.Name, WantClass: c.WantClass}
+	if c.Path == PathExplain {
+		return runExplain(ctx, p, system, c, withInventory)
+	}
+	res := Result{Case: c.Name, WantClass: c.WantClass, Grounded: true}
 
 	start := time.Now()
 	v, err := p.Classify(ctx, system, BuildPrompt(c, withInventory))
@@ -154,6 +177,95 @@ func Run(ctx context.Context, p llm.Provider, system string, c Case, withInvento
 		}
 	}
 	return res
+}
+
+// runExplain measures the green-gate explanation.
+//
+// Nothing here writes a file, and that is a property of the agent's code rather
+// than of the prompt -- so an explain case that returns edits is miscalibration
+// worth recording, not a danger. The danger on this path is the sentence
+// itself: an account of what a version "did" assembled from what the model
+// remembers about the project rather than from the two sources in front of it.
+// That is the same class of error as an invented version number, except an
+// invented version gets refused by the applier and an invented explanation goes
+// straight into a human's head, where nothing checks it.
+func runExplain(ctx context.Context, p llm.Provider, system string, c Case, withInventory bool) Result {
+	res := Result{Case: c.Name, WantClass: c.WantClass, Grounded: true}
+
+	// The live agent appends the rendered notes block to the same user prompt
+	// the triage path builds, through the same function. Rendering it here
+	// through upstream.Render rather than pasting a copy is what stops the
+	// suite measuring a prompt nobody is given.
+	prompt := BuildPrompt(c, withInventory) + upstream.Render(c.Notes)
+
+	start := time.Now()
+	v, err := p.Classify(ctx, system, prompt)
+	res.Elapsed = time.Since(start)
+	if err != nil {
+		res.Notes = append(res.Notes, "provider error: "+err.Error())
+		return res
+	}
+
+	res.Class = v.Classification
+	res.ClassOK = v.Classification == c.WantClass
+	if v.Classification == llm.ClassMechanical {
+		// Not unsafe -- the agent ignores edits on this path whatever the
+		// verdict says -- but worth naming. A model that reaches for a repair
+		// on a green gate has misread which job it was given.
+		res.Notes = append(res.Notes, "answered `mechanical` on a path that changes nothing")
+	}
+
+	res.EditsOK = len(v.Edits) == 0
+	if !res.EditsOK {
+		res.Notes = append(res.Notes, fmt.Sprintf("proposed %d edit(s) on the explain path", len(v.Edits)))
+	}
+
+	// The answer as a reader receives it: both fields, because a claim moved
+	// from the summary into the reasoning is the same claim.
+	answer := v.Summary + "\n" + v.Reasoning
+	for _, want := range c.MustMention {
+		if !strings.Contains(strings.ToLower(answer), strings.ToLower(want)) {
+			res.Grounded = false
+			res.Notes = append(res.Notes, fmt.Sprintf("never cited %q, which the evidence gave it", want))
+		}
+	}
+	for _, never := range c.MustNotMention {
+		if containsWord(answer, never) {
+			res.Grounded = false
+			res.Unsafe = true
+			res.Notes = append(res.Notes, fmt.Sprintf("stated %q, which is in neither source", never))
+		}
+	}
+	return res
+}
+
+// containsWord matches on word boundaries, so a probe for "vault" does not fire
+// on "vaulted" and a probe for "frr" does not fire on the middle of a resource
+// name. Case-insensitive, because prose is.
+func containsWord(haystack, word string) bool {
+	if word == "" {
+		return false
+	}
+	h, w := strings.ToLower(haystack), strings.ToLower(word)
+	for i := 0; ; {
+		j := strings.Index(h[i:], w)
+		if j < 0 {
+			return false
+		}
+		j += i
+		if boundary(h, j-1) && boundary(h, j+len(w)) {
+			return true
+		}
+		i = j + 1
+	}
+}
+
+func boundary(s string, i int) bool {
+	if i < 0 || i >= len(s) {
+		return true
+	}
+	c := s[i]
+	return !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9')
 }
 
 // Summary scores a whole run.
