@@ -3,7 +3,7 @@
 The agent can write to a repository and spend money. Both are bounded by code,
 not by instructions to a model.
 
-## The model never edits anything
+## The model never writes anything
 
 It is asked one question and returns one structured answer: a classification,
 an explanation, and — only for the mechanical case — a list of proposed scalar
@@ -11,6 +11,20 @@ edits. This process decides what, if anything, happens next.
 
 That is the whole design. A model with file-edit tools can make a red gate
 green by deleting the check, and that failure is indistinguishable from success.
+
+## Widened once, deliberately, and written down
+
+The rule above said "never edits a FILE" until 2026-08-24. It now says never
+*writes*, and the difference is one wave of work: the proposal surface widened
+from a scalar edit to a whole migrated document, because a chart that moves a
+field between API versions cannot be repaired by rewriting one line and nobody
+can enumerate every upstream's structural changes in advance.
+
+What did not widen is who writes. The harness still applies, and the checks in
+front of a document are stricter than the ones in front of a scalar — three of
+them, all deterministic, all on the OUTPUT rather than the proposal, because the
+whole point of a reshape is that there is no `from` value left to match. See
+[`adr/0007-structure-from-the-schema-data-from-the-document.md`](../adr/0007-structure-from-the-schema-data-from-the-document.md).
 
 ## The deterministic repair involves no model at all
 
@@ -50,6 +64,11 @@ gate — not a model — that named them.
 | Cannot mutate the cluster | live reads are `get` and `list` only, and the chart's ClusterRole has no `create`, `update`, `patch` or `delete` verb anywhere. They are off by default: everything else the agent reads is public or already in the pull request, and this reads the operator's cluster |
 | Cannot read a Secret | with `liveReads.scope: groups` the core API group is never granted beyond `pods, events`, so Secrets are unreadable by construction. `wide` grants `apiGroups: ["*"]` and **can** read them — RBAC has no deny rules and no way to subtract the core group, which is why "everything except Secrets" is not a setting |
 | Cannot present "nobody looked" as "nothing found" | `cluster.Count` carries a `Known` flag and its rendering prefers the note over the number. A refusal, an unreachable apiserver, or a count where one version answered and another did not all say what was *not* checked. The prompt tells the model in those words that "not permitted to check" is not zero and not evidence of safety |
+| Cannot invent DATA when it reshapes a document | a proposed document migration is refused unless every scalar value in it appears in the original document or is dictated by the target schema itself — a default, an enum member, a const. Field names come from the schema; data comes only from the document. This is the document-level analogue of "cannot invent a version", and it is what makes the model a translator rather than an author |
+| Cannot change what an object IS while reshaping it | `apiVersion` must equal the target the gate named, and `kind`, `metadata.name` and `metadata.namespace` must be byte-identical to the original. A renamed object is a second change riding inside a migration |
+| Cannot propose a document that still does not fit | the proposal is walked against the target schema by the same code that found the problem — the apiserver's own objection, raised before the apply |
+| Cannot half-migrate a pull request | if any document in a pass is refused, **nothing** is pushed, including the plain swaps that were fine. The swap alone turns the gate green, because no manifest declares a dropped version any more, while a document the target schema rejects waits to be pruned. A partial push is a green gate over a broken change |
+| Cannot drop a value silently | values present in the original and absent from the proposal are listed in the comment. Some are correct — a field the target no longer accepts has to go somewhere, sometimes nowhere — and all are visible |
 | Cannot act without saying so | every exit path publishes a commit status, including the ones that do nothing and the ones that error. "Nothing needed triage", "I was never called" and "I crashed" used to be the same observation from outside |
 
 ## Why the deny-list is not configurable

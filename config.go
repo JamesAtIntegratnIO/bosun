@@ -86,6 +86,11 @@ type Config struct {
 	DenyPaths          []string
 	CloneRoot          string
 
+	// Structural turns on the schema-guided half of the deterministic repair.
+	Structural bool
+	// MaxRestructured caps document migrations per pull request.
+	MaxRestructured int
+
 	// LiveReads turns on reading the cluster the agent runs in: how many
 	// objects are stored on a version a chart is about to stop serving, and
 	// whether the Applications a promotion says it will verify were already
@@ -178,6 +183,14 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 	if c.LLMTimeout, err = envDur("LLM_TIMEOUT", 10*time.Minute); err != nil {
+		return nil, err
+	}
+	// Default ON. It runs only where the deterministic repair already had
+	// authority, over files policy already permitted, and the checks in front
+	// of it are stricter than anywhere else in this service -- so the reasons
+	// to switch it off are operational rather than about safety.
+	c.Structural = os.Getenv("STRUCTURAL_MIGRATION") != "false"
+	if c.MaxRestructured, err = envInt("MIGRATE_MAX_DOCS", 5); err != nil {
 		return nil, err
 	}
 	c.LiveReads = os.Getenv("LIVE_READS") == "true"

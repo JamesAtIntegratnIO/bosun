@@ -13,6 +13,29 @@ FROM alpine:3.21
 # and pushes the fix as an ordinary commit.
 RUN apk add --no-cache ca-certificates git
 
+# helm, for the same reason the gate carries it: the structural migration needs
+# the schema a chart ships at the version being promoted TO, and the only thing
+# guaranteed to render a chart the way the cluster's own Helm will is Helm. A
+# library pinned here would be a slower way to drift away from that.
+#
+# Same version as the gate's image, deliberately -- two components rendering the
+# same chart with different Helms is a difference nobody would think to look
+# for.
+ARG HELM_VERSION=v3.19.0
+# NO DEFAULT VALUE. TARGETARCH is a built-in BuildKit arg, and assigning one
+# here SHADOWS what BuildKit injects, which is how the gate's arm64 image once
+# came to download amd64 helm and fail exec'ing it under emulation. The
+# fallback is computed inside RUN instead, so BuildKit stays authoritative
+# where it sets the arg and a plain `docker build` still resolves natively.
+ARG TARGETARCH
+RUN set -eux; \
+    arch="${TARGETARCH:-$(apk --print-arch | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')}"; \
+    wget -qO- "https://get.helm.sh/helm-${HELM_VERSION}-linux-${arch}.tar.gz" \
+      | tar -xz -C /tmp; \
+    mv "/tmp/linux-${arch}/helm" /usr/local/bin/helm; \
+    rm -rf /tmp/linux-*; \
+    helm version --short
+
 COPY --from=build /out/bosun /usr/local/bin/bosun
 
 # The agent clones into a writable directory. Kept out of the image so the
@@ -20,6 +43,9 @@ COPY --from=build /out/bosun /usr/local/bin/bosun
 RUN adduser -D -u 10001 agent && mkdir -p /work && chown 10001 /work
 USER 10001
 ENV CLONE_ROOT=/work
+# helm needs somewhere to put its cache and uid 10001 has no home directory --
+# the same accommodation the gate's CI job makes when it overrides the user.
+ENV HOME=/work
 WORKDIR /work
 
 EXPOSE 8080

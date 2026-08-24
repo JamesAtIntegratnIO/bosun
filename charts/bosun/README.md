@@ -85,6 +85,47 @@ edit's evidence is the gate report alone.
 No new egress: it is `api.github.com`, the same host the gate's checks come
 from. `maxCommits` caps how many reach a prompt or a comment.
 
+## When swapping the version is not the whole job
+
+`triage.structuralMigration` (on by default) is the second half of the
+deterministic repair.
+
+A chart that moves `spec.store` to `spec.secretStoreRef.name` between two API
+versions leaves, after a plain apiVersion swap, a document that parses, applies,
+and has that field **pruned by the apiserver on the way in**. The render is
+fine. The gate goes green. The value is gone, and nothing in the repository can
+see it.
+
+Nobody can enumerate every upstream's structural changes in advance, so the
+model is shown the old schema, the new schema and the document, and asked to
+translate. What makes that safe is not the prompt — every proposal is checked
+before anything is written:
+
+| Check | Refuses |
+|---|---|
+| identity | a changed `apiVersion`, `kind`, `metadata.name` or `metadata.namespace` |
+| schema validity | a proposal the target schema still does not accept |
+| value provenance | any value not at that path in the original, not displaced by the schema change, and not dictated by the target schema |
+
+A refusal refuses **everything** — not even the plain swaps are pushed. The swap
+alone turns the gate green, because no manifest declares a dropped version any
+more, while a document the schema rejects waits to be pruned.
+
+**It needs `liveReads`** (the shape being *left* is only in the CRD installed
+right now — after the merge it is gone) and egress to your chart registry (the
+shape being arrived at comes from rendering the chart at the target version).
+Without either it falls back to the plain swap and the comment says which check
+it could not make.
+
+Two costs worth knowing before you leave it on. A reshaped document is
+re-serialised, so **comments inside that document do not survive**; the folded
+diff in the comment shows exactly what changed. And nested manifests — one
+inside an `extraObjects:` list or a block scalar — are **skipped and escalated**,
+because replacing a document inside a values file means re-serialising a file
+whose every remaining line would move.
+
+See [`adr/0007-structure-from-the-schema-data-from-the-document.md`](../../adr/0007-structure-from-the-schema-data-from-the-document.md).
+
 ## What is actually running
 
 `liveReads` lets a brief carry facts the gate structurally cannot have:

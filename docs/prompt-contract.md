@@ -138,6 +138,9 @@ Neither the prompt nor the model decides any of this:
 | Cannot add keys, only change them | the key must already resolve to a scalar |
 | Cannot escape the repository | path traversal check |
 | Cannot try forever | attempt cap, tracked by label |
+| Cannot invent data when reshaping a document | every value must be in the original or dictated by the target schema |
+| Cannot rename what it reshapes | identity fields byte-identical |
+| Cannot half-migrate | any refusal in a pass refuses the whole push |
 
 That table is the reason a 9B model is an acceptable choice here. It is not
 that the model is reliable — it is that being wrong is cheap and being
@@ -154,10 +157,11 @@ DELIVERY_AGENT_LIVE=http://localhost:1234/v1 \
 DELIVERY_AGENT_MODELS=your-model \
 DELIVERY_AGENT_PROMPT="$(scripts/extract-prompt.sh)" \
 DELIVERY_AGENT_EXPLAIN_PROMPT="$(scripts/extract-prompt.sh explainPrompt)" \
+DELIVERY_AGENT_RESTRUCTURE_PROMPT="$(scripts/extract-prompt.sh restructurePrompt)" \
 go test ./evals -run Eval -v -timeout 60m
 ```
 
-Omit `DELIVERY_AGENT_EXPLAIN_PROMPT` and the explain cases are skipped with a
+Omit a path's prompt and its cases are skipped with a
 line saying how many — never scored against the classifier's prompt, which
 would produce a number for a prompt nobody is given.
 

@@ -99,6 +99,68 @@ type Provider interface {
 	Name() string
 }
 
+// Migration is one whole document, rewritten for a schema version that moved
+// its fields around.
+//
+// A DOCUMENT, not a set of edits, and that is the difference between this and
+// everything else the model is asked for. A scalar edit can be corroborated
+// against the file it targets -- the `from` value either matches or it does
+// not. A restructured document cannot: the whole point is that the shape
+// changed. So the guarantees move from the proposal to the OUTPUT, and they
+// are stricter for it: identity preserved byte for byte, valid against the
+// target schema, and every scalar value present in the original.
+//
+// The model is a translator between two schemas it is shown. It is not an
+// author, and the harness is what makes that true.
+type Migration struct {
+	// Document is the complete migrated YAML document. Not a patch: a patch
+	// would have to be applied, and applying is where a partial write lives.
+	Document string `json:"document"`
+	// Notes is one or two sentences on what moved where, shown to a human
+	// beside the diff.
+	Notes string `json:"notes"`
+}
+
+// Restructurer is a SECOND interface, type-asserted rather than added to
+// Provider.
+//
+// Same reasoning as upstream.CompareResolver: ADR 0004's rule is that an
+// interface is what the caller needs and nothing more, and growing one is a
+// decision. A Provider that only classifies keeps compiling, and a deployment
+// behind one degrades to the plain apiVersion swap -- which is what this did
+// before, and is still correct as far as it goes.
+type Restructurer interface {
+	// Restructure returns one migrated document. The implementation must
+	// constrain the model to MigrationSchema where the backend supports it.
+	Restructure(ctx context.Context, systemPrompt, userPrompt string) (*Migration, error)
+}
+
+// MigrationSchema constrains the document proposal.
+//
+// Two fields and no room for anything else. In particular there is no field
+// for the model to explain that it could not do it, or to propose a different
+// approach, or to ask for something: a proposal that fails the harness's checks
+// is refused and escalated, and a channel for negotiating that would be a
+// channel for talking the harness out of a refusal.
+func MigrationSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"document", "notes"},
+		"properties": map[string]any{
+			"document": map[string]any{
+				"type": "string",
+				"description": "The complete migrated YAML document. One document, no --- separators, " +
+					"no code fences, no commentary.",
+			},
+			"notes": map[string]any{
+				"type":        "string",
+				"description": "One or two sentences: which fields moved where.",
+			},
+		},
+	}
+}
+
 // VerdictSchema is the JSON Schema handed to providers that support
 // constrained decoding. With it, a malformed answer is impossible -- the model
 // can be wrong, but it cannot return something the agent fails to parse.

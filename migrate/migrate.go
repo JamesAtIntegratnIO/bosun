@@ -184,3 +184,22 @@ func PreferredVersion(versions []string) string {
 	})
 	return sorted[0]
 }
+
+// PreferredOrder is every version, most-preferred first, by the same ranking
+// PreferredVersion uses.
+//
+// Exported for the structural migration, which wants the NEWEST of several
+// dropped versions -- the one a document is most likely to have been written
+// against, and therefore the one whose schema best describes the shape being
+// left behind. Sharing the ranking rather than re-deriving it is the same rule
+// as sharing the report format: two orderings would eventually disagree.
+func PreferredOrder(versions []string) []string {
+	if len(versions) == 0 {
+		return nil
+	}
+	out := append([]string(nil), versions...)
+	sort.Slice(out, func(i, j int) bool {
+		return PreferredVersion([]string{out[i], out[j]}) == out[i] && out[i] != out[j]
+	})
+	return out
+}

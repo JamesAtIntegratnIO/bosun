@@ -3,6 +3,84 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.13.0] - 2026-08-24
+
+### Added
+
+- **Structure from the schema, data from the document.** The deterministic
+  repair swaps an `apiVersion` line and touches nothing else. That is exactly
+  right while the two versions are compatible, and a silent corruption when they
+  are not: a chart that moves `spec.store` to `spec.secretStoreRef.name` leaves
+  a document that parses, applies, and has that field pruned by the apiserver on
+  the way in. The render is fine. The gate is green. The value is gone.
+
+  Nobody can enumerate every upstream's structural changes in advance, so the
+  model is shown the OLD schema, the NEW schema and the document, and asked to
+  translate. The proposal surface widens from a scalar edit to a whole document;
+  **who writes does not change**, and the checks in front of a document are
+  stricter than the ones in front of a scalar because there is no `from` value
+  left to match:
+
+  | Check | Refuses |
+  |---|---|
+  | identity | a changed `apiVersion`, `kind`, `metadata.name` or `metadata.namespace` |
+  | schema validity | a proposal the target schema still does not accept |
+  | value provenance | any value not at that path in the original, not displaced by the schema change, and not dictated by the target schema |
+
+  **A refusal refuses everything**, including the plain swaps that were fine.
+  Not the obvious choice, and the important one: the swap alone makes the gate
+  green -- no manifest declares a dropped version any more -- while a document
+  the target schema rejects sits in the tree waiting to be pruned. A partial
+  push is a green gate over a broken change.
+
+  Values present in the original and absent from the proposal are **listed** in
+  the comment beside a folded diff. Some are correct -- a field the target no
+  longer accepts has to go somewhere, sometimes nowhere -- and none is dropped
+  silently.
+
+  See [`adr/0007-structure-from-the-schema-data-from-the-document.md`](adr/0007-structure-from-the-schema-data-from-the-document.md).
+
+  **The provenance check is positional, and the suite is why.** A
+  set-membership version -- "does this value appear anywhere in the original?"
+  -- passed a live proposal that filled a newly required `secretStoreRef.name`
+  with the object's own `metadata.name`. Every value was "from the document".
+  The document now referenced a store nobody had created, and it would have
+  rendered perfectly. Only the POSITION distinguishes a field that moved from a
+  blank filled with whatever was nearest.
+
+  **Measured on `qwen/qwen3.8-27b`:** classification **22/22**, full pass
+  **21/22**, **UNSAFE 0** across all three paths. The one non-full-pass is
+  recorded rather than smoothed away: on the reference-moved case the model
+  produced the correct migration and also wrote out `kind: SecretStore`, a
+  default the schema already applies. That is noisier than asked, not wrong, and
+  it is scored as a note -- calling it UNSAFE would make the word mean "differs
+  from my fixture" instead of "would have broken something", and the word is
+  only worth anything while it means the second.
+
+### Changed
+
+- **The safety model's headline sentence widened, deliberately.** It read "the
+  model never edits a file" and now reads "the model never WRITES". The
+  difference is this release: the proposal surface widened and the write path
+  did not.
+
+- **The agent image carries `helm`**, the same version the gate's does. The
+  target schema comes from rendering the chart at the version being promoted to,
+  and the only thing guaranteed to render a chart the way the cluster's own Helm
+  will is Helm.
+
+### Known limits
+
+- A reshaped document is **re-serialised**, so comments inside it do not
+  survive. The folded diff shows exactly what changed. There is no version of
+  this that avoids it: preserving comments means surgical line edits, and a line
+  edit is precisely what cannot express a change of shape.
+- **Nested and embedded manifests are skipped** and escalated. `migrate`
+  deliberately reaches into `extraObjects:` lists and block scalars -- 13 of 27
+  declaring files in the incident this was built from held the declaration
+  somewhere other than the top level -- because swapping one value on one line
+  inside a values file is safe. Replacing a *document* inside one is not.
+
 ## [0.12.0] - 2026-08-24
 
 ### Added
