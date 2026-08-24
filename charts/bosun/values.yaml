@@ -46,9 +46,18 @@ git:
   repo: ""                # REQUIRED
   # Clone URL. Must be reachable from the cluster.
   repoURL: ""             # REQUIRED
+  # Commit identity. LEAVE EMPTY unless you have a reason: empty means the
+  # agent derives it -- as a GitHub App, its own bot identity
+  # (`<slug>[bot] <id+slug[bot]@users.noreply.github.com>`), which is what
+  # makes the pushed commits attribute to the App's avatar rather than to a
+  # stranger. The old default was `bosun@users.noreply.github.com`, and that
+  # namespace BELONGS to GitHub accounts: every commit the first live repair
+  # pushed was attributed, avatar and all, to the unrelated account named
+  # `bosun`. If you do set an email here, never use a
+  # users.noreply.github.com address that is not your bot's own.
   author:
-    name: bosun
-    email: bosun@users.noreply.github.com
+    name: ""
+    email: ""
   # Existing Secret holding the token. This chart never creates a Secret --
   # how it gets there (ExternalSecret, Vault Agent, SOPS, kubectl) belongs to
   # whoever installs this.

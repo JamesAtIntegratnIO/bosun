@@ -89,7 +89,19 @@ func main() {
 				log.Fatalf("github app authentication failed: %v", err)
 			}
 			gh.TokenSource = app.Token
-			log.Printf("authenticating as GitHub App %s", cfg.AppID)
+			// Commits carry the App's own bot identity unless the operator
+			// chose one. Same fail-at-start-up rule as the token: falling back
+			// silently is how the first live repair got attributed to the
+			// unrelated GitHub account named `bosun`.
+			if cfg.AuthorName == "" || cfg.AuthorEmail == "" {
+				name, email, err := app.BotIdentity(context.Background())
+				if err != nil {
+					log.Fatalf("resolving the app's commit identity: %v", err)
+				}
+				gh.AuthorName, gh.AuthorEmail = name, email
+			}
+			log.Printf("authenticating as GitHub App %s, committing as %s <%s>",
+				cfg.AppID, gh.AuthorName, gh.AuthorEmail)
 		}
 		git = gh
 	}
