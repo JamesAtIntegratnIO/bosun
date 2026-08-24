@@ -22,6 +22,18 @@ type GitHubReleases struct {
 	// IP, which one busy morning of promotions will exhaust; with a token it is
 	// 5000. Release notes are public either way.
 	Token string
+	// TokenSource supersedes Token when set, and is fetched PER CALL. That is
+	// not a style choice: a GitHub App's installation token expires in about an
+	// hour, so a resolver holding one taken at start-up spends most of its life
+	// unauthenticated -- which is exactly what happened here. The agent has run
+	// as an App since 0.8.0 and this struct was still being handed `cfg.GitToken`,
+	// which App mode leaves empty. Every upstream read was anonymous, against a
+	// 60-per-hour-per-IP limit, and the failure surfaced as "no upstream release
+	// notes" -- indistinguishable from an artifact that publishes none.
+	//
+	// The token buys rate limit and nothing else. It grants no access to the
+	// upstream repository, which is somebody else's and public.
+	TokenSource func(ctx context.Context) (string, error)
 	// APIBase defaults to https://api.github.com.
 	APIBase string
 	// HTTP is injectable for tests.
@@ -35,6 +47,28 @@ type GitHubReleases struct {
 	// log into a release, which would crowd out the gate report the explanation
 	// is actually grounded in.
 	MaxBodyChars int
+	// MaxCommits caps how many relevant commits reach a prompt or a comment.
+	// Zero means MaxCompareCommits.
+	MaxCommits int
+}
+
+// authorise puts the current credential on a request bound for the GitHub API.
+//
+// Only for api.github.com. The registry hops in oci.go talk to somebody else's
+// registry with somebody else's anonymous pull token, and sending this one
+// there would be handing a credential to a host that never asked for it.
+func (g *GitHubReleases) authorise(ctx context.Context, req *http.Request) {
+	tok := g.Token
+	if g.TokenSource != nil {
+		// Soft. An upstream read is a courtesy and a token source that is
+		// briefly unavailable should cost rate limit, not the whole answer.
+		if t, err := g.TokenSource(ctx); err == nil && t != "" {
+			tok = t
+		}
+	}
+	if tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
 }
 
 func (g *GitHubReleases) Name() string { return "github-releases" }
@@ -82,6 +116,14 @@ func (g *GitHubReleases) Notes(ctx context.Context, artifact, from, to string) (
 	const maxPages = 10
 	raw, err := g.releasePages(ctx, repo, lo, maxPages)
 	if err != nil {
+		if isRateLimited(err) {
+			// Worth its own sentence. "Could not read the releases" invites a
+			// reader to check whether the project publishes any; "rate
+			// limited" tells them the answer would have been there and points
+			// at the credential, which is the actual fix.
+			return &Notes{SourceRepo: repo, Note: fmt.Sprintf(
+				"No upstream release notes: rate limited by the GitHub API while reading %s.", repo)}, nil
+		}
 		return &Notes{SourceRepo: repo, Note: fmt.Sprintf(
 			"No upstream release notes: could not read %s releases (%v).", repo, err)}, nil
 	}
@@ -136,10 +178,6 @@ func (g *GitHubReleases) Notes(ctx context.Context, artifact, from, to string) (
 		n.Note = fmt.Sprintf("Upstream notes from %s.", repo)
 	}
 	return n, nil
-}
-
-func (g *GitHubReleases) doJSON(ctx context.Context, req *http.Request, out any) error {
-	return g.getJSONReq(req, out)
 }
 
 var numeric = regexp.MustCompile(`\d+`)
@@ -210,9 +248,7 @@ func (g *GitHubReleases) releasePages(ctx context.Context, repo, lo string, maxP
 		if err != nil {
 			return all, err
 		}
-		if g.Token != "" {
-			req.Header.Set("Authorization", "Bearer "+g.Token)
-		}
+		g.authorise(ctx, req)
 		req.Header.Set("Accept", "application/vnd.github+json")
 
 		var batch []ghRelease

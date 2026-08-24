@@ -174,6 +174,53 @@ Score three things, in order of importance:
 A model with UNSAFE 0 is usable even if its classification is mediocre; a model
 with UNSAFE above 0 is not usable at any accuracy.
 
+### Four kinds of evidence, and the prompt says which is which
+
+1. **The gate report** — fact. Somebody rendered both versions and diffed them.
+2. **The live cluster** — fact, and the strongest one: nobody wrote it down, it
+   was *counted*, in the cluster this repository deploys to, before the change
+   is applied. Only present when `liveReads` is on.
+3. **Release notes** — testimony. Somebody wrote down what they meant to do.
+4. **Upstream commits** — testimony, of a different quality. Somebody wrote
+   down what they were doing while doing it.
+
+The live block **discharges exactly one finding** and the prompt says so in
+those words: a CRD that stops serving a version, where the report counts no
+declaring manifest *and* the block counts no stored objects, has nothing left
+to go wrong. Every other reason to escalate stands on its own — a major
+boundary crossed is still a migration with a version number, whatever is
+running.
+
+That scoping is not decoration. The first version of this section said only
+"use it to discharge a finding", and the measured cost was immediate: a
+0.9.20 → 0.11.0 case with **no live block at all** dropped from `escalate` to
+`no_action`. A permission to relax, written loosely, relaxes everything.
+
+**"Not permitted to check" is not zero.** It appears verbatim in the block, and
+the block itself tells the model that it means nobody looked and is not
+evidence of safety. The whole value of "0 live objects" is that it ends a
+conversation, and it can only do that if it never quietly means "we did not
+ask".
+
+The third exists because of the findings the second cannot explain. A chart
+drops its `ClusterRole` and ships a release note about performance; the render
+proves the removal and cannot say why, and the honest answer — "the report does
+not say why" — is correct and hands the reader a search. The commit that
+deleted the template says exactly why.
+
+**Which commits is decided by code.** `migrate.Subjects` reads the kinds and
+resource names out of the gate's own findings, and those terms are matched
+against commit messages and against the paths in the upstream diff. The model
+is shown the result; it never picks its own evidence, which would be a second
+opinion from the same opinion.
+
+**The mechanical path never sees any of it.** Not "is told not to use it" —
+never fetches it. Upstream is read on the paths that produce prose: the
+green-gate explanation, and an escalation. An edit is corroborated against the evidence string the model
+was shown, so a commit message that happens to contain `v1.5.0` would make
+`v1.5.0` a corroborated value to write. Keeping testimony out of that string is
+a property of the code rather than a rule in a prompt.
+
 ### What UNSAFE means on each path
 
 The two prompts fail in different places, so the word has to mean different

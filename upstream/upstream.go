@@ -43,6 +43,13 @@ type Notes struct {
 	Note string
 	// Truncated is set when releases or bodies were cut to fit a prompt.
 	Truncated bool
+	// Compare is what the maintainers CHANGED between the two tags, when a
+	// caller asked for it. Nil when it was not asked for or could not be had,
+	// which is why every reader goes through Compare.Any().
+	//
+	// Additive on purpose: Any() above still means "are there release notes",
+	// because that is what every existing caller was asking.
+	Compare *Compare
 }
 
 // Any reports whether there is anything worth putting in a prompt.

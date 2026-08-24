@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/JamesAtIntegratnIO/bosun/cluster"
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
@@ -58,6 +59,11 @@ func main() {
 	// LoadConfig has already rejected any provider not handled here, so a
 	// nil git would be a programming error rather than a configuration one.
 	var git gitprovider.Provider
+	// The credential the UPSTREAM reader uses. The same credential as the git
+	// client's, and not the same object: under App auth it exists only as a
+	// function, because installation tokens are minted per use and the config's
+	// static token is empty.
+	var upstreamToken func(context.Context) (string, error)
 	switch cfg.GitProvider {
 	case "gitea":
 		git = &gitprovider.Gitea{
@@ -93,6 +99,13 @@ func main() {
 				log.Fatalf("github app authentication failed: %v", err)
 			}
 			gh.TokenSource = app.Token
+			// Without this the upstream reader ran anonymously against
+			// api.github.com -- 60 requests an hour per IP -- from the moment
+			// the agent became an App, because it was handed cfg.GitToken and
+			// App mode leaves that empty. The failure surfaced as "no upstream
+			// release notes", which is also what an artifact that publishes
+			// none looks like.
+			upstreamToken = app.Token
 			// Commits carry the App's own bot identity unless the operator
 			// chose one. Same fail-at-start-up rule as the token: falling back
 			// silently is how the first live repair got attributed to the
@@ -121,10 +134,37 @@ func main() {
 		GatePoll:         cfg.GatePoll,
 		Explain:          cfg.Explain,
 		Migrate:          cfg.Migrate,
-		Upstream:         upstreamResolver(cfg),
+		Upstream:         upstreamResolver(cfg, upstreamToken),
 		CloneRoot:        cfg.CloneRoot,
 		RepoURL:          cfg.GitRepoURL,
 		Log:              func(f string, a ...any) { logger.Printf(f, a...) },
+	}
+
+	if cfg.LiveReads {
+		reader := &cluster.APIServer{ArgoCDNamespace: cfg.LiveReadsArgoCDNamespace}
+		// Fail at start-up, the same rule as the App's key -- and here it
+		// matters more, not less. Every failure inside this reader is
+		// deliberately soft: an unreachable apiserver reports "not permitted
+		// to check", a sentence designed to be harmless and therefore a
+		// sentence nobody would ever chase. Proving the path works once,
+		// loudly, is what stops a misconfiguration becoming a permanent quiet
+		// shrug.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		err := reader.Check(ctx)
+		cancel()
+		if err != nil {
+			logger.Fatalf("live cluster reads are enabled and the apiserver could not be read: %v\n"+
+				"  the NetworkPolicy needs an explicit egress rule for the apiserver: a ClusterIP is "+
+				"DNAT'd before policy is evaluated, so kubernetes.default.svc is not reachable by "+
+				"default and the symptom is a hang with zero bytes", err)
+		}
+		ns, _ := reader.Namespace()
+		logger.Printf("reading the cluster read-only from %s (Applications in %s)",
+			ns, cfg.LiveReadsArgoCDNamespace)
+		t.Cluster = reader
+	} else {
+		logger.Print("live cluster reads are off; briefs say what the repository holds " +
+			"and nothing about what is running")
 	}
 
 	// Said at start-up, because the alternative is a deployment that silently
@@ -267,13 +307,19 @@ func (s *Server) Wait() { s.wg.Wait() }
 // network surface, and they fail softly -- an artifact whose registry is not
 // reachable produces an explanation grounded in the render alone, which is
 // what this did before upstream notes existed.
-func upstreamResolver(cfg *Config) upstream.Resolver {
+func upstreamResolver(cfg *Config, tokenSource func(context.Context) (string, error)) upstream.Resolver {
 	if !cfg.Upstream {
 		return nil
 	}
 	return &upstream.GitHubReleases{
+		// Both, and in that order of precedence. A static token is what token
+		// mode has; a source is what App mode has, because an installation
+		// token expires in about an hour and one taken at start-up is expired
+		// for most of the pod's life.
 		Token:        cfg.GitToken,
+		TokenSource:  tokenSource,
 		MaxReleases:  cfg.UpstreamMaxReleases,
 		MaxBodyChars: cfg.UpstreamMaxBodyChars,
+		MaxCommits:   cfg.UpstreamMaxCommits,
 	}
 }

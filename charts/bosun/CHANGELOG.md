@@ -3,6 +3,82 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.12.0]
+
+### Added
+
+- **`liveReads`** -- read the cluster, read-only, so a brief can say what is
+  RUNNING and not only what the repository declares.
+
+  ```
+  - externalsecrets.external-secrets.io on v1beta1 -- 0 live object(s)
+  - Application external-secrets-host -- Degraded / OutOfSync
+  ```
+
+  The chart has shipped a read-only ClusterRole since its first release and no
+  Go code had ever used it. This is that role finally being spent.
+
+  **Off by default**, unlike everything else in this chart. The rest of what
+  the agent reads is public or already in the pull request; this reads your
+  cluster.
+
+  **`liveReads.scope` has two settings because two are what RBAC can express.**
+  "Everything except the core group" is the intent most people have here and it
+  cannot be written down -- there are no deny rules, and `apiGroups: ["*"]`
+  includes the core group, which contains Secrets. `groups` (default) grants
+  only the API groups you list, so Secrets stay unreadable by construction; an
+  unlisted group shows up in the brief as "not permitted to check". `wide`
+  grants everything and **can read Secret contents**.
+
+  **It needs egress this chart cannot infer.** The apiserver is
+  `kubernetes.default.svc`, and a ClusterIP CANNOT be an ipBlock -- it is DNAT'd
+  to a real endpoint before policy is evaluated, so a rule naming it matches
+  nothing and the symptom is a hang with zero bytes. Give the real endpoints
+  under `networkPolicy.egress.apiServer.ipBlocks`, or use `flavor: cilium`,
+  which now emits `toEntities: [kube-apiserver]` and needs none of it. **The pod
+  refuses to start if it cannot read the API**, so a missing rule is a crash
+  loop with an explanation rather than a permanent quiet shrug.
+
+  See [`adr/0006-live-reads-are-scoped-by-group.md`](../../adr/0006-live-reads-are-scoped-by-group.md).
+
+### Changed
+
+- `networkPolicy.egress.apiServer.ipBlocks` is a new key on an object that is
+  `additionalProperties: false`. Nothing existing moves.
+
+## [0.11.0]
+
+### Added
+
+- **`triage.upstreamNotes.maxCommits`** (default `10`) -- how many upstream
+  COMMITS between the two tags may reach a prompt or a comment.
+
+  Commits answer the question release notes routinely do not. A chart drops its
+  `ClusterRole` and ships a release note about performance; the render proves
+  the removal and cannot explain it, and the best the agent could say was "no
+  release note explains why". The commit that deleted the template says exactly
+  why, in a sentence nobody wrote for a changelog.
+
+  **No new egress.** It is `api.github.com`, the same host the gate's checks are
+  read from. At most two extra calls, and only on the paths that produce prose
+  for a human -- the green-gate explanation and an escalation. The mechanical
+  path, the one that writes files, never reads them.
+
+  Set it to `0` to fall back to the built-in cap; switch the whole feature off
+  with `triage.upstreamNotes.enabled: false` as before.
+
+### Fixed
+
+- **Upstream reads were anonymous under App authentication.** The resolver was
+  handed the static `GIT_TOKEN`, which App mode leaves empty by design --
+  installation tokens are minted per use. So from the release that made the
+  agent a GitHub App, every upstream read went out unauthenticated against
+  `api.github.com`'s 60-requests-an-hour-per-IP limit, and the failure surfaced
+  as "no upstream release notes", which is also what an artifact that publishes
+  none looks like. The credential is now fetched per call. Rate limiting also
+  says so in its own sentence rather than hiding inside "could not read the
+  releases", which sends a reader off to check whether the project publishes any.
+
 ## [0.10.0]
 
 ### Added

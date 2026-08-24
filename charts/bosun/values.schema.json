@@ -246,6 +246,12 @@
             "maxBodyChars": {
               "type": "integer",
               "minimum": 200
+            },
+            "maxCommits": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Upstream commits between the two tags that may reach a prompt or comment. Read only on escalation paths."
             }
           }
         }
@@ -369,6 +375,31 @@
               "items": {
                 "type": "string"
               }
+            },
+            "apiServer": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Egress to the Kubernetes apiserver, needed only with liveReads. A ClusterIP cannot be an ipBlock; give the endpoints the kubernetes Service points at. Not needed with flavor 'cilium'.",
+              "properties": {
+                "ipBlocks": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "cidr"
+                    ],
+                    "properties": {
+                      "cidr": {
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         }
@@ -386,6 +417,35 @@
         },
         "mark": {
           "type": "string"
+        }
+      }
+    },
+    "liveReads": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Read the cluster, read-only, so briefs can say what is running and not only what the repository declares.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "groups",
+            "wide"
+          ],
+          "description": "groups: only the API groups listed, so Secrets stay unreadable. wide: apiGroups ['*'] -- answers everything and CAN read Secret contents, because RBAC cannot subtract the core group."
+        },
+        "apiGroups": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "API groups the agent may count objects in, when scope is 'groups'."
+        },
+        "argocdNamespace": {
+          "type": "string",
+          "minLength": 1
         }
       }
     }
