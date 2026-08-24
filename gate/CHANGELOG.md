@@ -7,6 +7,35 @@ All notable changes to `gitops-gate`. Format follows
 
 ### Added
 
+- **A CustomResourceDefinition that stops serving a version now blocks.** The
+  apiVersion rule watches the apiVersion an object *is*. A CRD dropping a
+  version it *serves* is `apiextensions.k8s.io/v1` on both sides, so the rule
+  could not see it -- while every manifest still declaring the dropped version
+  breaks on apply. That is a migration, and it is the most dangerous shape
+  available: it renders perfectly.
+
+  Measured against the real held promotion, external-secrets **0.10.3 ->
+  2.9.0**. Before, the gate passed it GREEN and the agent described it as
+  "adds 11 new CRDs and changes 25 existing resources". Now:
+
+      A CustomResourceDefinition stopped serving a version
+        externalsecrets.external-secrets.io:        no longer serves v1alpha1, v1beta1
+        clustersecretstores.external-secrets.io:    no longer serves v1alpha1, v1beta1
+        secretstores.external-secrets.io:           no longer serves v1alpha1, v1beta1
+        clusterexternalsecrets.external-secrets.io: no longer serves v1beta1
+
+  In the consuming repository that is **33 manifests** declaring one of those
+  versions and **29 live objects** on them.
+
+  `served` defaults to true in apiextensions/v1, so an absent key means served;
+  reading it otherwise would invent removals. A version left listed but turned
+  off counts as dropped, because it is gone from the point of view of anything
+  that declares it. And without object bodies -- a table loaded from the JSON
+  artifact -- the question cannot be answered, so the change is still reported
+  as `changed` rather than claimed safe.
+
+### Added
+
 - **A changed resource now says WHICH fields changed.** The gate rendered both
   versions, compared them, and then reported `Changed (25)` -- a list of names.
   That is the same non-answer the version number already gave, and it asks a

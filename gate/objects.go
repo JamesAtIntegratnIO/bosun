@@ -132,9 +132,54 @@ type FieldChange struct {
 	To   string `json:"to,omitempty"`
 }
 
+// servedVersions is the set of versions a CustomResourceDefinition serves.
+//
+// Empty for anything else, and empty when the body was not carried -- a table
+// loaded from JSON cannot answer this, and saying "no versions removed"
+// because we could not look would be the worst possible answer.
+func servedVersions(o Object) map[string]bool {
+	if o.Kind != "CustomResourceDefinition" || o.Body == nil {
+		return nil
+	}
+	spec, _ := o.Body["spec"].(map[string]any)
+	raw, _ := spec["versions"].([]any)
+	out := map[string]bool{}
+	for _, v := range raw {
+		m, ok := v.(map[string]any)
+		if !ok {
+			continue
+		}
+		// `served: true` is the default in apiextensions/v1 when the field is
+		// absent, so a missing key means served, not unserved.
+		if served, present := m["served"].(bool); present && !served {
+			continue
+		}
+		if name, _ := m["name"].(string); name != "" {
+			out[name] = true
+		}
+	}
+	return out
+}
+
+// droppedVersions are versions the base served and the head does not.
+func droppedVersions(before, after Object) []string {
+	was, now := servedVersions(before), servedVersions(after)
+	if len(was) == 0 {
+		return nil
+	}
+	var gone []string
+	for v := range was {
+		if !now[v] {
+			gone = append(gone, v)
+		}
+	}
+	sort.Strings(gone)
+	return gone
+}
+
 // ObjectChange is one difference between two renders of the same object set.
 type ObjectChange struct {
-	Kind    string `json:"kind"` // added | removed | changed | apiVersion
+	Kind    string `json:"kind"` // added | removed | changed | apiVersion | crdVersionRemoved
 	Object  string `json:"object"`
 	Cluster string `json:"cluster,omitempty"`
 	From    string `json:"from,omitempty"`
@@ -276,6 +321,18 @@ func diffObjects(base, head []Object) []ObjectChange {
 				From: prev.APIVersion, To: o.APIVersion,
 			})
 		case prev.Hash != o.Hash:
+			// A CRD that stops serving a version is a migration wearing a
+			// content change. The object's own apiVersion does not move --
+			// both sides are apiextensions.k8s.io/v1 -- so the apiVersion rule
+			// cannot see it, and every manifest in the repository still
+			// declaring the dropped version breaks at apply time.
+			if gone := droppedVersions(prev, o); len(gone) > 0 {
+				out = append(out, ObjectChange{
+					Kind: "crdVersionRemoved", Object: o.Describe(), Cluster: o.Cluster,
+					From: strings.Join(gone, ", "),
+				})
+				continue
+			}
 			c := ObjectChange{Kind: "changed", Object: o.Describe(), Cluster: o.Cluster}
 			if prev.Body != nil && o.Body != nil {
 				c.Fields, c.Truncated = diffFields(prev.Body, o.Body)

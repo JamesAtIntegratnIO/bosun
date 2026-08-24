@@ -312,3 +312,83 @@ func TestObjectBodyIsNeverSerialised(t *testing.T) {
 		t.Errorf("the object body reached the table artifact: %s", blob)
 	}
 }
+
+func crd(name string, versions ...map[string]any) map[string]any {
+	vs := make([]any, 0, len(versions))
+	for _, v := range versions {
+		vs = append(vs, v)
+	}
+	return map[string]any{
+		"apiVersion": "apiextensions.k8s.io/v1", "kind": "CustomResourceDefinition",
+		"metadata": map[string]any{"name": name},
+		"spec":     map[string]any{"group": "example.io", "versions": vs},
+	}
+}
+
+// external-secrets 0.10.3 -> 2.9.0 rendered GREEN. The CRD object is
+// apiextensions.k8s.io/v1 on both sides, so the apiVersion rule cannot see it,
+// while every manifest in the repository still declaring the dropped version
+// breaks on apply. That is a migration, and it must block.
+func TestACRDThatStopsServingAVersionBlocks(t *testing.T) {
+	before := []Object{objWith("before", crd("externalsecrets.external-secrets.io",
+		map[string]any{"name": "v1beta1", "served": true},
+		map[string]any{"name": "v1", "served": true}))}
+	after := []Object{objWith("after", crd("externalsecrets.external-secrets.io",
+		map[string]any{"name": "v1", "served": true}))}
+
+	got := diffObjects(before, after)
+	if len(got) != 1 {
+		t.Fatalf("want one finding, got %+v", got)
+	}
+	if got[0].Kind != "crdVersionRemoved" {
+		t.Fatalf("want kind=crdVersionRemoved, got %q", got[0].Kind)
+	}
+	if got[0].From != "v1beta1" {
+		t.Errorf("want the dropped version named, got %q", got[0].From)
+	}
+	if !(&DiffResult{Objects: got}).Blocking() {
+		t.Error("dropping a served version is a migration and must block")
+	}
+}
+
+// `served` defaults to true in apiextensions/v1, so an absent key means served.
+// Reading it as unserved would report a removal that never happened.
+func TestAbsentServedKeyMeansServed(t *testing.T) {
+	before := []Object{objWith("before", crd("things.example.io",
+		map[string]any{"name": "v1"}))}
+	after := []Object{objWith("after", crd("things.example.io",
+		map[string]any{"name": "v1"}, map[string]any{"name": "v2"}))}
+
+	for _, c := range diffObjects(before, after) {
+		if c.Kind == "crdVersionRemoved" {
+			t.Fatalf("nothing was dropped; got %+v", c)
+		}
+	}
+}
+
+// A version turned off but still listed is still gone from the API's point of
+// view, and from the point of view of a manifest that declares it.
+func TestAVersionTurnedOffCountsAsDropped(t *testing.T) {
+	before := []Object{objWith("before", crd("things.example.io",
+		map[string]any{"name": "v1beta1", "served": true}, map[string]any{"name": "v1", "served": true}))}
+	after := []Object{objWith("after", crd("things.example.io",
+		map[string]any{"name": "v1beta1", "served": false}, map[string]any{"name": "v1", "served": true}))}
+
+	got := diffObjects(before, after)
+	if len(got) != 1 || got[0].Kind != "crdVersionRemoved" || got[0].From != "v1beta1" {
+		t.Fatalf("want v1beta1 reported as dropped, got %+v", got)
+	}
+}
+
+// Without bodies the question cannot be answered. Reporting "nothing dropped"
+// because we could not look is the worst available answer, so the change is
+// still reported -- just not as a migration.
+func TestNoBodyMeansNoCRDClaimEitherWay(t *testing.T) {
+	got := diffObjects(
+		[]Object{{Cluster: "c", Kind: "CustomResourceDefinition", Name: "x", APIVersion: "apiextensions.k8s.io/v1", Hash: "a"}},
+		[]Object{{Cluster: "c", Kind: "CustomResourceDefinition", Name: "x", APIVersion: "apiextensions.k8s.io/v1", Hash: "b"}},
+	)
+	if len(got) != 1 || got[0].Kind != "changed" {
+		t.Fatalf("want the change still reported as changed, got %+v", got)
+	}
+}

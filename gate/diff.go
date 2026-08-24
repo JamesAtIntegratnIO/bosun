@@ -53,7 +53,11 @@ func (d *DiffResult) Blocking() bool {
 	// runtime. Objects appearing or changing are reported but not blocked --
 	// that is what a version bump legitimately does.
 	for _, o := range d.Objects {
-		if o.Kind == "apiVersion" {
+		// Both are migrations. The first is an object whose own apiVersion
+		// moved; the second is a CustomResourceDefinition that stopped serving
+		// one, which the first cannot see because the CRD object itself is
+		// apiextensions.k8s.io/v1 on both sides.
+		if o.Kind == "apiVersion" || o.Kind == "crdVersionRemoved" {
 			return true
 		}
 	}
@@ -295,11 +299,13 @@ func (d *DiffResult) Report(w io.Writer) {
 		fmt.Fprintln(w)
 	}
 	if len(d.Objects) > 0 {
-		var api, added, removed, changed []ObjectChange
+		var api, crd, added, removed, changed []ObjectChange
 		for _, o := range d.Objects {
 			switch o.Kind {
 			case "apiVersion":
 				api = append(api, o)
+			case "crdVersionRemoved":
+				crd = append(crd, o)
 			case "added":
 				added = append(added, o)
 			case "removed":
@@ -313,6 +319,13 @@ func (d *DiffResult) Report(w io.Writer) {
 			fmt.Fprintf(w, "**API version changed** — this is a migration, not a bump.\n\n")
 			for _, o := range api {
 				fmt.Fprintf(w, "- `%s`: `%s` → `%s`\n", o.Object, o.From, o.To)
+			}
+			fmt.Fprintln(w)
+		}
+		if len(crd) > 0 {
+			fmt.Fprintf(w, "**A CustomResourceDefinition stopped serving a version** — anything still declaring it breaks on apply.\n\n")
+			for _, o := range crd {
+				fmt.Fprintf(w, "- `%s`: no longer serves `%s`\n", o.Object, o.From)
 			}
 			fmt.Fprintln(w)
 		}
