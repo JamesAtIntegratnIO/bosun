@@ -3,6 +3,27 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.15.2] - 2026-08-24
+
+### Fixed
+
+- **"Values not carried across" named values the migration had carried.** The
+  check compared scalar strings exactly, so a value the TARGET SCHEMA respells
+  read as a value the migration dropped.
+
+  cert-manager v1 spells the key algorithm `ECDSA` where v1alpha2 spelled it
+  `ecdsa`, and the enum is what dictates the new spelling -- the same schema
+  authority that let the value be written at all. The comment announced
+  **Values not carried across: `ecdsa`, `pkcs8`** directly beneath the diff that
+  carried them into `privateKey.algorithm` and `privateKey.encoding`.
+
+  Respelled values are now reported separately, as **Respelled by the new
+  schema: `ecdsa -> ECDSA`**, and only a value with nowhere to go is called
+  lost. The escape hatch is narrow on purpose: a differing-case value counts as
+  a respelling only if it is a member of the target schema's own vocabulary --
+  an enum member, a const, a declared default. A model that quietly lowercased
+  a name it invented still reads as loss, which is what that warning is for.
+
 ## [0.15.1] - 2026-08-24
 
 ### Fixed

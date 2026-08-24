@@ -3,6 +3,12 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.15.2]
+
+No change to this chart's surface. The version tracks `appVersion`; the agent
+stopped reporting schema-dictated respellings as values it had dropped. See the
+repository CHANGELOG.
+
 ## [0.15.1]
 
 No change to this chart's surface -- no new value, no template change. The

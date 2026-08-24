@@ -19,6 +19,19 @@ type Verdict struct {
 	// longer accepts has to go somewhere, and sometimes that is nowhere -- but
 	// always reported, so a human sees exactly what a migration dropped.
 	Lost []string
+	// Respelled are values the target schema RESPELLED rather than dropped:
+	// present in the original, absent from the proposal literally, and present
+	// there as a schema vocabulary member differing only in case.
+	//
+	// Separated from Lost because putting them together said something false.
+	// cert-manager v1 spells the key algorithm `ECDSA` where v1alpha2 spelled
+	// it `ecdsa`, and the enum is what dictates the new spelling -- so the
+	// value survived the migration exactly as intended, and the comment
+	// announced "Values not carried across: ecdsa, pkcs8" directly beneath the
+	// diff that carried them. A reader cannot act on a warning that is wrong,
+	// and a warning that cries wolf on the normal case is how the real one
+	// gets skipped. Each entry reads `old -> new`.
+	Respelled []string
 }
 
 func (v Verdict) OK() bool { return len(v.Refusals) == 0 }
@@ -113,11 +126,35 @@ func Validate(original, proposed map[string]any, targetAPIVersion string, target
 	// accepts has to go somewhere, and sometimes nowhere is right.
 	propVals := leafValues(proposed)
 	for _, val := range sortedSet(leafValues(original)) {
-		if !propVals[val] {
-			v.Lost = append(v.Lost, val)
+		if propVals[val] {
+			continue
 		}
+		// Respelled, not dropped. Only the target schema's own vocabulary
+		// counts: matching case-insensitively against anything in the proposal
+		// would excuse a model that quietly lowercased a name.
+		if to, ok := respelledBy(val, propVals, allowed); ok {
+			v.Respelled = append(v.Respelled, val+" -> "+to)
+			continue
+		}
+		v.Lost = append(v.Lost, val)
 	}
 	return v
+}
+
+// respelledBy reports the proposal value that is `val` under a different case
+// AND is a member of the target schema's vocabulary -- an enum member, a const,
+// a declared default. Anything else is a value the model changed on its own
+// authority, which is not a respelling and must still read as lost.
+func respelledBy(val string, proposed map[string]bool, allowed map[string]bool) (string, bool) {
+	// Sorted: two vocabulary members differing only in case is pathological,
+	// but a report that names a different one on each run is worse than either
+	// answer.
+	for _, cand := range sortedSet(proposed) {
+		if allowed[cand] && cand != val && strings.EqualFold(cand, val) {
+			return cand, true
+		}
+	}
+	return "", false
 }
 
 // displacedValues are the values the schema change actually moved: everything

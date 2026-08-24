@@ -36,13 +36,14 @@ import (
 
 // restructured is one document the model reshaped and the harness accepted.
 type restructured struct {
-	Path    string
-	Kind    string
-	Name    string
-	Notes   string
-	Diff    string
-	Lost    []string
-	Reasons []structural.Finding
+	Path      string
+	Kind      string
+	Name      string
+	Notes     string
+	Diff      string
+	Lost      []string
+	Respelled []string
+	Reasons   []structural.Finding
 }
 
 // refused is one document the harness would not write.
@@ -216,7 +217,7 @@ func (t *Triage) restructureAll(ctx context.Context, root string, drops []migrat
 			res.Applied = append(res.Applied, restructured{
 				Path: rel, Kind: head.Kind, Name: head.Metadata.Name,
 				Notes: m.Notes, Diff: structural.Diff(chunk.body, string(out)),
-				Lost: verdict.Lost, Reasons: findings,
+				Lost: verdict.Lost, Respelled: verdict.Respelled, Reasons: findings,
 			})
 		}
 

@@ -86,3 +86,96 @@ func TestDiffCountsRepeatedLines(t *testing.T) {
 		t.Fatalf("a removed duplicate is invisible:\n%s", got)
 	}
 }
+
+// ---- respelled is not lost ----
+
+const certTarget = `
+type: object
+required: [apiVersion, kind, spec]
+properties:
+  apiVersion: {type: string}
+  kind: {type: string}
+  metadata:
+    type: object
+    x-kubernetes-preserve-unknown-fields: true
+  spec:
+    type: object
+    properties:
+      privateKey:
+        type: object
+        properties:
+          algorithm: {type: string, enum: [RSA, ECDSA, Ed25519]}
+      commonName: {type: string}
+`
+
+// cert-manager v1 spells the key algorithm `ECDSA` where v1alpha2 spelled it
+// `ecdsa`, and the enum is what dictates the new spelling. Reported as lost,
+// that says the migration dropped a value on exactly the bump where it did its
+// job -- directly beneath the diff that carried it.
+func TestRespelledIsNotLost(t *testing.T) {
+	got := Validate(
+		// The apiVersion is ALREADY the target: the deterministic swap runs
+		// first and the model is only ever shown a document whose version has
+		// moved. Feeding the pre-swap document here would refuse on the
+		// apiVersion itself and test the wrong thing.
+		doc(t, `
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: {name: platform-tls, namespace: gateway}
+spec:
+  keyAlgorithm: ecdsa
+`),
+		doc(t, `
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: {name: platform-tls, namespace: gateway}
+spec:
+  privateKey: {algorithm: ECDSA}
+`),
+		"cert-manager.io/v1", schema(t, certTarget))
+	if !got.OK() {
+		t.Fatalf("refused: %v", got.Refusals)
+	}
+	for _, l := range got.Lost {
+		if l == "ecdsa" {
+			t.Fatalf("a schema-dictated respelling was reported as lost: %v", got.Lost)
+		}
+	}
+	if len(got.Respelled) != 1 || got.Respelled[0] != "ecdsa -> ECDSA" {
+		t.Fatalf("want [ecdsa -> ECDSA], got %v", got.Respelled)
+	}
+}
+
+// The escape hatch must not become one. A value the model changed on its own
+// authority is not a respelling, however similar it looks -- the target
+// schema's vocabulary is the only thing that can excuse a new spelling.
+func TestACaseChangeTheSchemaDidNotDictateIsStillLost(t *testing.T) {
+	got := Validate(
+		doc(t, `
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: {name: platform-tls, namespace: gateway}
+spec:
+  commonName: Platform.Localtest.Me
+`),
+		doc(t, `
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: {name: platform-tls, namespace: gateway}
+spec:
+  commonName: platform.localtest.me
+`),
+		"cert-manager.io/v1", schema(t, certTarget))
+	if len(got.Respelled) != 0 {
+		t.Fatalf("a value the schema does not dictate was excused as respelled: %v", got.Respelled)
+	}
+	found := false
+	for _, l := range got.Lost {
+		if l == "Platform.Localtest.Me" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want the original spelling reported lost, got %v", got.Lost)
+	}
+}
