@@ -52,7 +52,7 @@ metadata:
 spec:
   refreshInterval: 1h
   secretStoreRef:
-    name: onepassword-store
+    name: platform-store
     kind: ClusterSecretStore
   target:
     name: grafana-admin
@@ -125,7 +125,7 @@ kind: ExternalSecret
 metadata: {name: grafana-admin, namespace: observability}
 spec:
   refreshInterval: 1h
-  secretStoreRef: {name: onepassword-store, kind: ClusterSecretStore}
+  secretStoreRef: {name: platform-store, kind: ClusterSecretStore}
   target: {name: grafana-admin}
   dataFrom:
     - extract: {key: grafana-admin-credentials, property: admin-password, version: "2"}
@@ -135,7 +135,7 @@ kind: ExternalSecret
 metadata: {name: grafana-admin, namespace: observability}
 spec:
   refreshInterval: 1h
-  secretStoreRef: {name: onepassword-store, kind: ClusterSecretStore}
+  secretStoreRef: {name: platform-store, kind: ClusterSecretStore}
   target: {name: grafana-admin}
   dataFrom:
     - extract: {key: observability, property: admin-password, version: "2"}
@@ -145,7 +145,7 @@ kind: ExternalSecret
 metadata: {name: grafana-admin-v2, namespace: observability}
 spec:
   refreshInterval: 1h
-  secretStoreRef: {name: onepassword-store, kind: ClusterSecretStore}
+  secretStoreRef: {name: platform-store, kind: ClusterSecretStore}
   target: {name: grafana-admin}
   dataFrom:
     - extract: {key: grafana, property: admin-password, version: "2"}
