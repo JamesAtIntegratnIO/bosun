@@ -3,6 +3,28 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.14.1] - 2026-08-24
+
+### Fixed
+
+- **A fallback that works was silent, which is the wrong way round.**
+  [ADR 0007](adr/0007-structure-from-the-schema-data-from-the-document.md)
+  promises the live-CRD fallback for a target schema is "labelled as one in the
+  comment". It was not: the note was attached to the schema pair and then only
+  surfaced when the pair was INCOMPLETE — which is exactly when the fallback had
+  *not* been used.
+
+  Caught on the first live replay round. The external-secrets migration reported
+  no structural findings and said nothing about which schema it had checked
+  against; the chart render could not reach `charts.external-secrets.io` at all,
+  so the answer can only have come from the version the cluster serves today.
+
+  That distinction is the whole point. A target schema taken from what is
+  installed now predates the bump and can miss a field the new chart version
+  added, so a clean result there carries less confidence than a clean result
+  checked against the chart's own schema. Only the comment can tell a reader
+  which they got. A new **"Which schema the check used"** section does.
+
 ## [0.14.0] - 2026-08-24
 
 Three releases in an afternoon each fixed the bug the previous one's

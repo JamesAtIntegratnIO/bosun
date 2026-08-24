@@ -576,7 +576,7 @@ func (t *Triage) maxRestructured() int {
 // it; a reader who does not can see every line that moved, which is the only
 // basis on which trusting it is reasonable.
 func renderRestructured(rr *restructureResult) string {
-	if rr == nil || (!rr.touched() && len(rr.Skipped) == 0) {
+	if rr == nil || (!rr.touched() && len(rr.Skipped) == 0 && len(rr.Provenance) == 0) {
 		return ""
 	}
 	var b strings.Builder
@@ -617,6 +617,12 @@ func renderRestructured(rr *restructureResult) string {
 	if len(rr.Skipped) > 0 {
 		b.WriteString("\n**Not checked for structural changes**\n\n")
 		for _, s := range rr.Skipped {
+			fmt.Fprintf(&b, "- %s\n", s)
+		}
+	}
+	if len(rr.Provenance) > 0 {
+		b.WriteString("\n**Which schema the check used**\n\n")
+		for _, s := range rr.Provenance {
 			fmt.Fprintf(&b, "- %s\n", s)
 		}
 	}

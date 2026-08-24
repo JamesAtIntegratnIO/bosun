@@ -3,6 +3,13 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.14.1]
+
+### Fixed
+
+- A structural check that fell back to the cluster's own copy of the target
+  schema now says so in the comment. No values change; see the agent changelog.
+
 ## [0.14.0]
 
 ### Added

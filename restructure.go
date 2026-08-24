@@ -63,6 +63,13 @@ type restructureResult struct {
 	// silent -- a structural change nobody looked for is the failure this
 	// exists to end.
 	Skipped []string
+	// Provenance says where a schema came from when it was not the obvious
+	// place. ADR 0007 promises the live-CRD fallback is "labelled as one in the
+	// comment", and it was not: the note was attached to the pair and then only
+	// surfaced when the pair was INCOMPLETE -- which is exactly when the
+	// fallback had not been used. A fallback that works is silent, which is the
+	// wrong way round.
+	Provenance []string
 	// Called counts model calls, so a comment can say honestly whether a model
 	// was involved at all.
 	Called int
@@ -102,10 +109,18 @@ func (t *Triage) restructureAll(ctx context.Context, root string, drops []migrat
 		pair := pairs[d.CRD]
 		av := d.Group + "/" + d.Target
 		byAPIKind[av+"/"+d.Kind] = target{crd: d.CRD, kind: d.Kind, pair: pair, apiVersion: av}
-		if !pair.Complete() {
+		switch {
+		case !pair.Complete():
 			res.Skipped = append(res.Skipped, fmt.Sprintf(
 				"`%s`: no structural check -- %s", d.CRD,
 				firstNonEmpty(pair.Note, "both schemas were needed and one could not be read")))
+		case pair.Note != "":
+			// Complete, but not from where it would normally come. Worth saying
+			// out loud: a target schema taken from what the cluster serves
+			// TODAY predates the bump, so it can miss a field the new chart
+			// version added -- and a check that silently used the old shape
+			// would report a clean document with more confidence than it earned.
+			res.Provenance = append(res.Provenance, fmt.Sprintf("`%s`: %s", d.CRD, pair.Note))
 		}
 	}
 	if !ok {
