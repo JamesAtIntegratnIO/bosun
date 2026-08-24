@@ -26,8 +26,8 @@ TOTAL=$(python3 -c "import json;print(len(json.load(open('$CASES_JSON'))))")
 # failing gate and a blocking report -- so a case written for the green-gate
 # explanation would be replayed under the wrong conditions and score nothing
 # meaningful. Those are skipped by name below rather than silently mis-run.
-REPLAYABLE=$(python3 -c "import json;print(sum(1 for c in json.load(open('$CASES_JSON')) if not c.get('Path')))")
-say "$REPLAYABLE of $TOTAL recorded incidents replay against a red gate; agent is live"
+REPLAYABLE=$(python3 -c "import json;print(sum(1 for c in json.load(open('$CASES_JSON')) if c.get('Path') != 'restructure'))")
+say "$REPLAYABLE of $TOTAL recorded incidents replay as pull requests; agent is live"
 
 AGENT_POD="$(kc -n bosun get pod -l app.kubernetes.io/name=bosun -o name | head -1)"
 [ -n "$AGENT_POD" ] || bad "no agent pod"
@@ -42,12 +42,29 @@ for i in $(seq 0 $((TOTAL - 1))); do
   NAME=$(python3 -c "import json;print(json.load(open('$CASES_JSON'))[$i]['Name'])")
   [ -n "$FILTER" ] && case "$NAME" in *"$FILTER"*) ;; *) continue ;; esac
 
-  # Which prompt this case measures. Empty is triage, which is what this
-  # replays; anything else needs a gate in a state this script does not seed.
+  # Which prompt this case measures, and therefore which gate it needs.
+  #
+  #   ""          triage -- a RED gate and a blocking report
+  #   explain     a GREEN gate whose render still changed. Every case here used
+  #               to be skipped as "needs a green gate", which was true and
+  #               fixable: the gate's verdict is seeded by this script, so
+  #               seeding a green one is a two-character difference. It matters
+  #               more than the count suggests -- the explain path is the only
+  #               one that reads upstream release notes and commits, so nine
+  #               skipped cases meant that whole authority was never exercised
+  #               against a live model here.
+  #   restructure not a pull request at all. Those cases are a document, an old
+  #               schema and a new one, and the live equivalent is
+  #               70-demo-structural.sh, which performs the whole migration
+  #               against a real cluster.
   CASE_PATH=$(python3 -c "import json;print(json.load(open('$CASES_JSON'))[$i].get('Path') or '')")
-  if [ -n "$CASE_PATH" ]; then
-    step "skipping ${NAME}: measures the ${CASE_PATH} prompt, which needs a green gate"
+  if [ "$CASE_PATH" = restructure ]; then
+    step "skipping ${NAME}: a document and two schemas, not a pull request -- run make demo-structural"
     continue
+  fi
+  GATE_STATE=failure; GATE_DESC="blocking change"
+  if [ "$CASE_PATH" = explain ]; then
+    GATE_STATE=success; GATE_DESC="no blocking change"
   fi
 
   WANT=$(python3 -c "import json;print(json.load(open('$CASES_JSON'))[$i]['WantClass'])")
@@ -106,17 +123,39 @@ PY
   gitea_api POST "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/issues/${PR}/comments" \
     --data-binary @"$WORK/comment.json" >/dev/null
   gitea_api POST "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/statuses/${HEAD_SHA}" \
-    -d '{"context":"gate","state":"failure","description":"blocking change"}' >/dev/null
-  step "gate report posted, status gate=failure"
+    -d "{\"context\":\"gate\",\"state\":\"${GATE_STATE}\",\"description\":\"${GATE_DESC}\"}" >/dev/null
+  step "gate report posted, status gate=${GATE_STATE}"
 
   # --- the live agent ---
+  # How many comments the AGENT has written here. Silence and speech are
+  # different verdicts and this is the only way to tell them apart from
+  # outside: escalating posts a comment, no_action deliberately does not.
+  # Scored on the SHA alone, `escalate` and `no_action` collapsed into one
+  # class -- so `unrelated-preexisting-failure`, whose entire point is that the
+  # agent stays quiet, passed by matching a class that also contained every
+  # escalation.
+  agent_comments() {
+    gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/issues/${1}/comments?limit=50" \
+      | AU="$AGENT_USER" python3 -c '
+import json,os,sys
+print(sum(1 for c in json.load(sys.stdin) if c["user"]["login"] == os.environ["AU"]))'
+  }
+  COMMENTS_BEFORE=$(agent_comments "$PR")
   BEFORE=$(kc -n bosun logs "$AGENT_POD" 2>/dev/null | wc -l | tr -d ' ')
   BODY=$(python3 - "$CASES_JSON" "$i" "$PR" "$BRANCH" <<'PY'
-import json, sys
+import json, re, sys
 case = json.load(open(sys.argv[1]))[int(sys.argv[2])]
+# The recorded subject reads "bump <chart> chart <from> -> <to>", and the
+# agent needs those three as fields: a promotion whose from/to are empty
+# cannot look up what changed between them, so the explain path would run
+# with a render and no way to ask why. Parsed rather than added to the
+# fixtures, because the fixtures are the eval suite's and the eval suite
+# supplies its own upstream text.
+m = re.match(r"bump (\S+) chart (\S+) -> (\S+)", case["Subject"])
+chart, frm, to = (m.group(1), m.group(2), m.group(3)) if m else (case["Subject"], "", "")
 print(json.dumps({
   "project": "bosun", "stage": "scenario", "promotion": case["Name"],
-  "artifact": case["Subject"], "from": "", "to": "", "autoMerge": "never",
+  "artifact": chart, "from": frm, "to": to, "autoMerge": "never",
   "prNumber": int(sys.argv[3]), "branch": sys.argv[4],
   # What the PROMOTION rewrote, not everything the fixture writes into the
   # repository. Kargo reports only the files its `updates:` block touched, and
@@ -140,7 +179,8 @@ PY
   # --- what it did ---
   AFTER_SHA=$(gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls/${PR}" \
     | python3 -c 'import json,sys;print(json.load(sys.stdin)["head"]["sha"])')
-  GOT="escalate/no_action"
+  COMMENTS_AFTER=$(agent_comments "$PR")
+  if [ "$COMMENTS_AFTER" -gt "$COMMENTS_BEFORE" ]; then GOT="escalate"; else GOT="no_action"; fi
   if [ "$HEAD_SHA" != "$AFTER_SHA" ]; then
     GOT="mechanical"
     ok "pushed a fix: ${HEAD_SHA:0:7} -> ${AFTER_SHA:0:7}"
@@ -163,14 +203,18 @@ done
 
 say "summary"
 printf '  %-38s %-11s %-11s %s\n' CASE EXPECTED OBSERVED PR
+FAILED=0
 while IFS=$'\t' read -r n w g p; do
-  mark=" "; [ "$w" = "$g" ] && mark="+"
-  [ "$w" != mechanical ] && [ "$g" != mechanical ] && mark="+"
+  mark="+"; [ "$w" = "$g" ] || { mark=" "; FAILED=$((FAILED + 1)); }
   printf '%s %-38s %-11s %-11s #%s\n' "$mark" "$n" "$w" "$g" "$p"
 done < "$RESULTS"
 echo
-echo "  + means the agent's ACTION matched the case's class."
-echo "  Explain-path cases are not replayed here; they need a green gate."
+echo "  + means the agent's ACTION matched the case's class exactly."
+echo "  mechanical = it pushed a commit; escalate = it posted a comment;"
+echo "  no_action  = it did neither, which for some cases is the right answer."
+echo "  Restructure cases are a document and two schemas rather than a pull"
+echo "  request -- run make demo-structural for the live version of that path."
 echo "  This shows whether it edited, not whether the edit was right --"
 echo "  the eval suite checks the exact scalars. Run: go test ./evals/..."
+[ "$FAILED" -eq 0 ] || bad "${FAILED} case(s) did not match"
 rm -f "$RESULTS"

@@ -14,6 +14,12 @@ set -euo pipefail
 : "${GITEA_OWNER:=giteaAdmin}"
 : "${SAMPLE_REPO_NAME:=delivery-sample}"
 : "${KARGO_PROJECT:=delivery}"
+# The account the agent authenticates as. Its own, never the admin's: a comment
+# signed by whoever minted the token is indistinguishable at a glance from a
+# colleague having written it. Named here because two scripts need it -- 30-kit
+# creates it, and 60-demo-scenarios counts its comments to tell an escalation
+# from a silence.
+: "${AGENT_USER:=bosun}"
 
 # The same repository has two addresses, and which one you want depends on
 # where you are standing.
