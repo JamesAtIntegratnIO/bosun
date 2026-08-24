@@ -5,6 +5,19 @@ All notable changes to `gitops-gate`. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **The image copies the module it builds.** The Dockerfile hand-picked
+  `gate/` into the build stage, and the day the gate first imported a sibling
+  package -- `migrate`, in the very release that shipped consumer-aware
+  blocking -- the v0.9.0 image build died on `no required module provides
+  package .../migrate` while CI's `go build ./...` stayed green: CI builds
+  the checkout, the image builds the COPY list, and only one of them follows
+  the import graph. The build stage now copies the module wholesale, as the
+  agent's Dockerfile always has. The image workflow's scope filter learned
+  the same lesson: `migrate/` now rebuilds the gate image too, so a change to
+  the shared scanner cannot ship a stale gate.
+
 ### Changed
 
 - **A dropped served version blocks exactly while manifests still declare it.**

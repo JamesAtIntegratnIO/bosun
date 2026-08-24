@@ -3,6 +3,18 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.9.1] - 2026-08-24
+
+### Fixed
+
+- **The v0.9.0 gitops-gate image never existed.** Its Dockerfile copied only
+  `gate/` into the build and the gate now imports `migrate/`, so the release
+  published the agent image and died on the gate's -- see the gate changelog.
+  This release exists to run the release machinery over the fixed Dockerfile:
+  the version path publishes both images, so v0.9.1 is the first tag since
+  the repair feature whose gate image is real. Nothing about the agent binary
+  changed since 0.9.0.
+
 ## [0.9.0] - 2026-08-24
 
 ### Changed
