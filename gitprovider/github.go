@@ -261,7 +261,13 @@ func (g *GitHub) PushFix(ctx context.Context, pr *PullRequest, root, message str
 	}
 	email := g.AuthorEmail
 	if email == "" {
-		email = "bosun@users.noreply.github.com"
+		// NEVER a users.noreply.github.com address: that namespace belongs to
+		// GitHub accounts, and an email in it that is not yours attributes
+		// the commit -- avatar and all -- to whoever owns the name. The
+		// .invalid TLD (RFC 2606) can map to nobody. App auth replaces this
+		// with the bot's real identity at start-up; a token without a
+		// configured author gets an honest gray nobody instead of a stranger.
+		email = "bosun@noreply.invalid"
 	}
 	// The push needs a credential too, and for an App that means a token
 	// minted now rather than one held since start-up.

@@ -201,3 +201,45 @@ func TestRepairDoesNotRescueSomethingThatIsNotAKey(t *testing.T) {
 		}
 	}
 }
+
+// The commit identity is the App's own bot account, in the exact format
+// GitHub attributes: `<slug>[bot]` and `<id>+<slug>[bot]@users.noreply`.
+// Anything else in that namespace attributes the commit to whoever owns the
+// name -- measured live, when the default `bosun@users.noreply.github.com`
+// rendered the first repair under a stranger's avatar.
+func TestBotIdentityIsTheAppsOwn(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/app":
+			_ = json.NewEncoder(w).Encode(map[string]any{"slug": "bosun-mate"})
+		case strings.HasSuffix(r.URL.Path, "/installation"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 42})
+		case strings.HasSuffix(r.URL.Path, "/access_tokens"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"token": "ghs_installation", "expires_at": time.Now().Add(time.Hour)})
+		case strings.Contains(r.URL.Path, "/users/"):
+			if !strings.Contains(r.URL.Path, "bosun-mate%5Bbot%5D") &&
+				!strings.Contains(r.URL.Path, "bosun-mate[bot]") {
+				t.Errorf("looked up the wrong user: %s", r.URL.Path)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 4694})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	a := &AppAuth{AppID: "123", PrivateKey: testKey(t, false),
+		Owner: "o", Repo: "r", APIBase: srv.URL, HTTP: srv.Client()}
+
+	name, email, err := a.BotIdentity(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "bosun-mate[bot]" {
+		t.Errorf("name = %q", name)
+	}
+	if email != "4694+bosun-mate[bot]@users.noreply.github.com" {
+		t.Errorf("email = %q", email)
+	}
+}

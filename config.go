@@ -83,8 +83,13 @@ func LoadConfig() (*Config, error) {
 		GitRepo:                  os.Getenv("GIT_REPO"),
 		GitRepoURL:               os.Getenv("GIT_REPO_URL"),
 		GitToken:                 os.Getenv("GIT_TOKEN"),
-		AuthorName:               env("GIT_AUTHOR_NAME", "bosun"),
-		AuthorEmail:              env("GIT_AUTHOR_EMAIL", "bosun@users.noreply.github.com"),
+		// No defaults. Empty means "derive": as a GitHub App, the bot's own
+		// identity; otherwise the provider's collision-proof fallback. The old
+		// default email lived in the `<username>@users.noreply.github.com`
+		// namespace, which BELONGS to GitHub accounts -- so every commit was
+		// attributed, avatar and all, to the unrelated account named `bosun`.
+		AuthorName:  os.Getenv("GIT_AUTHOR_NAME"),
+		AuthorEmail: os.Getenv("GIT_AUTHOR_EMAIL"),
 
 		LLMProvider:        os.Getenv("LLM_PROVIDER"),
 		LLMBaseURL:         os.Getenv("LLM_BASE_URL"),

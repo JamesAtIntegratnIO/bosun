@@ -40,6 +40,49 @@ func AnnotateConsumers(res *DiffResult, root string) {
 	}
 }
 
+// markMigrationConsistent flags apiVersion moves that are exactly what a
+// crdVersionRemoved finding in the same diff demands: the same consumer kind,
+// from a dropped version, to the named survivor. That move is the repair, not
+// a new migration -- and without this, no pull request that fixes a dropped
+// served version could ever go green, because the fix itself would trip the
+// apiVersion rule. The first live repair proved it: 27 manifests migrated,
+// consumers counted at zero, and the gate red on its own prescription.
+//
+// The match is deliberately exact. A move to any other version, or of any
+// kind the findings do not name, is still an unexplained migration and still
+// blocks.
+func markMigrationConsistent(objects []ObjectChange) {
+	allowed := map[string]bool{}
+	for _, o := range objects {
+		if o.Kind != "crdVersionRemoved" {
+			continue
+		}
+		d, ok := droppedFromChange(o)
+		if !ok {
+			continue
+		}
+		for _, v := range d.Versions {
+			allowed[d.Kind+"|"+d.Group+"/"+v+"|"+d.Group+"/"+d.Target] = true
+		}
+	}
+	if len(allowed) == 0 {
+		return
+	}
+	for i := range objects {
+		o := &objects[i]
+		if o.Kind != "apiVersion" {
+			continue
+		}
+		kind := o.Object
+		if j := strings.Index(kind, "/"); j >= 0 {
+			kind = kind[:j]
+		}
+		if allowed[kind+"|"+o.From+"|"+o.To] {
+			o.PartOfMigration = true
+		}
+	}
+}
+
 // droppedFromChange rebuilds the migration contract from a finding. It is the
 // in-process twin of migrate.ParseReport: the same data, before it has been
 // through a report line.

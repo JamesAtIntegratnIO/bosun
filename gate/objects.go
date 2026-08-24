@@ -218,6 +218,14 @@ type ObjectChange struct {
 	ConsumerFiles  []string `json:"consumerFiles,omitempty"`
 	ConsumersKnown bool     `json:"consumersKnown,omitempty"`
 
+	// apiVersion only. True when this move is exactly what a
+	// crdVersionRemoved finding in the same diff demands -- same kind, from a
+	// dropped version, to the named survivor. That is the repair, not a new
+	// migration, and blocking on it would mean no pull request that fixes a
+	// dropped served version could ever go green: the first live repair
+	// proved it by migrating 27 manifests and turning its own gate red.
+	PartOfMigration bool `json:"partOfMigration,omitempty"`
+
 	// Fields are the leaves that differ, when both renders were available in
 	// process. Empty is not "nothing changed" -- it is "not computed here".
 	Fields []FieldChange `json:"fields,omitempty"`
