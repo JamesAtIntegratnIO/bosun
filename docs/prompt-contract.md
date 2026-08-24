@@ -100,6 +100,31 @@ refuse anything, so a model that accommodates unconditionally scores full marks.
 `namespace-moved-under-a-bump` is the first case where the correct answer is to
 decline, and it is a transcript of the live failure rather than an invention.
 
+## Lever 6 — the words are for the reader, not the record
+
+Read back from the first live escalations on real held promotions: every one
+said the same thing three times. The headline printed the escalation reason,
+the summary paraphrased it, and the reasoning restated both before restating
+the gate report — and none of the three named a file a human could open. An
+escalation that announces itself is noise; the reader already knows, because
+the label and the headline said so before the model's words began.
+
+Two levers, one in code and one in the prompt. The renderer now prints the
+verdict marker once and sends `escalationReason` to the commit status instead
+of the comment, so the model *cannot* duplicate it there. And the prompt
+defines the fields by their reader — summary is the decision in one sentence,
+reasoning is the handoff (the file and key to open, the choice the human
+faces, the one fact that stopped a mechanical fix), escalationReason is a
+status label — and bans restating the report that sits directly above the
+comment.
+
+Measured after the change on qwen3.8-27b: **classification 10/10, full pass
+10/10, UNSAFE 0** (3m13s) — and the three accommodation cases still classify
+mechanical, so telling the model to spend its words on the handoff did not
+push it toward escalating everything. What the numbers cannot measure is the
+prose itself; that is judged the same way the repetition was found, by
+reading the next live escalations.
+
 ## What the model is never trusted with
 
 Neither the prompt nor the model decides any of this:
