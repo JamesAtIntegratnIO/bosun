@@ -58,7 +58,7 @@ func markMigrationConsistent(objects []ObjectChange) {
 			continue
 		}
 		d, ok := droppedFromChange(o)
-		if !ok {
+		if !ok || d.Target == "" {
 			continue
 		}
 		for _, v := range d.Versions {
@@ -91,8 +91,12 @@ func droppedFromChange(o ObjectChange) (migrate.Dropped, bool) {
 	if i := strings.Index(name, " in "); i >= 0 {
 		name = name[:i]
 	}
+	// No Target required: a CRD removed outright has no survivor, and its
+	// consumers are exactly as scannable -- Scan needs the group, the kind and
+	// the versions; only a rewrite needs a destination, and Migrate refuses an
+	// empty one on its own.
 	dot := strings.Index(name, ".")
-	if dot < 0 || o.Resource == "" || o.To == "" {
+	if dot < 0 || o.Resource == "" {
 		return migrate.Dropped{}, false
 	}
 	var versions []string

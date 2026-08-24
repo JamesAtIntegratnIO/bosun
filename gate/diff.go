@@ -352,9 +352,14 @@ func (d *DiffResult) Report(w io.Writer) {
 				// rendered by the shared package rather than by one more
 				// format string that could drift.
 				fmt.Fprintf(w, "%s\n", migrate.Line(o.Object, o.From, o.Resource, o.To))
+				blocking, clear := "blocking until they move", "no manifest in this repository declares a dropped version, so this alone does not block"
+				if o.To == "" {
+					blocking = "blocking until they are removed or replaced"
+					clear = "no manifest in this repository uses this API, so from inspection the removal looks safe and does not block"
+				}
 				switch {
 				case o.ConsumersKnown && len(o.ConsumerFiles) > 0:
-					fmt.Fprintf(w, "  - **%d manifest(s) in this repository still declare a dropped version** — blocking until they move:\n", len(o.ConsumerFiles))
+					fmt.Fprintf(w, "  - **%d manifest(s) in this repository still declare a dropped version** — %s:\n", len(o.ConsumerFiles), blocking)
 					for i, f := range o.ConsumerFiles {
 						if i == 12 {
 							fmt.Fprintf(w, "    - …and %d more\n", len(o.ConsumerFiles)-12)
@@ -363,7 +368,7 @@ func (d *DiffResult) Report(w io.Writer) {
 						fmt.Fprintf(w, "    - `%s`\n", f)
 					}
 				case o.ConsumersKnown:
-					fmt.Fprintf(w, "  - no manifest in this repository declares a dropped version, so this alone does not block\n")
+					fmt.Fprintf(w, "  - %s\n", clear)
 				}
 			}
 			fmt.Fprintln(w)
@@ -382,6 +387,9 @@ func (d *DiffResult) Report(w io.Writer) {
 					break
 				}
 				fmt.Fprintf(w, "- `%s`\n", o.Object)
+				if o.Note != "" {
+					fmt.Fprintf(w, "  - %s\n", o.Note)
+				}
 				// The whole point of rendering both versions is knowing WHICH
 				// fields moved. Reporting only that an object "changed" hands
 				// the reader the same non-answer the version number already

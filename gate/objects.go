@@ -226,6 +226,11 @@ type ObjectChange struct {
 	// proved it by migrating 27 manifests and turning its own gate red.
 	PartOfMigration bool `json:"partOfMigration,omitempty"`
 
+	// Note is a computed fact about this change worth a reader's eyes --
+	// today, a removed binding whose ServiceAccount retains no RBAC in the
+	// new render. Reported under the item, never blocking.
+	Note string `json:"note,omitempty"`
+
 	// Fields are the leaves that differ, when both renders were available in
 	// process. Empty is not "nothing changed" -- it is "not computed here".
 	Fields []FieldChange `json:"fields,omitempty"`
@@ -389,7 +394,36 @@ func diffObjects(base, head []Object) []ObjectChange {
 	}
 	for id, o := range b {
 		if _, ok := h[id]; !ok {
-			out = append(out, ObjectChange{Kind: "removed", Object: o.Describe(), Cluster: o.Cluster, From: o.APIVersion})
+			// A CRD removed outright is the limiting case of dropping served
+			// versions -- ALL of them, with nowhere to move. It used to sit in
+			// the plain Removed list, uninspected, while the version-drop path
+			// counted consumers; a reviewer got "12 resources removed" and had
+			// to go looking themselves whether anything here used those APIs.
+			// It now joins the consumer-scanned class: with a worktree, the
+			// report either names every declaring manifest (blocking) or says
+			// outright that nothing in the repository uses the API and the
+			// removal looks safe from inspection. No survivor means no repair
+			// -- the agent's parser deliberately cannot act on it.
+			if versions := servedVersions(o); len(versions) > 0 {
+				var all []string
+				for v := range versions {
+					all = append(all, v)
+				}
+				sort.Strings(all)
+				out = append(out, ObjectChange{
+					Kind: "crdVersionRemoved", Object: o.Describe(), Cluster: o.Cluster,
+					From:     strings.Join(all, ", "),
+					Resource: crdConsumerKind(o),
+				})
+				continue
+			}
+			c := ObjectChange{Kind: "removed", Object: o.Describe(), Cluster: o.Cluster, From: o.APIVersion}
+			// A removed binding's blast radius is its subjects: a
+			// ServiceAccount that no remaining binding grants anything is how
+			// "the chart tidied its RBAC" and "the workload just lost every
+			// permission it runs on" tell each other apart.
+			c.Note = unboundSubjects(o, head)
+			out = append(out, c)
 		}
 	}
 
@@ -421,6 +455,76 @@ func diffObjects(base, head []Object) []ObjectChange {
 		}
 		return out[i].Object < out[j].Object
 	})
+	return out
+}
+
+// unboundSubjects reports the removed binding's ServiceAccounts that no
+// binding in the head render still grants anything, on the same cluster.
+//
+// Empty when the question cannot be answered honestly: a binding without a
+// body (a JSON-loaded table), or any head binding whose subjects cannot be
+// read -- claiming "unbound" past an unreadable binding would be a guess, and
+// the note simply does not appear rather than appearing wrong.
+func unboundSubjects(o Object, head []Object) string {
+	if (o.Kind != "ClusterRoleBinding" && o.Kind != "RoleBinding") || o.Body == nil {
+		return ""
+	}
+	subs := serviceAccountSubjects(o)
+	if len(subs) == 0 {
+		return ""
+	}
+	bound := map[string]bool{}
+	for _, h := range head {
+		if h.Kind != "ClusterRoleBinding" && h.Kind != "RoleBinding" {
+			continue
+		}
+		if h.Cluster != o.Cluster {
+			continue
+		}
+		if h.Body == nil {
+			return ""
+		}
+		for _, s := range serviceAccountSubjects(h) {
+			bound[s] = true
+		}
+	}
+	var lost []string
+	for _, s := range subs {
+		if !bound[s] {
+			lost = append(lost, s)
+		}
+	}
+	if len(lost) == 0 {
+		return ""
+	}
+	sort.Strings(lost)
+	return fmt.Sprintf("leaves ServiceAccount `%s` with **no role binding at all** in the new render — either the new version needs none, or something just lost every permission it runs on",
+		strings.Join(lost, "`, `"))
+}
+
+// serviceAccountSubjects lists a binding's ServiceAccount subjects as
+// namespace/name, defaulting the namespace to the binding's own.
+func serviceAccountSubjects(o Object) []string {
+	raw, _ := o.Body["subjects"].([]any)
+	var out []string
+	for _, s := range raw {
+		m, ok := s.(map[string]any)
+		if !ok {
+			continue
+		}
+		if kind, _ := m["kind"].(string); kind != "ServiceAccount" {
+			continue
+		}
+		name, _ := m["name"].(string)
+		if name == "" {
+			continue
+		}
+		ns, _ := m["namespace"].(string)
+		if ns == "" {
+			ns = o.Namespace
+		}
+		out = append(out, ns+"/"+name)
+	}
 	return out
 }
 

@@ -185,3 +185,102 @@ func TestTheRepairsOwnMoveDoesNotReBlock(t *testing.T) {
 		t.Errorf("the report must say why the move is not blocking:\n%s", b.String())
 	}
 }
+
+// A CRD removed outright is the limiting case of dropping served versions --
+// all of them, no survivor. It joins the consumer-scanned class: consumers
+// present blocks, counted at zero the report says the removal looks safe from
+// inspection, and the agent's parser deliberately cannot repair it (there is
+// nowhere to move).
+func TestARemovedCRDIsInspectedNotJustListed(t *testing.T) {
+	before := []Object{objWith("before", crdWithNames("admissionreports.kyverno.io", "AdmissionReport",
+		map[string]any{"name": "v2", "served": true},
+		map[string]any{"name": "v1alpha2", "served": true}))}
+
+	got := diffObjects(before, nil)
+	if len(got) != 1 || got[0].Kind != "crdVersionRemoved" {
+		t.Fatalf("want the removal as a consumer-scanned finding, got %+v", got)
+	}
+	f := got[0]
+	if f.Resource != "AdmissionReport" || f.To != "" || f.From != "v1alpha2, v2" {
+		t.Fatalf("want every served version dropped with no survivor, got %+v", f)
+	}
+
+	// Nothing in the repository declares it: report, do not block, say why.
+	clean := &DiffResult{Objects: []ObjectChange{f}}
+	AnnotateConsumers(clean, t.TempDir())
+	if !clean.Objects[0].ConsumersKnown || clean.Blocking() {
+		t.Errorf("an unused removed API must not block, got %+v", clean.Objects[0])
+	}
+	var b strings.Builder
+	clean.Report(&b)
+	if !strings.Contains(b.String(), "removed outright") ||
+		!strings.Contains(b.String(), "from inspection the removal looks safe") {
+		t.Errorf("the report must say the inspection happened and what it found:\n%s", b.String())
+	}
+
+	// A manifest still uses it: that is the blast radius, and it blocks.
+	used := t.TempDir()
+	writeManifest(t, used, "policies/report.yaml",
+		"apiVersion: kyverno.io/v2\nkind: AdmissionReport\nmetadata:\n  name: r\n")
+	dirty := &DiffResult{Objects: []ObjectChange{f}}
+	AnnotateConsumers(dirty, used)
+	if len(dirty.Objects[0].ConsumerFiles) != 1 || !dirty.Blocking() {
+		t.Errorf("a removed API with consumers must block and name them, got %+v", dirty.Objects[0])
+	}
+}
+
+func bindingWith(name string, subjects ...map[string]any) map[string]any {
+	subs := make([]any, 0, len(subjects))
+	for _, s := range subjects {
+		subs = append(subs, s)
+	}
+	return map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRoleBinding",
+		"metadata": map[string]any{"name": name},
+		"subjects": subs,
+		"roleRef":  map[string]any{"kind": "ClusterRole", "name": name},
+	}
+}
+
+// A removed binding is routine chart tidying or a workload silently losing
+// every permission it runs on, and the difference is whether its
+// ServiceAccount is still bound to anything in the new render.
+func TestARemovedBindingNamesItsOrphanedServiceAccount(t *testing.T) {
+	sa := map[string]any{"kind": "ServiceAccount", "name": "explorer", "namespace": "trivy-system"}
+	before := []Object{objWith("before", bindingWith("explorer", sa))}
+
+	got := diffObjects(before, nil)
+	if len(got) != 1 || got[0].Kind != "removed" {
+		t.Fatalf("want a removed finding, got %+v", got)
+	}
+	if !strings.Contains(got[0].Note, "trivy-system/explorer") ||
+		!strings.Contains(got[0].Note, "no role binding at all") {
+		t.Errorf("want the orphaned ServiceAccount named, got note %q", got[0].Note)
+	}
+
+	var b strings.Builder
+	(&DiffResult{Objects: got}).Report(&b)
+	if !strings.Contains(b.String(), "trivy-system/explorer") {
+		t.Errorf("the note must reach the report:\n%s", b.String())
+	}
+
+	// Rebound elsewhere in the head render: routine tidying, no note.
+	rebound := diffObjects(before, []Object{objWith("after", bindingWith("explorer-v2", sa))})
+	if len(rebound) != 2 {
+		t.Fatalf("want a removal and an addition, got %+v", rebound)
+	}
+	for _, c := range rebound {
+		if c.Note != "" {
+			t.Errorf("a rebound ServiceAccount is not a finding, got note %q", c.Note)
+		}
+	}
+
+	// A head binding whose subjects cannot be read: no claim either way.
+	blind := diffObjects(before, []Object{{Cluster: "prod", Kind: "ClusterRoleBinding",
+		Name: "opaque", APIVersion: "rbac.authorization.k8s.io/v1", Hash: "x"}})
+	for _, c := range blind {
+		if c.Note != "" {
+			t.Errorf("an unreadable binding forbids the claim, got note %q", c.Note)
+		}
+	}
+}

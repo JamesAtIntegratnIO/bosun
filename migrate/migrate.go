@@ -67,14 +67,21 @@ func OtherBlockers(report string) bool {
 //
 // When the consumer kind and the surviving version are known the line carries
 // them, and that suffix is what makes the finding repairable: the agent's
-// parser accepts nothing less. Without them it falls back to the plain
-// statement, which a human can act on and the agent deliberately cannot.
+// parser accepts nothing less. A known kind with NO survivor is a CRD removed
+// outright -- there is nowhere to move, so the line says so and the parser
+// deliberately cannot act on it. Without either it falls back to the plain
+// statement.
 func Line(object, dropped, kind, target string) string {
-	if kind == "" || target == "" {
+	switch {
+	case kind != "" && target != "":
+		return fmt.Sprintf("- `%s`: no longer serves `%s` — `%s` manifests must move to `%s`",
+			object, dropped, kind, target)
+	case kind != "":
+		return fmt.Sprintf("- `%s`: **removed outright** — every `%s` manifest breaks on apply, and there is no version to move to",
+			object, kind)
+	default:
 		return fmt.Sprintf("- `%s`: no longer serves `%s`", object, dropped)
 	}
-	return fmt.Sprintf("- `%s`: no longer serves `%s` — `%s` manifests must move to `%s`",
-		object, dropped, kind, target)
 }
 
 // reportLine is Line's inverse, anchored hard: the CRD name must be
