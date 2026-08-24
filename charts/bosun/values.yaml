@@ -206,6 +206,16 @@ networkPolicy:
     ipBlocks: []
     # e.g. [api.github.com] -- honoured only when flavor is `cilium`
     fqdns: []
+    # Cilium matchPattern entries, for hosts whose names are a set rather than
+    # a name: `*.quay.io` covers cdn01/cdn02/cdn03 without asserting how many
+    # there are. Merged with `fqdns` into one rule.
+    #
+    # A registry needs BOTH halves. `ghcr.io` serves the manifest and redirects
+    # the blob -- where the image labels live -- to
+    # pkg-containers.githubusercontent.com. Allowing only the registry host
+    # means the label lookup hangs until it times out, which reads as a slow
+    # model rather than a blocked connection.
+    fqdnPatterns: []
     # Allow outbound 443 to everything except private ranges. Convenient for
     # reaching a public git host; unnecessary if you list FQDNs.
     allowPublicHTTPS: false

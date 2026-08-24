@@ -89,7 +89,7 @@ spec:
           port: 443
     {{- end }}
 {{- if eq $np.flavor "cilium" }}
-{{- with $np.egress.fqdns }}
+{{- if or $np.egress.fqdns $np.egress.fqdnPatterns }}
 ---
 {{- /* FQDN egress is materially tighter than an ipBlock: it names the hosts
      the agent may reach rather than a range that happens to contain them. */}}
@@ -105,8 +105,17 @@ spec:
       {{- include "bosun.selectorLabels" $ | nindent 6 }}
   egress:
     - toFQDNs:
-        {{- range . }}
+        {{- range $np.egress.fqdns }}
         - matchName: {{ . | quote }}
+        {{- end }}
+        {{- /* A registry serves manifests from its own host and blobs from a
+             CDN whose names are a SET -- cdn01.quay.io, cdn02… -- or a cloud
+             bucket that varies by region. matchName cannot express either
+             without guessing at the membership, and a guessed allow-list is
+             how this breaks silently: the connection hangs rather than being
+             refused. */}}
+        {{- range $np.egress.fqdnPatterns }}
+        - matchPattern: {{ . | quote }}
         {{- end }}
       toPorts:
         - ports:
