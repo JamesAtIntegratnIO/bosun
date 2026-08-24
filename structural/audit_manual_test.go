@@ -228,3 +228,62 @@ func loadSchemas(t *testing.T, path string) (map[string]Schema, map[string][]str
 	}
 	return schemas, order
 }
+
+// TestAuditForwardMigrations is the direction a real migration goes: a document
+// written for an OLD version, checked against the NEWEST one the cluster
+// serves. Anything it finds is a genuine incompatibility the chart's own
+// authors shipped -- the exact case the structural migration exists for, and
+// the only honest way to demonstrate it without inventing a schema.
+func TestAuditForwardMigrations(t *testing.T) {
+	crdPath, objPath := os.Getenv("STRUCTURAL_AUDIT_CRDS"), os.Getenv("STRUCTURAL_AUDIT_OBJECTS")
+	if crdPath == "" || objPath == "" {
+		t.Skip("set STRUCTURAL_AUDIT_CRDS and STRUCTURAL_AUDIT_OBJECTS")
+	}
+	schemas, order := loadSchemas(t, crdPath)
+
+	f, err := os.Open(objPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 8<<20), 64<<20)
+	found := 0
+	for sc.Scan() {
+		var row struct {
+			CRD     string         `json:"crd"`
+			Version string         `json:"version"`
+			Obj     map[string]any `json:"obj"`
+		}
+		if err := json.Unmarshal(sc.Bytes(), &row); err != nil {
+			continue
+		}
+		vs := order[row.CRD]
+		if len(vs) < 2 {
+			continue
+		}
+		newest := vs[len(vs)-1]
+		if newest == row.Version {
+			continue
+		}
+		target, ok := schemas[row.CRD+"/"+newest]
+		if !ok {
+			continue
+		}
+		fs := Check(row.Obj, target)
+		if len(fs) == 0 {
+			continue
+		}
+		found++
+		name, _ := row.Obj["metadata"].(map[string]any)
+		nm := ""
+		if name != nil {
+			nm, _ = name["name"].(string)
+		}
+		t.Logf("INCOMPATIBLE  %s  %s -> %s  (object %q)", row.CRD, row.Version, newest, nm)
+		for _, x := range fs {
+			t.Logf("      %s", x)
+		}
+	}
+	t.Logf("\n==== %d forward-incompatible objects ====", found)
+}
