@@ -12,6 +12,7 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
+	"github.com/JamesAtIntegratnIO/bosun/migrate"
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
 
@@ -61,7 +62,12 @@ type Triage struct {
 	// render still changed, say what it changed. Off means the agent only ever
 	// speaks about failures, which is how it was until 0.3.0 -- and why a
 	// bump's real content stayed invisible behind a one-line version diff.
-	Explain   bool
+	Explain bool
+	// Migrate turns on the deterministic repair for dropped served versions:
+	// when that is the only reason the gate is red, rewrite the declaring
+	// manifests to the version the gate says survives. No model is involved
+	// on this path -- see repairDropped.
+	Migrate   bool
 	CloneRoot string
 	RepoURL   string
 	Log       func(string, ...any)
@@ -206,6 +212,19 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	}
 	defer cleanup()
 
+	// The deterministic repair, tried before the model is consulted. A CRD
+	// that stopped serving a version blocks because manifests still declare
+	// it; the gate's own report names the kind, the dropped versions and the
+	// destination, so moving those manifests is a function of evidence, not a
+	// judgement. Only when it is the sole reason the gate is red -- a repair
+	// beside an unexplained targeting change would fix the fixable half and
+	// leave a red gate implying it had not.
+	if t.Migrate && !migrate.OtherBlockers(report) {
+		if drops := migrate.ParseReport(report); len(drops) > 0 {
+			return t.repairDropped(ctx, p, pr, root, drops, attempt)
+		}
+	}
+
 	prompt, err := buildUserPrompt(p, pr, report, root)
 	if err != nil {
 		return err
@@ -292,6 +311,103 @@ func (t *Triage) escalateWith(ctx context.Context, pr *gitprovider.PullRequest, 
 		return err
 	}
 	return t.Git.AddLabel(ctx, pr.Number, labelNeedsHuman)
+}
+
+// repairDropped is the deterministic half of the crew's job: the gate proved
+// which manifests break and where they must move, so move them.
+//
+// The safety argument is different from the mechanical-fix path and worth
+// stating. There, a model proposes and the applier corroborates. Here there is
+// no proposal: kind, dropped versions and destination are parsed from the
+// gate's own report line, the rewrite touches nothing but apiVersion values
+// that match them, every file still answers to the deny-list and the
+// allowlist, and the re-run gate re-counts the consumers itself. The scope
+// check is deliberately absent -- the consumers are, by definition, files the
+// promotion did not touch, and the gate rather than the model is what named
+// them.
+func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider.PullRequest,
+	root string, drops []migrate.Dropped, attempt int) error {
+
+	total, err := migrate.Migrate(root, drops, t.Policy.Check)
+	if err != nil {
+		return fmt.Errorf("migrating consumers: %w", err)
+	}
+
+	if len(total.Applied) == 0 {
+		if len(total.Refused) > 0 {
+			t.say(ctx, pr, "escalated: every consumer the gate named was refused by policy")
+			return t.escalate(ctx, pr, t.renderMigration(drops, total,
+				"**Needs a human.** The gate names manifests that must move off a dropped API version, but policy refuses every one of them."), nil)
+		}
+		// The gate counted consumers; this checkout has none. Fixing nothing
+		// and saying so beats guessing which of the two is stale.
+		t.say(ctx, pr, "escalated: the gate names consumers this branch does not have")
+		return t.escalate(ctx, pr,
+			"The gate blocked on a dropped served version, but no manifest on this branch declares one. "+
+				"The gate's report and this checkout disagree — a human should look at both.", nil)
+	}
+
+	files := 0
+	seen := map[string]bool{}
+	for _, a := range total.Applied {
+		if !seen[a.Path] {
+			seen[a.Path] = true
+			files++
+		}
+	}
+	msg := fmt.Sprintf("fix(%s): migrate %d manifest(s) off dropped API version(s)\n\n"+
+		"The chart stopped serving them; destinations from the gate's report.\n"+
+		"Deterministic rewrite by bosun -- no model involved.\n", p.Stage, files)
+	if err := t.Git.PushFix(ctx, pr, root, msg); err != nil {
+		return t.escalate(ctx, pr, fmt.Sprintf("Could not push the migration: %v", err), nil)
+	}
+	if err := t.Git.AddLabel(ctx, pr.Number, fmt.Sprintf("%s%d", t.attemptPrefix(), attempt)); err != nil {
+		t.logf("PR %d: could not label attempt %d: %v", pr.Number, attempt, err)
+	}
+	t.say(ctx, pr, "migrated %d manifest(s) off dropped API version(s) (attempt %d of %d)",
+		files, attempt, t.MaxAttempts)
+	return t.Git.Comment(ctx, pr.Number, t.renderMigration(drops, total, fmt.Sprintf(
+		"Pushed a migration to `%s` (attempt %d of %d). The gate will re-run and re-count.",
+		pr.Branch, attempt, t.MaxAttempts)))
+}
+
+// renderMigration is the comment for the deterministic path. Its footer names
+// no model, because none was involved -- a reader deciding how much to trust
+// this needs to know it is arithmetic, not judgement.
+func (t *Triage) renderMigration(drops []migrate.Dropped, res *migrate.Result, headline string) string {
+	var b strings.Builder
+	if t.Brand != "" {
+		mark := t.BrandMark
+		if mark != "" {
+			mark += " "
+		}
+		fmt.Fprintf(&b, "%s**%s**\n\n", mark, t.Brand)
+	}
+	fmt.Fprintf(&b, "%s\n\n", headline)
+	b.WriteString("**The chart stopped serving API versions this repository still declares.** " +
+		"The gate named the versions and the one that survives; every declaring manifest moves there.\n\n")
+	for _, d := range drops {
+		fmt.Fprintf(&b, "- `%s`: `%s/{%s}` → `%s/%s`\n",
+			d.Kind, d.Group, strings.Join(d.Versions, ", "), d.Group, d.Target)
+	}
+	if len(res.Applied) > 0 {
+		b.WriteString("\n**Migrated**\n\n| File | Kind | To |\n|---|---|---|\n")
+		for _, a := range res.Applied {
+			fmt.Fprintf(&b, "| `%s` | `%s` | `%s` |\n", a.Path, a.Kind, a.To)
+		}
+	}
+	if len(res.Refused) > 0 {
+		b.WriteString("\n**Refused**\n\n")
+		for _, r := range res.Refused {
+			fmt.Fprintf(&b, "- `%s` — %s\n", r.Path, r.Reason)
+		}
+	}
+	brand := t.Brand
+	if brand == "" {
+		brand = "bosun"
+	}
+	fmt.Fprintf(&b, "\n<sub>%s · deterministic repair, no model · automated triage, not a review</sub>\n", brand)
+	return b.String()
 }
 
 // render builds the pull-request comment. It always states which model

@@ -103,6 +103,7 @@ func main() {
 		GateWait:    cfg.GateWait,
 		GatePoll:    cfg.GatePoll,
 		Explain:     cfg.Explain,
+		Migrate:     cfg.Migrate,
 		Upstream:    upstreamResolver(cfg),
 		CloneRoot:   cfg.CloneRoot,
 		RepoURL:     cfg.GitRepoURL,
