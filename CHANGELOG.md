@@ -3,6 +3,34 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.9.2] - 2026-08-24
+
+### Fixed
+
+- **The repair's commits no longer belong to a stranger.** The first live
+  migration -- 27 manifests, pushed to a real pull request -- rendered under
+  the avatar of the unrelated GitHub account named `bosun`, because the
+  default author email was `bosun@users.noreply.github.com` and that
+  namespace BELONGS to accounts: commit emails are unauthenticated
+  display-matching, so an address in it that is not yours attributes your
+  work to whoever owns the name. As a GitHub App the agent now resolves its
+  own bot identity at start-up -- `<slug>[bot]
+  <id+slug[bot]@users.noreply.github.com>`, the exact format GitHub's own
+  bots use -- and fails to start if it cannot, the same rule as a bad key.
+  The token-mode fallback moves to `bosun@noreply.invalid` (RFC 2606), which
+  maps to nobody. Chart author defaults are now empty, meaning "derive";
+  setting them still wins.
+## [0.9.1] - 2026-08-24
+
+### Fixed
+
+- **The v0.9.0 gitops-gate image never existed.** Its Dockerfile copied only
+  `gate/` into the build and the gate now imports `migrate/`, so the release
+  published the agent image and died on the gate's -- see the gate changelog.
+  This release exists to run the release machinery over the fixed Dockerfile:
+  the version path publishes both images, so v0.9.1 is the first tag since
+  the repair feature whose gate image is real. Nothing about the agent binary
+  changed since 0.9.0.
 ## [0.9.0] - 2026-08-24
 
 ### Changed

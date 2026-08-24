@@ -59,7 +59,7 @@ func (d *DiffResult) Blocking() bool {
 		// moved; the second is a CustomResourceDefinition that stopped serving
 		// one, which the first cannot see because the CRD object itself is
 		// apiextensions.k8s.io/v1 on both sides.
-		if o.Kind == "apiVersion" {
+		if o.Kind == "apiVersion" && !o.PartOfMigration {
 			return true
 		}
 		// A dropped served version blocks exactly while manifests in this
@@ -205,6 +205,7 @@ func Diff(base, head *Table) *DiffResult {
 	}
 
 	res.Objects = diffObjects(base.Objects, head.Objects)
+	markMigrationConsistent(res.Objects)
 
 	sortChanges(res.Targeting)
 	sortChanges(res.Introduced)
@@ -334,6 +335,11 @@ func (d *DiffResult) Report(w io.Writer) {
 		if len(api) > 0 {
 			fmt.Fprintf(w, "%s — this is a migration, not a bump.\n\n", migrate.HeadingAPIVersion)
 			for _, o := range api {
+				if o.PartOfMigration {
+					fmt.Fprintf(w, "- `%s`: `%s` → `%s` — the move the finding below requires; the repair, not a new migration, so not blocking\n",
+						o.Object, o.From, o.To)
+					continue
+				}
 				fmt.Fprintf(w, "- `%s`: `%s` → `%s`\n", o.Object, o.From, o.To)
 			}
 			fmt.Fprintln(w)

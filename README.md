@@ -1,5 +1,9 @@
 # Bosun
 
+<p align="center">
+  <img src="docs/avatar/bosun.png" alt="Bosun — an octopus in a sailor cap, wrench raised, inside a life ring" width="220"/>
+</p>
+
 ⚓ **The crew for Argo and Kargo.**
 
 Kargo is very good at producing change. Left alone it opens more pull requests

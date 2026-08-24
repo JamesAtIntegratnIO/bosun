@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -109,6 +110,53 @@ func (a *AppAuth) Token(ctx context.Context) (string, error) {
 	}
 	a.token, a.expiry = out.Token, out.ExpiresAt
 	return a.token, nil
+}
+
+// BotIdentity returns the commit author that attributes to the App itself:
+// `<slug>[bot]` and `<id>+<slug>[bot]@users.noreply.github.com`, the exact
+// format GitHub uses for its own bots.
+//
+// This exists because commit emails are unauthenticated display-matching, and
+// the first live repair proved what that means: a commit authored with the
+// default `bosun@users.noreply.github.com` rendered on the pull request under
+// the avatar of the unrelated GitHub account named `bosun` -- the
+// `<username>@users.noreply.github.com` namespace BELONGS to accounts, and an
+// email in it that is not yours attributes your commit to a stranger. The
+// comments were already the App's; the commits said someone else wrote them.
+//
+// The slug comes from GET /app (JWT -- the one endpoint family app JWTs are
+// for) and the bot user's numeric id from GET /users/<slug>[bot] with an
+// installation token.
+func (a *AppAuth) BotIdentity(ctx context.Context) (name, email string, err error) {
+	jwt, err := a.jwt()
+	if err != nil {
+		return "", "", fmt.Errorf("signing the app JWT: %w", err)
+	}
+	var app struct {
+		Slug string `json:"slug"`
+	}
+	if err := a.call(ctx, http.MethodGet, a.base()+"/app", jwt, &app); err != nil {
+		return "", "", fmt.Errorf("reading the app's own identity: %w", err)
+	}
+	if app.Slug == "" {
+		return "", "", fmt.Errorf("github returned an app with no slug")
+	}
+	name = app.Slug + "[bot]"
+
+	tok, err := a.Token(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	var user struct {
+		ID int64 `json:"id"`
+	}
+	if err := a.call(ctx, http.MethodGet, a.base()+"/users/"+url.PathEscape(name), tok, &user); err != nil {
+		return "", "", fmt.Errorf("resolving the bot user %s: %w", name, err)
+	}
+	if user.ID == 0 {
+		return "", "", fmt.Errorf("github returned no id for %s", name)
+	}
+	return name, fmt.Sprintf("%d+%s@users.noreply.github.com", user.ID, name), nil
 }
 
 // installation resolves which installation to act as, once, and remembers it.
