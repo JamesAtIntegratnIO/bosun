@@ -13,13 +13,28 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 PR="${1:?usage: gate-run.sh <pr-number>}"
 load_credentials
 
+# BUILT EVERY RUN, never cached on existence.
+#
+# This used to be `if [ ! -x "$GATE_BIN" ]`, and that one line cost a day. The
+# binary at that path was built on 23 Aug at 09:35; `objectFrom` started
+# carrying the rendered object's body at 17:53 and `droppedVersions` landed at
+# 18:19 -- so every demo run after that afternoon exercised a gate from BEFORE
+# the feature it was meant to prove. The symptom was not an error. The gate ran,
+# rendered both chart versions, diffed them, and reported ten objects "changed"
+# with no fields and no `crdVersionRemoved`, because a body-less object cannot
+# answer either question. It looked exactly like a gate that had looked and
+# found nothing.
+#
+# The same trap is already documented one script over, for the agent image
+# ("the image tag never changes, so helm keeps the pod with the OLD binary in
+# it"). It is the defining hazard of a proving ground built from a working tree:
+# the thing in front of you is not the thing that ran. Go's build cache makes
+# the rebuild about a second, which is not a price worth a day.
 : "${GATE_BIN:=/tmp/gitops-gate}"
-if [ ! -x "$GATE_BIN" ]; then
-  step "building the gate"
-  # GOTOOLCHAIN=auto lets an older local Go fetch the one go.mod requires,
-  # which is exactly the mismatch that broke the published image.
-  (cd "$ROOT/.." && GOTOOLCHAIN=auto go build -o "$GATE_BIN" ./gate)
-fi
+step "building the gate from the working tree"
+# GOTOOLCHAIN=auto lets an older local Go fetch the one go.mod requires,
+# which is exactly the mismatch that broke the published image.
+(cd "$ROOT/.." && GOTOOLCHAIN=auto go build -o "$GATE_BIN" ./gate)
 
 say "gate: pull request #${PR}"
 PR_JSON="$(gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls/${PR}")"
