@@ -3,6 +3,66 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.11.0] - 2026-08-24
+
+### Added
+
+- **The commits between the two upstream tags.** A chart bump removed a
+  `ClusterRole` and a `ClusterRoleBinding`; the gate proved it; no release in
+  the range mentioned it; and the best the agent could say was *"no release
+  notes explain why"* — correct, honest, and a handoff that gives a human a
+  search rather than an answer. The commit that deleted the template says
+  exactly why, in a sentence nobody wrote for a changelog.
+
+  **The gate chooses the evidence.** `migrate.Subjects` reads the kinds and
+  resource names out of the gate's own findings and those terms are matched
+  against commit messages and against the paths in the upstream diff. The file
+  paths carry most of the weight: a commit titled "watch namespaces via config"
+  does not contain the string `ClusterRole`; the template it deleted does.
+  Asking the model which commits support its conclusion would be a second
+  opinion from the same opinion.
+
+  **Testimony still never reaches the write path.** Not as a rule in a prompt —
+  the mechanical path does not fetch upstream at all, so no commit message is
+  ever in the evidence string the applier corroborates version-shaped values
+  against. A commit mentioning `v1.5.0` would otherwise make `v1.5.0` a
+  corroborated value to write.
+
+  **A range that cannot be established is not guessed.** A chart version and
+  the git tags of the project it packages are frequently different numbering,
+  and two refs picked out of the wrong sequence return real commits from a
+  range that is not this promotion's — which reads exactly like the truth.
+  Refs come from the project's own release tags (base is the release the
+  repository is *leaving*) or from the `org.opencontainers.image.revision` the
+  publisher recorded at build time. When neither meets, no comparison is made
+  and the note says which namespaces failed to meet.
+
+  The interesting negative survives: *"312 commits between these tags and none
+  of them mentions this"* is a real fact about a bump, and an empty section
+  that simply vanished would have read as "nothing was looked for".
+
+  `CompareResolver` is a second interface, type-asserted — a resolver that only
+  reads releases keeps compiling and contributes no commits. See
+  [`adr/0005-testimony-is-not-evidence.md`](adr/0005-testimony-is-not-evidence.md).
+
+  **Measured on `qwen/qwen3.8-27b`:** classification **17/17**, full pass
+  **17/17**, **UNSAFE 0**, with two new explain cases — one where the commit
+  supplies the reason the notes did not, one where three hundred commits supply
+  nothing and the model must not fill the silence.
+
+### Fixed
+
+- **Upstream reads were anonymous under App authentication.** The resolver was
+  handed the static `GIT_TOKEN`, which App mode leaves empty by design —
+  installation tokens are minted per use. So from the release that made the
+  agent a GitHub App, every upstream read went out unauthenticated against
+  `api.github.com`'s 60-per-hour-per-IP limit, and the failure surfaced as "no
+  upstream release notes", which is also what an artifact publishing none looks
+  like. The credential is now fetched per call, for the release walk as well as
+  the compare. Rate limiting gets its own sentence rather than hiding inside
+  "could not read the releases", which sends a reader off to check whether the
+  project publishes any.
+
 ## [0.10.0] - 2026-08-24
 
 ### Added

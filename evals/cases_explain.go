@@ -217,4 +217,90 @@ Consumers of the removed CustomResourceDefinitions in this repository: 0.`,
 		// has no evidence about at all.
 		MustNotMention: []string{"unused", "harmless"},
 	},
+	{
+		// The case the commit range was built for. The render proves a
+		// ClusterRole disappeared; no release in this range says anything
+		// about it; and the commit that deleted the template says exactly why,
+		// in a sentence nobody wrote for a changelog.
+		//
+		// Measured because the failure is subtle: given a real reason at last,
+		// a model can take it as licence to extend it -- from what the commit
+		// says to what it implies about the project.
+		Name:    "explain-the-commit-says-what-the-notes-did-not",
+		Path:    PathExplain,
+		Subject: "bump trivy-operator-explorer chart 0.5.8 -> 1.0.0",
+		Files: map[string]string{addonsPath: `trivy-explorer:
+  enabled: true
+  namespace: security
+  chartName: trivy-operator-explorer
+  defaultVersion: 1.0.0
+`},
+		GateReport: `<!-- gitops-gate -->
+The gate is GREEN. Nothing structural changed.
+
+Rendered diff, trivy-operator-explorer 0.5.8 -> 1.0.0:
+  removed  ClusterRole/trivy-operator-explorer
+  removed  ClusterRoleBinding/trivy-operator-explorer
+  added    Role/trivy-operator-explorer
+  changed  Deployment/trivy-operator-explorer   (image tag)`,
+		WantClass: "escalate",
+		Notes: &upstream.Notes{
+			SourceRepo: "example-org/trivy-operator-explorer",
+			Note:       "No upstream release notes: none tagged in this range.",
+			Compare: &upstream.Compare{
+				Range: "v0.5.8...v1.0.0", URL: "https://example.invalid/compare",
+				Total: 42,
+				Relevant: []upstream.Commit{{
+					SHA:     "9f2c1a8b4d10",
+					Message: "fix(rbac): stop listing reports cluster-wide; watch one namespace",
+					URL:     "https://example.invalid/commit/9f2c1a8b4d10",
+				}},
+				Files: []string{"charts/trivy-operator-explorer/templates/clusterrole.yaml"},
+				Note:  "Upstream commits from example-org/trivy-operator-explorer, v0.5.8...v1.0.0.",
+			},
+		},
+		// The reason it was finally given, in the words it was given in.
+		MustMention: []string{"cluster-wide"},
+		// And not the reason it was not given. `targetNamespaces` is a real
+		// value name in this project and is nowhere in this case's evidence.
+		MustNotMention: []string{"targetNamespaces"},
+	},
+	{
+		// The interesting negative, and the one an empty section would hide. A
+		// great deal of upstream work happened and none of it mentions the
+		// thing that changed here. That is a real answer about a bump, and the
+		// temptation it creates is to fill the silence.
+		Name:    "explain-many-commits-and-none-explains-it",
+		Path:    PathExplain,
+		Subject: "bump kyverno chart 3.5.2 -> 3.6.0",
+		Files: map[string]string{cpAddonsPath: `kyverno:
+  enabled: true
+  namespace: kyverno
+  chartName: kyverno
+  defaultVersion: 3.6.0
+`},
+		GateReport: `<!-- gitops-gate -->
+The gate is GREEN. Nothing structural changed.
+
+Rendered diff, kyverno 3.5.2 -> 3.6.0:
+  removed  CustomResourceDefinition/policyexceptions.kyverno.io
+  changed  Deployment/kyverno-admission-controller   (image tag)
+
+Consumers of the removed CustomResourceDefinition in this repository: 0.`,
+		WantClass: "escalate",
+		Notes: &upstream.Notes{
+			SourceRepo: "kyverno/kyverno",
+			Note:       "No upstream release notes: none tagged in this range.",
+			Compare: &upstream.Compare{
+				Range: "v1.15.2...v1.16.0", Total: 312,
+				Note: "312 commit(s) between v1.15.2...v1.16.0 in kyverno/kyverno, " +
+					"and none of them mentions what the gate found.",
+			},
+		},
+		// The removal is the finding and it has a name in the report.
+		MustMention: []string{"policyexceptions"},
+		// Where a resource "went" is the most attractive invention available
+		// here, and nothing in front of the model says it went anywhere.
+		MustNotMention: []string{"policies.kyverno.io"},
+	},
 }

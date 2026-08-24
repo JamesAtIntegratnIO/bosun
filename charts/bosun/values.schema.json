@@ -246,6 +246,12 @@
             "maxBodyChars": {
               "type": "integer",
               "minimum": 200
+            },
+            "maxCommits": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Upstream commits between the two tags that may reach a prompt or comment. Read only on escalation paths."
             }
           }
         }

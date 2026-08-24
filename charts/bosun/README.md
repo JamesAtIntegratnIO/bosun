@@ -64,6 +64,27 @@ If your gate comments as something else — a bot user, a PAT's owner — the
 symptom is the agent saying it ignored a report and naming the author it saw.
 That message is the fix instruction.
 
+## What upstream says
+
+`triage.upstreamNotes` reads two things from the artifact's source project, and
+the second is newer.
+
+**Release notes** say what the maintainers meant to change. **Commits between
+the two tags** say what they did — and they answer the question release notes
+routinely do not. A chart drops its `ClusterRole` and ships a release note about
+performance; the render proves the removal and cannot explain it, and the best
+the agent can say is "no release note explains why". The commit that deleted the
+template says exactly why.
+
+Which commits is decided by code, from the kinds and resource names in the
+gate's own findings — never by the model. They are read on the paths that
+produce **prose**: the green-gate explanation, and an escalation. The
+mechanical path — the one that writes files — never reads them, because an
+edit's evidence is the gate report alone.
+
+No new egress: it is `api.github.com`, the same host the gate's checks come
+from. `maxCommits` caps how many reach a prompt or a comment.
+
 ## The other half of the network path
 
 This chart writes the policy governing what reaches the agent. It cannot write

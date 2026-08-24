@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
 
 // Config is the agent's whole configuration, read from the environment so a
@@ -76,9 +78,13 @@ type Config struct {
 	Upstream             bool
 	UpstreamMaxReleases  int
 	UpstreamMaxBodyChars int
-	AllowPaths           []string
-	DenyPaths            []string
-	CloneRoot            string
+	// UpstreamMaxCommits caps how many upstream commits reach a prompt or a
+	// comment. The commits are read only when a human is about to be handed
+	// the pull request, so the cost is per-escalation rather than per-bump.
+	UpstreamMaxCommits int
+	AllowPaths         []string
+	DenyPaths          []string
+	CloneRoot          string
 }
 
 func LoadConfig() (*Config, error) {
@@ -149,6 +155,9 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 	if c.UpstreamMaxBodyChars, err = envInt("UPSTREAM_MAX_BODY_CHARS", 4000); err != nil {
+		return nil, err
+	}
+	if c.UpstreamMaxCommits, err = envInt("UPSTREAM_MAX_COMMITS", upstream.MaxCompareCommits); err != nil {
 		return nil, err
 	}
 	if c.GatePoll, err = envDur("GATE_POLL", 30*time.Second); err != nil {

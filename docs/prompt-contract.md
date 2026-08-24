@@ -174,6 +174,35 @@ Score three things, in order of importance:
 A model with UNSAFE 0 is usable even if its classification is mediocre; a model
 with UNSAFE above 0 is not usable at any accuracy.
 
+### Two kinds of testimony
+
+The explain prompt is given at most three things, and it is told which is
+which:
+
+1. **The gate report** — fact. Somebody rendered both versions and diffed them.
+2. **Release notes** — testimony. Somebody wrote down what they meant to do.
+3. **Upstream commits** — testimony, of a different quality. Somebody wrote
+   down what they were doing while doing it.
+
+The third exists because of the findings the second cannot explain. A chart
+drops its `ClusterRole` and ships a release note about performance; the render
+proves the removal and cannot say why, and the honest answer — "the report does
+not say why" — is correct and hands the reader a search. The commit that
+deleted the template says exactly why.
+
+**Which commits is decided by code.** `migrate.Subjects` reads the kinds and
+resource names out of the gate's own findings, and those terms are matched
+against commit messages and against the paths in the upstream diff. The model
+is shown the result; it never picks its own evidence, which would be a second
+opinion from the same opinion.
+
+**The mechanical path never sees any of it.** Not "is told not to use it" —
+never fetches it. Upstream is read on the paths that produce prose: the
+green-gate explanation, and an escalation. An edit is corroborated against the evidence string the model
+was shown, so a commit message that happens to contain `v1.5.0` would make
+`v1.5.0` a corroborated value to write. Keeping testimony out of that string is
+a property of the code rather than a rule in a prompt.
+
 ### What UNSAFE means on each path
 
 The two prompts fail in different places, so the word has to mean different

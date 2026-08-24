@@ -14,6 +14,13 @@
 // dropped versions, the version that remains -- is computed by the gate and
 // carried in the report line, so the rewrite is a deterministic function of
 // evidence, not a proposal to be corroborated.
+//
+// By extension this package owns READING the gate's report, not only the
+// repair: Line writes a finding, ParseReport reads it back, and Subjects names
+// what a whole report is about so an upstream search can be aimed at it. They
+// live together because they are one format, and two files that each believe
+// they know it is how a change to the report becomes a silent no-op somewhere
+// else.
 package migrate
 
 import (

@@ -237,7 +237,7 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	// leave a red gate implying it had not.
 	if t.Migrate && !migrate.OtherBlockers(report) {
 		if drops := migrate.ParseReport(report); len(drops) > 0 {
-			return t.repairDropped(ctx, p, pr, root, drops, attempt)
+			return t.repairDropped(ctx, p, pr, root, report, drops, attempt)
 		}
 	}
 
@@ -267,7 +267,11 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 		// and printing both had every escalation announcing itself twice
 		// before the reasoning announced it a third time. The comment leads
 		// with the verdict marker and the summary; the handoff follows.
-		return t.escalate(ctx, pr, "", verdict)
+		//
+		// Upstream is read HERE and not earlier: a mechanical verdict never
+		// pays for it, and the evidence an edit is corroborated against must
+		// stay the gate report alone.
+		return t.escalateInformed(ctx, pr, "", verdict, nil, t.upstreamFor(ctx, p, report))
 	}
 
 	// Mechanical. The applier is what decides whether any of it happens.
@@ -298,8 +302,9 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 		// other two were fine.
 		t.say(ctx, pr, "escalated: all %d proposed edits were refused before anything was written",
 			len(res.Rejected))
-		return t.escalateWith(ctx, pr,
-			"The proposed fix was rejected before anything was written.", verdict, res)
+		return t.escalateInformed(ctx, pr,
+			"The proposed fix was rejected before anything was written.", verdict, res,
+			t.upstreamFor(ctx, p, report))
 	}
 
 	msg := fmt.Sprintf("fix(%s): %s\n\nProposed by %s, applied by bosun.\n",
@@ -329,6 +334,21 @@ func (t *Triage) escalate(ctx context.Context, pr *gitprovider.PullRequest, reas
 // passed as "" on purpose: the verdict's summary says the same thing, and the
 // comment should say it once.
 func (t *Triage) escalateWith(ctx context.Context, pr *gitprovider.PullRequest, reason string, v *llm.Verdict, res *edits.Result) error {
+	return t.escalateInformed(ctx, pr, reason, v, res, nil)
+}
+
+// escalateInformed is escalateWith plus what the maintainers changed between
+// the two versions.
+//
+// A handoff is somebody's next twenty minutes. "The chart removed its
+// ClusterRole and no release note explains why" is an honest sentence and it
+// hands over a search; the same sentence with the commit that removed it hands
+// over an answer. Attached only where a human is about to spend that time --
+// never on the mechanical path, where the evidence for an edit stays the gate
+// report alone.
+func (t *Triage) escalateInformed(ctx context.Context, pr *gitprovider.PullRequest,
+	reason string, v *llm.Verdict, res *edits.Result, up *upstream.Notes) error {
+
 	body := "### Needs a human\n\n" + reason + "\n"
 	if v != nil {
 		head := "**Needs a human.**"
@@ -337,6 +357,7 @@ func (t *Triage) escalateWith(ctx context.Context, pr *gitprovider.PullRequest, 
 		}
 		body = t.render(v, res, head)
 	}
+	body += renderUpstream(up)
 	if err := t.Git.Comment(ctx, pr.Number, body); err != nil {
 		return err
 	}
@@ -356,7 +377,7 @@ func (t *Triage) escalateWith(ctx context.Context, pr *gitprovider.PullRequest, 
 // promotion did not touch, and the gate rather than the model is what named
 // them.
 func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider.PullRequest,
-	root string, drops []migrate.Dropped, attempt int) error {
+	root, report string, drops []migrate.Dropped, attempt int) error {
 
 	total, err := migrate.Migrate(root, drops, t.Policy.Check)
 	if err != nil {
@@ -366,8 +387,9 @@ func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider
 	if len(total.Applied) == 0 {
 		if len(total.Refused) > 0 {
 			t.say(ctx, pr, "escalated: every consumer the gate named was refused by policy")
-			return t.escalate(ctx, pr, t.renderMigration(drops, total,
-				"**Needs a human.** The gate names manifests that must move off a dropped API version, but policy refuses every one of them."), nil)
+			return t.escalateInformed(ctx, pr, t.renderMigration(drops, total,
+				"**Needs a human.** The gate names manifests that must move off a dropped API version, but policy refuses every one of them."),
+				nil, nil, t.upstreamFor(ctx, p, report))
 		}
 		// The gate counted consumers; this checkout has none. Fixing nothing
 		// and saying so beats guessing which of the two is stale.
@@ -753,7 +775,7 @@ func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, 
 	// What the maintainers said, if it can be found. Never fatal, and never
 	// silent about its absence: an explanation with no upstream context has to
 	// say so, or a reader credits it with evidence it does not have.
-	notes := t.upstreamNotes(ctx, p)
+	notes := t.upstreamFor(ctx, p, report)
 	prompt += upstream.Render(notes)
 
 	v, err := t.LLM.Classify(ctx, explainPrompt, prompt)
@@ -777,7 +799,8 @@ func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, 
 			reason = v.Summary
 		}
 		t.say(ctx, pr, "%s is green, but flagged: %s", t.CheckName, reason)
-		if err := t.Git.Comment(ctx, pr.Number, t.renderExplanation(v, notes)); err != nil {
+		if err := t.Git.Comment(ctx, pr.Number,
+			t.renderExplanation(v, notes)+renderUpstream(notes)); err != nil {
 			return err
 		}
 		return t.Git.AddLabel(ctx, pr.Number, labelNeedsHuman)
@@ -831,7 +854,12 @@ func (t *Triage) renderExplanation(v *llm.Verdict, notes *upstream.Notes) string
 	// Provenance, always. A reader deciding how much to trust this needs to
 	// know whether it had the maintainers' own words or only the render.
 	b.WriteString("---\n")
-	if notes.Any() {
+	var c *upstream.Compare
+	if notes != nil {
+		c = notes.Compare
+	}
+	switch {
+	case notes.Any():
 		fmt.Fprintf(&b, "_Grounded in the gate's render diff and %d upstream release note(s)", len(notes.Releases))
 		if notes.SourceRepo != "" {
 			fmt.Fprintf(&b, " from [%s](https://github.com/%s/releases)", notes.SourceRepo, notes.SourceRepo)
@@ -839,8 +867,18 @@ func (t *Triage) renderExplanation(v *llm.Verdict, notes *upstream.Notes) string
 		if notes.Truncated {
 			b.WriteString(", truncated")
 		}
+		if c.Any() {
+			fmt.Fprintf(&b, ", and %d upstream commit(s) in `%s`", len(c.Relevant), c.Range)
+		}
 		fmt.Fprintf(&b, ". Explained by %s._\n", t.LLM.Name())
-	} else {
+	case c.Any():
+		// The case this feature was built for: no release note explains the
+		// finding, and the commits do. The provenance has to say which of the
+		// two it had, or a reader credits the explanation with the wrong one.
+		fmt.Fprintf(&b, "_Grounded in the gate's render diff and %d upstream commit(s) in `%s` -- "+
+			"no release note in this range explains it. Explained by %s._\n",
+			len(c.Relevant), c.Range, t.LLM.Name())
+	default:
 		reason := "no upstream release notes were read"
 		if notes != nil && notes.Note != "" {
 			reason = strings.TrimSuffix(strings.TrimPrefix(notes.Note, "No upstream release notes: "), ".")
@@ -851,19 +889,99 @@ func (t *Triage) renderExplanation(v *llm.Verdict, notes *upstream.Notes) string
 	return b.String()
 }
 
-// upstreamNotes never fails the explanation. A resolver that is misconfigured,
+// upstreamFor never fails anything. A resolver that is misconfigured,
 // rate-limited or looking at an artifact with no source label produces an
-// explanation grounded in the render alone, which is the behaviour that existed
+// answer grounded in the render alone, which is the behaviour that existed
 // before this and is still useful.
-func (t *Triage) upstreamNotes(ctx context.Context, p Promotion) *upstream.Notes {
+//
+// It fetches two things where it can. The RELEASE NOTES are what the
+// maintainers said; the COMMITS between the two tags are what they did, and
+// the second exists because of the findings the first cannot explain. A chart
+// that quietly dropped its ClusterRole and shipped a release note about
+// performance leaves an explanation with nothing to say -- while the commit
+// that deleted the template says exactly why, in a sentence nobody wrote for a
+// changelog.
+//
+// The commits are aimed by migrate.Subjects: the kinds and names the gate's own
+// findings are about. No model chooses its own evidence here.
+func (t *Triage) upstreamFor(ctx context.Context, p Promotion, report string) *upstream.Notes {
 	if t.Upstream == nil {
 		return &upstream.Notes{Note: "upstream lookup is not configured"}
 	}
 	n, err := t.Upstream.Notes(ctx, p.Artifact, p.From, p.To)
 	if err != nil || n == nil {
-		return &upstream.Notes{Note: fmt.Sprintf("upstream lookup failed (%v)", err)}
+		n = &upstream.Notes{Note: fmt.Sprintf("upstream lookup failed (%v)", err)}
 	}
+
+	// A second interface, type-asserted rather than required: a resolver that
+	// only reads releases keeps working and simply contributes no commits.
+	cr, ok := t.Upstream.(upstream.CompareResolver)
+	if !ok {
+		return n
+	}
+	terms := migrate.Subjects(report)
+	if len(terms) == 0 {
+		// Nothing to aim at. Reading a commit range with no filter would
+		// produce a list of everything, which is not evidence about anything.
+		return n
+	}
+	c, err := cr.Compare(ctx, p.Artifact, p.From, p.To, terms)
+	if err != nil || c == nil {
+		c = &upstream.Compare{Note: fmt.Sprintf("upstream commit lookup failed (%v)", err)}
+	}
+	n.Compare = c
 	return n
+}
+
+// renderUpstream is the "what upstream says" half of a handoff comment.
+//
+// Rendered only where a human is about to spend time: an escalation, and a
+// green gate flagged for a second look. An ordinary green-gate explanation
+// FETCHES the commits -- they are what it is grounded in -- and does not print
+// them, because a comment nobody needed to act on is how this agent becomes
+// something people collapse.
+//
+// The mechanical path neither renders nor fetches. An edit's evidence is the
+// gate report and nothing else, and a commit message that mentions a version
+// number must not become corroboration for writing one.
+func renderUpstream(n *upstream.Notes) string {
+	if n == nil {
+		return ""
+	}
+	c := n.Compare
+	if !c.Any() {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n**What upstream says**\n\n")
+	if c.URL != "" {
+		fmt.Fprintf(&b, "Between [`%s`](%s)", c.Range, c.URL)
+	} else {
+		fmt.Fprintf(&b, "Between `%s`", c.Range)
+	}
+	if c.Total > 0 {
+		fmt.Fprintf(&b, ", %d commit(s)", c.Total)
+		if c.Truncated {
+			b.WriteString(" (more than could be read)")
+		}
+	}
+	b.WriteString(" — these mention what the gate found:\n\n")
+	for _, cm := range c.Relevant {
+		if cm.URL != "" {
+			fmt.Fprintf(&b, "- [`%s`](%s) %s\n", cm.SHA, cm.URL, cm.Message)
+		} else {
+			fmt.Fprintf(&b, "- `%s` %s\n", cm.SHA, cm.Message)
+		}
+	}
+	if len(c.Files) > 0 {
+		b.WriteString("\nFiles the upstream diff touched that name the same things:\n\n")
+		for _, f := range c.Files {
+			fmt.Fprintf(&b, "- `%s`\n", f)
+		}
+	}
+	b.WriteString("\n<sub>Commit messages are testimony, not the render. " +
+		"They say what the maintainers meant to change.</sub>\n")
+	return b.String()
 }
 
 // checkout is the working copy, however the caller supplies it.
