@@ -174,6 +174,24 @@ agent, the model, the reasoning and every commit it pushes are live. The
 scenarios read the same fixtures the eval suite scores, which is what stops
 the thing the eval measures and the thing you watch from drifting apart.
 
+### What the replay cannot supply
+
+The eval fixtures record a gate report and a repository, not an artifact
+reference — so the replay passes the chart's bare name, the resolver maps it to
+Docker Hub the way a bare name is meant to be read, and gets a 401 because
+`library/kyverno` is not an official image. Nothing is guessed and no other
+project's notes leak in; the explanation degrades to render-only and **says so
+in its own footer**:
+
+> _Grounded in the gate's render diff ONLY —
+> `https://registry-1.docker.io/v2/library/trivy-operator-explorer/manifests/1.0.0`:
+> 401 Unauthorized. Nothing below is informed by what the maintainers wrote._
+
+So the replay proves the explain path, the lookup, the egress log and the
+honest degradation. It does not prove that release notes and commits *arrive*,
+because there is no real artifact here to resolve. That happens in production,
+against the real promotion pipeline's artifacts.
+
 ## What the agent will and will not fix
 
 `make demo-triage` opens a pull request the gate **refuses** -- a bump
