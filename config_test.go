@@ -71,3 +71,24 @@ func TestCredentialRequirementFollowsTheAuthMode(t *testing.T) {
 		})
 	}
 }
+
+// The chart shipped `bosun <bosun@users.noreply.github.com>` as its default
+// for its whole early life, so it sits copied into consumers' values files as
+// though somebody chose it. It is the noreply address of an unrelated GitHub
+// account, and honoring it attributed the first live repair's commits to that
+// stranger THROUGH the release that fixed the default -- explicit values beat
+// defaults, and the explicit value was the old default, fossilised.
+func TestTheLegacyAuthorIsIgnoredNotHonored(t *testing.T) {
+	c := &Config{AuthorName: "bosun", AuthorEmail: "bosun@users.noreply.github.com"}
+	if !c.NormalizeLegacyAuthor() {
+		t.Fatal("the legacy author must be cleared")
+	}
+	if c.AuthorName != "" || c.AuthorEmail != "" {
+		t.Fatalf("want both cleared, got %q <%q>", c.AuthorName, c.AuthorEmail)
+	}
+
+	chosen := &Config{AuthorName: "release-bot", AuthorEmail: "1234+release-bot@users.noreply.github.com"}
+	if chosen.NormalizeLegacyAuthor() {
+		t.Fatal("an identity somebody actually chose must be honored")
+	}
+}
