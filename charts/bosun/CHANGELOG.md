@@ -3,6 +3,13 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.14.2]
+
+### Fixed
+
+- The compare range is chosen by version rather than by the order the release
+  list arrived in. No values change; see the agent changelog.
+
 ## [0.14.1]
 
 ### Fixed

@@ -3,6 +3,44 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.14.2] - 2026-08-24
+
+Both found by watching a live replay round, not by reading the code back.
+
+### Fixed
+
+- **The compare range was framed by list order, and the list is not ordered the
+  way that assumed.** `framing` took the first match in each direction, on the
+  reasoning that a release list is newest-first. GitHub returns releases in
+  **publish-date** order, and any project that backports interleaves them:
+  authentik published `version/2026.5.5` one minute *after* `version/2026.2.6`.
+
+  A live promotion of `2025.12.4 -> 2026.2.3` framed itself as
+  `version/2025.8.6...version/2025.12.6` — a window that **ends below the
+  version being adopted** and starts four minor releases early. 1896 commits
+  were read over it and reported as evidence, which is worse than reading none.
+
+  Head is now the highest version in range and base the highest at or below the
+  version being left, compared as versions. The same promotion now frames
+  `version/2025.12.4...version/2026.2.3`, 960 commits.
+
+- **"None of the 1896 commit(s) mentions it" claimed a search nobody ran.** A
+  compare answer carries at most 250 commits, so the filter saw a fraction of
+  them. The line now reads "none of the 250 commit(s) read from `<range>` (of
+  1896)". Same rule as the rest of this file: a provenance line may not describe
+  evidence it did not have.
+
+### Note on the release itself
+
+The code for these two landed on `main` in a commit that carried **no chart
+bump and no changelog**, because the edit that should have made them was written
+against a stale ref and used a plain string replace with no assertion — so it
+matched nothing and said nothing. `Release` then correctly cut nothing, and the
+fix sat on `main` unreleased.
+
+Recorded because it is the same failure this project keeps naming: an operation
+that quietly does nothing looks exactly like one that had nothing to do.
+
 ## [0.14.1] - 2026-08-24
 
 ### Fixed
