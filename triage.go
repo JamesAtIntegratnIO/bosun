@@ -533,6 +533,25 @@ func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, 
 		return nil
 	}
 
+	// A green gate is a verdict on the render, not on the bump. This path may
+	// now ask for a human -- it blocks nothing, since the commit status is
+	// never a failure state, but it labels the pull request and says why.
+	//
+	// Edits are ignored here whatever the model returned. Nothing on the
+	// explain path writes a file, and that is a property of this function
+	// rather than a request in the prompt.
+	if v.Classification == llm.ClassEscalate {
+		reason := v.EscalationReason
+		if reason == "" {
+			reason = v.Summary
+		}
+		t.say(ctx, pr, "%s is green, but flagged: %s", t.CheckName, reason)
+		if err := t.Git.Comment(ctx, pr.Number, t.renderExplanation(v, notes)); err != nil {
+			return err
+		}
+		return t.Git.AddLabel(ctx, pr.Number, labelNeedsHuman)
+	}
+
 	t.say(ctx, pr, "%s is green: %s", t.CheckName, v.Summary)
 	return t.Git.Comment(ctx, pr.Number, t.renderExplanation(v, notes))
 }
@@ -568,6 +587,15 @@ func (t *Triage) renderExplanation(v *llm.Verdict, notes *upstream.Notes) string
 			mark += " "
 		}
 		fmt.Fprintf(&b, "%s**%s**\n\n", mark, t.Brand)
+	}
+	if v.Classification == llm.ClassEscalate {
+		// Say it before the summary, not after. A reader who stops at the
+		// first bold line must still learn that this one wants their eyes.
+		reason := v.EscalationReason
+		if reason == "" {
+			reason = v.Summary
+		}
+		fmt.Fprintf(&b, "**Worth a look before merging.** %s\n\n", reason)
 	}
 	fmt.Fprintf(&b, "**%s**\n\n%s\n\n", v.Summary, v.Reasoning)
 	// Provenance, always. A reader deciding how much to trust this needs to
