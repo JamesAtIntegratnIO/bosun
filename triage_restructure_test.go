@@ -312,3 +312,31 @@ func jsonMap(t *testing.T, raw string) map[string]any {
 	}
 	return m
 }
+
+// ADR 0007 promises the live-CRD fallback is "labelled as one in the comment".
+// It was not: the note was attached to the schema pair and then only surfaced
+// when the pair was INCOMPLETE -- which is exactly when the fallback had not
+// been used. A fallback that works was silent, which is the wrong way round.
+//
+// It matters because a target schema taken from what the cluster serves TODAY
+// predates the bump. It can miss a field the new chart version added, so a
+// clean result carries less confidence than a clean result checked against the
+// chart's own schema -- and only the comment can tell those apart.
+func TestAFallbackSchemaSaysSoEvenWhenItWorked(t *testing.T) {
+	h := restructureHarness(t, bothSchemas())
+	// No helm on PATH in the test environment, so the target schema can only
+	// have come from the live CustomResourceDefinition -- the fallback.
+	if err := h.triage.Run(context.Background(), promotion()); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.git.Posted) == 0 {
+		t.Fatal("nothing was posted")
+	}
+	body := h.git.Posted[0]
+	if !strings.Contains(body, "Which schema the check used") {
+		t.Fatalf("the comment does not say where the target schema came from:\n%s", body)
+	}
+	if !strings.Contains(body, "predates this bump") {
+		t.Fatalf("the comment does not say the fallback may be stale:\n%s", body)
+	}
+}
