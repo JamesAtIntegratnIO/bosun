@@ -3,6 +3,19 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.9.3] - 2026-08-24
+
+### Fixed
+
+- **The legacy author is ignored, not honored.** 0.9.2 fixed the chart
+  DEFAULT that attributed pushed commits to the unrelated GitHub account
+  `bosun` -- and the first re-run still landed as that stranger, because the
+  consuming repository's values file carried the old default as an explicit
+  value, and explicit values beat defaults. Exactly `bosun
+  <bosun@users.noreply.github.com>` is now cleared at start-up with a log
+  line, so the App derives its own bot identity; an author somebody actually
+  chose is still honored.
+
 ## [0.9.2] - 2026-08-24
 
 ### Fixed
