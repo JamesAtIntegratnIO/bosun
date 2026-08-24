@@ -36,6 +36,10 @@ func main() {
 	if err != nil {
 		logger.Fatalf("configuration: %v", err)
 	}
+	if cfg.NormalizeLegacyAuthor() {
+		logger.Print("ignoring the legacy author bosun <bosun@users.noreply.github.com>: " +
+			"that is the noreply address of an unrelated GitHub account; deriving the commit identity instead")
+	}
 
 	var model llm.Provider
 	switch cfg.LLMProvider {

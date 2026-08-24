@@ -2,6 +2,7 @@ package migrate
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -75,5 +76,19 @@ func TestPreferredVersion(t *testing.T) {
 		if got := PreferredVersion(c.in); got != c.want {
 			t.Errorf("PreferredVersion(%v) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+// A CRD removed outright renders its own line, and the parser deliberately
+// cannot act on it: there is no destination, so there is no repair -- only
+// the consumer count, which the gate carries itself.
+func TestARemovalLineIsNotRepairable(t *testing.T) {
+	line := Line("CustomResourceDefinition/admissionreports.kyverno.io in kyverno",
+		"v1alpha2, v2", "AdmissionReport", "")
+	if !strings.Contains(line, "removed outright") {
+		t.Fatalf("want the removal named as such, got %q", line)
+	}
+	if got := ParseReport(line); len(got) != 0 {
+		t.Fatalf("a removal has no destination and must parse as nothing, got %+v", got)
 	}
 }

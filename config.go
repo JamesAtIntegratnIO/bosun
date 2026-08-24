@@ -199,6 +199,26 @@ func (c *Config) validate() error {
 	return nil
 }
 
+// NormalizeLegacyAuthor clears the author identity this project shipped as
+// its chart default for its whole early life -- `bosun
+// <bosun@users.noreply.github.com>` -- which by now sits copied into
+// consumers' values files as though somebody chose it. Nobody did, and it is
+// the noreply address of an unrelated GitHub account: honoring it kept
+// attributing pushed commits to a stranger THROUGH the release that fixed the
+// default, because an explicit value beats a default and the value was the
+// old default, fossilised. Cleared, the App derives its own bot identity and
+// token mode falls back to an address that maps to nobody.
+//
+// Returns whether it cleared anything, so the caller can say so in the log --
+// silently rewriting configuration is its own bug.
+func (c *Config) NormalizeLegacyAuthor() bool {
+	if c.AuthorEmail != "bosun@users.noreply.github.com" {
+		return false
+	}
+	c.AuthorName, c.AuthorEmail = "", ""
+	return true
+}
+
 func env(k, def string) string {
 	if v := os.Getenv(k); v != "" {
 		return v

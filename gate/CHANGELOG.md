@@ -5,6 +5,29 @@ All notable changes to `gitops-gate`. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **A removed CRD is inspected, not just listed.** Removal is the limiting
+  case of dropping served versions -- all of them, no survivor -- but it sat
+  in the plain Removed list while the version-drop path counted consumers, so
+  a reviewer got "12 resources removed" and went looking themselves whether
+  anything here used those APIs. Asked live, on the kyverno 3.9.0 promotion:
+  *"why didn't it look to see if I was consuming that api anywhere ... or
+  tell me I wasn't and that the update looks safe from its inspection?"* Now
+  it joins the consumer-scanned class: consumers present block and are named;
+  counted at zero, the report says outright that nothing in the repository
+  uses the API and from inspection the removal looks safe. No survivor means
+  no repair -- the agent's parser deliberately cannot act on the removal line.
+
+- **A removed binding names the ServiceAccount it orphans.** A dropped
+  ClusterRoleBinding is either routine chart tidying or a workload silently
+  losing every permission it runs on, and the difference is whether its
+  ServiceAccount is still bound to anything in the new render. The gate now
+  checks, and the Removed entry carries the answer when it is bad news. No
+  note when the subject is re-bound (routine is not a finding), and no note
+  when any head binding's subjects cannot be read -- claiming "unbound" past
+  an unreadable binding would be a guess.
+
 ### Fixed
 
 - **The repair's own apiVersion moves no longer re-block the gate.** The
