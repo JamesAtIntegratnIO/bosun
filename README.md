@@ -1,7 +1,23 @@
 # Bosun
 
-⚓ **The crew for Argo and Kargo.** Gating, triage and visibility for a GitOps
-pipeline that merges its own pull requests.
+⚓ **The crew for Argo and Kargo.**
+
+Kargo is very good at producing change. Left alone it opens more pull requests
+than anyone can read, and merges a good share of them on a version-shaped
+policy that cannot see what is in the diff. The dangerous ones look exactly
+like the boring ones: a one-line version bump that renders perfectly — and
+stops serving an API every manifest in your repository still declares.
+
+Bosun closes both gaps: a **gate** that renders what the pull request actually
+deploys and blocks the changes that break things, and an **agent** that reads
+the gate's verdict — repairing what is provable without any model at all,
+proposing fixes a policy engine applies where a model's judgement is enough,
+and handing a human everything that needs a decision, with the file, the key
+and the choice named.
+
+**Start with [the loop, end to end](docs/the-loop.md)** — one pull request
+walked from a version appearing to the change verified running, with every
+piece doing its one job.
 
 > A boatswain's job is not repair — it is *inspection and repair*: daily rounds
 > of the hull, rigging and cables, fixing what they find on their own
@@ -12,24 +28,16 @@ pipeline that merges its own pull requests.
 
 | Piece | What it does |
 |---|---|
-| [`gate/`](gate) | **The inspection round.** Renders your ApplicationSets at base and at head, fails when an app's *cluster targeting* changes, diffs the old and new chart render, schema-validates the result. A container with an exit code — run it from any CI. |
-| the agent *(this module's root)* | **The repair.** Reads a red gate, explains it on the pull request, and fixes what the rendered diff *proves* is mechanical. Escalates everything else. |
+| [`gate/`](gate) | **The inspection round.** Renders your ApplicationSets at base and at head, fails on a *cluster-targeting* change, an apiVersion migration, or a CRD dropping a served version your manifests still declare; diffs the old and new chart render down to the field; schema-validates the result. A container with an exit code — run it from any CI. |
+| the agent *(this module's root)* | **The repair.** Reads the gate's verdict. Migrates manifests off dropped API versions deterministically, fixes what the rendered diff *proves* is mechanical, explains what a green gate cannot show, and escalates the rest as a handoff. |
 | [`charts/kargo-pipelines`](charts/kargo-pipelines) | Warehouses and Stages from one target list, with multi-stage promotion chains, verification gating and the triage hook that calls the agent. |
 | [`charts/bosun`](charts/bosun) | Runs the agent in-cluster, triggered by Kargo rather than polled. |
 
-Kargo is very good at producing change. Left alone it opens more pull requests
-than anyone can read, and merges a good share of them on a version-shaped
-policy that cannot see what is in the diff. This closes those two gaps.
-
-> **Not here:** `kargo-observability`, which turns Kargo's own state into
-> Prometheus metrics and alerts. It shares no contract with the gate or the
-> agent, works for anyone running Kargo whether or not they want either, and
-> belongs to nothing in this repository. It stays in the platform repository
-> it was written for.
-
-**Status: running in production.** Measured 9/9 on the eval cases against
-`qwen/qwen3.8-27b` and 8/9 with zero unsafe actions against a 9B model on a
-workstation. See [`evals/`](evals) and [`local/`](local).
+**Status: running in production.** Measured **10/10 classification, 10/10
+full pass, 0 unsafe actions** on the eval cases against `qwen/qwen3.8-27b` —
+a local model on a workstation — and 8/9 with zero unsafe actions against a
+9B. Every case is a real incident. See [`evals/`](evals) and
+[`local/`](local).
 
 ## Why the two halves live together
 
@@ -108,7 +116,7 @@ Then point Kargo's promotion at it:
 - **Kargo** 1.11 or newer, or anything else that can POST a promotion event.
 - A **gate** that posts a report comment and a commit status on the pull
   request. Bosun reads that comment; it does not render anything itself.
-- A **git host** — `github` or `gitea` today, behind a four-method interface.
+- A **git host** — `github` or `gitea` today, behind a six-method interface.
 - An **OpenAI- or Anthropic-compatible model endpoint**. There is no default,
   on purpose: a service that silently starts spending money against a vendor
   you did not choose is a bad default.
@@ -120,6 +128,7 @@ host or model provider. Those are values.
 
 | | |
 |---|---|
+| [`docs/the-loop.md`](docs/the-loop.md) | the whole system, walked through one pull request |
 | [`docs/safety-model.md`](docs/safety-model.md) | allowlist, deny-list, attempt cap — what is enforced where |
 | [`docs/classification.md`](docs/classification.md) | mechanical vs escalate, with worked examples |
 | [`docs/prompt-contract.md`](docs/prompt-contract.md) | the prompt the eval numbers come from |
@@ -127,7 +136,7 @@ host or model provider. Those are values.
 | [`docs/git-providers.md`](docs/git-providers.md) | the `GitProvider` interface; adding one |
 | [`gate/README.md`](gate/README.md) | the gate: what it checks, and what it deliberately does not |
 | [`ci/`](ci) | CI adapters, and the contract an adapter must satisfy |
-| [`local/`](local) | a disposable cluster that runs the whole flow, and replays nine real incidents against the live agent |
+| [`local/`](local) | a disposable cluster that runs the whole flow, and replays the ten recorded incidents against the live agent |
 | [`adr/`](adr) | why it is built this way, and what each decision cost |
 
 ## Development
@@ -138,7 +147,7 @@ go test ./evals/...    # just the evals
 hack/lint.sh           # helm lint + values schema validation
 ```
 
-The [local proving ground](local) builds a throwaway cluster and replays nine
+The [local proving ground](local) builds a throwaway cluster and replays ten
 incidents that really happened to the platform this was built for — real pull
 requests, the live model, real commits pushed by the service:
 
@@ -175,3 +184,8 @@ proving ground. The agent was called `delivery-agent` until that day.
 That platform repository is still the reference consumer — it runs the gate in
 CI and the agent in-cluster, and every incident in [`evals/`](evals) came from
 it.
+
+**Not here:** `kargo-observability`, which turns Kargo's own state into
+Prometheus metrics and alerts. It shares no contract with the gate or the
+agent, works for anyone running Kargo whether or not they want either, and
+stays in the platform repository it was written for.
