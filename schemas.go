@@ -11,6 +11,7 @@ import (
 
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
 	"github.com/JamesAtIntegratnIO/bosun/structural"
+	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
 
 // Where the two schemas come from, and why it is not one place.
@@ -114,17 +115,35 @@ func (t *Triage) renderTargetCRDs(ctx context.Context, p Promotion) (map[string]
 		return nil, "helm is not on PATH in this image, so the target schema could not be rendered"
 	}
 
-	ref := strings.TrimSpace(p.Artifact)
-	// An image is not a chart. Rendering one fails slowly and confusingly, and
-	// a promotion of an image has no CRDs to reason about anyway.
-	if !strings.HasPrefix(ref, "oci://") {
-		ref = "oci://" + ref
+	// The same dispatch the upstream resolver makes, through the same parser.
+	//
+	// This prepended `oci://` to whatever it was given, which for a classic
+	// Helm repository -- whose artifact is `repoURL SPACE chartName` -- built
+	// `oci://https://kyverno.github.io/kyverno kyverno` and failed with
+	// `invalid repository`. Twenty of the forty-one artifacts in a real target
+	// list are that shape, and they include external-secrets, kyverno and
+	// cert-manager: the charts that actually drop CRD versions, which is to say
+	// every promotion this feature exists for.
+	ref, chart := upstream.ParseArtifact(p.Artifact)
+	args := []string{"template", "schema-probe"}
+	switch {
+	case upstream.IsHelmRepo(ref):
+		if chart == "" {
+			return nil, fmt.Sprintf("%s is a Helm repository and the promotion did not name a chart in it", ref)
+		}
+		// `--repo` rather than a pre-added repository, so nothing has to mutate
+		// the runner's helm config -- the same choice the gate makes.
+		args = append(args, chart, "--repo", ref)
+	case strings.HasPrefix(ref, "oci://"):
+		args = append(args, ref)
+	default:
+		args = append(args, "oci://"+ref)
 	}
+	args = append(args, "--version", p.To, "--include-crds", "--skip-tests")
 
 	ctx, cancel := context.WithTimeout(ctx, helmTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "helm", "template", "schema-probe", ref,
-		"--version", p.To, "--include-crds", "--skip-tests")
+	cmd := exec.CommandContext(ctx, "helm", args...)
 	var out, errb strings.Builder
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {

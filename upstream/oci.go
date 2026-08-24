@@ -17,6 +17,15 @@ import (
 // credentials for every upstream registry would be a credential-management
 // problem wearing an explanation feature's clothes.
 func (g *GitHubReleases) sourceRepo(ctx context.Context, artifact, version string) (string, error) {
+	// A chart's artifact is `repoURL SPACE chartName`; an image's is just a
+	// reference. Splitting first is what lets the two kinds of chart
+	// repository go to the two places their publishers actually declare a
+	// source.
+	ref, chart := ParseArtifact(artifact)
+	if IsHelmRepo(ref) {
+		return g.helmIndexSource(ctx, ref, chart, version)
+	}
+
 	labels, err := g.artifactLabels(ctx, artifact, version)
 	if err != nil {
 		return "", err
@@ -53,7 +62,15 @@ const helmConfigMediaType = "application/vnd.cncf.helm.config.v1+json"
 // correctly and was reported as not publishing it, on the pull request that
 // upgraded the agent to the release which said so.
 func (g *GitHubReleases) artifactLabels(ctx context.Context, artifact, version string) (map[string]string, error) {
-	host, repo, ref := splitRef(artifact)
+	plain, _ := ParseArtifact(artifact)
+	if IsHelmRepo(plain) {
+		// A classic Helm repository has no registry API. Saying so beats
+		// `splitRef` reading "https:" as a hostname, which is what produced
+		// `https://https/v2//...` and an error naming neither the artifact nor
+		// the problem.
+		return nil, fmt.Errorf("%s is a Helm repository, not an OCI registry", plain)
+	}
+	host, repo, ref := splitRef(plain)
 	// A promotion names the artifact WITHOUT a tag -- the tag is the thing
 	// being promoted, and arrives separately. Resolving `latest` instead 404s
 	// on every registry that does not publish one, which is most of them.
@@ -63,6 +80,9 @@ func (g *GitHubReleases) artifactLabels(ctx context.Context, artifact, version s
 	if host == "" {
 		return nil, fmt.Errorf("not an OCI reference: %q", artifact)
 	}
+	// docker.io is a website; the v2 API is at registry-1.docker.io. Asking
+	// the wrong one returns HTML, which surfaced as "invalid character '<'".
+	host = registryHost(host)
 
 	tok, err := g.registryToken(ctx, host, repo)
 	if err != nil {
@@ -89,7 +109,14 @@ func (g *GitHubReleases) artifactLabels(ctx context.Context, artifact, version s
 			}
 		}
 		if child == "" {
-			return nil, fmt.Errorf("index for %s has no platform manifest", artifact)
+			// No child declares a real architecture. That is not necessarily a
+			// broken index: a single-manifest index and some publishers' output
+			// carry `platform: null`, and the label sits on the one child
+			// regardless. Following it beats refusing to look.
+			child = man.Manifests[0].Digest
+		}
+		if child == "" {
+			return nil, fmt.Errorf("index for %s has no manifest to follow", artifact)
 		}
 		if man, err = g.manifest(ctx, host, repo, child, tok); err != nil {
 			return nil, err
@@ -239,6 +266,12 @@ func (g *GitHubReleases) getJSON(ctx context.Context, url, token, accept string,
 // a repository.
 func splitRef(ref string) (host, repo, tag string) {
 	ref = strings.TrimPrefix(ref, "oci://")
+	// A Docker Hub short form is not ambiguous -- convention gives it exactly
+	// one meaning -- and the pipeline is handing us the reference rather than
+	// us inferring one. What stays refused is a string that is not a reference.
+	if full, ok := dockerHubRef(ref); ok {
+		ref = full
+	}
 	if at := strings.Index(ref, "@"); at >= 0 {
 		tag, ref = ref[at+1:], ref[:at]
 	}

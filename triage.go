@@ -1041,17 +1041,15 @@ func (t *Triage) renderExplanation(v *llm.Verdict, notes *upstream.Notes) string
 		if notes.Truncated {
 			b.WriteString(", truncated")
 		}
-		if c.Any() {
-			fmt.Fprintf(&b, ", and %d upstream commit(s) in `%s`", len(c.Relevant), c.Range)
-		}
+		b.WriteString(commitProvenance(c))
 		fmt.Fprintf(&b, ". Explained by %s._\n", t.LLM.Name())
 	case c.Any():
 		// The case this feature was built for: no release note explains the
 		// finding, and the commits do. The provenance has to say which of the
 		// two it had, or a reader credits the explanation with the wrong one.
-		fmt.Fprintf(&b, "_Grounded in the gate's render diff and %d upstream commit(s) in `%s` -- "+
+		fmt.Fprintf(&b, "_Grounded in the gate's render diff%s -- "+
 			"no release note in this range explains it. Explained by %s._\n",
-			len(c.Relevant), c.Range, t.LLM.Name())
+			commitProvenance(c), t.LLM.Name())
 	default:
 		reason := "no upstream release notes were read"
 		if notes != nil && notes.Note != "" {
@@ -1061,6 +1059,40 @@ func (t *Triage) renderExplanation(v *llm.Verdict, notes *upstream.Notes) string
 			reason, t.LLM.Name())
 	}
 	return b.String()
+}
+
+// commitProvenance says what the commit range actually contributed.
+//
+// "0 upstream commit(s) in v0.13.1...v0.13.2" was the first wording, and it
+// reads as THE RANGE WAS EMPTY. It was not: there were two commits and neither
+// mentioned what the gate found, which is a different statement and a more
+// useful one -- it says the maintainers did work and none of it explains this.
+//
+// The same class of error as a fully-read range calling itself truncated. A
+// provenance line's whole job is being exact about what the evidence was, so a
+// number in it that reads as the wrong fact is worse than no number.
+func commitProvenance(c *upstream.Compare) string {
+	switch {
+	case c == nil:
+		return ""
+	case len(c.Relevant) > 0:
+		out := fmt.Sprintf(", and %d upstream commit(s) in `%s`", len(c.Relevant), c.Range)
+		if c.Capped {
+			out += " (the first few)"
+		}
+		return out
+	case len(c.Files) > 0:
+		// The commits said nothing and the DIFF said something. That is the
+		// ordinary shape of the case this feature was built for: a commit
+		// titled "watch namespaces via config" does not contain the string
+		// ClusterRole, and the template it deleted does. Claiming nothing
+		// mentions it here would disown the evidence the explanation used.
+		return fmt.Sprintf(", and %d file(s) in the upstream diff for `%s`", len(c.Files), c.Range)
+	case c.Total > 0:
+		return fmt.Sprintf(", and none of the %d commit(s) in `%s` mentions it", c.Total, c.Range)
+	default:
+		return ""
+	}
 }
 
 // upstreamFor never fails anything. A resolver that is misconfigured,

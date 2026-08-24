@@ -201,8 +201,20 @@ func (g *GitHubReleases) repoFile(ctx context.Context, repo, path string) (text,
 // chartNameOf is the last path segment of an OCI reference, which for a chart
 // repository is the chart's name -- and therefore the directory its own
 // changelog lives in.
+// chartNameOf is the chart's name, for finding its own CHANGELOG.md.
+//
+// The promotion names it outright for a classic Helm repository. For an OCI
+// chart the name field is empty and the last path segment IS the chart, which
+// is how `helm push` addresses it.
 func chartNameOf(artifact string) string {
-	_, repo, _ := splitRef(artifact)
+	ref, chart := ParseArtifact(artifact)
+	if chart != "" {
+		return chart
+	}
+	if IsHelmRepo(ref) {
+		return ""
+	}
+	_, repo, _ := splitRef(ref)
 	if i := strings.LastIndex(repo, "/"); i >= 0 {
 		return repo[i+1:]
 	}

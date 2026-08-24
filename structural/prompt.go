@@ -36,6 +36,21 @@ func Prompt(path, body, fromVersion, toVersion string, old, target Schema, findi
 // specified PodSpec in its CRD does not fill the whole context.
 const maxSchemaDepth = 8
 
+// MaxSchemaChars bounds one rendered schema in a prompt.
+//
+// Measured rather than guessed: the largest schema on a real cluster renders to
+// 43,831 characters -- kyverno's ClusterPolicy v2beta1 -- and a prompt carries
+// TWO of them plus the document plus the gate report. Left uncapped that is the
+// same failure the release-note cap exists to prevent, crowding out the
+// evidence the answer is supposed to be built from.
+//
+// Truncating is SAFE here in a way it would not be elsewhere, and the reason is
+// worth stating: the validators run against the FULL schema whatever the prompt
+// showed. A model that never saw the destination field cannot produce a
+// proposal that passes schema-validity, so a truncated schema costs a refusal
+// and an escalation -- never a bad write.
+const MaxSchemaChars = 12000
+
 // renderSchema prints the shape of a schema and nothing else: field names,
 // types, requirements, and the values the schema itself dictates. Descriptions
 // are dropped, because they are the bulk of a real CRD schema and the model is
@@ -46,7 +61,21 @@ func RenderSchema(s Schema) string {
 	if b.Len() == 0 {
 		return "(none)"
 	}
-	return b.String()
+	out := b.String()
+	if len(out) > MaxSchemaChars {
+		// Cut at a line boundary, so the last thing the model sees is a whole
+		// field rather than half a name it might complete from memory.
+		cut := strings.LastIndexByte(out[:MaxSchemaChars], '\n')
+		if cut <= 0 {
+			cut = MaxSchemaChars - 1
+		}
+		// cut+1 keeps the newline, so the text ends on a whole field rather
+		// than the character before one.
+		out = out[:cut+1] + "\n[schema truncated: it is larger than this prompt can carry. Fields below\n" +
+			"this point are not shown. If the field you need is not here, say so in the\n" +
+			"notes and return the document unchanged rather than guessing where it went.]\n"
+	}
+	return out
 }
 
 func renderSchemaInto(b *strings.Builder, indent string, s Schema, depth int) {
