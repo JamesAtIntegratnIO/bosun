@@ -3,6 +3,17 @@
 All notable changes to `kargo-pipelines`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.1.2] - 2026-08-24
+
+### Changed
+
+- **The README stops claiming the chart does not exist.** It opened with
+  "Status: not yet implemented" -- written as the contract before the
+  implementation, never revisited after the chart shipped and went to work.
+  Docs-only; no template changed. The version moves because the README ships
+  inside the published chart, and CI is right that an unbumped change would
+  merge and publish nothing.
+
 ## [0.1.1] - 2026-08-23
 
 ### Fixed
