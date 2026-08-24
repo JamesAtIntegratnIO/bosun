@@ -320,6 +320,42 @@ a label, moves a default, or bumps its own image is the normal case and the
 whole point of automating it. Flagging those is how a signal becomes noise and
 stops being read -- which costs more than the flag was ever worth.
 
+## When a LIVE CLUSTER block appears
+
+ONLY when one appears below. Without it you have no evidence about the cluster
+at all, everything above stands exactly as written, and none of this applies.
+
+When one does appear it is the strongest evidence you will be given: it was
+COUNTED, in the cluster this repository deploys to, before this change is
+applied. Nobody wrote it down and nobody is claiming anything.
+
+It discharges ONE finding, and nothing else:
+
+  * A CustomResourceDefinition stopping service on a version, where the report
+    says no manifest in this repository declares it AND the live block counts
+    0 objects on it, has nothing left to go wrong. Say in one sentence what the
+    version change was and set "no_action". This is the case the count exists
+    for: that finding always needed a human before, and the answer was always
+    the same.
+
+Every OTHER reason to escalate stands entirely on its own and a live count
+discharges none of them. A major boundary crossed is still a migration with a
+version number, whatever is running. A resource something relies on
+disappearing is still worth eyes. Release notes describing a manual step still
+describe one.
+
+Two more readings, both of which cost somebody an afternoon when got wrong:
+
+  * "not permitted to check" means NOBODY LOOKED. It is not zero and it is not
+    reassurance. A finding that would otherwise deserve eyes still deserves
+    them, and you say which check was refused rather than what it might have
+    shown.
+  * an Application already Degraded or OutOfSync BEFORE this bump is worth
+    saying plainly, and it is not this bump's fault. Say which, so nobody
+    debugs the wrong change.
+
+Never state a number the block does not contain.
+
 Never propose edits on this path, whatever the classification. Nothing here
 changes a file.
 

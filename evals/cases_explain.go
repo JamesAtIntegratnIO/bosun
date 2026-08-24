@@ -303,4 +303,95 @@ Consumers of the removed CustomResourceDefinition in this repository: 0.`,
 		// here, and nothing in front of the model says it went anywhere.
 		MustNotMention: []string{"policies.kyverno.io"},
 	},
+	{
+		// A live count of zero is the strongest evidence in a brief -- nobody
+		// wrote it down, it was measured -- and the failure it invites is the
+		// opposite of invention: a model that has been shown "0 objects are
+		// stored on the version being removed" and flags the bump anyway,
+		// because a disappearing CRD looks alarming in the abstract.
+		Name:    "explain-nothing-is-live-on-the-version-being-removed",
+		Path:    PathExplain,
+		Subject: "bump external-secrets chart 0.10.3 -> 0.11.0",
+		Files: map[string]string{addonsPath: `external-secrets:
+  enabled: true
+  namespace: external-secrets-system
+  chartName: external-secrets
+  defaultVersion: 0.11.0
+`},
+		GateReport: `<!-- gitops-gate -->
+The gate is GREEN. Nothing structural changed.
+
+Rendered diff, external-secrets 0.10.3 -> 0.11.0:
+  changed  CustomResourceDefinition/externalsecrets.external-secrets.io
+             stops serving v1alpha1
+  changed  Deployment/external-secrets   (image tag)
+
+Manifests in this repository declaring a dropped version: 0.
+
+LIVE CLUSTER (fact, read-only)
+
+Measured in the cluster this repository deploys to, before this change is
+applied. Not testimony: nobody wrote this down, it was counted.
+
+- externalsecrets.external-secrets.io on v1alpha1: 0 live object(s)
+- Application external-secrets-host: Healthy / Synced
+
+"not permitted to check" means NOBODY LOOKED. It is not zero, and it is not
+evidence that anything is safe.`,
+		WantClass: "no_action",
+		// The count is the reason there is nothing to do, and an explanation
+		// that does not use it has not used the best evidence it had.
+		MustMention: []string{"v1alpha1"},
+		// Nothing was stored on it and nothing in the repository declared it,
+		// so there is no consequence to warn about. Note the probes are for
+		// invented CONSEQUENCES, not for the word "migrate" -- "nothing needs
+		// migrating" is a perfectly grounded sentence here, and a probe that
+		// fired on it would be measuring vocabulary again.
+		MustNotMention: []string{"data loss", "downtime", "irreversible"},
+	},
+	{
+		// The other half, and the dangerous one. A refusal is not a zero, and
+		// a model shown "not permitted to check" must not convert it into
+		// reassurance -- which is the single most natural thing to do with a
+		// sentence that contains no bad news.
+		Name:    "explain-nobody-checked-is-not-the-same-as-nothing-found",
+		Path:    PathExplain,
+		Subject: "bump kyverno chart 3.5.2 -> 3.6.0",
+		Files: map[string]string{cpAddonsPath: `kyverno:
+  enabled: true
+  namespace: kyverno
+  chartName: kyverno
+  defaultVersion: 3.6.0
+`},
+		GateReport: `<!-- gitops-gate -->
+The gate is GREEN. Nothing structural changed.
+
+Rendered diff, kyverno 3.5.2 -> 3.6.0:
+  removed  CustomResourceDefinition/cleanuppolicies.kyverno.io
+  changed  Deployment/kyverno-admission-controller   (image tag)
+
+LIVE CLUSTER (fact, read-only)
+
+Measured in the cluster this repository deploys to, before this change is
+applied. Not testimony: nobody wrote this down, it was counted.
+
+- cleanuppolicies.kyverno.io: not permitted to check kyverno.io/v2/cleanuppolicies
+
+"not permitted to check" means NOBODY LOOKED. It is not zero, and it is not
+evidence that anything is safe. Say what was not checked rather than what it
+would have shown.`,
+		WantClass: "escalate",
+		// Naming what could not be checked is the finding.
+		MustMention: []string{"cleanuppolicies"},
+		// A refusal converted into reassurance, which is the most natural thing
+		// to do with a sentence containing no bad news.
+		//
+		// Not "safe" and not "zero": the prompt block's own warning -- "it is
+		// not zero, and it is not evidence that anything is safe" -- contains
+		// both, so a probe for either fires on the evidence. The guard test
+		// caught that on the first two writes of this case, which is what the
+		// guard is for. These are words that could only arrive by supplying an
+		// answer nobody supplied.
+		MustNotMention: []string{"unused", "confirmed", "nothing is using"},
+	},
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/JamesAtIntegratnIO/bosun/cluster"
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
@@ -73,6 +74,20 @@ type Triage struct {
 	// versions. Optional: without it the explanation is grounded in the render
 	// alone, says so, and is still worth reading.
 	Upstream upstream.Resolver
+
+	// Cluster, when set, reads what is actually running.
+	//
+	// The one thing CI structurally cannot do, and the reason ADR 0002 put
+	// triage in the cluster. Everything the gate knows is a property of text:
+	// "3 manifests still declare a version this chart stops serving" is a fact
+	// about the repository. Whether anything is STORED on that version is a
+	// different question and usually the one that decides whether a human
+	// needs waking.
+	//
+	// Optional, read-only, and soft in every direction: nil, unpermitted or
+	// unreachable all produce a brief with no live section, which is the brief
+	// that existed before this.
+	Cluster cluster.Reader
 
 	// Explain turns on the green-gate explanation: when the gate passes but the
 	// render still changed, say what it changed. Off means the agent only ever
@@ -218,6 +233,11 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 		return err
 	}
 
+	// What is actually running, gathered once and used by whichever path this
+	// run takes. Deterministic: every number here was counted by code against
+	// a read-only view, and none of it is asserted by a model.
+	live := t.liveFor(ctx, p, report)
+
 	checkout := t.Checkout
 	if checkout == nil {
 		checkout = t.clone
@@ -237,7 +257,7 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	// leave a red gate implying it had not.
 	if t.Migrate && !migrate.OtherBlockers(report) {
 		if drops := migrate.ParseReport(report); len(drops) > 0 {
-			return t.repairDropped(ctx, p, pr, root, report, drops, attempt)
+			return t.repairDropped(ctx, p, pr, root, report, drops, live, attempt)
 		}
 	}
 
@@ -245,6 +265,13 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	if err != nil {
 		return err
 	}
+	// Live facts are FACT and go in on every path, unlike upstream testimony.
+	// They widen the evidence string the applier corroborates against, which
+	// is safe here for a reason worth stating: nothing in this block is
+	// version-shaped by `edits.versionish` -- API versions are `v1beta1`, not
+	// `1.2.3`, and counts are bare integers -- so it adds no new value an edit
+	// could claim as corroborated.
+	prompt += promptLive(live)
 
 	verdict, err := t.LLM.Classify(ctx, systemPrompt, prompt)
 	if err != nil {
@@ -271,7 +298,7 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 		// Upstream is read HERE and not earlier: a mechanical verdict never
 		// pays for it, and the evidence an edit is corroborated against must
 		// stay the gate report alone.
-		return t.escalateInformed(ctx, pr, "", verdict, nil, t.upstreamFor(ctx, p, report))
+		return t.escalateInformed(ctx, pr, "", verdict, nil, t.upstreamFor(ctx, p, report), live)
 	}
 
 	// Mechanical. The applier is what decides whether any of it happens.
@@ -304,7 +331,7 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 			len(res.Rejected))
 		return t.escalateInformed(ctx, pr,
 			"The proposed fix was rejected before anything was written.", verdict, res,
-			t.upstreamFor(ctx, p, report))
+			t.upstreamFor(ctx, p, report), live)
 	}
 
 	msg := fmt.Sprintf("fix(%s): %s\n\nProposed by %s, applied by bosun.\n",
@@ -334,7 +361,7 @@ func (t *Triage) escalate(ctx context.Context, pr *gitprovider.PullRequest, reas
 // passed as "" on purpose: the verdict's summary says the same thing, and the
 // comment should say it once.
 func (t *Triage) escalateWith(ctx context.Context, pr *gitprovider.PullRequest, reason string, v *llm.Verdict, res *edits.Result) error {
-	return t.escalateInformed(ctx, pr, reason, v, res, nil)
+	return t.escalateInformed(ctx, pr, reason, v, res, nil, nil)
 }
 
 // escalateInformed is escalateWith plus what the maintainers changed between
@@ -347,7 +374,7 @@ func (t *Triage) escalateWith(ctx context.Context, pr *gitprovider.PullRequest, 
 // never on the mechanical path, where the evidence for an edit stays the gate
 // report alone.
 func (t *Triage) escalateInformed(ctx context.Context, pr *gitprovider.PullRequest,
-	reason string, v *llm.Verdict, res *edits.Result, up *upstream.Notes) error {
+	reason string, v *llm.Verdict, res *edits.Result, up *upstream.Notes, live *liveFacts) error {
 
 	body := "### Needs a human\n\n" + reason + "\n"
 	if v != nil {
@@ -357,6 +384,7 @@ func (t *Triage) escalateInformed(ctx context.Context, pr *gitprovider.PullReque
 		}
 		body = t.render(v, res, head)
 	}
+	body += renderLive(live)
 	body += renderUpstream(up)
 	if err := t.Git.Comment(ctx, pr.Number, body); err != nil {
 		return err
@@ -377,7 +405,7 @@ func (t *Triage) escalateInformed(ctx context.Context, pr *gitprovider.PullReque
 // promotion did not touch, and the gate rather than the model is what named
 // them.
 func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider.PullRequest,
-	root, report string, drops []migrate.Dropped, attempt int) error {
+	root, report string, drops []migrate.Dropped, live *liveFacts, attempt int) error {
 
 	total, err := migrate.Migrate(root, drops, t.Policy.Check)
 	if err != nil {
@@ -388,15 +416,16 @@ func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider
 		if len(total.Refused) > 0 {
 			t.say(ctx, pr, "escalated: every consumer the gate named was refused by policy")
 			return t.escalateInformed(ctx, pr, t.renderMigration(drops, total,
-				"**Needs a human.** The gate names manifests that must move off a dropped API version, but policy refuses every one of them."),
-				nil, nil, t.upstreamFor(ctx, p, report))
+				"**Needs a human.** The gate names manifests that must move off a dropped API version, but policy refuses every one of them.",
+				live), nil, nil, t.upstreamFor(ctx, p, report), live)
 		}
 		// The gate counted consumers; this checkout has none. Fixing nothing
 		// and saying so beats guessing which of the two is stale.
 		t.say(ctx, pr, "escalated: the gate names consumers this branch does not have")
-		return t.escalate(ctx, pr,
+		return t.escalateInformed(ctx, pr,
 			"The gate blocked on a dropped served version, but no manifest on this branch declares one. "+
-				"The gate's report and this checkout disagree — a human should look at both.", nil)
+				"The gate's report and this checkout disagree — a human should look at both.",
+			nil, nil, nil, live)
 	}
 
 	files := 0
@@ -420,13 +449,13 @@ func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider
 		files, attempt, t.MaxAttempts)
 	return t.Git.Comment(ctx, pr.Number, t.renderMigration(drops, total, fmt.Sprintf(
 		"Pushed a migration to `%s` (attempt %d of %d). The gate will re-run and re-count.",
-		pr.Branch, attempt, t.MaxAttempts)))
+		pr.Branch, attempt, t.MaxAttempts), live))
 }
 
 // renderMigration is the comment for the deterministic path. Its footer names
 // no model, because none was involved -- a reader deciding how much to trust
 // this needs to know it is arithmetic, not judgement.
-func (t *Triage) renderMigration(drops []migrate.Dropped, res *migrate.Result, headline string) string {
+func (t *Triage) renderMigration(drops []migrate.Dropped, res *migrate.Result, headline string, live *liveFacts) string {
 	var b strings.Builder
 	if t.Brand != "" {
 		mark := t.BrandMark
@@ -454,6 +483,7 @@ func (t *Triage) renderMigration(drops []migrate.Dropped, res *migrate.Result, h
 			fmt.Fprintf(&b, "- `%s` — %s\n", r.Path, r.Reason)
 		}
 	}
+	b.WriteString(renderLive(live))
 	brand := t.Brand
 	if brand == "" {
 		brand = "bosun"
@@ -775,6 +805,9 @@ func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, 
 	// What the maintainers said, if it can be found. Never fatal, and never
 	// silent about its absence: an explanation with no upstream context has to
 	// say so, or a reader credits it with evidence it does not have.
+	live := t.liveFor(ctx, p, report)
+	prompt += promptLive(live)
+
 	notes := t.upstreamFor(ctx, p, report)
 	prompt += upstream.Render(notes)
 
@@ -800,7 +833,7 @@ func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, 
 		}
 		t.say(ctx, pr, "%s is green, but flagged: %s", t.CheckName, reason)
 		if err := t.Git.Comment(ctx, pr.Number,
-			t.renderExplanation(v, notes)+renderUpstream(notes)); err != nil {
+			t.renderExplanation(v, notes)+renderLive(live)+renderUpstream(notes)); err != nil {
 			return err
 		}
 		return t.Git.AddLabel(ctx, pr.Number, labelNeedsHuman)

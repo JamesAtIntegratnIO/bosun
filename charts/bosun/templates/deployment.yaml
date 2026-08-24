@@ -137,6 +137,12 @@ spec:
               value: {{ .Values.triage.upstreamNotes.enabled | quote }}
             - name: UPSTREAM_MAX_RELEASES
               value: {{ .Values.triage.upstreamNotes.maxReleases | quote }}
+            - name: LIVE_READS
+              value: {{ .Values.liveReads.enabled | quote }}
+            {{- if .Values.liveReads.enabled }}
+            - name: LIVE_READS_ARGOCD_NS
+              value: {{ .Values.liveReads.argocdNamespace | quote }}
+            {{- end }}
             - name: UPSTREAM_MAX_COMMITS
               value: {{ .Values.triage.upstreamNotes.maxCommits | quote }}
             - name: UPSTREAM_MAX_BODY_CHARS
