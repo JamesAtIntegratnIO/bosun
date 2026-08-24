@@ -55,6 +55,7 @@ type Config struct {
 	GateWait    time.Duration
 	GatePoll    time.Duration
 	Explain     bool
+	Migrate     bool
 	// App authentication. When AppID is set the agent acts as a GitHub App
 	// installation instead of as the owner of a token -- see gitprovider.AppAuth
 	// for why that is about identity rather than access.
@@ -109,6 +110,10 @@ func LoadConfig() (*Config, error) {
 	c.AppPrivateKey = os.Getenv("GITHUB_APP_PRIVATE_KEY")
 	c.AppInstallID = os.Getenv("GITHUB_APP_INSTALLATION_ID")
 	c.Explain = os.Getenv("EXPLAIN_GREEN") != "false"
+	// Default ON. The repair is deterministic, answers to the same deny-list
+	// and allowlist as every other write, and the re-run gate re-counts what
+	// it did -- the reasons to switch it off are operational, not safety.
+	c.Migrate = os.Getenv("MIGRATE_DROPPED_VERSIONS") != "false"
 	// Default ON, and soft: everything it needs can fail without consequence
 	// beyond a less-informed explanation that says it is less informed.
 	c.Upstream = os.Getenv("UPSTREAM_NOTES") != "false"

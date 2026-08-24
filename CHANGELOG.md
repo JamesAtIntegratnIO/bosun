@@ -3,6 +3,53 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.8.0] - 2026-08-23
+
+### Added
+
+- **A red gate with a known cause gets repaired, not narrated.** When a CRD
+  stops serving versions and that is the gate's only blocking finding, the
+  agent now rewrites every manifest in the repository that still declares one
+  to the version the gate says survives, and pushes the migration to the pull
+  request's branch. external-secrets 0.10.3 -> 2.9.0 -- the promotion that
+  made the gate learn this class -- becomes a pushed commit moving the
+  declaring manifests to `external-secrets.io/v1`, followed by a green re-run,
+  instead of an escalation asking a human to do exactly that by hand.
+
+  **No model is involved on this path**, and that is the design rather than an
+  optimisation. The gate's report line now carries the consumer kind and the
+  surviving version; the new `migrate` package parses that line back and
+  rewrites nothing but apiVersion values matching it. The kind, the dropped
+  versions and the destination are all computed facts, so the repair is a
+  deterministic function of evidence -- the agent's earlier failure mode of
+  restating the gate's findings back at it does not arise, because nothing on
+  this path speaks in prose except the final comment, whose footer says
+  `deterministic repair, no model`.
+
+  The safety model extends rather than bends. Every file still answers to the
+  non-overridable deny-list and the standing allowlist; the *scope* check is
+  deliberately absent, because consumers are by definition files the promotion
+  did not touch, and it is the gate -- not the model -- that named them. The
+  rewrite preserves quoting, comments and every untouched document
+  byte-for-byte; a file the rewrite cannot fully clear of dropped versions is
+  restored and refused rather than half-migrated; a repair refused everywhere
+  escalates; and a gate that names consumers the branch does not have
+  escalates on the disagreement instead of guessing which side is stale. The
+  attempt label caps the loop exactly as it does for model fixes, and the
+  re-run gate re-counts the consumers itself -- the shared scanner is what
+  makes its green a verification of the repair rather than a second opinion.
+
+  Beside another blocking finding -- a targeting change, a source move, an
+  apiVersion migration on an ordinary object -- the deterministic path stands
+  down and the model judges the whole report, because repairing the fixable
+  half would leave a red gate implying the migration had failed. Helm chart
+  `templates/` directories (a `templates` dir beside a `Chart.yaml`) are never
+  scanned or rewritten: a template that parses as YAML is still a program, and
+  its render is chart-diff's to judge.
+
+  Off switch: `triage.migrateDroppedVersions` (env
+  `MIGRATE_DROPPED_VERSIONS=false`), default on.
+
 ## [0.7.0] - 2026-08-23
 
 There is no 0.6.0 here. Chart 0.6.0 was a chart-only release -- FQDN egress

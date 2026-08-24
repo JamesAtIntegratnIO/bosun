@@ -5,6 +5,27 @@ All notable changes to `gitops-gate`. Format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **A dropped served version blocks exactly while manifests still declare it.**
+  The finding's blast radius is the consuming manifests -- they are what
+  breaks at apply -- so with `-repo`, the gate now scans the worktree for them
+  (shared `migrate` package, one scanner for the gate and the agent), lists
+  them in the report, and blocks only while any remain. Counted at zero, the
+  finding is reported and does not block; not scanned at all -- no `-repo`, or
+  a finding whose CRD body carried no consumer kind -- still blocks, because
+  "we could not look" must never read as safe.
+
+  This is what closes the repair loop: the agent migrates the consumers the
+  report names, the re-run gate counts again and finds none, and the same red
+  that used to be a hand-written migration becomes green with the work done.
+  The report line now carries the repair contract -- the consumer kind from
+  `spec.names.kind` and the surviving served version, chosen by API-server
+  priority -- and is rendered by the shared package, so the line the gate
+  writes and the migration the agent reads back cannot drift apart. Helm chart
+  `templates/` directories are excluded from the consumer scan: their render
+  is chart-diff's to judge.
+
 ### Added
 
 - **A CustomResourceDefinition that stops serving a version now blocks.** The

@@ -109,6 +109,18 @@ gate:
   poll: 30s
 
 triage:
+  # Repair a RED gate whose only cause is a CRD that stopped serving versions:
+  # rewrite every manifest in the repository that still declares one to the
+  # version the gate says survives, and push the migration to the pull
+  # request's branch.
+  #
+  # No model is involved on this path. The gate's own report names the kind,
+  # the dropped versions and the destination; the rewrite touches nothing but
+  # matching apiVersion values; every file still answers to the deny-list and
+  # allowPaths; and the re-run gate re-counts the consumers itself. Off means
+  # those reds go to the model, which can only escalate them.
+  migrateDroppedVersions: true
+
   # Explain a GREEN gate that still changed the render.
   #
   # The gate blocks on structural changes and REPORTS the rest -- a chart that

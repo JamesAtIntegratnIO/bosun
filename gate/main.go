@@ -146,6 +146,13 @@ func cmdDiff(args []string) (bool, error) {
 
 	res := Diff(base, head)
 
+	// With a worktree, a dropped served version can be traced to the manifests
+	// that still declare it -- which is what decides whether it blocks, and
+	// what a repair needs to know it moved.
+	if *repo != "" {
+		AnnotateConsumers(res, *repo)
+	}
+
 	w := os.Stdout
 	if *report != "" {
 		f, err := os.Create(*report)

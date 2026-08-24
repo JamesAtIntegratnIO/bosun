@@ -119,6 +119,8 @@ spec:
               value: {{ .Values.gate.poll | quote }}
             - name: EXPLAIN_GREEN
               value: {{ .Values.triage.explainGreen | quote }}
+            - name: MIGRATE_DROPPED_VERSIONS
+              value: {{ .Values.triage.migrateDroppedVersions | quote }}
             - name: UPSTREAM_NOTES
               value: {{ .Values.triage.upstreamNotes.enabled | quote }}
             - name: UPSTREAM_MAX_RELEASES

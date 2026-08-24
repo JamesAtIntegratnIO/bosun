@@ -225,6 +225,10 @@
           "type": "boolean",
           "description": "Explain a green gate whose render still changed."
         },
+        "migrateDroppedVersions": {
+          "type": "boolean",
+          "description": "Deterministically migrate manifests off CRD versions a bump stops serving, when that is the gate's only blocking finding."
+        },
         "upstreamNotes": {
           "type": "object",
           "description": "Read upstream release notes to explain why a bump changed the render.",

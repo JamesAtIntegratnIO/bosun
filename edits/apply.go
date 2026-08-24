@@ -115,7 +115,7 @@ func Apply(root string, policy Policy, in []Edit) (*Result, error) {
 	res := &Result{}
 
 	for _, e := range in {
-		if reason := policy.check(e.Path); reason != "" {
+		if reason := policy.Check(e.Path); reason != "" {
 			res.Rejected = append(res.Rejected, Rejected{e.Path, e.Key, reason})
 			continue
 		}
@@ -152,7 +152,11 @@ func Apply(root string, policy Policy, in []Edit) (*Result, error) {
 	return res, nil
 }
 
-func (p Policy) check(path string) string {
+// Check is the path policy on its own: deny-list first, then scope, then the
+// allowlist. Exported for the migration path, which writes through its own
+// multi-document rewriter but must answer to exactly the same policy --
+// two path policies would eventually mean two answers.
+func (p Policy) Check(path string) string {
 	clean := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(path)), "./")
 	for _, d := range append(append([]string{}, DefaultDeny...), p.Deny...) {
 		if matchGlob(d, clean) {
