@@ -3,6 +3,44 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.13.0]
+
+### Added
+
+- **`triage.structuralMigration`** (default `true`) and
+  **`triage.migrateMaxDocs`** (default `5`) -- the second half of the
+  deterministic repair, for the bumps where swapping the apiVersion is not the
+  whole job.
+
+  A chart that moves `spec.store` to `spec.secretStoreRef.name` between two
+  versions leaves, after a plain swap, a document that parses, applies, and has
+  that field pruned by the apiserver on the way in. The render is fine, the gate
+  goes green, and the value is gone.
+
+  The model is shown both schemas and the document and asked to translate. Every
+  proposal is checked before anything is written -- identity, schema validity,
+  and value provenance -- and a refusal refuses the whole push, including the
+  plain swaps that were fine, because a swap alone turns the gate green over a
+  document the apiserver will silently prune.
+
+  **Needs `liveReads.enabled`** (the shape being LEFT is only in the
+  CustomResourceDefinition installed right now) and egress to your chart
+  registry (the shape being arrived at comes from rendering the chart at the
+  target version -- the hosts the upstream-notes lookup already needs). Without
+  either it degrades to the plain swap and says which check it could not make.
+
+  Two costs, stated because they are permanent: a reshaped document is
+  **re-serialised**, so comments inside it do not survive; and manifests nested
+  in an `extraObjects:` list or a block scalar are **skipped and escalated**
+  rather than reshaped.
+
+### Changed
+
+- **The agent image now carries `helm`**, the same version the gate's image
+  does. Rendering has to match what the cluster's own Helm does, and two
+  components rendering the same chart with different Helms is a difference
+  nobody would think to look for.
+
 ## [0.12.0]
 
 ### Added

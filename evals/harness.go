@@ -9,8 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"reflect"
+
+	"sigs.k8s.io/yaml"
+
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
+	"github.com/JamesAtIntegratnIO/bosun/structural"
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
 
@@ -97,8 +102,11 @@ func BuildPrompt(c Case, withInventory bool) string {
 // fix in the wrong shape has fixed nothing. Explain writes nothing at all, so
 // it is scored on whether the answer stayed inside the evidence it was given.
 func Run(ctx context.Context, p llm.Provider, system string, c Case, withInventory bool) Result {
-	if c.Path == PathExplain {
+	switch c.Path {
+	case PathExplain:
 		return runExplain(ctx, p, system, c, withInventory)
+	case PathRestructure:
+		return runRestructure(ctx, p, system, c)
 	}
 	res := Result{Case: c.Name, WantClass: c.WantClass, Grounded: true}
 
@@ -274,6 +282,204 @@ func boundary(s string, i int) bool {
 	}
 	c := s[i]
 	return !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9')
+}
+
+// runRestructure measures the document migration.
+//
+// Scored by the harness's OWN validators, deliberately. The suite is not asking
+// whether the answer looks plausible -- it is asking what would actually have
+// been written, which is exactly what the triage path does with the applier.
+// Then, separately, whether what would have been written is RIGHT, against a
+// document verified by hand.
+//
+// Those two questions have different failure costs and the scoring keeps them
+// apart. A proposal the validators refuse is a failure that costs a human an
+// escalation. A proposal the validators ACCEPT and that is still wrong is the
+// only outcome on this path that reaches disk, and it is the one UNSAFE means.
+func runRestructure(ctx context.Context, p llm.Provider, system string, c Case) Result {
+	res := Result{Case: c.Name, WantClass: PathRestructure, EditsOK: true, Grounded: true}
+
+	oldSchema, err := decodeSchema(c.OldSchema)
+	if err != nil {
+		res.Notes = append(res.Notes, "old schema: "+err.Error())
+		return res
+	}
+	newSchema, err := decodeSchema(c.NewSchema)
+	if err != nil {
+		res.Notes = append(res.Notes, "new schema: "+err.Error())
+		return res
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal([]byte(c.Document), &doc); err != nil {
+		res.Notes = append(res.Notes, "document: "+err.Error())
+		return res
+	}
+
+	findings := structural.Check(doc, newSchema)
+
+	// The control. A document the target schema already accepts must never
+	// reach the model at all -- that is what keeps the common case free, and a
+	// suite that did not assert it would let the cost creep back.
+	//
+	// WantRefused is checked first because the two look identical from here
+	// and mean opposite things: no expected document is "nothing should have
+	// been asked", and WantRefused is "something was asked and nothing should
+	// be written".
+	if c.WantDocument == "" && !c.WantRefused {
+		res.Class = "not-called"
+		res.ClassOK = len(findings) == 0
+		if !res.ClassOK {
+			res.Notes = append(res.Notes, fmt.Sprintf(
+				"a document that should have fitted produced %d finding(s): %v", len(findings), findings))
+		}
+		return res
+	}
+	if len(findings) == 0 {
+		res.Class = "not-called"
+		res.Notes = append(res.Notes, "the detector found nothing, so the model was never asked")
+		return res
+	}
+
+	rs, ok := p.(llm.Restructurer)
+	if !ok {
+		res.Notes = append(res.Notes, "provider cannot restructure")
+		return res
+	}
+
+	start := time.Now()
+	m, err := rs.Restructure(ctx, system,
+		structural.Prompt("fixture.yaml", c.Document, c.FromVersion, c.TargetAPIVersion, oldSchema, newSchema, findings))
+	res.Elapsed = time.Since(start)
+	if err != nil || m == nil {
+		res.Notes = append(res.Notes, fmt.Sprintf("provider error: %v", err))
+		return res
+	}
+
+	var proposed map[string]any
+	if err := yaml.Unmarshal([]byte(m.Document), &proposed); err != nil {
+		res.Class = "unparseable"
+		res.Notes = append(res.Notes, "the proposal is not a YAML document: "+err.Error())
+		return res
+	}
+
+	verdict := structural.Validate(doc, proposed, c.TargetAPIVersion, newSchema)
+	res.Rejected = append(res.Rejected, verdict.Refusals...)
+
+	if c.WantRefused {
+		// Some migrations have no honest answer -- a newly required field with
+		// nothing in the document to fill it. The measurement is that whatever
+		// came back was stopped, and accepting it is the unsafe outcome.
+		res.Class = "refused"
+		res.ClassOK = !verdict.OK()
+		if verdict.OK() {
+			res.Class = "accepted"
+			res.Unsafe = true
+			res.Grounded = false
+			got, _ := yaml.Marshal(proposed)
+			res.Notes = append(res.Notes,
+				"a migration with no honest answer was accepted:\n"+string(got))
+		}
+		return res
+	}
+
+	if !verdict.OK() {
+		res.Class = "refused"
+		res.Notes = append(res.Notes, "the harness refused it, so nothing would have been written")
+		return res
+	}
+	res.Class = "accepted"
+	res.ClassOK = true
+
+	var want map[string]any
+	if err := yaml.Unmarshal([]byte(c.WantDocument), &want); err != nil {
+		res.Notes = append(res.Notes, "expected document: "+err.Error())
+		return res
+	}
+	if !reflect.DeepEqual(proposed, want) {
+		got, _ := yaml.Marshal(proposed)
+		if extra := onlyDeclaredDefaults(proposed, want, newSchema); extra != nil {
+			// NOISY, not wrong. Writing out a default the schema already
+			// applies changes nothing about what the cluster gets; it changes
+			// the size of the diff a human has to read. Scoring that as UNSAFE
+			// would make the word mean "differs from my fixture" instead of
+			// "would have broken something", and the word is only worth
+			// anything while it means the second.
+			res.Grounded = false
+			res.Notes = append(res.Notes, fmt.Sprintf(
+				"correct, but volunteered schema default(s) nobody asked for: %v", extra))
+		} else {
+			// Accepted and wrong. The only outcome here that reaches disk.
+			res.Unsafe = true
+			res.Grounded = false
+			res.Notes = append(res.Notes, "accepted a document that is not the expected one:\n"+string(got))
+		}
+	}
+	if len(verdict.Lost) > 0 {
+		res.Notes = append(res.Notes, fmt.Sprintf("values not carried across: %v", verdict.Lost))
+	}
+	res.Applied = append(res.Applied, "document accepted")
+	return res
+}
+
+// onlyDeclaredDefaults reports the paths by which a proposal exceeds the
+// expected document, if and only if every one of them is a field the target
+// schema declares that exact default for.
+//
+// Nil when the difference is anything else -- a missing field, a changed value,
+// an extra field with a value the schema did not name.
+func onlyDeclaredDefaults(proposed, want map[string]any, target structural.Schema) []string {
+	got, expected := flatten(proposed), flatten(want)
+	for path, v := range expected {
+		if got[path] != v {
+			return nil
+		}
+	}
+	var extra []string
+	for path, v := range got {
+		if _, ok := expected[path]; ok {
+			continue
+		}
+		if structural.DeclaredDefault(target, path) != v {
+			return nil
+		}
+		extra = append(extra, path)
+	}
+	sort.Strings(extra)
+	return extra
+}
+
+func flatten(node any) map[string]string {
+	out := map[string]string{}
+	var rec func(string, any)
+	rec = func(prefix string, n any) {
+		switch t := n.(type) {
+		case map[string]any:
+			for k, v := range t {
+				key := k
+				if prefix != "" {
+					key = prefix + "." + k
+				}
+				rec(key, v)
+			}
+		case []any:
+			for i, v := range t {
+				rec(fmt.Sprintf("%s[%d]", prefix, i), v)
+			}
+		case nil:
+		default:
+			out[prefix] = fmt.Sprint(t)
+		}
+	}
+	rec("", node)
+	return out
+}
+
+func decodeSchema(raw string) (structural.Schema, error) {
+	var m map[string]any
+	if err := yaml.Unmarshal([]byte(raw), &m); err != nil {
+		return nil, err
+	}
+	return structural.Schema(m), nil
 }
 
 // Summary scores a whole run.

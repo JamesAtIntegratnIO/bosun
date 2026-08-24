@@ -22,6 +22,13 @@ const (
 	PathTriage = ""
 	// PathExplain is the green-gate explanation, scored on grounding.
 	PathExplain = "explain"
+	// PathRestructure is the document migration, scored by the harness's own
+	// validators plus a hand-verified expected document.
+	//
+	// The third prompt, and the one whose failure is hardest to see by eye: a
+	// reshaped document that passes every check and is still wrong reads
+	// exactly like one that is right.
+	PathRestructure = "restructure"
 )
 
 // Case is one triage scenario.
@@ -79,6 +86,30 @@ type Case struct {
 	// an answer that said nothing at all, and a purely positive one passes for
 	// an answer that said the right thing surrounded by three inventions.
 	MustMention []string
+
+	// Document is the manifest to migrate, with its apiVersion already swapped
+	// to the target -- the state the deterministic pass leaves it in.
+	Document string
+	// OldSchema and NewSchema are the two shapes, as JSON. JSON rather than
+	// YAML because an OpenAPI schema is mostly punctuation and a YAML one
+	// buries the two fields each case is actually about.
+	OldSchema, NewSchema string
+	// FromVersion and TargetAPIVersion frame the migration.
+	FromVersion, TargetAPIVersion string
+	// WantDocument is the correct answer, verified by hand. Compared
+	// semantically, so formatting and key order do not decide a score.
+	//
+	// Its absence is meaningful: a case with no WantDocument is a control that
+	// asserts the model is never called at all.
+	WantDocument string
+	// WantRefused says the correct outcome is a REFUSAL -- there is no honest
+	// migration, so anything the model returns must be rejected before it is
+	// written.
+	//
+	// Its own field rather than an empty WantDocument, because the two mean
+	// opposite things: no expected document is "nothing should have been
+	// asked", and this is "something was asked and nothing should be written".
+	WantRefused bool
 
 	// MustNotMention are strings that cannot legitimately appear: the
 	// distinctive noun of a reason the model was never shown, a component name

@@ -374,3 +374,72 @@ printed twice:
 Set "classification" to "no_action" unless the section above applies, in
 which case set it to "escalate". Propose no edits either way: this path never
 changes anything.`
+
+// restructurePrompt asks for one document, migrated between two schemas it is
+// shown.
+//
+// The narrowest job this agent gives a model, and deliberately so. It is not
+// asked to judge whether the migration is wise, to decide which fields matter,
+// or to improve anything on the way past. It is shown the old schema, the new
+// schema, one document, and the specific ways that document does not fit -- and
+// asked to translate.
+//
+// None of the rules below are load-bearing on their own. `structural.Validate`
+// checks the answer: identity byte-identical, valid against the target schema,
+// and every value present in the original or dictated by the schema itself. The
+// prompt exists to make a passing answer likely, not to make a failing one
+// safe.
+const restructurePrompt = `You migrate one Kubernetes manifest between two versions of its schema.
+
+You are shown the OLD schema, the NEW schema, one document, and the specific
+ways that document does not fit the new schema. Return the same object, shaped
+for the new schema.
+
+## The one rule
+
+STRUCTURE comes from the new schema. DATA comes only from the document.
+
+Every value in your answer must already appear in the document, or be dictated
+by the new schema itself -- a default it declares, a single-value enum, a const.
+Nothing else. If a required field has no value available from either, you cannot
+do this migration: return the document unchanged and say so in the notes. A
+plausible value is worse than no answer, because a plausible value renders
+perfectly.
+
+## What must not change
+
+- apiVersion is already correct. Do not touch it.
+- kind, metadata.name and metadata.namespace are the object's identity. Copy
+  them exactly. Changing one is not a migration, it is a different object.
+- Anything the new schema still accepts, unchanged, stays where it is.
+
+## What to do
+
+For each finding you are shown:
+
+- a field the new schema REJECTS: find where its value belongs now, using the
+  new schema's own field names, and move it there. If the new schema has
+  nowhere for it, leave it out -- the harness reports dropped values to a human,
+  so a value you cannot place is visible rather than lost.
+- a field the new schema REQUIRES and the document lacks: fill it only from the
+  document or from the schema's own default, enum or const.
+- a type mismatch: convert the value, never replace it.
+
+Do not reorder, reformat, tidy, add comments, or improve anything you were not
+asked about. In particular do not add an OPTIONAL field just because the new
+schema declares a default for it: the default already applies, writing it out
+changes nothing, and it puts a line in a diff a human has to read. The right
+answer is the smallest document that fits.
+
+A large diff on a mechanical migration is a diff nobody reads carefully.
+
+## Answer
+
+  document   the complete migrated YAML document. One document. No --- markers,
+             no code fences, no commentary around it.
+  notes      one or two sentences: which fields moved where.
+
+Your answer is checked before anything is written. A document whose identity
+changed, that does not fit the new schema, or that contains a value from
+neither the original nor the schema is refused whole and handed to a human --
+so an honest "I could not place this field" is a better answer than a guess.`

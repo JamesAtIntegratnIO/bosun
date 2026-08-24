@@ -39,6 +39,57 @@ func (a *Anthropic) client() *http.Client {
 }
 
 func (a *Anthropic) Classify(ctx context.Context, systemPrompt, userPrompt string) (*Verdict, error) {
+	input, text, err := a.structured(ctx, systemPrompt, userPrompt,
+		"record_verdict", "Record the triage verdict for this pull request.", VerdictSchema())
+	if err != nil {
+		return nil, err
+	}
+	if len(input) > 0 {
+		var v Verdict
+		if err := json.Unmarshal(input, &v); err != nil {
+			return nil, fmt.Errorf("parsing tool input: %w", err)
+		}
+		if err := v.Valid(); err != nil {
+			return nil, fmt.Errorf("model returned an unusable verdict: %w", err)
+		}
+		return &v, nil
+	}
+	if text != "" {
+		return parseVerdict(text)
+	}
+	return nil, fmt.Errorf("no verdict in response")
+}
+
+// Restructure asks for one migrated document, through the same forced tool
+// call.
+func (a *Anthropic) Restructure(ctx context.Context, systemPrompt, userPrompt string) (*Migration, error) {
+	input, text, err := a.structured(ctx, systemPrompt, userPrompt,
+		"record_migration", "Record the migrated document.", MigrationSchema())
+	if err != nil {
+		return nil, err
+	}
+	var m Migration
+	switch {
+	case len(input) > 0:
+		if err := json.Unmarshal(input, &m); err != nil {
+			return nil, fmt.Errorf("parsing tool input: %w", err)
+		}
+	case text != "":
+		if err := json.Unmarshal([]byte(stripFence(text)), &m); err != nil {
+			return nil, fmt.Errorf("parsing migration: %w", err)
+		}
+	}
+	if strings.TrimSpace(m.Document) == "" {
+		return nil, fmt.Errorf("no migration in response")
+	}
+	return &m, nil
+}
+
+// structured runs one forced tool call and returns its input, or the text a
+// gateway without tool support answered with instead.
+func (a *Anthropic) structured(ctx context.Context, systemPrompt, userPrompt, tool, desc string,
+	schema map[string]any) (json.RawMessage, string, error) {
+
 	maxTokens := a.MaxTokens
 	if maxTokens == 0 {
 		maxTokens = 8192
@@ -59,16 +110,16 @@ func (a *Anthropic) Classify(ctx context.Context, systemPrompt, userPrompt strin
 			{"role": "user", "content": userPrompt},
 		},
 		"tools": []map[string]any{{
-			"name":         "record_verdict",
-			"description":  "Record the triage verdict for this pull request.",
-			"input_schema": VerdictSchema(),
+			"name":         tool,
+			"description":  desc,
+			"input_schema": schema,
 		}},
-		"tool_choice": map[string]any{"type": "tool", "name": "record_verdict"},
+		"tool_choice": map[string]any{"type": "tool", "name": tool},
 	}
 
 	raw, err := json.Marshal(body)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	base := a.BaseURL
@@ -78,7 +129,7 @@ func (a *Anthropic) Classify(ctx context.Context, systemPrompt, userPrompt strin
 	url := strings.TrimRight(base, "/") + "/v1/messages"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("anthropic-version", version)
@@ -88,12 +139,12 @@ func (a *Anthropic) Classify(ctx context.Context, systemPrompt, userPrompt strin
 
 	resp, err := a.client().Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("calling %s: %w", url, err)
+		return nil, "", fmt.Errorf("calling %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 	payload, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("%s returned %d: %s", url, resp.StatusCode, truncate(string(payload), 400))
+		return nil, "", fmt.Errorf("%s returned %d: %s", url, resp.StatusCode, truncate(string(payload), 400))
 	}
 
 	var out struct {
@@ -105,26 +156,19 @@ func (a *Anthropic) Classify(ctx context.Context, systemPrompt, userPrompt strin
 		} `json:"content"`
 	}
 	if err := json.Unmarshal(payload, &out); err != nil {
-		return nil, fmt.Errorf("parsing response: %w", err)
+		return nil, "", fmt.Errorf("parsing response: %w", err)
 	}
 
 	for _, c := range out.Content {
-		if c.Type == "tool_use" && c.Name == "record_verdict" {
-			var v Verdict
-			if err := json.Unmarshal(c.Input, &v); err != nil {
-				return nil, fmt.Errorf("parsing tool input: %w", err)
-			}
-			if err := v.Valid(); err != nil {
-				return nil, fmt.Errorf("model returned an unusable verdict: %w", err)
-			}
-			return &v, nil
+		if c.Type == "tool_use" && c.Name == tool {
+			return c.Input, "", nil
 		}
 	}
 	// Fall back to text, for gateways that do not implement tool use.
 	for _, c := range out.Content {
 		if c.Type == "text" && strings.Contains(c.Text, "{") {
-			return parseVerdict(c.Text)
+			return nil, c.Text, nil
 		}
 	}
-	return nil, fmt.Errorf("no verdict in response")
+	return nil, "", nil
 }
