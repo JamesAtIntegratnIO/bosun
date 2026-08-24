@@ -137,6 +137,8 @@ spec:
               value: {{ .Values.triage.upstreamNotes.enabled | quote }}
             - name: UPSTREAM_MAX_RELEASES
               value: {{ .Values.triage.upstreamNotes.maxReleases | quote }}
+            - name: UPSTREAM_MAX_COMMITS
+              value: {{ .Values.triage.upstreamNotes.maxCommits | quote }}
             - name: UPSTREAM_MAX_BODY_CHARS
               value: {{ .Values.triage.upstreamNotes.maxBodyChars | quote }}
             - name: MAX_ATTEMPTS

@@ -3,6 +3,39 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.11.0]
+
+### Added
+
+- **`triage.upstreamNotes.maxCommits`** (default `10`) -- how many upstream
+  COMMITS between the two tags may reach a prompt or a comment.
+
+  Commits answer the question release notes routinely do not. A chart drops its
+  `ClusterRole` and ships a release note about performance; the render proves
+  the removal and cannot explain it, and the best the agent could say was "no
+  release note explains why". The commit that deleted the template says exactly
+  why, in a sentence nobody wrote for a changelog.
+
+  **No new egress.** It is `api.github.com`, the same host the gate's checks are
+  read from. At most two extra calls, and only on the paths that produce prose
+  for a human -- the green-gate explanation and an escalation. The mechanical
+  path, the one that writes files, never reads them.
+
+  Set it to `0` to fall back to the built-in cap; switch the whole feature off
+  with `triage.upstreamNotes.enabled: false` as before.
+
+### Fixed
+
+- **Upstream reads were anonymous under App authentication.** The resolver was
+  handed the static `GIT_TOKEN`, which App mode leaves empty by design --
+  installation tokens are minted per use. So from the release that made the
+  agent a GitHub App, every upstream read went out unauthenticated against
+  `api.github.com`'s 60-requests-an-hour-per-IP limit, and the failure surfaced
+  as "no upstream release notes", which is also what an artifact that publishes
+  none looks like. The credential is now fetched per call. Rate limiting also
+  says so in its own sentence rather than hiding inside "could not read the
+  releases", which sends a reader off to check whether the project publishes any.
+
 ## [0.10.0]
 
 ### Added

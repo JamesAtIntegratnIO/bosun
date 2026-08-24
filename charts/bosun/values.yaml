@@ -200,6 +200,29 @@ triage:
     # that crowds the gate report out of the prompt -- and the gate report is
     # what the explanation is actually grounded in.
     maxBodyChars: 4000
+    # How many upstream COMMITS between the two tags may reach a prompt or a
+    # comment.
+    #
+    # Commits answer the question release notes routinely do not. A chart drops
+    # its ClusterRole and ships a release note about performance; the render
+    # proves the removal and cannot explain it, and the best the agent can say
+    # is "no release note explains why". The commit that deleted the template
+    # says exactly why, in a sentence nobody wrote for a changelog.
+    #
+    # WHICH commits is decided by code, not by the model: the kinds and resource
+    # names in the gate's own findings are matched against commit messages and
+    # against the paths in the upstream diff. Asking the model which commits
+    # support its conclusion would be a second opinion from the same opinion.
+    #
+    # Read on the paths that produce PROSE for a human: the green-gate
+    # explanation, and an escalation. The mechanical path -- the one that
+    # writes files -- never reads them, because an edit's evidence is the gate
+    # report alone and a commit message that mentions a version must never
+    # become corroboration for writing one.
+    #
+    # Costs at most two extra api.github.com calls on those paths, and no new
+    # egress: it is the same host the gate's checks are read from.
+    maxCommits: 10
   # Self-fix attempts per pull request, tracked by label so the cap survives a
   # restart or a rescheduled pod.
   maxAttempts: 2
