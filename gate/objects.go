@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"sigs.k8s.io/yaml"
+
+	"github.com/JamesAtIntegratnIO/bosun/migrate"
 )
 
 // Object is one Kubernetes resource that will exist in a cluster, identified
@@ -177,6 +179,27 @@ func droppedVersions(before, after Object) []string {
 	return gone
 }
 
+// crdConsumerKind is what a manifest consuming this CRD writes in its `kind:`
+// field -- spec.names.kind, which is not derivable from the CRD's own name.
+func crdConsumerKind(o Object) string {
+	spec, _ := o.Body["spec"].(map[string]any)
+	names, _ := spec["names"].(map[string]any)
+	kind, _ := names["kind"].(string)
+	return kind
+}
+
+// survivingVersion is the served version consumers should move to, chosen by
+// API-server priority from what the head still serves. Empty when nothing
+// survives, in which case there is no destination to migrate to and the
+// finding stays a human's problem.
+func survivingVersion(o Object) string {
+	var still []string
+	for v := range servedVersions(o) {
+		still = append(still, v)
+	}
+	return migrate.PreferredVersion(still)
+}
+
 // ObjectChange is one difference between two renders of the same object set.
 type ObjectChange struct {
 	Kind    string `json:"kind"` // added | removed | changed | apiVersion | crdVersionRemoved
@@ -184,6 +207,16 @@ type ObjectChange struct {
 	Cluster string `json:"cluster,omitempty"`
 	From    string `json:"from,omitempty"`
 	To      string `json:"to,omitempty"`
+
+	// crdVersionRemoved only. Resource is the kind consumers declare
+	// (spec.names.kind); To above carries the served version they must move
+	// to. ConsumerFiles are the repository manifests still declaring a dropped
+	// version, and ConsumersKnown records that the repository was actually
+	// scanned -- an unscanned finding blocks, because "we could not look" must
+	// never read as "nothing depends on it".
+	Resource       string   `json:"resource,omitempty"`
+	ConsumerFiles  []string `json:"consumerFiles,omitempty"`
+	ConsumersKnown bool     `json:"consumersKnown,omitempty"`
 
 	// Fields are the leaves that differ, when both renders were available in
 	// process. Empty is not "nothing changed" -- it is "not computed here".
@@ -330,6 +363,12 @@ func diffObjects(base, head []Object) []ObjectChange {
 				out = append(out, ObjectChange{
 					Kind: "crdVersionRemoved", Object: o.Describe(), Cluster: o.Cluster,
 					From: strings.Join(gone, ", "),
+					// The repair contract: which kind consumers declare, and
+					// where they must move. Both from the head body, so a
+					// finding built from a bodiless table carries neither and
+					// stays un-repairable on purpose.
+					Resource: crdConsumerKind(o),
+					To:       survivingVersion(o),
 				})
 				continue
 			}

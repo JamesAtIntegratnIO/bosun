@@ -5,6 +5,8 @@ import (
 	"io"
 	"sort"
 	"strings"
+
+	"github.com/JamesAtIntegratnIO/bosun/migrate"
 )
 
 type Change struct {
@@ -57,7 +59,17 @@ func (d *DiffResult) Blocking() bool {
 		// moved; the second is a CustomResourceDefinition that stopped serving
 		// one, which the first cannot see because the CRD object itself is
 		// apiextensions.k8s.io/v1 on both sides.
-		if o.Kind == "apiVersion" || o.Kind == "crdVersionRemoved" {
+		if o.Kind == "apiVersion" {
+			return true
+		}
+		// A dropped served version blocks exactly while manifests in this
+		// repository still declare it -- they are what breaks at apply. A
+		// finding whose consumers were counted at zero is reported and does
+		// not block, which is what lets a repair that moves every consumer
+		// turn this red green on the re-run. Not scanned means not counted:
+		// "we could not look" blocks, for the same reason a bodiless CRD is
+		// reported as changed rather than claimed safe.
+		if o.Kind == "crdVersionRemoved" && (!o.ConsumersKnown || len(o.ConsumerFiles) > 0) {
 			return true
 		}
 	}
@@ -273,7 +285,11 @@ const ReportMarker = "<!-- gitops-gate -->"
 func (d *DiffResult) Report(w io.Writer) {
 	fmt.Fprintf(w, "%s\n", ReportMarker)
 	if len(d.Targeting) > 0 {
-		fmt.Fprintf(w, "### Cluster targeting changed\n\n")
+		// The section headings the agent keys on come from the migrate
+		// package, so both sides of that contract read the same bytes by
+		// construction -- the ReportMarker lesson, applied before it is
+		// re-learned.
+		fmt.Fprintf(w, "%s\n\n", migrate.HeadingTargeting)
 		fmt.Fprintf(w, "These Applications are generated for a different set of clusters than before. ")
 		fmt.Fprintf(w, "A values-layer edit can do this without the text diff showing it.\n\n")
 		fmt.Fprintf(w, "| Application | Change |\n|---|---|\n")
@@ -283,7 +299,7 @@ func (d *DiffResult) Report(w io.Writer) {
 		fmt.Fprintln(w)
 	}
 	if len(d.Other) > 0 {
-		fmt.Fprintf(w, "### Source changed\n\n| Application | Cluster | From | To |\n|---|---|---|---|\n")
+		fmt.Fprintf(w, "%s\n\n| Application | Cluster | From | To |\n|---|---|---|---|\n", migrate.HeadingSource)
 		for _, c := range d.Other {
 			fmt.Fprintf(w, "| `%s` | %s | `%s` | `%s` |\n", c.App, c.Cluster, c.From, c.To)
 		}
@@ -316,7 +332,7 @@ func (d *DiffResult) Report(w io.Writer) {
 		}
 		fmt.Fprintf(w, "### Resources\n\n")
 		if len(api) > 0 {
-			fmt.Fprintf(w, "**API version changed** — this is a migration, not a bump.\n\n")
+			fmt.Fprintf(w, "%s — this is a migration, not a bump.\n\n", migrate.HeadingAPIVersion)
 			for _, o := range api {
 				fmt.Fprintf(w, "- `%s`: `%s` → `%s`\n", o.Object, o.From, o.To)
 			}
@@ -325,7 +341,24 @@ func (d *DiffResult) Report(w io.Writer) {
 		if len(crd) > 0 {
 			fmt.Fprintf(w, "**A CustomResourceDefinition stopped serving a version** — anything still declaring it breaks on apply.\n\n")
 			for _, o := range crd {
-				fmt.Fprintf(w, "- `%s`: no longer serves `%s`\n", o.Object, o.From)
+				// The line is the repair contract: the agent parses the kind
+				// and the destination version back out of it, so it is
+				// rendered by the shared package rather than by one more
+				// format string that could drift.
+				fmt.Fprintf(w, "%s\n", migrate.Line(o.Object, o.From, o.Resource, o.To))
+				switch {
+				case o.ConsumersKnown && len(o.ConsumerFiles) > 0:
+					fmt.Fprintf(w, "  - **%d manifest(s) in this repository still declare a dropped version** — blocking until they move:\n", len(o.ConsumerFiles))
+					for i, f := range o.ConsumerFiles {
+						if i == 12 {
+							fmt.Fprintf(w, "    - …and %d more\n", len(o.ConsumerFiles)-12)
+							break
+						}
+						fmt.Fprintf(w, "    - `%s`\n", f)
+					}
+				case o.ConsumersKnown:
+					fmt.Fprintf(w, "  - no manifest in this repository declares a dropped version, so this alone does not block\n")
+				}
 			}
 			fmt.Fprintln(w)
 		}
