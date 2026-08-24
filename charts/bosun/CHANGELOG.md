@@ -3,6 +3,13 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.15.1]
+
+No change to this chart's surface -- no new value, no template change. The
+version moves because it tracks `appVersion`, and the agent gained a fix: the
+reshape comment's diff no longer hides a value that moved without changing
+column. See the repository CHANGELOG.
+
 ## [0.15.0]
 
 ### Added

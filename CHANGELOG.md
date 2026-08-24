@@ -3,6 +3,34 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.15.1] - 2026-08-24
+
+### Fixed
+
+- **The reshape comment's diff hid the value it had just preserved.** It was a
+  set difference on line text, so any line whose exact text appeared on both
+  sides was printed on neither -- which is precisely what happens when a value
+  MOVES without changing column, the normal case for the migrations this path
+  performs.
+
+  cert-manager v1 moves `organization` under `subject.organizations`. The list
+  item stays at the same indent, so it was invisible and the comment rendered
+  the key being deleted into an empty field:
+
+  ```diff
+  -  organization:
+  +  subject:
+  +    organizations:
+  ```
+
+  The value survived. Directly below sat "Values not carried across", which a
+  reader has every reason to read as confirmation that it had not. The one
+  thing this diff must never do is make a preserved value look dropped, since a
+  reader's decision to trust the harness rests on it. Replaced with a
+  longest-common-subsequence diff that emits three lines of context around each
+  change, so a moved value appears under its new key. Also fixes multiplicity:
+  removing one of two identical lines used to show as no change at all.
+
 ## [0.15.0] - 2026-08-24
 
 ### Added
