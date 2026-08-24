@@ -3,6 +3,14 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.13.3]
+
+### Fixed
+
+- The provenance line no longer says "0 upstream commits" about a range that had
+  commits, none of which were relevant. No values change; see the agent
+  changelog.
+
 ## [0.13.2]
 
 ### Fixed

@@ -3,6 +3,35 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.13.3] - 2026-08-24
+
+### Fixed
+
+- **"0 upstream commit(s) in `v0.13.1...v0.13.2`" reads as "the range was
+  empty".** It was not. There were two commits and neither mentioned what the
+  gate found — a different statement, and a more useful one: the maintainers did
+  work and none of it explains this.
+
+  Observed in production, on the first pull request the fixed resolver triaged.
+  Same class as the truncation flag one release earlier: a provenance line's
+  whole job is being exact about what the evidence was, so a number in it that
+  reads as the wrong fact is worse than no number.
+
+  The line now distinguishes commits that explain the finding, a diff that
+  matched where no commit message did, a range whose commits say nothing, a
+  genuinely empty range, and a list showing only the first few.
+
+  **0.13.2 did not fix this**, and the reason is worth recording. That release
+  changed three lines in `triage.go` — a `Capped` clause in `renderUpstream` —
+  and this line sits twenty lines away in the same file with the same defect. It
+  was an instance fix where the class needed a sweep. Doing the sweep afterwards
+  turned up a second case immediately: where the commit MESSAGES matched nothing
+  but the upstream DIFF did, the new wording would have claimed nothing
+  mentioned it while the explanation was standing on exactly that file evidence
+  — which is the shape this whole feature was built for, since a commit titled
+  "watch namespaces via config" does not contain the string `ClusterRole` and
+  the template it deleted does.
+
 ## [0.13.2] - 2026-08-24
 
 ### Fixed
