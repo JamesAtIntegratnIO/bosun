@@ -36,10 +36,6 @@ ORIGINAL="$(kc -n bosun get deploy bosun-bosun \
 # first two versions of this printed the OLD pod's startup banner and the
 # restore looked like it had not happened. The deployment's own spec is the
 # authoritative answer and needs no pod at all.
-agent_pod() {
-  kc -n bosun get pod -l app.kubernetes.io/name=bosun \
-    --field-selector=status.phase=Running -o name | head -1
-}
 deny_now() {
   kc -n bosun get deploy bosun-bosun \
     -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="EGRESS_DENY")].value}'

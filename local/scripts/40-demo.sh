@@ -53,7 +53,7 @@ say "5. triage -- the agent reads the gate's comment and decides"
 # ---------------------------------------------------------------------------
 # Kargo's triage step fires this on promotion, but calling it directly makes
 # the demo deterministic and shows the request and the verdict.
-AGENT_POD="$(kc -n bosun get pod -l app.kubernetes.io/name=bosun -o name | head -1)"
+AGENT_POD="$(agent_pod)"
 if [ -n "$AGENT_POD" ]; then
   # The field is prNumber. The handler answers 202 immediately and triages
   # asynchronously -- Kargo's http step is synchronous, so a blocking handler

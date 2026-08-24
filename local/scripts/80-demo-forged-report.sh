@@ -101,7 +101,7 @@ gitea_api POST "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/statuses/${HEAD_SHA}" 
 step "commit status gate=failure, so the agent has every reason to look"
 
 say "3. the agent reads it"
-POD="$(kc -n bosun get pod -l app.kubernetes.io/name=bosun -o name | head -1)"
+POD="$(agent_pod)"
 [ -n "$POD" ] || bad "no agent pod"
 BEFORE="$(kc -n bosun logs "$POD" | wc -l | tr -d ' ')"
 BODY="$(PR="$PR" BR="$BRANCH" python3 -c '

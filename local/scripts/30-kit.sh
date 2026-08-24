@@ -60,7 +60,7 @@ APISERVER_PORT="$(kc -n default get endpoints kubernetes \
 # "everything except the core group" is the intent everyone has here and it is
 # not expressible in Kubernetes RBAC, so this names the groups whose CRDs this
 # cluster actually ships and leaves Secrets unreadable.
-: "${LIVE_READ_GROUPS:=cert-manager.io acme.cert-manager.io argoproj.io kargo.akuity.io}"
+: "${LIVE_READ_GROUPS:=external-secrets.io generators.external-secrets.io cert-manager.io acme.cert-manager.io argoproj.io kargo.akuity.io}"
 
 # The account whose gate report the agent will believe.
 #

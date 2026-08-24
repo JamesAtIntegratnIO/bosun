@@ -1,39 +1,75 @@
 #!/usr/bin/env bash
-# Act three: a bump the deterministic repair CANNOT finish on its own.
+# Act three: one pull request, both repairs.
 #
-# The migration in act two is arithmetic: a CustomResourceDefinition stops
-# serving a version, the gate names the survivor, and every declaring manifest
-# has one line rewritten. No model is involved and none is needed.
+# A chart stops serving an API version the repository still declares. The gate
+# blocks, names the versions and the survivor, and the agent repairs -- but the
+# repair is not one thing, and this act exists to show both halves in a single
+# comment.
 #
-# This is the case where that is not enough. cert-manager v1.6 served
-# `v1alpha2`, `v1alpha3`, `v1beta1` and `v1`; v1.7 removed all but `v1`. The
-# field rename landed back in v0.16 and a conversion webhook kept the old
-# versions working -- so a repository still declaring `cert-manager.io/v1alpha2`
-# had manifests that applied cleanly right up until the bump that deleted the
-# version, and then did not.
+#   THE SWAP, and no model is involved. `registry-pull.yaml` uses only fields
+#   the new schema also has, so rewriting one apiVersion line is the whole job.
+#   The gate's own report names the kind, the dropped version and the
+#   destination; the rewrite is a deterministic function of it and the re-run
+#   gate re-counts the consumers itself.
 #
-# Swap the apiVersion line alone and the document still parses, still applies,
-# and has six fields pruned by the apiserver on the way in. The render is fine.
-# The gate is green. The certificate quietly loses its key algorithm, its size,
-# its encoding, its email SANs, its URI SANs and its subject organization.
+#   THE RESHAPE, where the swap alone is a silent data loss.
+#   `platform-secrets.yaml` uses external-secrets v1alpha1's
+#   `dataFrom: [{key, property, version}]`, which v1 replaced with
+#   `dataFrom: [{extract: {key, property, version}}]`. Swap the version line and
+#   the document still parses, still applies, and has every one of those fields
+#   PRUNED by the apiserver on the way in. The render is fine. The gate goes
+#   green. The secret quietly stops resolving.
 #
-#   keyAlgorithm/keySize/keyEncoding -> privateKey.{algorithm,size,encoding}
-#   emailSANs -> emailAddresses,  uriSANs -> uris
-#   organization -> subject.organizations
+#   Nobody can enumerate that in advance, so the model is shown the OLD schema
+#   -- from the CustomResourceDefinition the cluster serves right now, which
+#   after this merge is gone -- and the NEW one, and asked to translate. What
+#   makes it safe is not the prompt: identity, schema-validity and value
+#   provenance are all checked before a byte is written.
 #
-# Nobody can enumerate that in advance, so the model is shown BOTH schemas --
-# the old one from the CustomResourceDefinition installed right now, the new one
-# by rendering the chart at the target version -- and asked to translate. What
-# makes it safe is not the prompt: every proposal is checked for identity,
-# schema-validity and value provenance before a byte is written.
+# WHY EXTERNAL-SECRETS AND NOT CERT-MANAGER. This act used to bump cert-manager
+# v1.5.5 -> v1.6.0, and it worked for a while by ACCIDENT: the sample repo's
+# Application was being synced, so ArgoCD installed a 2021 cert-manager over
+# the platform's and that is what served the v1alpha2 schema the structural
+# check needs. Separating the demo's manifests from the real platform removed
+# the accident, the schema went with it, and the act silently degraded to the
+# swap -- correctly reporting "the cluster serves no schema for ... at
+# v1alpha2", which is the honest failure and not a demo.
+#
+# external-secrets is not part of the platform, so this act can own its own
+# preconditions outright: it installs the OLD CRDs itself, explicitly, and says
+# so. A demo whose premise is "the repository still declares v1alpha1" needs a
+# cluster that still serves it, and that is a thing to arrange rather than to
+# inherit.
 #
 #   usage: 70-demo-structural.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 load_credentials
-BRANCH="bump/cert-manager-1.6.0"
-OLD_CHART="v1.5.5"
-NEW_CHART="v1.6.0"
+BRANCH="bump/external-secrets-0.16.0"
+OLD_CHART="0.15.0"
+NEW_CHART="0.16.0"
+CHART_REPO="https://charts.external-secrets.io"
+
+say "0. the precondition: a cluster that still serves v1alpha1"
+# CRDs only. The agent reads the schema of the version being left; it never
+# talks to the controller, and running a whole secrets operator to expose one
+# openAPIV3Schema would be theatre. Server-side: these CRDs are far past the
+# annotation limit a client-side apply writes.
+command -v yq >/dev/null 2>&1 || bad "yq is not on PATH; it is what selects the CRDs out of the render"
+helm template external-secrets external-secrets \
+  --repo "$CHART_REPO" --version "$OLD_CHART" \
+  --include-crds --set crds.create=true 2>/dev/null \
+  | yq e 'select(.kind == "CustomResourceDefinition")' - \
+  | kc apply --server-side --force-conflicts -f - >/dev/null
+# The assertion is the schema itself. Applying without checking would leave the
+# most likely failure -- a chart that stopped shipping the version, a filter
+# that matched nothing -- looking exactly like success.
+SERVED="$(kc get crd externalsecrets.external-secrets.io \
+  -o jsonpath='{range .spec.versions[*]}{.name}={.served} {end}' 2>/dev/null)"
+case "$SERVED" in
+  *v1alpha1=true*) ok "externalsecrets.external-secrets.io serves: ${SERVED}" ;;
+  *) bad "the cluster does not serve v1alpha1 (${SERVED:-nothing}); the structural check has no old schema to read" ;;
+esac
 
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 CLONE="https://${GITEA_OWNER}:${GITEA_TOKEN}@gitea.${IDP_HOST}:${IDP_PORT}/${GITEA_OWNER}/${SAMPLE_REPO_NAME}.git"
@@ -42,76 +78,98 @@ git -C "$WORK/repo" config http.sslVerify false
 git -C "$WORK/repo" config user.name "a hurried human"
 git -C "$WORK/repo" config user.email "human@localtest.me"
 
-say "1. a repository that still declares cert-manager.io/v1alpha2"
+say "1. a repository that still declares external-secrets.io/v1alpha1"
 git -C "$WORK/repo" checkout -q main
 mkdir -p "$WORK/repo/apps" "$WORK/repo/addons"
-cat > "$WORK/repo/apps/cert-manager.yaml" <<YAML
+# No automated syncPolicy ON PURPOSE. The gate must RENDER this Application at
+# both versions; nothing should install it. ArgoCD will show it OutOfSync and
+# that is the correct state, not a fault -- the cluster's external-secrets CRDs
+# are the ones step 0 put there.
+cat > "$WORK/repo/apps/external-secrets.yaml" <<YAML
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: cert-manager
+  name: external-secrets
   namespace: argocd
 spec:
   project: default
   destination:
     server: https://kubernetes.default.svc
-    namespace: cert-manager
+    namespace: external-secrets
   source:
-    repoURL: https://charts.jetstack.io
-    chart: cert-manager
+    repoURL: ${CHART_REPO}
+    chart: external-secrets
     targetRevision: ${OLD_CHART}
     helm:
       values: |
-        installCRDs: true
+        crds:
+          create: true
 YAML
-# The manifest the bump breaks. Written the way a 2021 repository wrote them,
-# and untouched since -- which is the whole point: it has been correct for
-# years and stops being correct the day the version is removed.
-cat > "$WORK/repo/addons/platform-tls.yaml" <<'YAML'
-apiVersion: cert-manager.io/v1alpha2
-kind: Certificate
+# CASE ONE: the swap is the whole job. Every field here exists in v1.
+cat > "$WORK/repo/addons/registry-pull.yaml" <<'YAML'
+apiVersion: external-secrets.io/v1alpha1
+kind: ExternalSecret
 metadata:
-  name: platform-tls
-  namespace: gateway
+  name: registry-pull
+  namespace: platform
 spec:
-  secretName: platform-tls
-  duration: 2160h
-  renewBefore: 360h
-  commonName: platform.localtest.me
-  dnsNames:
-    - platform.localtest.me
-  emailSANs:
-    - platform@localtest.me
-  uriSANs:
-    - spiffe://localtest.me/platform
-  organization:
-    - Example Platform Team
-  keyAlgorithm: ecdsa
-  keySize: 384
-  keyEncoding: pkcs8
-  issuerRef:
-    name: internal-ca
-    kind: ClusterIssuer
-    group: cert-manager.io
+  refreshInterval: 1h
+  secretStoreRef:
+    name: vault-backend
+    kind: ClusterSecretStore
+  target:
+    name: registry-pull
+  data:
+    - secretKey: .dockerconfigjson
+      remoteRef:
+        key: platform/registry
+        property: dockerconfig
+YAML
+# CASE TWO: the swap parses and loses six fields to the apiserver's pruner.
+# v1alpha1 took `dataFrom: [{key, property, version}]`; v1 takes
+# `dataFrom: [{extract: {key, property, version}}]`.
+cat > "$WORK/repo/addons/platform-secrets.yaml" <<'YAML'
+apiVersion: external-secrets.io/v1alpha1
+kind: ExternalSecret
+metadata:
+  name: platform-secrets
+  namespace: platform
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: vault-backend
+    kind: ClusterSecretStore
+  target:
+    name: platform-secrets
+  dataFrom:
+    - key: platform/production
+      property: credentials
+      version: "3"
 YAML
 git -C "$WORK/repo" add -A
-git -C "$WORK/repo" commit -qm "chore(cert-manager): pin ${OLD_CHART} and a Certificate that predates the rename" 2>/dev/null || true
+git -C "$WORK/repo" commit -qm "chore(external-secrets): pin ${OLD_CHART} and two v1alpha1 ExternalSecrets" 2>/dev/null || true
 git -C "$WORK/repo" push -q "$CLONE" main
-ok "main declares cert-manager ${OLD_CHART} and one cert-manager.io/v1alpha2 Certificate"
+ok "main declares external-secrets ${OLD_CHART} and two external-secrets.io/v1alpha1 ExternalSecrets"
+step "registry-pull.yaml   -- every field survives; the swap is enough"
+step "platform-secrets.yaml -- dataFrom moved under extract; the swap is not"
 
 say "2. the bump that deletes the version"
 git -C "$WORK/repo" checkout -q -B "$BRANCH"
-sed -i.bak -E "s|^( *targetRevision: ).*|\1${NEW_CHART}|" "$WORK/repo/apps/cert-manager.yaml"
-rm -f "$WORK/repo/apps/cert-manager.yaml.bak"
+sed -i.bak -E "s|^( *targetRevision: ).*|\1${NEW_CHART}|" "$WORK/repo/apps/external-secrets.yaml"
+rm -f "$WORK/repo/apps/external-secrets.yaml.bak"
 git -C "$WORK/repo" diff | grep -E '^[-+] ' | sed 's/^/    /'
-git -C "$WORK/repo" commit -qam "chore(cert-manager): bump to ${NEW_CHART}"
+git -C "$WORK/repo" commit -qam "chore(external-secrets): bump to ${NEW_CHART}"
 git -C "$WORK/repo" push -q --force "$CLONE" "$BRANCH"
 
+for old in $(gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls?state=open" \
+    | python3 -c "import json,sys;print(' '.join(str(p['number']) for p in json.load(sys.stdin) if p['head']['ref']=='$BRANCH'))"); do
+  gitea_api PATCH "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls/${old}" -d '{"state":"closed"}' >/dev/null
+  step "closed the previous #${old}"
+done
 PR="$(gitea_api POST "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls" \
-  -d "$(BR="$BRANCH" V="$NEW_CHART" python3 -c 'import json,os; print(json.dumps({"head":os.environ["BR"],"base":"main","title":"chore(cert-manager): bump to "+os.environ["V"],"body":"A one-line version bump. cert-manager 1.7 removes the v1alpha2, v1alpha3 and v1beta1 API versions."}))')" \
+  -d "$(BR="$BRANCH" V="$NEW_CHART" python3 -c 'import json,os; print(json.dumps({"head":os.environ["BR"],"base":"main","title":"chore(external-secrets): bump to "+os.environ["V"],"body":"A one-line version bump. external-secrets 0.16 stops serving the v1alpha1 API version."}))')" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin).get("number",""))')"
-[ -n "$PR" ] || PR="$(gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls?state=open" \
-  | python3 -c 'import json,sys; d=[p for p in json.load(sys.stdin) if p["head"]["ref"]=="'"$BRANCH"'"]; print(d[0]["number"] if d else "")')"
+[ -n "$PR" ] || bad "could not open a pull request"
 ok "pull request #${PR}"
 printf '    %s/%s/%s/pulls/%s\n' "$GITEA_URL" "$GITEA_OWNER" "$SAMPLE_REPO_NAME" "$PR"
 
@@ -124,29 +182,30 @@ set -e
 ok "gate exit ${GATE_EXIT}"
 grep -E 'no longer serves|still declare' "/tmp/gate-report-${PR}.md" | sed 's/^/    /' | head -8
 
-say "4. the agent repairs, and finds the swap is not enough"
-POD="$(kc -n bosun get pod -l app.kubernetes.io/name=bosun -o name | head -1)"
-BEFORE="$(kc -n bosun logs "$POD" 2>/dev/null | wc -l | tr -d ' ')"
+say "4. the agent repairs -- swapping one, reshaping the other"
+POD="$(agent_pod)"
+[ -n "$POD" ] || bad "no agent pod"
+BEFORE="$(kc -n bosun logs "$POD" | wc -l | tr -d ' ')"
 HEAD_BEFORE="$(gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls/${PR}" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["head"]["sha"])')"
 
-BODY="$(PR="$PR" BR="$BRANCH" F="$OLD_CHART" T="$NEW_CHART" python3 -c '
+BODY="$(PR="$PR" BR="$BRANCH" F="$OLD_CHART" T="$NEW_CHART" R="$CHART_REPO" python3 -c '
 import json, os
 print(json.dumps({
-  "project": "delivery", "stage": "cert-manager", "promotion": "structural-demo",
-  "artifact": "https://charts.jetstack.io cert-manager",
-  "from": os.environ["F"].lstrip("v"), "to": os.environ["T"].lstrip("v"),
+  "project": "delivery", "stage": "external-secrets", "promotion": "structural-demo",
+  "artifact": os.environ["R"] + " external-secrets",
+  "from": os.environ["F"], "to": os.environ["T"],
   "autoMerge": "never", "prNumber": int(os.environ["PR"]), "branch": os.environ["BR"],
-  "files": ["apps/cert-manager.yaml"], "verifyApps": []}))')"
+  "files": ["apps/external-secrets.yaml"], "verifyApps": []}))')"
 kc -n bosun exec -i "$POD" -- wget -q -O- --post-data "$BODY" \
   --header 'Content-Type: application/json' http://localhost:8080/v1/promotion-opened >/dev/null 2>&1 || true
 
 for _ in $(seq 1 90); do
-  kc -n bosun logs "$POD" 2>/dev/null | tail -n +$((BEFORE + 1)) \
-    | grep -qE "PR ${PR}: triage (done|failed)" && break
+  kc -n bosun logs "$POD" | tail -n +$((BEFORE + 1)) \
+    | grep -qE "PR ${PR}: (triage done|triage failed)" && break
   sleep 5
 done
-kc -n bosun logs "$POD" 2>/dev/null | tail -n +$((BEFORE + 1)) \
+kc -n bosun logs "$POD" | tail -n +$((BEFORE + 1)) \
   | grep -E "outbound|PR ${PR}:" | sed 's/^/    /'
 
 say "5. what it wrote"

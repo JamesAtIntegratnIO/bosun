@@ -57,6 +57,30 @@ wait_for() {
   bad "$desc (waited ${deadline}s)"
 }
 
+# The agent pod, resolved safely.
+#
+# Every demo script used `get pod -l ... | head -1` and kept the answer for the
+# rest of the run. During a rollout there are TWO pods matching that label, one
+# of them terminating, and `head -1` picks by name order -- so a script that
+# starts moments after anything restarted the deployment can hold the name of a
+# pod that is about to vanish. Every later `kc logs` then fails, and because
+# those pipe into `wc -l` under `set -o pipefail`, the script dies with no
+# message at all beyond kubectl's "pods not found".
+#
+# That killed the scenario replay on its first case, immediately after the
+# egress demo had rolled the deployment twice. It also killed an earlier run
+# that was written off at the time as "the pod was probably being replaced" --
+# which was correct, and should have been fixed then rather than noted.
+#
+# Waits for the rollout to settle, then returns a pod that is actually Running.
+agent_pod() {
+  kubectl --context "$CLUSTER_CONTEXT" -n bosun rollout status deploy/bosun-bosun \
+    --timeout=180s >/dev/null 2>&1 || true
+  kubectl --context "$CLUSTER_CONTEXT" -n bosun get pod \
+    -l app.kubernetes.io/name=bosun \
+    --field-selector=status.phase=Running -o name 2>/dev/null | head -1
+}
+
 # Gitea's certificate is self-signed, so every call to it needs -k. Wrapped so
 # that fact lives in one place rather than being copied into a dozen curls.
 gitea_api() {

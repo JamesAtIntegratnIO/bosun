@@ -29,7 +29,7 @@ TOTAL=$(python3 -c "import json;print(len(json.load(open('$CASES_JSON'))))")
 REPLAYABLE=$(python3 -c "import json;print(sum(1 for c in json.load(open('$CASES_JSON')) if c.get('Path') != 'restructure'))")
 say "$REPLAYABLE of $TOTAL recorded incidents replay as pull requests; agent is live"
 
-AGENT_POD="$(kc -n bosun get pod -l app.kubernetes.io/name=bosun -o name | head -1)"
+AGENT_POD="$(agent_pod)"
 [ -n "$AGENT_POD" ] || bad "no agent pod"
 MODEL="$(kc -n bosun get deploy bosun-bosun \
   -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="LLM_MODEL")].value}')"

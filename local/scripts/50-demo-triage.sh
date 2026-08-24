@@ -69,7 +69,7 @@ ok "gate exit ${GATE_EXIT} -- blocked, as it should be"
 sed 's/^/    /' "/tmp/gate-report-${PR}.md" | head -20
 
 say "3. the agent triages"
-AGENT_POD="$(kc -n bosun get pod -l app.kubernetes.io/name=bosun -o name | head -1)"
+AGENT_POD="$(agent_pod)"
 [ -n "$AGENT_POD" ] || { bad "no agent pod"; exit 1; }
 BEFORE="$(kc -n bosun logs "$AGENT_POD" 2>/dev/null | wc -l | tr -d ' ')"
 step "agent log is ${BEFORE} lines; only what follows belongs to this run"
