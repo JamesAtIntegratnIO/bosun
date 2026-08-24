@@ -63,8 +63,8 @@ func TestAuditArtifacts(t *testing.T) {
 // promotion takes rather than 404ing on `latest`. Empty for a classic Helm
 // repository, where the index itself carries every version.
 func (g *GitHubReleases) someTag(ctx context.Context, artifact string) string {
-	plain, _ := parseArtifact(artifact)
-	if isHelmRepoURL(plain) {
+	plain, _ := ParseArtifact(artifact)
+	if IsHelmRepo(plain) {
 		return ""
 	}
 	host, repo, _ := splitRef(plain)

@@ -29,7 +29,12 @@ import (
 
 // parseArtifact splits a promotion's artifact into a reference and, for a
 // chart, its name.
-func parseArtifact(artifact string) (ref, chart string) {
+// Exported because the agent renders the same chart to read its target schema,
+// and "what shape is this artifact" must have ONE owner. Two answers to that
+// question is how the structural migration came to build
+// `oci://https://kyverno.github.io/kyverno kyverno` while the resolver beside
+// it was parsing the same string correctly.
+func ParseArtifact(artifact string) (ref, chart string) {
 	fields := strings.Fields(strings.TrimSpace(artifact))
 	switch len(fields) {
 	case 0:
@@ -43,7 +48,7 @@ func parseArtifact(artifact string) (ref, chart string) {
 
 // isHelmRepoURL reports whether a reference is a classic Helm repository rather
 // than an OCI one.
-func isHelmRepoURL(ref string) bool {
+func IsHelmRepo(ref string) bool {
 	return strings.HasPrefix(ref, "https://") || strings.HasPrefix(ref, "http://")
 }
 

@@ -207,11 +207,11 @@ func (g *GitHubReleases) repoFile(ctx context.Context, repo, path string) (text,
 // chart the name field is empty and the last path segment IS the chart, which
 // is how `helm push` addresses it.
 func chartNameOf(artifact string) string {
-	ref, chart := parseArtifact(artifact)
+	ref, chart := ParseArtifact(artifact)
 	if chart != "" {
 		return chart
 	}
-	if isHelmRepoURL(ref) {
+	if IsHelmRepo(ref) {
 		return ""
 	}
 	_, repo, _ := splitRef(ref)

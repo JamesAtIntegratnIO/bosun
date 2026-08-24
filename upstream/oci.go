@@ -21,8 +21,8 @@ func (g *GitHubReleases) sourceRepo(ctx context.Context, artifact, version strin
 	// reference. Splitting first is what lets the two kinds of chart
 	// repository go to the two places their publishers actually declare a
 	// source.
-	ref, chart := parseArtifact(artifact)
-	if isHelmRepoURL(ref) {
+	ref, chart := ParseArtifact(artifact)
+	if IsHelmRepo(ref) {
 		return g.helmIndexSource(ctx, ref, chart, version)
 	}
 
@@ -62,8 +62,8 @@ const helmConfigMediaType = "application/vnd.cncf.helm.config.v1+json"
 // correctly and was reported as not publishing it, on the pull request that
 // upgraded the agent to the release which said so.
 func (g *GitHubReleases) artifactLabels(ctx context.Context, artifact, version string) (map[string]string, error) {
-	plain, _ := parseArtifact(artifact)
-	if isHelmRepoURL(plain) {
+	plain, _ := ParseArtifact(artifact)
+	if IsHelmRepo(plain) {
 		// A classic Helm repository has no registry API. Saying so beats
 		// `splitRef` reading "https:" as a hostname, which is what produced
 		// `https://https/v2//...` and an error naming neither the artifact nor

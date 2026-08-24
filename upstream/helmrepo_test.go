@@ -22,9 +22,9 @@ func TestAnArtifactIsNotAlwaysOneString(t *testing.T) {
 		{"ghcr.io/org/image", "ghcr.io/org/image", ""},
 		{"", "", ""},
 	} {
-		ref, chart := parseArtifact(tc.in)
+		ref, chart := ParseArtifact(tc.in)
 		if ref != tc.ref || chart != tc.chart {
-			t.Errorf("parseArtifact(%q) = (%q,%q), want (%q,%q)", tc.in, ref, chart, tc.ref, tc.chart)
+			t.Errorf("ParseArtifact(%q) = (%q,%q), want (%q,%q)", tc.in, ref, chart, tc.ref, tc.chart)
 		}
 	}
 }

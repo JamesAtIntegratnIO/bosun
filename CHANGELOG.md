@@ -71,6 +71,53 @@ publishers who genuinely declare no source, each now refused by name.
   claimed nothing mentioned it while the explanation stood on exactly that file
   evidence, which is the shape this whole feature was built for.
 
+### Fixed — the structural migration, audited the same way
+
+The same treatment applied to PR D's path, which had never run against a real
+chart or a real CustomResourceDefinition. Three findings, none of which fixtures
+could have produced.
+
+- **Its chart render had the identical artifact bug.** `renderTargetCRDs`
+  prepended `oci://` to whatever it was given, so a classic Helm repository
+  became `oci://https://kyverno.github.io/kyverno kyverno` and failed with
+  `invalid repository`. That is external-secrets, kyverno and cert-manager --
+  the charts that actually drop CRD versions, which is to say every promotion
+  this feature exists for. It now dispatches through the same
+  `upstream.ParseArtifact`, because "what shape is this artifact" needs ONE
+  owner; two answers is how the resolver came to parse it correctly while the
+  code beside it did not.
+
+- **The detector rejected `apiVersion`, `kind` and `metadata`.** Those belong to
+  the API machinery, and Kubernetes' structural-schema rules say a root schema
+  must not restrict them -- plenty of real CRDs declare `spec` and `status` and
+  nothing else.
+
+  Measured against **152 live objects from 67 CustomResourceDefinition
+  kind/version pairs on a real cluster**: 5 objects produced findings for
+  `apiVersion`, `kind` and every `metadata` key. Every one was a false positive
+  by construction, since the apiserver had already accepted the object under
+  that schema. In production it would have fired the model on a healthy
+  document, and the only proposal able to satisfy the complaint would have
+  deleted the object's identity -- which the identity validator then refuses. A
+  confusing escalation on a manifest that was fine. **Now 152 of 152 clean.**
+
+- **A rendered schema is capped at 12,000 characters.** Measured, not guessed:
+  the largest schema on that cluster renders to **43,831 characters** (kyverno's
+  `ClusterPolicy` v2beta1) and a prompt carries two of them plus the document
+  plus the gate report.
+
+  Truncating is safe here and would not be elsewhere: the validators run against
+  the FULL schema whatever the prompt showed, so a model that never saw the
+  destination field cannot produce a proposal that passes schema-validity. The
+  cost is a refusal, never a bad write, and the truncation note tells the model
+  to say so rather than guess.
+
+The detector was also confirmed to still FIRE, which a zero-false-positive
+detector otherwise proves nothing about: checked across versions of the same
+CRD it found real, already-shipped migrations -- `spec.provider.onepassword` and
+`spec.data[].remoteRef.decodingStrategy` between external-secrets `v1beta1` and
+`v1alpha1`.
+
 ### Added, for the next time
 
 - **`TestAuditArtifacts`** -- point the resolver at a file of artifact
@@ -82,6 +129,18 @@ publishers who genuinely declare no source, each now refused by name.
 
   ```bash
   UPSTREAM_AUDIT_FILE=artifacts.txt go test ./upstream -run Audit -v
+  ```
+
+- **`TestAuditLiveObjects` and `TestAuditCrossVersion`** -- the same idea for
+  the structural detector. Dump a cluster's CRDs and some live objects, and
+  check every object against the schema that already accepted it: every finding
+  is a false positive by construction, so the right answer is always zero and no
+  judgement is needed. The cross-version half proves it still fires, and reports
+  what real schemas cost in a prompt.
+
+  ```bash
+  STRUCTURAL_AUDIT_CRDS=crds.json STRUCTURAL_AUDIT_OBJECTS=objects.jsonl \
+    go test ./structural -run Audit -v
   ```
 
 ## [0.13.2] - 2026-08-24

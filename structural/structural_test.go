@@ -1,6 +1,7 @@
 package structural
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -361,5 +362,39 @@ spec:
 		"external-secrets.io/v1", schema(t, targetSchema))
 	if !got.OK() {
 		t.Fatalf("the migration this exists to perform was refused: %v", got.Refusals)
+	}
+}
+
+// The prompt carries two schemas, and the largest on a real cluster renders to
+// nearly 44,000 characters. Left uncapped that crowds out the document the
+// migration is supposed to be about.
+//
+// Truncating is safe here and nowhere else: the validators run against the FULL
+// schema whatever the prompt showed, so a model that never saw the destination
+// field cannot produce a proposal that passes schema-validity. The cost is a
+// refusal, never a bad write.
+func TestAnEnormousSchemaIsCappedAndSaysSo(t *testing.T) {
+	props := map[string]any{}
+	for i := 0; i < 4000; i++ {
+		props[fmt.Sprintf("field%04d", i)] = map[string]any{"type": "string"}
+	}
+	got := RenderSchema(Schema{"type": "object", "properties": props})
+	if len(got) <= MaxSchemaChars {
+		t.Fatalf("rendered %d chars, want it capped near %d", len(got), MaxSchemaChars)
+	}
+	if !strings.Contains(got, "schema truncated") {
+		t.Error("a truncated schema did not say it was truncated")
+	}
+	body, _, found := strings.Cut(got, "[schema truncated")
+	if !found || !strings.HasSuffix(body, "\n\n") {
+		t.Error("the cut landed mid-line, so the last field shown is half a name")
+	}
+}
+
+// A schema that fits is untouched -- the common case must not grow a footer.
+func TestASchemaThatFitsIsNotAnnotated(t *testing.T) {
+	got := RenderSchema(schema(t, targetSchema))
+	if strings.Contains(got, "truncated") {
+		t.Errorf("a small schema was marked truncated:\n%s", got)
 	}
 }

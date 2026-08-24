@@ -127,6 +127,22 @@ func walk(prefix string, node any, schema Schema, out *[]Finding) {
 
 		for _, name := range sortedKeys(typed) {
 			child := join(prefix, name)
+			// apiVersion, kind and metadata belong to the API machinery, not to
+			// a CustomResourceDefinition's own schema. Kubernetes' structural
+			// schema rules say a root schema must not restrict them, and plenty
+			// of real CRDs simply declare `spec` and `status` and nothing else.
+			//
+			// Judging them turned every object of such a kind into a document
+			// "the target schema rejects" -- measured at 5 of 152 live objects
+			// across a real cluster, each producing findings for apiVersion,
+			// kind and every metadata key. In production that fires the model on
+			// a document that was fine, and the only proposal that could satisfy
+			// the complaint would be one that DELETED the object's identity,
+			// which the identity validator then refuses. A confusing escalation
+			// on a healthy manifest.
+			if prefix == "" && rootSupplied[name] {
+				continue
+			}
 			sub, ok := props[name]
 			if !ok {
 				// additionalProperties true, or a schema, means the field is
@@ -213,6 +229,11 @@ func scalarFits(v any, t string) bool {
 		return true
 	}
 }
+
+// rootSupplied are the top-level fields the API machinery owns. A CRD's schema
+// may describe them and need not, and either way they are not the CRD's to
+// reject.
+var rootSupplied = map[string]bool{"apiVersion": true, "kind": true, "metadata": true}
 
 func join(prefix, name string) string {
 	if prefix == "" {
