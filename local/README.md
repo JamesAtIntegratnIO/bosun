@@ -25,6 +25,27 @@ install from the checkout. A proving ground that tests the last published
 version is testing the past, and this one exists precisely to prove the change
 you have not shipped yet.
 
+## What the agent is installed with
+
+Everything the chart ships, on. The kit used to install the agent roughly as it
+was before the four authorities landed — no live reads, no report-author trust,
+no egress past the git host and the model — which made this a proving ground for
+last month's agent.
+
+| Setting | Here | Why it is not a default |
+|---|---|---|
+| `liveReads.enabled` | on, `groups` scope | "everything except the core group" is not expressible in Kubernetes RBAC, so the API groups this cluster ships CRDs for are named. Secrets stay unreadable. |
+| `networkPolicy.egress.apiServer` | discovered | read from the `kubernetes` Service's own endpoints. A ClusterIP is DNAT'd before policy evaluation, so an ipBlock naming it matches nothing. |
+| `gate.reportAuthor` | the account `gate-run.sh` posts as | Gitea has no fixed CI identity the chart could default to, and anyone who can comment can write the gate's marker. |
+| `networkPolicy.egress.allowPublicHTTPS` | on | the upstream lookup has to reach a registry at all. |
+| `triage.egressDeny` | one host | so the refusal path is exercised rather than described. |
+
+**The NetworkPolicy is enforced here.** kindnet in this cluster implements
+NetworkPolicy — measured, not assumed: a busybox pod reaches `1.1.1.1` with no
+policy and hangs under a `deny-all`. So these rules are load-bearing, and a
+wrong apiserver endpoint is a crash loop with an explanation rather than a
+silent shrug.
+
 ## Requirements
 
 - macOS or Linux, ~10 GB free RAM, ~20 GB disk
@@ -59,6 +80,30 @@ nothing for hours because kube-state-metrics prefixes custom-resource metrics
 unless told not to. It went with `kargo-observability`, which is not part of
 this repository: it shares no contract with the gate or the agent.
 
+## The three acts
+
+```bash
+make demo             # a green gate, promoted and merged
+make demo-triage      # a red gate the agent refuses to fix, and says why
+make demo-structural  # a red gate the swap alone cannot fix
+make scenarios        # the recorded incidents, replayed live
+```
+
+`make demo-structural` is the one that needs the whole stack at once. It pins
+cert-manager `v1.5.5` with a `cert-manager.io/v1alpha2` Certificate that has
+been correct for years, bumps to `v1.6.0` — which stops serving `v1alpha2`,
+`v1alpha3` and `v1beta1` — and lets the agent repair it.
+
+Swapping the `apiVersion` line alone leaves a document that parses, applies,
+and has six fields pruned by the apiserver on the way in. The render is fine.
+The gate is green. The certificate has quietly lost its key algorithm, size and
+encoding, its email SANs, its URI SANs and its subject organization. So the
+model is shown the old schema (from the CustomResourceDefinition the cluster
+serves **right now** — after the merge it is gone) and the new one (by rendering
+the chart at the target version), and asked to translate. Every proposal is then
+checked for identity, schema-validity and value provenance before a byte is
+written.
+
 ## Where this is a stand-in rather than the real thing
 
 **The gate runs as a binary, not as CI.** idpbuilder ships no Actions runner, so
@@ -81,6 +126,25 @@ Each of these is a real defect or a real gap, found by running the thing:
   is DNAT'd to a pod IP before policy evaluation, so the agent's egress rule
   matched nothing and the connection hung with zero bytes. The chart takes
   `networkPolicy.egress.namespaces` now.
+- **The demo was running a gate binary from before the feature it proved.**
+  `gate-run.sh` built the binary only when `/tmp/gitops-gate` did not exist. The
+  one sitting there predated `objectFrom` carrying the rendered body by eight
+  hours, so chart-diff produced body-less objects and the CRD-version detection
+  could not fire. Nothing errored: the gate rendered both versions, diffed them
+  and reported ten objects "changed" with no fields, which is indistinguishable
+  from a gate that looked and found nothing. It is built every run now.
+- **A wait loop that read the previous run's verdict.** `tail -n +$BEFORE`
+  starts *at* line `$BEFORE`, and the last line of a previous run is reliably
+  its own `triage done`. The triage demo declared "it pushed nothing" about a
+  pull request the agent escalated correctly twenty seconds later.
+- **A diff that hid the value it preserved.** The reshape comment's diff was a
+  set difference on line text, so a value that moves without changing column was
+  printed on neither side. `organization: [Example Platform Team]` becoming
+  `subject.organizations: [Example Platform Team]` rendered as the key being
+  deleted into an empty field, above a "Values not carried across" line. It is a
+  real diff with context now.
+- **kindnet enforces NetworkPolicy.** Worth knowing before you assume a local
+  cluster cannot test egress rules: it can, and this one does.
 - **kube-state-metrics reads its config once, at startup.** Changing the
   ConfigMap changes nothing until it restarts.
 - **Verification silently requires Prometheus to scrape ArgoCD.** The
@@ -119,6 +183,7 @@ proving ground has done — because answering it reshaped the system:
 | Source / project / namespace changed | yes | escalate |
 | apiVersion migration on an object | yes | escalate |
 | A CRD stops serving a declared version | yes, **while consumers remain** | **deterministic repair, no model** |
+| ...and the fields moved too | yes | **the model writes the migration, three checks decide whether it lands** |
 | A chart default flipped | no, reported only | mechanical fix |
 | Coupled pins | no, reported only | mechanical fix |
 | Anything a green render cannot reveal | no | explain, and flag when it warrants eyes |
