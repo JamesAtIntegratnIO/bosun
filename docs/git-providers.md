@@ -1,6 +1,9 @@
 # Git providers
 
-Four methods, chosen because they are what the workflow needs and nothing more.
+Six methods, chosen because they are what the workflow needs and nothing more.
+(ADR 0004 committed to four; reading a pull request and listing its comments
+turned out to be workflow needs too, which is the kind of growth the ADR's
+"lowest common denominator" cost paragraph predicted.)
 
 **On identity.** A token grants the right access and the wrong name: it belongs
 to whoever minted it, so the agent's comments arrive under that person's avatar

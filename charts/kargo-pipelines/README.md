@@ -4,8 +4,10 @@ Renders Kargo `Project`, `Warehouse` and `Stage` objects from one declarative
 target list, so "keep this pin current" is a few lines of values rather than a
 hand-written promotion pipeline per artifact.
 
-> **Status: not yet implemented.** Generalized from a working single-cluster
-> chart. This README is the contract.
+> **Status: shipped**, published as
+> `oci://ghcr.io/jamesatintegratnio/charts/kargo-pipelines` and running the
+> promotion pipelines on the platform this was generalized from. This README
+> opened as the contract; the chart caught up.
 
 ## What it adds over hand-written Stages
 
