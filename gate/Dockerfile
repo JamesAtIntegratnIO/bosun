@@ -24,7 +24,14 @@ ARG TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
-COPY gate/ ./gate/
+# The whole module, not a hand-picked list. This used to copy only gate/, and
+# the day the gate first imported a sibling package (migrate, shared with the
+# agent so the two cannot drift) the image stopped building while `go build
+# ./...` in CI stayed green -- CI builds the checkout, the image builds the
+# COPY list, and only one of them follows the import graph. v0.9.0's gate
+# image died exactly that way. The agent's Dockerfile already copies the
+# module wholesale for the same reason.
+COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH:-$(go env GOARCH)}" \
     go build -trimpath -ldflags='-s -w' -o /out/gitops-gate ./gate
 
