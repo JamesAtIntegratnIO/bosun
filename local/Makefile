@@ -11,6 +11,7 @@ help:
 	@echo "make up      colima + idpbuilder + platform + kit + seed  (everything)"
 	@echo "make demo    run the whole flow, asserted at every step"
 	@echo "make demo-triage  a PR the gate REFUSES, and the agent's verdict on it"
+	@echo "make scenarios    replay the ten recorded incidents against the live agent"
 	@echo "make reset   put the flow back to the start so demo can run again"
 	@echo "make down    delete the cluster; colima keeps running"
 	@echo "make clean   down, and stop colima too"
@@ -53,6 +54,15 @@ demo:
 .PHONY: demo-triage
 demo-triage:
 	@bash $(SCRIPTS)/50-demo-triage.sh
+
+# The eval suite's cases, replayed as real pull requests against the live
+# in-cluster agent. The gate report each posts is the recorded one; the agent,
+# the model and every commit it pushes are live. Referenced by both READMEs
+# since the day the script landed -- and wired to a target only after a reader
+# followed the instruction and found nothing there.
+.PHONY: scenarios
+scenarios:
+	@bash $(SCRIPTS)/60-demo-scenarios.sh
 
 
 .PHONY: reset

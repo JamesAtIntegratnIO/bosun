@@ -15,18 +15,15 @@ No promotion had traversed a chain. The agent had never triaged anything.
 |---|---|
 | kind cluster, ArgoCD, Gitea, ingress | [idpbuilder](https://cnoe.io/docs/reference-implementation/local) |
 | cert-manager, Argo Rollouts, Prometheus, Grafana, Kargo | helm |
-| kargo-pipelines | helm, from **this working tree** |
-| bosun | helm, **pulled** from `oci://ghcr.io/jamesatintegratnio/charts/bosun` |
+| bosun | its **image built from this working tree**, its chart installed from `../charts/bosun` |
+| kargo-pipelines | helm, from `../charts/kargo-pipelines` in **this working tree** |
 | the repository under test | `sample-repo/`, pushed into Gitea |
 
-The kit's own charts come **from your working tree**, not from a release. A
-proving ground that tests the last published version is testing the past.
-
-Bosun is the exception, because it is no longer in this repository: it lives at
-[JamesAtIntegratnIO/bosun](https://github.com/JamesAtIntegratnIO/bosun) and is
-pulled at the same version the cluster runs. Here it is a dependency being
-exercised, not the thing under test. To prove a change to Bosun itself, use the
-proving ground in that repository — which does build from the working tree.
+Everything of this repository's own comes **from your working tree**, not from
+a release — the agent image is built locally and force-rolled, the charts
+install from the checkout. A proving ground that tests the last published
+version is testing the past, and this one exists precisely to prove the change
+you have not shipped yet.
 
 ## Requirements
 
@@ -67,8 +64,7 @@ this repository: it shares no contract with the gate or the agent.
 **The gate runs as a binary, not as CI.** idpbuilder ships no Actions runner, so
 [`scripts/gate-run.sh`](scripts/gate-run.sh) invokes the same binary with the
 same inputs and produces the same two artifacts a CI adapter would — the report
-comment and the commit status. `sample-repo/.gitea/workflows/gate.yaml` is there
-for anyone who wires a runner up. Everything else is the real component.
+comment and the commit status. Everything else is the real component.
 
 ## Things this turned up
 
@@ -95,20 +91,14 @@ Each of these is a real defect or a real gap, found by running the thing:
 
 ## Seeing it actually fix things
 
-The nine replayed incidents moved to the Bosun repository along with the eval
-fixtures they read:
-
-```bash
-git clone https://github.com/JamesAtIntegratnIO/bosun && cd bosun/local
-export LLM_BASE_URL=http://<your-host>:1234/v1
-make up && make scenarios
-```
-
-They belong there rather than here: the gate report each one posts is
-**recorded**, so the scenarios never needed the gate binary, Kargo or
-Prometheus — only Gitea and a model endpoint. Keeping them beside the fixtures
-is what stops the thing the eval measures and the thing you watch from
-drifting apart.
+`make scenarios` replays the **ten** recorded incidents from
+[`../evals`](../evals) as real pull requests against the live in-cluster
+agent, and prints a case-by-case table of what it did against what the case
+expects. The gate report each one posts is **recorded** — reproducing
+fourteen upstream chart versions locally would prove nothing extra — but the
+agent, the model, the reasoning and every commit it pushes are live. The
+scenarios read the same fixtures the eval suite scores, which is what stops
+the thing the eval measures and the thing you watch from drifting apart.
 
 ## What the agent will and will not fix
 
@@ -120,25 +110,30 @@ the model. Measured here against both
 sound argument -- the 27B's was *"the cause is not provable from the rendered
 diff alone"*, which is precisely the judgement the prompt asks for.
 
-The deeper reason is structural, and it is the most useful thing this proving
-ground has turned up:
+The deeper reason is structural, and finding it is the most useful thing this
+proving ground has done — because answering it reshaped the system:
 
-| | Blocks the merge | Agent's mechanical class |
+| | Blocks the merge | What the agent does |
 |---|---|---|
 | Targeting moved | yes | escalate |
 | Source / project / namespace changed | yes | escalate |
-| apiVersion migration | yes | **always** escalate |
-| A chart default flipped | no, reported only | mechanical |
-| Coupled pins | no, reported only | mechanical |
-| A port moved under a policy | no, reported only | mechanical |
+| apiVersion migration on an object | yes | escalate |
+| A CRD stops serving a declared version | yes, **while consumers remain** | **deterministic repair, no model** |
+| A chart default flipped | no, reported only | mechanical fix |
+| Coupled pins | no, reported only | mechanical fix |
+| Anything a green render cannot reveal | no | explain, and flag when it warrants eyes |
 
-Everything the gate blocks on is structural, and the agent escalates
-structural changes by design. Everything the agent can mechanically fix is a
-values conflict, which the gate reports without blocking. **The two sets
-barely intersect**, so "gate red, agent fixes it" is close to a null case
-today. That is a design question about where each half draws its line, not a
-bug in either, and it is worth answering before the agent is trusted to push
-fixes anywhere that matters.
+The original finding read: everything the gate blocks on is structural, the
+agent escalates structural changes by design, and everything it can fix is a
+values conflict the gate reports without blocking — *the two sets barely
+intersect, so "gate red, agent fixes it" is close to a null case*. That was
+true, and the answer was not to make the model braver. It was to teach the
+gate a red the harness can repair: a dropped served version blocks exactly
+while manifests still declare it, the report names the destination, and the
+repair — rewriting those manifests — is a deterministic function of the
+report, verified by the gate's own recount on the re-run. The rows where the
+agent escalates are still escalations *by design*: those are the changes no
+version bump can cause, and no one should want a model ratifying them.
 
 ## Running it a second time
 
