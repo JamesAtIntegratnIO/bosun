@@ -12,6 +12,22 @@ edits. This process decides what, if anything, happens next.
 That is the whole design. A model with file-edit tools can make a red gate
 green by deleting the check, and that failure is indistinguishable from success.
 
+## The deterministic repair involves no model at all
+
+Migrating manifests off a CRD version a bump stopped serving is not a
+judgement: the gate's report names the consumer kind, the dropped versions and
+the surviving destination, all computed from the rendered CRDs. The `migrate`
+package parses that line back — the same package that wrote it — and rewrites
+nothing but apiVersion values matching it, only when that finding is the gate's
+*only* blocking one.
+
+The guarantees below still hold where they apply: the deny-list and the
+allowlist answer for every file, the rewrite is a value replacement on the
+scalar's own line, the attempt cap counts these pushes too, and the re-run
+gate re-counts the consumers itself. The one deliberate difference is `Scope`:
+consumers are by definition files the promotion did not touch, and it is the
+gate — not a model — that named them.
+
 ## What is enforced, and where
 
 | Guarantee | Mechanism |

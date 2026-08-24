@@ -45,8 +45,10 @@ different repositories and no CI run can ever check them together.
 ## What it will and will not do
 
 **Fixes autonomously** — only where the render diff *proves* the cause: a chart
-default that flipped, a coupled pin, a metrics port that moved under a policy
-that still names it.
+default that flipped, a coupled pin — and, with no model involved at all, a CRD
+that stopped serving a version: every manifest still declaring one is migrated
+to the version the gate says survives, and the re-run gate re-counts the
+consumers to confirm the repair.
 
 **Escalates** — an API version change, a removed CRD, a dropped subchart, an
 upstream note mentioning a schema or database migration, a version skip the
