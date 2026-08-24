@@ -12,6 +12,7 @@ import (
 
 	"github.com/JamesAtIntegratnIO/bosun/cluster"
 	"github.com/JamesAtIntegratnIO/bosun/edits"
+	"github.com/JamesAtIntegratnIO/bosun/egress"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
@@ -74,6 +75,15 @@ type Triage struct {
 	// versions. Optional: without it the explanation is grounded in the render
 	// alone, says so, and is still worth reading.
 	Upstream upstream.Resolver
+
+	// Egress is where the agent may reach and the record of where it went.
+	//
+	// Open by default with a deny-list, which is a deliberate reversal of the
+	// allow-list this had: naming every chart repository, registry CDN and
+	// redirect target before the agent could read it was a full-time job whose
+	// failure mode was a two-minute timeout and a brief with no evidence. See
+	// the egress package.
+	Egress egress.Policy
 
 	// Cluster, when set, reads what is actually running.
 	//

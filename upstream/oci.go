@@ -242,11 +242,7 @@ func (g *GitHubReleases) getJSON(ctx context.Context, url, token, accept string,
 	if accept != "" {
 		req.Header.Set("Accept", accept)
 	}
-	cl := g.HTTP
-	if cl == nil {
-		cl = &http.Client{Timeout: 20 * time.Second}
-	}
-	resp, err := cl.Do(req)
+	resp, err := g.client().Do(req)
 	if err != nil {
 		return err
 	}
@@ -255,6 +251,17 @@ func (g *GitHubReleases) getJSON(ctx context.Context, url, token, accept string,
 		return newHTTPError(url, resp)
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// client is every outbound request this package makes.
+//
+// One place, so the egress record cannot have a hole in it: a caller that built
+// its own client would reach hosts nothing logged.
+func (g *GitHubReleases) client() *http.Client {
+	if g.HTTP != nil {
+		return g.HTTP
+	}
+	return g.Egress.Client(&http.Client{Timeout: 20 * time.Second})
 }
 
 // splitRef breaks a reference into host, repository and tag-or-digest.
@@ -315,11 +322,7 @@ func githubPath(src string) (string, error) {
 // getJSONReq runs a prepared request. Shared so the GitHub call and the
 // registry calls have one place that decides timeouts and error shape.
 func (g *GitHubReleases) getJSONReq(req *http.Request, out any) error {
-	cl := g.HTTP
-	if cl == nil {
-		cl = &http.Client{Timeout: 20 * time.Second}
-	}
-	resp, err := cl.Do(req)
+	resp, err := g.client().Do(req)
 	if err != nil {
 		return err
 	}
