@@ -383,3 +383,79 @@ func TestFramingRefusesWhenBothEndsAreTheSameRef(t *testing.T) {
 		t.Fatalf("framing = %q...%q, want nothing", base, head)
 	}
 }
+
+// "More than could be read" and "showing fewer than we found" are different
+// facts, and they shared one flag until a live run reported a fully-read
+// three-commit range as truncated because eleven FILES matched the terms.
+//
+// The difference matters in the direction it fails: a brief saying "more than
+// could be read" about a range it read completely tells a reader the evidence
+// might be incomplete when it is not.
+func TestAFullyReadRangeIsNotTruncatedJustBecauseTheListWasCapped(t *testing.T) {
+	files := make([]any, 0, 30)
+	for i := 0; i < 30; i++ {
+		files = append(files, map[string]string{"filename": fmt.Sprintf("upstream/file%d.go", i)})
+	}
+	s := &registryAndAPI{
+		labels: map[string]map[string]string{
+			"1.1.0": {"org.opencontainers.image.source": "https://github.com/example-org/thing"},
+		},
+		releases: []map[string]any{release("v1.1.0"), release("v1.0.0")},
+		compares: map[string]map[string]any{
+			"v1.0.0...v1.1.0": {
+				"total_commits": 3,
+				"commits": []any{
+					commit("aaaaaaaaaaaa", "fix(upstream): one"),
+					commit("bbbbbbbbbbbb", "fix(upstream): two"),
+					commit("cccccccccccc", "fix(upstream): three"),
+				},
+				"files": files,
+			},
+		},
+	}
+	g := s.server(t)
+	g.HTTP = registryClient(t, g)
+
+	c, err := g.Compare(context.Background(), "ghcr.io/example-org/thing", "1.0.0", "1.1.0",
+		[]string{"upstream"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Truncated {
+		t.Error("a range of 3 commits, all of them read, was reported as larger than could be read")
+	}
+	if !c.Capped {
+		t.Error("30 matching files were shown as 10 without saying so")
+	}
+	if len(c.Relevant) != 3 {
+		t.Errorf("relevant = %d, want all three", len(c.Relevant))
+	}
+}
+
+// The real truncation still reports itself: a range bigger than one API answer
+// was filtered over a partial list, and "nothing mentions this" about a list
+// nobody finished reading is exactly the wrong conclusion.
+func TestARangeBiggerThanOneAnswerIsStillTruncated(t *testing.T) {
+	s := &registryAndAPI{
+		labels: map[string]map[string]string{
+			"2.0.0": {"org.opencontainers.image.source": "https://github.com/example-org/thing"},
+		},
+		releases: []map[string]any{release("v2.0.0"), release("v1.0.0")},
+		compares: map[string]map[string]any{
+			"v1.0.0...v2.0.0": {
+				"total_commits": 900,
+				"commits":       []any{commit("aaaaaaaaaaaa", "chore: something")},
+			},
+		},
+	}
+	g := s.server(t)
+	g.HTTP = registryClient(t, g)
+
+	c, _ := g.Compare(context.Background(), "ghcr.io/example-org/thing", "1.0.0", "2.0.0", []string{"nothing"})
+	if !c.Truncated {
+		t.Error("a 900-commit range answered with one page was not reported as truncated")
+	}
+	if c.Capped {
+		t.Error("nothing was capped")
+	}
+}

@@ -1138,6 +1138,9 @@ func renderUpstream(n *upstream.Notes) string {
 		if c.Truncated {
 			b.WriteString(" (more than could be read)")
 		}
+		if c.Capped {
+			b.WriteString(", showing the first few")
+		}
 	}
 	b.WriteString(" — these mention what the gate found:\n\n")
 	for _, cm := range c.Relevant {

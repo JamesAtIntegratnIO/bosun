@@ -86,7 +86,11 @@ func renderCompare(c *Compare) string {
 		if c.Truncated {
 			b.WriteString(" (more than could be read)")
 		}
-		b.WriteString("; these mention what the gate found:\n\n")
+		b.WriteString("; these mention what the gate found")
+		if c.Capped {
+			b.WriteString(", showing the first few")
+		}
+		b.WriteString(":\n\n")
 	}
 	for _, cm := range c.Relevant {
 		fmt.Fprintf(&b, "- %s %s\n", cm.SHA, cm.Message)
