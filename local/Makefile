@@ -12,6 +12,7 @@ help:
 	@echo "make demo    run the whole flow, asserted at every step"
 	@echo "make demo-triage  a PR the gate REFUSES, and the agent's verdict on it"
 	@echo "make scenarios    replay the ten recorded incidents against the live agent"
+	@echo "make demo-structural  a bump the swap cannot fix, and the model that can"
 	@echo "make reset   put the flow back to the start so demo can run again"
 	@echo "make down    delete the cluster; colima keeps running"
 	@echo "make clean   down, and stop colima too"
@@ -63,6 +64,14 @@ demo-triage:
 .PHONY: scenarios
 scenarios:
 	@bash $(SCRIPTS)/60-demo-scenarios.sh
+
+# Act three: the bump the deterministic repair cannot finish, where the model
+# writes the migration and three checks decide whether it is allowed to.
+# Wired to a target the day the script landed, because the last script that was
+# not spent a week being referenced by two READMEs and reachable from neither.
+.PHONY: demo-structural
+demo-structural:
+	@bash $(SCRIPTS)/70-demo-structural.sh
 
 
 .PHONY: reset

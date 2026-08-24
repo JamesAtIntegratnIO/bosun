@@ -37,6 +37,42 @@ LLM_HOST="$(printf '%s' "$LLM_BASE_URL" | sed -E 's#^https?://##; s#[:/].*$##')"
 LLM_PORT="$(printf '%s' "$LLM_BASE_URL" | sed -nE 's#^https?://[^:/]+:([0-9]+).*#\1#p')"
 : "${LLM_PORT:=80}"
 
+# The NetworkPolicy is ON, and it is not decoration: kindnet in this cluster
+# ENFORCES NetworkPolicy. Measured, not assumed -- a busybox pod reaches
+# 1.1.1.1 with no policy and hangs under a deny-all, which is the same
+# zero-bytes hang every egress incident in this project produced. So the rules
+# below are load-bearing: get the apiserver endpoints wrong and the agent
+# crash-loops instead of quietly answering "not permitted to check".
+
+# Live reads need the apiserver, and the apiserver is the destination people
+# get wrong. `kubernetes.default.svc` is a ClusterIP, and a ClusterIP is DNAT'd
+# to a real endpoint BEFORE NetworkPolicy is evaluated -- so an ipBlock naming
+# it matches nothing and the connection hangs with zero bytes rather than being
+# refused. Ask the Service what it actually points at.
+APISERVER_EPS="$(kc -n default get endpoints kubernetes \
+  -o jsonpath='{range .subsets[*]}{range .addresses[*]}{.ip}{"\n"}{end}{end}' | sed '/^$/d')"
+APISERVER_PORT="$(kc -n default get endpoints kubernetes \
+  -o jsonpath='{.subsets[0].ports[0].port}')"
+: "${APISERVER_PORT:=6443}"
+[ -n "$APISERVER_EPS" ] || bad "could not read the kubernetes Service endpoints"
+
+# The API groups the agent may count objects in. `groups` scope, not `wide`:
+# "everything except the core group" is the intent everyone has here and it is
+# not expressible in Kubernetes RBAC, so this names the groups whose CRDs this
+# cluster actually ships and leaves Secrets unreadable.
+: "${LIVE_READ_GROUPS:=cert-manager.io acme.cert-manager.io argoproj.io kargo.akuity.io}"
+
+# The account whose gate report the agent will believe.
+#
+# There is no per-host default that can be right here: GitHub Actions always
+# comments as `github-actions[bot]`, and Gitea has no equivalent fixed identity
+# -- the report arrives as whichever user minted the CI token. In this ground
+# that is gate-run.sh, running as the admin. Naming it is what makes a forged
+# report -- anyone who can comment can write the gate's marker -- a comment the
+# agent ignores by author rather than an instruction wearing the gate's
+# authority.
+: "${GATE_REPORT_AUTHOR:=${GITEA_OWNER}}"
+
 say "the agent's own account"
 # The agent authenticates as whoever owns its token. Hand it the admin's and
 # every comment and commit it makes carries the admin's name -- which is
@@ -91,6 +127,23 @@ command -v kind >/dev/null 2>&1 || bad "kind is not on PATH -- idpbuilder embeds
 kind load docker-image "$AGENT_IMAGE" --name "$KIND_CLUSTER" 2>&1 | sed 's/^/    /'
 ok "loaded into kind/$KIND_CLUSTER"
 
+# --set takes indexed paths, so a list is built rather than written. Kept next
+# to the call it feeds so the indices and the flag cannot drift apart.
+LIVE_READ_ARGS=""
+i=0
+for g in $LIVE_READ_GROUPS; do
+  LIVE_READ_ARGS="${LIVE_READ_ARGS} --set liveReads.apiGroups[${i}]=${g}"
+  i=$((i + 1))
+done
+APISERVER_ARGS=""
+i=0
+while read -r ip; do
+  [ -n "$ip" ] || continue
+  APISERVER_ARGS="${APISERVER_ARGS} --set networkPolicy.egress.apiServer.ipBlocks[${i}].cidr=${ip}/32"
+  APISERVER_ARGS="${APISERVER_ARGS} --set networkPolicy.egress.apiServer.ipBlocks[${i}].port=${APISERVER_PORT}"
+  i=$((i + 1))
+done <<< "$APISERVER_EPS"
+
 say "bosun"
 helm upgrade --install bosun "$ROOT/../charts/bosun" \
   --kube-context "$CLUSTER_CONTEXT" \
@@ -121,6 +174,15 @@ helm upgrade --install bosun "$ROOT/../charts/bosun" \
   --set gate.poll=10s \
   --set 'triage.allowPaths[0]=apps/**' \
   --set 'triage.allowPaths[1]=addons/**' \
+  --set gate.reportAuthor="$GATE_REPORT_AUTHOR" \
+  --set liveReads.enabled=true \
+  --set liveReads.scope=groups \
+  --set liveReads.argocdNamespace=argocd \
+  ${LIVE_READ_ARGS} \
+  ${APISERVER_ARGS} \
+  --set networkPolicy.enabled=true \
+  --set networkPolicy.egress.allowPublicHTTPS=true \
+  --set 'triage.egressDeny[0]=*.invalid.localtest.me' \
   --wait --timeout 5m >/dev/null
 # The image tag never changes, so helm sees an identical pod spec and keeps the
 # running pod -- with the OLD binary in it. Every rebuild therefore needs an
