@@ -96,13 +96,23 @@ kc -n bosun exec -i "$AGENT_POD" -- \
   --header 'Content-Type: application/json' \
   http://localhost:8080/v1/promotion-opened 2>&1 | sed 's/^/    /' || true
 
+# `tail -n +N` starts AT line N, so `+$BEFORE` re-reads the last line of the
+# previous run -- and the last line of a previous run is, reliably, its own
+# `triage done`. The loop matched it on the first pass, declared the verdict in
+# before this run had read the gate, and reported "it pushed nothing" about a
+# triage that had not started. The demo said the agent did nothing on a pull
+# request it escalated correctly twenty seconds later.
+#
+# Two fixes, because either alone still lies. Start PAST the old log, and match
+# only lines naming THIS pull request -- a run that shares the pod with any
+# other work must not be able to read someone else's verdict as its own.
 step "waiting for the verdict (a local model takes a moment)"
 for _ in $(seq 1 60); do
-  kc -n bosun logs "$AGENT_POD" 2>/dev/null | tail -n +"$BEFORE" \
-    | grep -qiE "triage done|escalat|applied|no fix|refus" && break
+  kc -n bosun logs "$AGENT_POD" 2>/dev/null | tail -n +$((BEFORE + 1)) \
+    | grep -qE "PR ${PR}: (triage done|triage failed)" && break
   sleep 5
 done
-kc -n bosun logs "$AGENT_POD" 2>/dev/null | tail -n +"$BEFORE" | sed 's/^/    /'
+kc -n bosun logs "$AGENT_POD" 2>/dev/null | tail -n +$((BEFORE + 1)) | sed 's/^/    /'
 
 say "4. what the agent actually did"
 HEAD_AFTER="$(gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls/${PR}" \
