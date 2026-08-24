@@ -5,6 +5,10 @@ All notable changes to `bosun`. Format follows
 
 ## [0.7.0] - 2026-08-23
 
+There is no 0.6.0 here. Chart 0.6.0 was a chart-only release -- FQDN egress
+patterns, no Go code -- so `appVersion` never moved to it, and the agent's
+versions skip from 0.5.0 straight to 0.7.0.
+
 ### Changed
 
 - **A green gate is a verdict on the render, not on the bump.** The explain
