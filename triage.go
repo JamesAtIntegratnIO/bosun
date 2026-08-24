@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -45,6 +46,21 @@ type Triage struct {
 	LLM       llm.Provider
 	Policy    edits.Policy
 	CheckName string
+	// GateReportAuthor is the only account whose gate report this will read.
+	//
+	// The gate's verdict arrives as a pull-request comment carrying a marker,
+	// and until this existed the marker was the whole of the check. Anyone who
+	// can comment on the pull request can write that marker, and the report
+	// under it is the evidence every other decision here is made from: which
+	// manifests the deterministic repair rewrites, which versions the applier
+	// will corroborate, what the model is told actually rendered. A forged
+	// report is not a wrong opinion, it is a wrong instruction with the gate's
+	// authority behind it.
+	//
+	// Empty or "*" trusts any author. That is what a host with no stable CI
+	// identity can express, and it is the behaviour that existed before -- but
+	// it is a choice now, made in a values file, rather than an omission.
+	GateReportAuthor string
 	// MaxAttempts caps self-fixes per pull request. Enforced through labels,
 	// so it survives a restart -- in-memory state would reset the cap every
 	// time the pod moved.
@@ -505,20 +521,97 @@ func (t *Triage) waitForGate(ctx context.Context, pr *gitprovider.PullRequest) (
 	}
 }
 
+// errNoGateReport is the gate having said nothing, as opposed to having said
+// something this agent would not believe. The two are different situations
+// with different answers -- one is a quiet gate, the other is a configuration
+// mistake or an attempt -- and a caller that treats every failure here as
+// "no report" turns the second into the first.
+var errNoGateReport = errors.New("no gate report")
+
 // gateReport finds the gate's own comment. A comment is the only artifact
 // surface every git host has, which is why the gate publishes there rather
 // than into a provider-specific artifact store.
+//
+// It is also, for the same reason, a surface anyone with write access can
+// publish to. So the marker is necessary and not sufficient: the comment has
+// to come from the account the operator named as the gate. Everything
+// downstream -- which files the deterministic repair rewrites, which version
+// strings the applier will corroborate, what the model is told rendered --
+// is read out of this string, so a report the gate did not write is an
+// instruction from a stranger wearing the gate's authority.
+//
+// The newest qualifying report wins. A gate that re-ran leaves two, and the
+// stale one describes a commit that is no longer the head.
 func (t *Triage) gateReport(ctx context.Context, pr *gitprovider.PullRequest) (string, error) {
 	comments, err := t.Git.ListComments(ctx, pr.Number)
 	if err != nil {
 		return "", err
 	}
-	for i := len(comments) - 1; i >= 0; i-- {
-		if strings.Contains(comments[i].Body, gateReportMarker) {
-			return comments[i].Body, nil
+	best := -1
+	var untrusted []string
+	for i, c := range comments {
+		if !strings.Contains(c.Body, gateReportMarker) {
+			continue
+		}
+		if !t.trustsReportFrom(c.Author) {
+			untrusted = append(untrusted, c.Author)
+			continue
+		}
+		// Newest wins, and position breaks the tie -- a host that did not
+		// timestamp its comments leaves every CreatedAt zero, which is the
+		// order-is-recency reading this had before.
+		if best < 0 || !c.CreatedAt.Before(comments[best].CreatedAt) {
+			best = i
 		}
 	}
-	return "", fmt.Errorf("the gate is red but published no report comment on PR %d", pr.Number)
+	if best >= 0 {
+		return comments[best].Body, nil
+	}
+	if len(untrusted) > 0 {
+		// Named, because the overwhelmingly likely cause is not an attack but
+		// a gate that publishes as somebody else -- and a reader can only fix
+		// that if the message says whose name to put in the values file.
+		return "", fmt.Errorf(
+			"PR %d carries the gate's marker from %s, but %s is configured as the gate: "+
+				"ignoring it. Set gate.reportAuthor to the account your gate comments as, "+
+				"or to \"*\" to read the report whoever wrote it",
+			pr.Number, strings.Join(dedupe(untrusted), ", "), quoted(t.GateReportAuthor))
+	}
+	return "", fmt.Errorf("%w: the gate is red but published no report comment on PR %d",
+		errNoGateReport, pr.Number)
+}
+
+// trustsReportFrom is the whole of the check. Case-insensitive because git
+// hosts are about usernames, and unset means unchecked -- which is a
+// deployment saying it has no stable CI identity to name, not a bypass.
+func (t *Triage) trustsReportFrom(author string) bool {
+	want := strings.TrimSpace(t.GateReportAuthor)
+	if want == "" || want == "*" {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(author), want)
+}
+
+func dedupe(in []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if s == "" {
+			s = "an account the host did not name"
+		}
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func quoted(s string) string {
+	if s == "" {
+		return "nothing"
+	}
+	return "\"" + s + "\""
 }
 
 const gateReportMarker = "<!-- gitops-gate -->"
@@ -621,10 +714,18 @@ func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, 
 	}
 
 	report, err := t.gateReport(ctx, pr)
-	if err != nil {
+	switch {
+	case errors.Is(err, errNoGateReport):
 		// A green gate that published no report is normal on repositories where
 		// the gate only comments when it has something to say.
 		t.say(ctx, pr, "%s is green; no report to explain", t.CheckName)
+		return nil
+	case err != nil:
+		// Not the same thing, and it used to be reported as if it were. A
+		// report this agent refused to read -- wrong author -- or a comment
+		// list it could not finish is a fact about the deployment, and
+		// "nothing to explain" is exactly the sentence that hides it.
+		t.say(ctx, pr, "%s is green; %v", t.CheckName, err)
 		return nil
 	}
 	if strings.Contains(report, gateSaidNothingChanged) {

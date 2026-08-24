@@ -191,6 +191,9 @@
         "poll": {
           "type": "string",
           "pattern": "^\\d+[smh]$|^\\d+[hm]\\d+[ms]$|^\\d+h\\d+m\\d+s$"
+        },
+        "reportAuthor": {
+          "type": "string"
         }
       }
     },
