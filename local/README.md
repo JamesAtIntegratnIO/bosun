@@ -14,7 +14,7 @@ No promotion had traversed a chain. The agent had never triaged anything.
 | Piece | What runs it |
 |---|---|
 | kind cluster, ArgoCD, Gitea, ingress | [idpbuilder](https://cnoe.io/docs/reference-implementation/local) |
-| cert-manager, Argo Rollouts, Prometheus, Grafana, Kargo | helm |
+| cert-manager, Argo Rollouts, Prometheus, Grafana, Kargo | **ArgoCD**, from `sample-repo/platform/` |
 | bosun | its **image built from this working tree**, its chart installed from `../charts/bosun` |
 | kargo-pipelines | helm, from `../charts/kargo-pipelines` in **this working tree** |
 | the repository under test | `sample-repo/`, pushed into Gitea |
@@ -24,6 +24,38 @@ a release — the agent image is built locally and force-rolled, the charts
 install from the checkout. A proving ground that tests the last published
 version is testing the past, and this one exists precisely to prove the change
 you have not shipped yet.
+
+**The platform is reconciled, not installed.** It used to go in with a hundred
+and twenty lines of `helm upgrade --install`, on the argument that it is the
+equivalent of what idpbuilder itself installed and a reconcile loop only cost a
+minute per run. That was wrong twice: this project's pattern is app-of-apps,
+and a proving ground that installs its own platform by hand is not proving the
+pattern it exists to demonstrate. `helm list -A` should show exactly two
+releases, and both are there because they are built from your checkout and
+there is no git ref for ArgoCD to point at:
+
+```
+bosun            bosun   bosun-0.15.2
+kargo-pipelines  kargo   kargo-pipelines-0.1.2
+```
+
+Two things that shape `platform/`, both learned by getting them wrong:
+
+- **`platform/`, not `apps/`.** The gate's sources are `apps/*.yaml`, so a demo
+  pull request renders podinfo and not a fifty-object monitoring chart at two
+  versions. It also keeps the real cert-manager separate from the
+  `apps/cert-manager.yaml` the structural demo writes at v1.5.5 — a 2021 chart
+  it needs the gate to *render*, never to install. One line in
+  `.gitops-gate.yaml` if you ever want the platform gated too.
+- **Sync waves order applies; they do not defer validation.** The ArgoCD
+  ServiceMonitor started life as a manifest beside these Applications, in a
+  later wave than the chart that installs its CRD. ArgoCD validates every task
+  in an operation *before the first wave runs*, so it was not applied late — it
+  was an unknown kind that invalidated the whole sync, and not one child
+  Application was created. The root said only `one or more synchronization
+  tasks are not valid`. It is a value of the monitoring chart now
+  (`prometheus.additionalServiceMonitors`), created by the chart that owns its
+  own CRD, which removes the ordering question instead of sequencing around it.
 
 ## What the agent is installed with
 

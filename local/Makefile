@@ -22,8 +22,10 @@ help:
 	@echo "required:  LLM_BASE_URL=http://<host>:<port>/v1"
 	@echo "optional:  LLM_MODEL (default qwen/qwen3.5-9b)"
 
+# Order matters and used to be wrong: the platform is DEFINED in the sample
+# repository now, so it cannot be installed before the repository exists.
 .PHONY: up
-up: runtime cluster platform seed kit
+up: runtime cluster seed platform kit
 	@echo "ready -- now run: make demo"
 
 .PHONY: runtime
@@ -36,7 +38,7 @@ cluster:
 
 .PHONY: platform
 platform:
-	@bash $(SCRIPTS)/10-platform.sh
+	@bash $(SCRIPTS)/25-platform.sh
 
 .PHONY: seed
 seed:

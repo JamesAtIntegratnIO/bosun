@@ -1,0 +1,45 @@
+# Wave 1: cert-manager must be Healthy first, because Kargo's webhooks are
+# issued by it. Applied together, Kargo's webhook Deployment comes up before
+# there is an issuer to sign for it and the install fails in a way that names
+# the certificate, not the ordering.
+#
+# The chart is OCI, so ArgoCD needs a repository entry with enableOCI on it --
+# created by 20-seed.sh alongside the git credentials. `repoURL` here is the
+# registry path with no scheme, which is what ArgoCD matches that entry by.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kargo
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kargo
+  source:
+    repoURL: ghcr.io/akuity/kargo-charts
+    chart: kargo
+    targetRevision: 1.11.2
+    helm:
+      values: |
+        api:
+          service:
+            type: ClusterIP
+          tls:
+            enabled: false
+          adminAccount:
+            # bcrypt of "admin". A throwaway cluster on localhost, and the
+            # alternative is a demo nobody can log into.
+            passwordHash: "$2a$10$Zrhhie4vLz5ygtVSaif6o.qN36jgs6vjtMBdM6yrU1FOeiAAMMxOm"
+            tokenSigningKey: local-proving-ground-not-a-secret
+        controller:
+          resources:
+            requests:
+              cpu: 25m
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
