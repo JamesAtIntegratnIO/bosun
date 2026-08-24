@@ -4,6 +4,15 @@ Reference implementation. This is the adapter that is actually exercised.
 
 ## Wiring
 
+> **If you copied this template before 2026-08-24, check two things.** The
+> `diff` step was missing `-repo .`, which is the flag that enables chart-diff —
+> without it the gate reports "a version changed" and stops, silently skipping
+> the resource findings, the dropped-CRD-version detection and the consumer
+> count that decides whether a change blocks. Nothing errored; it just went
+> green on the class of change the gate exists to catch. There was also no
+> schema-validation job, and the aggregate check watched only `render`, so a
+> job added later could fail while the required check stayed green.
+
 [`validate-addons.yaml`](validate-addons.yaml) is a copy-and-adjust template:
 change the `paths:` filter to match where your addon values live, pin
 `GATE_IMAGE` to a digest, and drop it in `.github/workflows/`.
