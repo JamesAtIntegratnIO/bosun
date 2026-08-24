@@ -306,6 +306,16 @@ func str(v any) string {
 // lines around each change. A moved value now appears as context under its new
 // key, which is the whole question a reader has.
 //
+// KNOWN NOISE, and not a defect in this function: the proposal is re-serialised
+// from a map, so its keys come out sorted and its lists at canonical indent.
+// Every untouched field whose position or indent moved therefore shows as a
+// change, and a six-field migration can render as twenty diff lines. The
+// semantic account -- which field went where, and why -- is written above the
+// diff by the caller; this is the "show me everything" backstop underneath it.
+// Removing the noise means preserving the original document's key order and
+// style through the round trip, which is a node-level rewrite of a different
+// size.
+//
 // Documents here are single Kubernetes manifests and the caller caps how many
 // are reshaped per pull request, so the quadratic table is small by
 // construction. The guard below is for the pathological input, not the
