@@ -204,3 +204,71 @@ func containsAll(list []string, want ...string) bool {
 	}
 	return true
 }
+
+// A provenance line's whole job is being exact about what the evidence was, so
+// a number in it that reads as the wrong fact is worse than no number.
+//
+// "0 upstream commit(s) in v0.13.1...v0.13.2" was the first wording, and it
+// reads as THE RANGE WAS EMPTY. It was not -- there were two commits and
+// neither mentioned what the gate found, which is a different statement and a
+// more useful one.
+func TestTheProvenanceDistinguishesAnEmptyRangeFromAnUnhelpfulOne(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		compare *upstream.Compare
+		want    string
+		absent  string
+	}{
+		{
+			name: "commits that explain it are counted",
+			compare: &upstream.Compare{Range: "v1...v2", Total: 9,
+				Relevant: []upstream.Commit{{SHA: "abc", Message: "fix: the thing"}}},
+			want: "1 upstream commit(s) in `v1...v2`",
+		},
+		{
+			name:    "a range with commits that say nothing says THAT",
+			compare: &upstream.Compare{Range: "v1...v2", Total: 2},
+			want:    "none of the 2 commit(s) in `v1...v2` mentions it",
+			absent:  "0 upstream commit(s)",
+		},
+		{
+			// The ordinary shape of the case this was built for: the commit
+			// message does not name the kind, and the deleted template does.
+			name: "a diff that matched where no message did is still evidence",
+			compare: &upstream.Compare{Range: "v1...v2", Total: 5,
+				Files: []string{"charts/x/templates/clusterrole.yaml"}},
+			want:   "1 file(s) in the upstream diff for `v1...v2`",
+			absent: "none of the",
+		},
+		{
+			name:    "a genuinely empty range claims nothing",
+			compare: &upstream.Compare{Range: "v1...v2"},
+			absent:  "commit(s) in",
+		},
+		{
+			name: "a capped list says it is showing the first few",
+			compare: &upstream.Compare{Range: "v1...v2", Total: 400, Capped: true,
+				Relevant: []upstream.Commit{{SHA: "abc", Message: "fix: the thing"}}},
+			want: "(the first few)",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.triage.Brand = "Bosun"
+			got := h.triage.renderExplanation(
+				&llm.Verdict{Classification: llm.ClassNoAction, Summary: "s", Reasoning: "r"},
+				&upstream.Notes{
+					SourceRepo: "org/repo", Origin: "releases",
+					Releases: []upstream.Release{{Tag: "v2", Body: "b"}},
+					Note:     "Upstream notes from org/repo.",
+					Compare:  tc.compare,
+				})
+			if tc.want != "" && !strings.Contains(got, tc.want) {
+				t.Errorf("provenance lacks %q:\n%s", tc.want, got)
+			}
+			if tc.absent != "" && strings.Contains(got, tc.absent) {
+				t.Errorf("provenance still says %q:\n%s", tc.absent, got)
+			}
+		})
+	}
+}

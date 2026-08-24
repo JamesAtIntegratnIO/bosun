@@ -3,6 +3,14 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.14.0]
+
+### Added
+
+- **Upstream notes work for classic Helm repositories** -- twenty of the
+  fifty-three artifacts in a real promotion target list, and previously none of
+  them. No values change; see the agent changelog.
+
 ## [0.13.2]
 
 ### Fixed

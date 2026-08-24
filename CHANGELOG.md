@@ -3,6 +3,87 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.14.0] - 2026-08-24
+
+Three releases in an afternoon each fixed the bug the previous one's
+verification exposed. That is a bad way to work and it cost the operator a
+deploy cycle every time. This release is the pass that should have come first:
+the resolver was pointed at **every artifact in a real promotion target list**
+at once, offline, and everything that broke was fixed together.
+
+**Before: 17 of 41 artifacts resolved. After: 34 of 41.** The remaining seven are
+publishers who genuinely declare no source, each now refused by name.
+
+### Added
+
+- **Classic Helm repositories.** Twenty of the forty-one artifacts are
+  `https://` Helm repositories -- metallb, kyverno, cilium, cert-manager,
+  external-secrets, argo-cd, authentik, trivy-operator, loki, grafana and the
+  rest. **Every chart in the eval suite.** None of them had ever resolved.
+
+  The cause was one line in the promotion pipeline. A chart's artifact is built
+  as `repoURL SPACE chartName`; for an OCI chart the name is empty so the value
+  trims to a bare URL, which is why every OCI path worked and no classic one
+  did. The two-field string was parsed as a single OCI reference and turned into
+  `https://https/v2//kyverno.github.io/kyverno/manifests/latest` -- an error
+  naming neither the artifact nor the problem.
+
+  A chart's source now comes from the repository's `index.yaml`, where
+  `helm repo index` copies Chart.yaml's `sources` exactly as `helm push` copies
+  it into an OCI annotation. Same declaration by the same publisher, in the
+  format their distribution channel uses. `home` is a fallback, because for many
+  charts it is the only field set. The index read is capped at 16MiB -- some are
+  enormous -- and a bigger one degrades to a sentence.
+
+- **Docker Hub short references.** `redis`, `linuxserver/sonarr`,
+  `metio/matrix-alertmanager-receiver` and `redimp/otterwiki` were refused as
+  "not an OCI reference", on the principle that guessing a registry is the same
+  mistake as guessing a repository.
+
+  **That principle was right about the wrong thing, and this reverses it
+  deliberately.** Guessing a repository from a registry path invents a fact
+  nobody stated; a short reference invents nothing, because Docker's convention
+  gives it exactly one meaning and the pipeline is handing us the reference
+  rather than us inferring one. A string that is not a reference is still
+  refused.
+
+### Fixed
+
+- **`docker.io` is a website.** The v2 API lives at `registry-1.docker.io`, and
+  asking the wrong one returns HTML -- surfacing as `invalid character '<'
+  looking for beginning of value`, an error naming neither the host nor the
+  problem. The auth host was already mapped here; the registry host was not.
+
+- **An index whose children declare no platform is followed, not refused.** A
+  single-manifest index and some publishers' output carry `platform: null`, and
+  the label sits on the one child regardless.
+
+- **"0 upstream commit(s) in `v0.13.1...v0.13.2`" reads as "the range was
+  empty".** It was not: there were two commits and neither mentioned what the
+  gate found -- a different statement, and a more useful one. Observed in
+  production on the first pull request the fixed resolver triaged.
+
+  0.13.2 did not fix this and the reason is worth recording: that release
+  changed three lines in `triage.go` and this line sits twenty lines away in the
+  same file with the same defect. An instance fix where the class needed a
+  sweep. Doing the sweep turned up a second case immediately -- where the commit
+  MESSAGES matched nothing but the upstream DIFF did, the wording would have
+  claimed nothing mentioned it while the explanation stood on exactly that file
+  evidence, which is the shape this whole feature was built for.
+
+### Added, for the next time
+
+- **`TestAuditArtifacts`** -- point the resolver at a file of artifact
+  references and get a table of what resolves and what does not. Every bug in
+  this package has been the same bug: reality had a shape the fixtures did not,
+  and the code was only ever aimed at one artifact at a time. The list of
+  artifacts a pipeline actually promotes is the cheapest way to find that out
+  before anybody deploys.
+
+  ```bash
+  UPSTREAM_AUDIT_FILE=artifacts.txt go test ./upstream -run Audit -v
+  ```
+
 ## [0.13.2] - 2026-08-24
 
 ### Fixed
