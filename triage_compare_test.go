@@ -272,3 +272,24 @@ func TestTheProvenanceDistinguishesAnEmptyRangeFromAnUnhelpfulOne(t *testing.T) 
 		})
 	}
 }
+
+// A compare answer carries at most 250 commits. "None of the 1896 mentions it"
+// therefore claims a search nobody ran -- observed on a live authentik bump.
+func TestATruncatedSearchSaysHowManyItActuallyRead(t *testing.T) {
+	h := newHarness(t)
+	h.triage.Brand = "Bosun"
+	got := h.triage.renderExplanation(
+		&llm.Verdict{Classification: llm.ClassNoAction, Summary: "s", Reasoning: "r"},
+		&upstream.Notes{
+			SourceRepo: "org/repo", Origin: "releases",
+			Releases: []upstream.Release{{Tag: "v2", Body: "b"}},
+			Note:     "Upstream notes from org/repo.",
+			Compare:  &upstream.Compare{Range: "v1...v2", Total: 1896, Truncated: true},
+		})
+	if strings.Contains(got, "none of the 1896 commit(s) in") {
+		t.Errorf("claimed a search over 1896 commits when 250 were read:\n%s", got)
+	}
+	if !strings.Contains(got, "of 1896") || !strings.Contains(got, "read from") {
+		t.Errorf("does not say how many were actually read:\n%s", got)
+	}
+}

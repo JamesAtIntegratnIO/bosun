@@ -103,6 +103,10 @@ const MaxCompareCommits = 10
 // touched the ClusterRole", which is not a question worth that.
 const compareTruncateAt = 250
 
+// CompareReadCap is how many commits one compare answer carries, exported so a
+// caller can say how many it actually searched rather than how many exist.
+const CompareReadCap = compareTruncateAt
+
 // Compare reads the commits between the two versions and keeps the ones that
 // mention something the gate found.
 //
@@ -286,17 +290,32 @@ func (g *GitHubReleases) compareTags(ctx context.Context, repo, artifact, from, 
 // question asked of two sources and two implementations would eventually
 // disagree about it.
 func framing(names []string, lo, hi string) (base, head string) {
+	// BY VERSION, not by the order the list arrived in.
+	//
+	// This took the first match in each direction, on the reasoning that a
+	// release list is newest-first. GitHub returns releases in PUBLISH-DATE
+	// order, and any project that backports interleaves them: authentik
+	// published `version/2026.5.5` at 17:15 and `version/2026.2.6` at 17:14, so
+	// the "newest" entry in range depends on who cut a patch last.
+	//
+	// Measured on a live promotion of 2025.12.4 -> 2026.2.3, which framed
+	// itself as `version/2025.8.6...version/2025.12.6` -- a window that ends
+	// BELOW the version being adopted and starts four minor releases early.
+	// 1896 commits were then read over the wrong range and reported as
+	// evidence, which is worse than reading none.
+	var headV, baseV string
 	for _, name := range names {
 		v := normalise(name)
 		if v == "" {
 			continue
 		}
-		// Newest-first, so the first match in each direction is the one wanted.
-		if head == "" && inRange(v, lo, hi) {
-			head = name
+		// Head is the HIGHEST version in range, base the highest at or below
+		// the version being left.
+		if inRange(v, lo, hi) && (headV == "" || cmpVer(v, headV) > 0) {
+			head, headV = name, v
 		}
-		if base == "" && lo != "" && cmpVer(v, lo) <= 0 {
-			base = name
+		if lo != "" && cmpVer(v, lo) <= 0 && (baseV == "" || cmpVer(v, baseV) > 0) {
+			base, baseV = name, v
 		}
 	}
 	// Both or neither. A half-answer here would be a range with one end, and
