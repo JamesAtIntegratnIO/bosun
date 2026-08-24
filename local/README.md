@@ -87,6 +87,7 @@ make demo             # a green gate, promoted and merged
 make demo-triage      # a red gate the agent refuses to fix, and says why
 make demo-structural  # a red gate the swap alone cannot fix
 make demo-forged      # a gate report the agent refuses to believe
+make demo-egress      # a host the agent is told not to visit
 make scenarios        # the recorded incidents, replayed live
 ```
 
@@ -173,6 +174,26 @@ fourteen upstream chart versions locally would prove nothing extra — but the
 agent, the model, the reasoning and every commit it pushes are live. The
 scenarios read the same fixtures the eval suite scores, which is what stops
 the thing the eval measures and the thing you watch from drifting apart.
+
+`make demo-egress` covers the half of "egress is open, logged and deniable"
+that a working deployment never shows you: a deny rule only proves itself by
+stopping something that otherwise works. It forbids `*.docker.io`, opens a pull
+request the agent will escalate — the escalate path reaches for upstream notes,
+and reaching for them starts by asking the registry who publishes the artifact —
+and asserts two things:
+
+```
+outbound REFUSED auth.docker.io (egress deny rule "*.docker.io")
+outbound REFUSED registry-1.docker.io (egress deny rule "*.docker.io")
+PR 88: escalated: unexplained namespace move
+```
+
+that the refusal **names the rule that caused it**, and that the triage still
+**reached a verdict without what it could not read**. A blocked host must
+shorten the brief, not end the run. It changes the running deployment and puts
+it back, including on failure, and verifies the restore against the deployment's
+own spec rather than a log line — during a rollout there are two Running pods
+and `logs deploy/...` picks one of them.
 
 ### What the replay cannot supply
 

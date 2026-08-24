@@ -14,6 +14,7 @@ help:
 	@echo "make scenarios    replay the ten recorded incidents against the live agent"
 	@echo "make demo-structural  a bump the swap cannot fix, and the model that can"
 	@echo "make demo-forged  a gate report the agent refuses to believe"
+	@echo "make demo-egress  a host the agent is told not to visit"
 	@echo "make reset   put the flow back to the start so demo can run again"
 	@echo "make down    delete the cluster; colima keeps running"
 	@echo "make clean   down, and stop colima too"
@@ -80,6 +81,14 @@ demo-structural:
 .PHONY: demo-forged
 demo-forged:
 	@bash $(SCRIPTS)/80-demo-forged-report.sh
+
+# Act five: the deny half of "egress is open and logged". Forbids a host the
+# agent is about to need, proves the refusal names its rule, and proves the
+# triage still reaches a verdict without it. Changes the running deployment and
+# puts it back, including on failure.
+.PHONY: demo-egress
+demo-egress:
+	@bash $(SCRIPTS)/85-demo-egress.sh
 
 
 .PHONY: reset
