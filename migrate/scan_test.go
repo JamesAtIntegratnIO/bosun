@@ -188,7 +188,7 @@ external-secrets:
     - apiVersion: external-secrets.io/v1beta1
       kind: ClusterSecretStore
       metadata:
-        name: onepassword-store
+        name: central-store
 cert-manager:
   extraDeploy:
     - |
@@ -205,7 +205,7 @@ external-secrets:
     - apiVersion: external-secrets.io/v1
       kind: ClusterSecretStore
       metadata:
-        name: onepassword-store
+        name: central-store
 cert-manager:
   extraDeploy:
     - |
