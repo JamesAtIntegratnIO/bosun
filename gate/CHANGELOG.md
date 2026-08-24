@@ -55,8 +55,6 @@ All notable changes to `gitops-gate`. Format follows
   artifact -- the question cannot be answered, so the change is still reported
   as `changed` rather than claimed safe.
 
-### Added
-
 - **A changed resource now says WHICH fields changed.** The gate rendered both
   versions, compared them, and then reported `Changed (25)` -- a list of names.
   That is the same non-answer the version number already gave, and it asks a
