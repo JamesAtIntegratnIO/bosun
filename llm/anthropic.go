@@ -49,7 +49,7 @@ func (a *Anthropic) Classify(ctx context.Context, systemPrompt, userPrompt strin
 		if err := json.Unmarshal(input, &v); err != nil {
 			return nil, fmt.Errorf("parsing tool input: %w", err)
 		}
-		if err := v.Valid(); err != nil {
+		if err := v.Validate(); err != nil {
 			return nil, fmt.Errorf("model returned an unusable verdict: %w", err)
 		}
 		return &v, nil

@@ -248,9 +248,9 @@ func cmdClusters(args []string) error {
 
 	// Pick up site-specific ignore keys if a config is reachable. Export is
 	// deliberately usable without one, so a missing config is not an error.
-	filter := gate.NewExportFilter(nil, "")
+	filter := gate.NewExportFilter("", nil)
 	if cfg, err := gate.LoadConfig(*configPath); err == nil {
-		filter = gate.NewExportFilter(cfg, filepath.Dir(*configPath))
+		filter = gate.NewExportFilter(filepath.Dir(*configPath), cfg)
 	}
 
 	inv, err := gate.ExportClusters(*kubeContext, *namespace, filter)

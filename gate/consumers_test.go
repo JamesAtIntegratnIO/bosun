@@ -69,7 +69,7 @@ func TestConsumersDecideWhetherADroppedVersionBlocks(t *testing.T) {
 	withConsumer := t.TempDir()
 	writeManifest(t, withConsumer, "platform/es.yaml", declaring)
 	res := &DiffResult{Objects: []ObjectChange{finding}}
-	AnnotateConsumers(res, withConsumer)
+	AnnotateConsumers(withConsumer, res)
 	if !res.Objects[0].ConsumersKnown || len(res.Objects[0].ConsumerFiles) != 1 {
 		t.Fatalf("want the declaring manifest counted, got %+v", res.Objects[0])
 	}
@@ -78,7 +78,7 @@ func TestConsumersDecideWhetherADroppedVersionBlocks(t *testing.T) {
 	}
 
 	empty := &DiffResult{Objects: []ObjectChange{finding}}
-	AnnotateConsumers(empty, t.TempDir())
+	AnnotateConsumers(t.TempDir(), empty)
 	if !empty.Objects[0].ConsumersKnown {
 		t.Fatal("the empty repository was still scanned")
 	}
@@ -99,7 +99,7 @@ func TestAFindingWithoutAKindStaysBlocking(t *testing.T) {
 	got := diffObjects(before, after)
 
 	res := &DiffResult{Objects: got}
-	AnnotateConsumers(res, t.TempDir())
+	AnnotateConsumers(t.TempDir(), res)
 	if res.Objects[0].ConsumersKnown {
 		t.Fatal("nothing to scan for, so nothing should claim to have been scanned")
 	}
@@ -115,7 +115,7 @@ func TestTheReportNamesTheConsumers(t *testing.T) {
 	root := t.TempDir()
 	writeManifest(t, root, "platform/es.yaml", declaring)
 	res := &DiffResult{Objects: []ObjectChange{esoFinding(t)}}
-	AnnotateConsumers(res, root)
+	AnnotateConsumers(root, res)
 
 	var b strings.Builder
 	res.Report(&b)
@@ -169,12 +169,12 @@ func TestTheRepairsOwnMoveDoesNotReBlock(t *testing.T) {
 	// With consumers counted at zero, the repaired diff is green; the two
 	// unexplained moves each keep it red on their own.
 	res := &DiffResult{Objects: []ObjectChange{objects[0], objects[1]}}
-	AnnotateConsumers(res, t.TempDir())
+	AnnotateConsumers(t.TempDir(), res)
 	if res.Blocking() {
 		t.Error("a completed repair must go green: consumers at zero and only the demanded move")
 	}
 	still := &DiffResult{Objects: []ObjectChange{objects[0], objects[1], objects[2]}}
-	AnnotateConsumers(still, t.TempDir())
+	AnnotateConsumers(t.TempDir(), still)
 	if !still.Blocking() {
 		t.Error("an unexplained apiVersion move must still block")
 	}
@@ -207,7 +207,7 @@ func TestARemovedCRDIsInspectedNotJustListed(t *testing.T) {
 
 	// Nothing in the repository declares it: report, do not block, say why.
 	clean := &DiffResult{Objects: []ObjectChange{f}}
-	AnnotateConsumers(clean, t.TempDir())
+	AnnotateConsumers(t.TempDir(), clean)
 	if !clean.Objects[0].ConsumersKnown || clean.Blocking() {
 		t.Errorf("an unused removed API must not block, got %+v", clean.Objects[0])
 	}
@@ -223,7 +223,7 @@ func TestARemovedCRDIsInspectedNotJustListed(t *testing.T) {
 	writeManifest(t, used, "policies/report.yaml",
 		"apiVersion: kyverno.io/v2\nkind: AdmissionReport\nmetadata:\n  name: r\n")
 	dirty := &DiffResult{Objects: []ObjectChange{f}}
-	AnnotateConsumers(dirty, used)
+	AnnotateConsumers(used, dirty)
 	if len(dirty.Objects[0].ConsumerFiles) != 1 || !dirty.Blocking() {
 		t.Errorf("a removed API with consumers must block and name them, got %+v", dirty.Objects[0])
 	}

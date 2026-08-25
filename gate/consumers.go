@@ -15,7 +15,7 @@ import (
 // Only possible with a worktree, which is why it runs from the diff command's
 // -repo path and nowhere else. A diff without a repository leaves the findings
 // unscanned, and unscanned blocks.
-func AnnotateConsumers(res *DiffResult, root string) {
+func AnnotateConsumers(repoRoot string, res *DiffResult) {
 	for i := range res.Objects {
 		o := &res.Objects[i]
 		if o.Kind != ObjectCRDVersionRemoved {
@@ -27,7 +27,7 @@ func AnnotateConsumers(res *DiffResult, root string) {
 			// name what to look for, so it stays unscanned and blocking.
 			continue
 		}
-		hits, err := migrate.Scan(root, d)
+		hits, err := migrate.Scan(repoRoot, d)
 		if err != nil {
 			res.Warnings = append(res.Warnings,
 				fmt.Sprintf("could not scan the repository for %s consumers: %v", d.CRD, err))

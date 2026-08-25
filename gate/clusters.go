@@ -46,7 +46,7 @@ type ExportFilter struct {
 // NewExportFilter builds the filter a snapshot export wants: the defaults
 // common to any ArgoCD install, plus whatever the config declares, plus the
 // annotation keys the repository actually templates with.
-func NewExportFilter(cfg *Config, repoRoot string) ExportFilter {
+func NewExportFilter(repoRoot string, cfg *Config) ExportFilter {
 	f := ExportFilter{IgnoreKeys: append([]string{}, defaultNoisyKeys...)}
 	if cfg != nil {
 		f.IgnoreKeys = append(f.IgnoreKeys, cfg.ClustersExport.IgnoreKeys...)

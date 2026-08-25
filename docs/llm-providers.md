@@ -62,8 +62,8 @@ Classify(ctx context.Context, systemPrompt, userPrompt string) (*Verdict, error)
 Name() string   // provider and model, for logs and PR comments
 ```
 
-Constrain the model to `VerdictSchema()` if the backend can. Call `Verdict.Valid()`
-before returning.
+Constrain the model to `VerdictSchema()` if the backend can. Call `Verdict.Validate()`
+before returning — it checks the verdict and repairs an empty escalation reason.
 
 Structural migration is a **separate, optional** interface. A provider that does
 not implement it simply does not offer that path — the agent type-asserts for it

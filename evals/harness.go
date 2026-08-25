@@ -97,10 +97,17 @@ func BuildPrompt(c Case, withInventory bool) string {
 
 // Run executes one case against whichever prompt it names.
 //
-// The two paths are scored by different things because they fail at different
+// The paths are scored by different things because they fail at different
 // places. Triage is scored on what the applier would have WRITTEN -- a perfect
 // fix in the wrong shape has fixed nothing. Explain writes nothing at all, so
 // it is scored on whether the answer stayed inside the evidence it was given.
+// Restructure is scored twice, by the harness's own validators and against a
+// hand-verified document, because a proposal they accept and that is still
+// wrong is the only outcome on that path which reaches disk.
+//
+// withInventory applies to the triage and explain paths only. A restructure
+// case builds its prompt from the two schemas via structural.Prompt and never
+// sees the file inventory, so the argument is ignored there.
 func Run(ctx context.Context, p llm.Provider, system string, c Case, withInventory bool) Result {
 	switch c.Path {
 	case PathExplain:

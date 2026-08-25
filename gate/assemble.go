@@ -53,7 +53,7 @@ func Assemble(repoRoot string, cfg *Config, base, head *Table) *DiffResult {
 	// that still declare it -- which is what decides whether it blocks, and
 	// what a repair needs to know it moved.
 	if repoRoot != "" {
-		AnnotateConsumers(res, repoRoot)
+		AnnotateConsumers(repoRoot, res)
 	}
 	return res
 }

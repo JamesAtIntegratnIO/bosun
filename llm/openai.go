@@ -172,7 +172,7 @@ func parseVerdict(content string) (*Verdict, error) {
 	if err := json.Unmarshal([]byte(s), &v); err != nil {
 		return nil, fmt.Errorf("model did not return a parseable verdict: %w (got %q)", err, truncate(s, 300))
 	}
-	if err := v.Valid(); err != nil {
+	if err := v.Validate(); err != nil {
 		return nil, fmt.Errorf("model returned an unusable verdict: %w", err)
 	}
 	return &v, nil

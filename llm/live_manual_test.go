@@ -65,7 +65,7 @@ Propose the fix.`
 	if v.EscalationReason != "" {
 		t.Logf("escalation=%s", v.EscalationReason)
 	}
-	if err := v.Valid(); err != nil {
+	if err := v.Validate(); err != nil {
 		t.Fatalf("verdict invalid: %v", err)
 	}
 }
