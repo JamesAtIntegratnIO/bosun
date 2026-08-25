@@ -1,6 +1,7 @@
 package gate
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -108,8 +109,41 @@ func TestIdenticalChangesAcrossClustersCollapse(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("want one collapsed change, got %d: %+v", len(got), got)
 	}
-	if !strings.Contains(got[0].Cluster, "a") || !strings.Contains(got[0].Cluster, "b") {
-		t.Errorf("both clusters must be named: %q", got[0].Cluster)
+	// Exact, not Contains: the input arrives from a map range, so a report
+	// that names both clusters in an unstable order still differs run to run.
+	if got[0].Cluster != "a, b" {
+		t.Errorf("want cluster %q, got %q", "a, b", got[0].Cluster)
+	}
+}
+
+// The two loops in diffObjects range over maps, so the only way to know the
+// report is stable is to run it enough times to catch an unstable one.
+func TestCollapsedChangeIsStableAcrossRuns(t *testing.T) {
+	mk := func(hash string) []Object {
+		var out []Object
+		for _, c := range []string{"hub", "hub-east", "edge", "adam", "zulu"} {
+			out = append(out,
+				Object{Cluster: c, Kind: "Deployment", Namespace: "x", Name: "c", APIVersion: "apps/v1", Hash: hash},
+				Object{Cluster: c, Kind: "Service", Namespace: "x", Name: "s", APIVersion: "v1", Hash: hash},
+			)
+		}
+		return out
+	}
+	base, head := mk("1"), mk("2")
+
+	want := diffObjects(base, head)
+	for i := 0; i < 200; i++ {
+		got := diffObjects(base, head)
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("run %d differs:\n got %+v\nwant %+v", i, got, want)
+		}
+	}
+	for _, c := range want {
+		// "hub" must survive alongside "hub-east" -- a substring membership
+		// test would have swallowed it.
+		if c.Cluster != "adam, edge, hub, hub-east, zulu" {
+			t.Errorf("want every cluster named in sorted order, got %q", c.Cluster)
+		}
 	}
 }
 

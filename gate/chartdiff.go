@@ -50,28 +50,34 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) ([]Object, []Obj
 		return nil, nil, nil, nil
 	}
 
-	var (
-		mu       sync.Mutex
-		beforeOb []Object
-		afterOb  []Object
-		drops    []ObjectChange
-		warnings []string
-		wg       sync.WaitGroup
-	)
+	// Results are written into a slot per pair rather than appended under a
+	// mutex. Appending publishes them in goroutine-completion order, which is
+	// a different order on every run -- and the drops and warnings go straight
+	// into the pull request comment, so the gate would report a difference
+	// between two runs that is not a difference in the manifests. Slotting by
+	// index keeps the report in `pairs` order, which is head.Rows order.
+	type result struct {
+		before, after []Object
+		drop          *ObjectChange
+		warnings      []string
+	}
+	results := make([]result, len(pairs))
+
+	var wg sync.WaitGroup
 	sem := make(chan struct{}, cfg.Concurrency)
 
-	for _, p := range pairs {
+	for i, p := range pairs {
 		wg.Add(1)
-		go func(p pair) {
+		go func(i int, p pair) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
+			res := &results[i]
+
 			b, errB := renderChartVersion(repoRoot, p.before)
 			a, errA := renderChartVersion(repoRoot, p.after)
 
-			mu.Lock()
-			defer mu.Unlock()
 			// A chart that cannot be pulled is reported, never silently
 			// skipped: "no resource changes" and "we could not look" must not
 			// read identically.
@@ -80,13 +86,12 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) ([]Object, []Obj
 				if err == nil {
 					err = errA
 				}
-				warnings = append(warnings, fmt.Sprintf(
+				res.warnings = append(res.warnings, fmt.Sprintf(
 					"%s: could not render %s at both versions, so its resource changes are NOT covered: %v",
 					p.after.App, p.after.Chart, err))
 				return
 			}
-			beforeOb = append(beforeOb, b...)
-			afterOb = append(afterOb, a...)
+			res.before, res.after = b, a
 
 			// A settings drop is reported even though the render succeeded --
 			// it is invisible in the render BY DEFINITION, because helm
@@ -94,22 +99,37 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) ([]Object, []Obj
 			gone, err := droppedValues(repoRoot, p.before, p.after)
 			switch {
 			case err != nil:
-				warnings = append(warnings, fmt.Sprintf(
+				res.warnings = append(res.warnings, fmt.Sprintf(
 					"%s: could not compare %s's values surface across versions, so settings it stops reading are NOT covered: %v",
 					p.after.App, p.after.Chart, err))
 			case len(gone) > 0:
-				drops = append(drops, ObjectChange{
+				res.drop = &ObjectChange{
 					Kind:    "valuesKeyDropped",
 					Object:  p.after.App,
 					Cluster: p.after.Cluster,
 					From:    p.before.Version,
 					To:      p.after.Version,
 					Keys:    gone,
-				})
+				}
 			}
-		}(p)
+		}(i, p)
 	}
 	wg.Wait()
+
+	var (
+		beforeOb []Object
+		afterOb  []Object
+		drops    []ObjectChange
+		warnings []string
+	)
+	for _, res := range results {
+		beforeOb = append(beforeOb, res.before...)
+		afterOb = append(afterOb, res.after...)
+		if res.drop != nil {
+			drops = append(drops, *res.drop)
+		}
+		warnings = append(warnings, res.warnings...)
+	}
 	return beforeOb, afterOb, drops, warnings
 }
 

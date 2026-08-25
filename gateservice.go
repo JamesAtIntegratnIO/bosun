@@ -297,17 +297,10 @@ func (g *GateService) run(ctx context.Context, pr *gitprovider.PullRequest) *gat
 	}
 
 	// Chart-diff and consumer annotation both want a worktree; the head is
-	// the one under judgement.
-	beforeOb, afterOb, valueDrops, warns := gate.ChartDiff(head, cfg, baseTable, headTable)
-	baseTable.Objects = append(baseTable.Objects, beforeOb...)
-	headTable.Objects = append(headTable.Objects, afterOb...)
-	baseTable.Warnings = append(baseTable.Warnings, warns...)
-
-	res := gate.Diff(baseTable, headTable)
-	// Not an object diff: a setting the new chart stops reading leaves the
-	// render identical, which is exactly why it needs saying out loud.
-	res.Objects = append(res.Objects, valueDrops...)
-	gate.AnnotateConsumers(res, head)
+	// the one under judgement. gate.Assemble owns the order of the four steps
+	// so this surface and the CLI cannot reach different verdicts on one
+	// commit -- which they had already started to do.
+	res := gate.Assemble(head, cfg, baseTable, headTable)
 
 	var report strings.Builder
 	res.Report(&report)

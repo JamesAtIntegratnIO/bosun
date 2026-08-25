@@ -435,32 +435,44 @@ func diffObjects(base, head []Object) []ObjectChange {
 
 	// The same resource changing identically on several clusters is one
 	// finding, not one per cluster. Collapse them and say where.
+	//
+	// Both loops above range over a map, so `out` arrives in a different order
+	// on every run. The cluster names are therefore gathered into a set and
+	// sorted rather than concatenated as they arrive: the same input has to
+	// produce the same report, or a reviewer comparing two runs of the gate
+	// sees a difference that is not in the manifests. Membership is a set for
+	// a second reason -- a substring test would treat "hub" as already present
+	// once "hub-east" was, and silently drop a cluster from the finding.
 	collapsed := map[string]*ObjectChange{}
+	clusters := map[string]map[string]bool{}
 	var order []string
 	for i := range out {
 		c := out[i]
 		k := c.Kind + "|" + c.Object + "|" + c.From + "|" + c.To
-		if prev, ok := collapsed[k]; ok {
-			if c.Cluster != "" && !strings.Contains(prev.Cluster, c.Cluster) {
-				prev.Cluster += ", " + c.Cluster
-			}
-			continue
+		if _, ok := collapsed[k]; !ok {
+			cp := c
+			collapsed[k] = &cp
+			clusters[k] = map[string]bool{}
+			order = append(order, k)
 		}
-		cp := c
-		collapsed[k] = &cp
-		order = append(order, k)
+		if c.Cluster != "" {
+			clusters[k][c.Cluster] = true
+		}
 	}
+	sort.Strings(order)
 	out = out[:0]
 	for _, k := range order {
-		out = append(out, *collapsed[k])
+		c := *collapsed[k]
+		names := make([]string, 0, len(clusters[k]))
+		for name := range clusters[k] {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		c.Cluster = strings.Join(names, ", ")
+		out = append(out, c)
 	}
 
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Kind != out[j].Kind {
-			return out[i].Kind < out[j].Kind
-		}
-		return out[i].Object < out[j].Object
-	})
+	sortObjectChanges(out)
 	return out
 }
 

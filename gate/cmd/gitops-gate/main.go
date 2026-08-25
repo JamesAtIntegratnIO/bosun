@@ -141,29 +141,17 @@ func cmdDiff(args []string) (bool, error) {
 
 	// Chart-diff turns "the version moved" into "here is what the version
 	// moving does". It needs the repository for the value files, so it is
-	// opt-in via -repo rather than assumed.
-	var valueDrops []gate.ObjectChange
+	// opt-in via -repo rather than assumed -- gate.Assemble skips the two
+	// worktree-dependent steps when the root is empty.
+	var cfg *gate.Config
 	if *repo != "" {
-		cfg, _, err := load(*repo, *cfgPath)
+		var err error
+		cfg, _, err = load(*repo, *cfgPath)
 		if err != nil {
 			return false, err
 		}
-		beforeOb, afterOb, drops, warns := gate.ChartDiff(*repo, cfg, base, head)
-		base.Objects = append(base.Objects, beforeOb...)
-		head.Objects = append(head.Objects, afterOb...)
-		base.Warnings = append(base.Warnings, warns...)
-		valueDrops = drops
 	}
-
-	res := gate.Diff(base, head)
-	res.Objects = append(res.Objects, valueDrops...)
-
-	// With a worktree, a dropped served version can be traced to the manifests
-	// that still declare it -- which is what decides whether it blocks, and
-	// what a repair needs to know it moved.
-	if *repo != "" {
-		gate.AnnotateConsumers(res, *repo)
-	}
+	res := gate.Assemble(*repo, cfg, base, head)
 
 	w := os.Stdout
 	if *report != "" {
@@ -182,13 +170,15 @@ func cmdDiff(args []string) (bool, error) {
 		}
 	}
 
-	if res.Blocking() {
-		fmt.Fprintf(os.Stderr, "\ngitops-gate: %d targeting change(s), %d other source change(s) -- blocking\n",
-			len(res.Targeting), len(res.Other))
-		return true, nil
-	}
-	fmt.Fprintf(os.Stderr, "\ngitops-gate: no targeting change; %d version change(s)\n", len(res.Versions))
-	return false, nil
+	// The same headline the report leads with and the in-cluster service puts
+	// on its commit status. Counting targeting and source changes here was
+	// wrong in the way that matters: a run blocked only by a dropped API
+	// version or a dropped setting printed "0 targeting change(s), 0 other
+	// source change(s) -- blocking", which reads as the gate contradicting
+	// itself.
+	blocking, headline := res.Verdict()
+	fmt.Fprintf(os.Stderr, "\ngitops-gate: %s\n", headline)
+	return blocking, nil
 }
 
 // cmdValidate schema-validates every rendered manifest with kubeconform.
