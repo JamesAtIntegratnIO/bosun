@@ -202,7 +202,7 @@ func survivingVersion(o Object) string {
 
 // ObjectChange is one difference between two renders of the same object set.
 type ObjectChange struct {
-	Kind    string `json:"kind"` // added | removed | changed | apiVersion | crdVersionRemoved
+	Kind    string `json:"kind"` // added | removed | changed | apiVersion | crdVersionRemoved | valuesKeyDropped
 	Object  string `json:"object"`
 	Cluster string `json:"cluster,omitempty"`
 	From    string `json:"from,omitempty"`
@@ -225,6 +225,12 @@ type ObjectChange struct {
 	// dropped served version could ever go green: the first live repair
 	// proved it by migrating 27 manifests and turning its own gate red.
 	PartOfMigration bool `json:"partOfMigration,omitempty"`
+
+	// valuesKeyDropped only. Keys are paths this repository SETS that the old
+	// chart version declared and the new one does not. Helm ignores an unknown
+	// value rather than failing on it, so every one of these is a setting that
+	// silently stops applying while the render stays green.
+	Keys []string `json:"keys,omitempty"`
 
 	// Note is a computed fact about this change worth a reader's eyes --
 	// today, a removed binding whose ServiceAccount retains no RBAC in the

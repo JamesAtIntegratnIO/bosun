@@ -203,3 +203,87 @@ func PreferredOrder(versions []string) []string {
 	})
 	return out
 }
+
+// Blockers counts each reason the gate is red, separately, because they do not
+// all have the same answer.
+//
+// The distinction that matters is whether a reason has a REPOSITORY-SIDE
+// remedy. Manifests declaring a dropped version do -- move them, which the
+// agent does deterministically. A targeting or source change does -- a human
+// edits the values that caused it. An object whose own apiVersion moved does
+// NOT: the chart renders it, nothing in the repository declares it, and there
+// is no edit anyone can make. Telling a reader "this needs a human" without
+// telling them nothing can be done in the repository wastes the search.
+type Blockers struct {
+	Targeting int `json:"targeting"`
+	Source    int `json:"source"`
+	// APIVersion is objects the CHART renders whose apiVersion moved, and that
+	// is not part of a migration the repair is performing.
+	APIVersion int `json:"apiVersion"`
+	// Consumers is manifests IN THIS REPOSITORY still declaring a version a
+	// definition stopped serving.
+	Consumers int `json:"consumers"`
+	// Unscanned is definitions whose consumers could not be counted. "We could
+	// not look" blocks, and is not the same as "we looked and found none".
+	Unscanned int `json:"unscanned"`
+	// ValuesDropped is settings this repository makes that the new chart
+	// version no longer declares. Helm ignores an unknown value instead of
+	// failing on it, so these stop applying while everything stays green.
+	ValuesDropped int `json:"valuesDropped"`
+}
+
+func (b Blockers) Any() bool {
+	return b.Targeting+b.Source+b.APIVersion+b.Consumers+b.Unscanned+b.ValuesDropped > 0
+}
+
+// RepoSideRemedy reports whether anything a person or an agent could change in
+// this repository would clear the gate.
+func (b Blockers) RepoSideRemedy() bool {
+	return b.Targeting > 0 || b.Source > 0 || b.Consumers > 0 || b.Unscanned > 0 || b.ValuesDropped > 0
+}
+
+// BlockersMarker prefixes the machine-readable breakdown. Same argument as the
+// headings above: the gate emits it, this package reads it, and one definition
+// means they cannot disagree.
+const BlockersMarker = "<!-- gitops-gate:blockers "
+
+// ParseBlockers reads the gate's machine-readable breakdown of why it is red.
+//
+// The second return is false when the report carries no breakdown at all,
+// which is what a report from an older gate looks like. That case must not be
+// mistaken for "no blockers": the caller falls back to its previous behaviour
+// rather than concluding the gate is green, because a wrong answer here means
+// the agent decides nothing can be repaired and says so with confidence.
+func ParseBlockers(report string) (Blockers, bool) {
+	i := strings.Index(report, BlockersMarker)
+	if i < 0 {
+		return Blockers{}, false
+	}
+	rest := report[i+len(BlockersMarker):]
+	if j := strings.Index(rest, "-->"); j >= 0 {
+		rest = rest[:j]
+	}
+	var b Blockers
+	into := map[string]*int{
+		"targeting": &b.Targeting, "source": &b.Source, "apiVersion": &b.APIVersion,
+		"consumers": &b.Consumers, "unscanned": &b.Unscanned,
+		"valuesDropped": &b.ValuesDropped,
+	}
+	found := false
+	for _, field := range strings.Fields(rest) {
+		k, v, ok := strings.Cut(field, "=")
+		if !ok {
+			continue
+		}
+		p, ok := into[k]
+		if !ok {
+			continue
+		}
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			continue
+		}
+		*p, found = n, true
+	}
+	return b, found
+}

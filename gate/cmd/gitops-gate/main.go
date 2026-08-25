@@ -142,18 +142,21 @@ func cmdDiff(args []string) (bool, error) {
 	// Chart-diff turns "the version moved" into "here is what the version
 	// moving does". It needs the repository for the value files, so it is
 	// opt-in via -repo rather than assumed.
+	var valueDrops []gate.ObjectChange
 	if *repo != "" {
 		cfg, _, err := load(*repo, *cfgPath)
 		if err != nil {
 			return false, err
 		}
-		beforeOb, afterOb, warns := gate.ChartDiff(*repo, cfg, base, head)
+		beforeOb, afterOb, drops, warns := gate.ChartDiff(*repo, cfg, base, head)
 		base.Objects = append(base.Objects, beforeOb...)
 		head.Objects = append(head.Objects, afterOb...)
 		base.Warnings = append(base.Warnings, warns...)
+		valueDrops = drops
 	}
 
 	res := gate.Diff(base, head)
+	res.Objects = append(res.Objects, valueDrops...)
 
 	// With a worktree, a dropped served version can be traced to the manifests
 	// that still declare it -- which is what decides whether it blocks, and
