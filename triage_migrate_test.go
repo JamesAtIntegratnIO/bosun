@@ -7,8 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/JamesAtIntegratnIO/bosun/gate"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
+	"github.com/JamesAtIntegratnIO/bosun/migrate"
 )
 
 func escalateVerdict() *llm.Verdict {
@@ -97,13 +99,28 @@ func TestARedGateWithDroppedVersionsIsRepairedWithoutTheModel(t *testing.T) {
 	}
 	comment := h.git.Posted[0]
 	for _, want := range []string{
-		"Pushed a migration to `kargo/metallb` (attempt 1 of 2)",
+		"Pushed a migration to `kargo/metallb`.",
 		"`addons/external-secrets/externalsecret.yaml`",
 		"deterministic repair, no model",
 	} {
 		if !strings.Contains(comment, want) {
 			t.Errorf("comment missing %q:\n%s", want, comment)
 		}
+	}
+	// A counter on the only attempt there will ever be describes a sequence
+	// that did not happen; it belongs in the comment only when it is a RE-try.
+	if strings.Contains(comment, "attempt") {
+		t.Errorf("the first and only attempt should not be numbered:\n%s", comment)
+	}
+	// The identity header went with the GitHub App: the host renders the name
+	// and avatar above every comment already.
+	if strings.Contains(comment, "**Bosun**") || strings.Contains(comment, "⚓") {
+		t.Errorf("comment should carry no identity header:\n%s", comment)
+	}
+	// The file list is the commit's, written out again. Present, but not at
+	// the cost of pushing the live-cluster facts off the bottom.
+	if !strings.Contains(comment, "<details><summary><b>Migrated</b>") {
+		t.Errorf("the migrated-file table should be collapsed:\n%s", comment)
 	}
 	last := h.git.Statuses[len(h.git.Statuses)-1]
 	if last.State != gitprovider.StateSuccess || !strings.Contains(last.Description, "migrated 1 manifest(s)") {
@@ -193,5 +210,76 @@ func TestTheMigrationPathCanBeSwitchedOff(t *testing.T) {
 	}
 	if len(h.git.Pushes) != 0 {
 		t.Errorf("nothing may be pushed: %+v", h.git.Pushes)
+	}
+}
+
+// The counter is suppressed on the first attempt and stated on a re-try,
+// because only then is it telling the reader something.
+func TestTheAttemptCounterAppearsOnlyOnARetry(t *testing.T) {
+	tr := &Triage{MaxAttempts: 2}
+	if got := tr.attemptSuffix(1); got != "" {
+		t.Errorf("first attempt should be unnumbered, got %q", got)
+	}
+	if got := tr.attemptSuffix(2); got != " (attempt 2 of 2)" {
+		t.Errorf("a retry should say so, got %q", got)
+	}
+}
+
+// A red whose every cause is the chart's own rendering has no repository-side
+// fix. The agent used to ask a model to explain that, and got a paragraph
+// restating the gate report with the one useful sentence buried in it.
+func TestARedWithNoRepositorySideFixIsAnsweredWithoutTheModel(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		b       migrate.Blockers
+		noModel bool
+	}{
+		{"only the chart's own apiVersion move", migrate.Blockers{APIVersion: 1}, true},
+		{"several of them", migrate.Blockers{APIVersion: 3}, true},
+		{"manifests to migrate is a repository fix", migrate.Blockers{APIVersion: 1, Consumers: 2}, false},
+		{"settings to remove is a repository fix", migrate.Blockers{ValuesDropped: 48}, false},
+		{"targeting is a repository fix", migrate.Blockers{Targeting: 1}, false},
+		{"unscanned still wants a human to look here", migrate.Blockers{Unscanned: 1}, false},
+		{"nothing blocking is not this path", migrate.Blockers{}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.b.Any() && !tc.b.RepoSideRemedy()
+			if got != tc.noModel {
+				t.Fatalf("deterministic-escalation = %v, want %v for %+v", got, tc.noModel, tc.b)
+			}
+		})
+	}
+
+	reason := noRemedyReason(migrate.Blockers{APIVersion: 1})
+	for _, want := range []string{
+		"apiVersion",
+		"Nothing in this repository declares them",
+		"nothing here to rewrite",
+	} {
+		if !strings.Contains(reason, want) {
+			t.Errorf("reason missing %q:\n%s", want, reason)
+		}
+	}
+}
+
+// The stamp the gate writes and the parser that reads it are one format; a
+// report from an older gate carries no stamp, and that must not be mistaken
+// for "no blockers".
+func TestBlockersRoundTripThroughTheReport(t *testing.T) {
+	var b strings.Builder
+	(&gate.DiffResult{Objects: []gate.ObjectChange{
+		{Kind: "apiVersion", Object: "PodDisruptionBudget/x"},
+		{Kind: "valuesKeyDropped", Object: "kyverno", Keys: []string{"a", "b"}},
+	}}).Report(&b)
+
+	got, ok := migrate.ParseBlockers(b.String())
+	if !ok {
+		t.Fatal("the report must carry a machine-readable breakdown")
+	}
+	if got.APIVersion != 1 || got.ValuesDropped != 2 {
+		t.Fatalf("round trip lost counts: %+v", got)
+	}
+	if _, ok := migrate.ParseBlockers("<!-- gitops-gate -->\nan older gate said nothing"); ok {
+		t.Fatal("a report with no breakdown must report absence, not zero")
 	}
 }

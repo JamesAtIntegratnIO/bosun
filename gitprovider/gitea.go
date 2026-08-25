@@ -309,6 +309,12 @@ func (g *Gitea) Comment(ctx context.Context, number int, body string) error {
 		map[string]string{"body": body}, nil)
 }
 
+func (g *Gitea) UpdateComment(ctx context.Context, id int64, body string) error {
+	return g.do(ctx, http.MethodPatch,
+		g.repoPath(fmt.Sprintf("/issues/comments/%d", id)),
+		map[string]string{"body": body}, nil)
+}
+
 // SetCommitStatus posts a commit status. Never a failure state, and pending
 // until there is a verdict: see the interface.
 //

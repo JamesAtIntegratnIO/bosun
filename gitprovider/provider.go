@@ -124,6 +124,17 @@ type Provider interface {
 	// Comment posts a comment.
 	Comment(ctx context.Context, number int, body string) error
 
+	// UpdateComment rewrites a comment the agent already posted, identified by
+	// the ID ListComments returned.
+	//
+	// This is what keeps ONE gate report per pull request. Posting a fresh
+	// report per head commit left a repaired pull request carrying two
+	// twenty-thousand-character comments that differed only in their verdict,
+	// and a reader could not tell which was current without comparing head
+	// SHAs. Editing in place was the CI adapter's behaviour and the contract
+	// the marker was designed for; cluster mode dropped it by accident.
+	UpdateComment(ctx context.Context, id int64, body string) error
+
 	// SetCommitStatus publishes the agent's OWN verdict as a commit status, so
 	// it lands in the same surface as the gate rather than only in a pod log.
 	//

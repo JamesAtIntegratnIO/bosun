@@ -21,7 +21,13 @@ import (
 // It costs a chart pull and two renders per changed Application, so it runs
 // only for rows whose version actually moved, which on a typical bump pull
 // request is one.
-func ChartDiff(repoRoot string, cfg *Config, base, head *Table) ([]Object, []Object, []string) {
+// ChartDiff renders every moved chart at both versions.
+//
+// The third return is findings that are NOT object diffs: settings this
+// repository makes that the new chart version no longer declares. They come
+// from here because this is the only place that has both chart versions and
+// the Application's own value files in hand.
+func ChartDiff(repoRoot string, cfg *Config, base, head *Table) ([]Object, []Object, []ObjectChange, []string) {
 	type pair struct{ before, after Row }
 
 	baseByKey := map[string]Row{}
@@ -41,13 +47,14 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) ([]Object, []Obj
 		pairs = append(pairs, pair{before: b, after: h})
 	}
 	if len(pairs) == 0 {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 
 	var (
 		mu       sync.Mutex
 		beforeOb []Object
 		afterOb  []Object
+		drops    []ObjectChange
 		warnings []string
 		wg       sync.WaitGroup
 	)
@@ -80,10 +87,30 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) ([]Object, []Obj
 			}
 			beforeOb = append(beforeOb, b...)
 			afterOb = append(afterOb, a...)
+
+			// A settings drop is reported even though the render succeeded --
+			// it is invisible in the render BY DEFINITION, because helm
+			// ignores a value it does not know rather than failing on it.
+			gone, err := droppedValues(repoRoot, p.before, p.after)
+			switch {
+			case err != nil:
+				warnings = append(warnings, fmt.Sprintf(
+					"%s: could not compare %s's values surface across versions, so settings it stops reading are NOT covered: %v",
+					p.after.App, p.after.Chart, err))
+			case len(gone) > 0:
+				drops = append(drops, ObjectChange{
+					Kind:    "valuesKeyDropped",
+					Object:  p.after.App,
+					Cluster: p.after.Cluster,
+					From:    p.before.Version,
+					To:      p.after.Version,
+					Keys:    gone,
+				})
+			}
 		}(p)
 	}
 	wg.Wait()
-	return beforeOb, afterOb, warnings
+	return beforeOb, afterOb, drops, warnings
 }
 
 // renderChartVersion renders one Application's chart at its pinned version,

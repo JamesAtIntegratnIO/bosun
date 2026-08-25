@@ -25,9 +25,13 @@ service:
 # that user; this only controls the name it signs with.
 branding:
   name: Bosun
-  # Leading mark on each comment. Kept separate from the name so it can be
-  # dropped without renaming anything.
-  mark: "⚓"
+  # DEPRECATED and ignored since 0.17.0. Comments no longer carry an identity
+  # header at all: authenticating as a GitHub App puts the name and avatar
+  # above every comment already, and a bold "⚓ Bosun" under that was the agent
+  # introducing itself twice. Still accepted so that setting it does not fail
+  # an upgrade; it does nothing. The footer still names the agent and, more
+  # usefully, says whether a model was involved.
+  mark: ""
 
 git:
   # github, gitea (implemented) | gitlab | bitbucket (extension points)

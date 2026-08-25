@@ -44,10 +44,6 @@ spec:
               value: ":{{ .Values.service.port }}"
             - name: AGENT_BRAND
               value: {{ .Values.branding.name | default "bosun" | quote }}
-            {{- with .Values.branding.mark }}
-            - name: AGENT_BRAND_MARK
-              value: {{ . | quote }}
-            {{- end }}
             - name: GIT_PROVIDER
               value: {{ .Values.git.provider | quote }}
             - name: GIT_INSECURE_SKIP_TLS_VERIFY

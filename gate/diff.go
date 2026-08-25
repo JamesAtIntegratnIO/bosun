@@ -72,6 +72,12 @@ func (d *DiffResult) Blocking() bool {
 		if o.Kind == "crdVersionRemoved" && (!o.ConsumersKnown || len(o.ConsumerFiles) > 0) {
 			return true
 		}
+		// A setting the new chart no longer reads. It renders green by
+		// construction -- helm ignores an unknown value -- so if this does not
+		// block, nothing anywhere will ever mention it.
+		if o.Kind == "valuesKeyDropped" && len(o.Keys) > 0 {
+			return true
+		}
 	}
 	return false
 }
@@ -281,10 +287,122 @@ func sortChanges(c []Change) {
 // including a CI job summary.
 const ReportMarker = "<!-- gitops-gate -->"
 
+// Verdict is the report's own answer, in one line, so a reader knows what they
+// are looking at before they read anything else.
+//
+// This exists because a report that merely LISTS findings reads the same when
+// it is blocking and when it is not. Two of them on one pull request -- a red
+// one and the green one after a repair -- were indistinguishable at a glance,
+// and the failed pass looked like a duplicate of the pass that succeeded
+// rather than the thing that had to be fixed.
+//
+// The wording deliberately avoids the parser's heading strings, which live in
+// the migrate package and are matched with strings.Contains: a headline that
+// happened to contain "**API version changed**" would make the agent believe
+// there was an unrepairable blocker in every report that mentioned one.
+// Blockers counts the reasons this result is blocking. The type lives in the
+// migrate package with the rest of the report's format, so that the writer and
+// the reader cannot drift.
+func (d *DiffResult) Blockers() migrate.Blockers {
+	var b migrate.Blockers
+	b.Targeting = len(d.Targeting)
+	b.Source = len(d.Other)
+	for _, o := range d.Objects {
+		switch {
+		case o.Kind == "apiVersion" && !o.PartOfMigration:
+			b.APIVersion++
+		case o.Kind == "crdVersionRemoved" && !o.ConsumersKnown:
+			b.Unscanned++
+		case o.Kind == "crdVersionRemoved" && len(o.ConsumerFiles) > 0:
+			b.Consumers += len(o.ConsumerFiles)
+		case o.Kind == "valuesKeyDropped":
+			b.ValuesDropped += len(o.Keys)
+		}
+	}
+	return b
+}
+
+func (d *DiffResult) Verdict() (blocking bool, headline string) {
+	bl := d.Blockers()
+	var why []string
+	if n := bl.Targeting; n > 0 {
+		why = append(why, fmt.Sprintf("%s now generated for a different set of clusters", plural(n, "Application")))
+	}
+	if n := bl.Source; n > 0 {
+		why = append(why, fmt.Sprintf("%s moved", plural(n, "source")))
+	}
+	apiMoved, consumers, unscanned := bl.APIVersion, bl.Consumers, bl.Unscanned
+	if apiMoved > 0 {
+		why = append(why, fmt.Sprintf("%s whose own apiVersion moved", plural(apiMoved, "object")))
+	}
+	if consumers > 0 {
+		why = append(why, fmt.Sprintf("%s still declaring a dropped API version", plural(consumers, "manifest")))
+	}
+	if unscanned > 0 {
+		why = append(why, fmt.Sprintf("%s whose consumers could not be counted", plural(unscanned, "definition")))
+	}
+	if n := bl.ValuesDropped; n > 0 {
+		why = append(why, fmt.Sprintf("%s this bump stops reading", plural(n, "setting")))
+	}
+	if len(why) == 0 {
+		// Not blocking. Say what DID change, because "nothing blocking" and
+		// "nothing changed" are different answers and only one of them means
+		// the reader can stop reading.
+		switch {
+		case len(d.Versions) > 0:
+			return false, fmt.Sprintf("No blocking findings — %s changed, nothing else",
+				plural(len(d.Versions), "version"))
+		case len(d.Introduced) > 0:
+			return false, fmt.Sprintf("No blocking findings — %s, first appearance",
+				plural(len(d.Introduced), "new Application"))
+		case len(d.Objects) > 0:
+			return false, fmt.Sprintf("No blocking findings — %s changed",
+				plural(len(d.Objects), "rendered object"))
+		default:
+			return false, "No change to what gets deployed"
+		}
+	}
+	return true, "Blocking — " + join(why)
+}
+
+// plural is "1 thing" / "3 things", because "1 manifest(s)" in a headline
+// reads like a machine wrote it and nobody proof-read it.
+func plural(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
+}
+
+func join(parts []string) string {
+	switch len(parts) {
+	case 1:
+		return parts[0]
+	case 2:
+		return parts[0] + " and " + parts[1]
+	default:
+		return strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1]
+	}
+}
+
 // Report writes a markdown summary suitable for a pull-request comment or a CI
 // job summary.
 func (d *DiffResult) Report(w io.Writer) {
 	fmt.Fprintf(w, "%s\n", ReportMarker)
+	blocking, headline := d.Verdict()
+	// The breakdown, machine-readable, for the same reason ReportMarker is
+	// emitted here rather than remembered by each adapter: an agent reading
+	// this report should not have to infer WHY it is red from prose that was
+	// written for a person. Every adapter that posts the report verbatim
+	// carries it, so the CI path gets it for free.
+	b := d.Blockers()
+	fmt.Fprintf(w, "%stargeting=%d source=%d apiVersion=%d consumers=%d unscanned=%d valuesDropped=%d -->\n",
+		migrate.BlockersMarker, b.Targeting, b.Source, b.APIVersion, b.Consumers, b.Unscanned, b.ValuesDropped)
+	mark := "✅"
+	if blocking {
+		mark = "🔴"
+	}
+	fmt.Fprintf(w, "## %s %s\n\n", mark, headline)
 	if len(d.Targeting) > 0 {
 		// The section headings the agent keys on come from the migrate
 		// package, so both sides of that contract read the same bytes by
@@ -316,13 +434,15 @@ func (d *DiffResult) Report(w io.Writer) {
 		fmt.Fprintln(w)
 	}
 	if len(d.Objects) > 0 {
-		var api, crd, added, removed, changed []ObjectChange
+		var api, crd, vdrop, added, removed, changed []ObjectChange
 		for _, o := range d.Objects {
 			switch o.Kind {
 			case "apiVersion":
 				api = append(api, o)
 			case "crdVersionRemoved":
 				crd = append(crd, o)
+			case "valuesKeyDropped":
+				vdrop = append(vdrop, o)
 			case "added":
 				added = append(added, o)
 			case "removed":
@@ -330,6 +450,34 @@ func (d *DiffResult) Report(w io.Writer) {
 			default:
 				changed = append(changed, o)
 			}
+		}
+		if len(vdrop) > 0 {
+			// FIRST, deliberately. It is the finding with no other symptom:
+			// the render is identical, the values file did not change, and
+			// helm does not complain. If it is below three tables of resource
+			// diffs, it is below the fold.
+			fmt.Fprintf(w, "### Settings this bump stops reading\n\n")
+			fmt.Fprintf(w, "The chart no longer declares these values, and helm ignores a value it does not "+
+				"know rather than failing on it. Each one silently stops applying, and the render looks "+
+				"identical either way.\n\n")
+			for _, o := range vdrop {
+				fmt.Fprintf(w, "- `%s`", o.Object)
+				if o.Cluster != "" {
+					fmt.Fprintf(w, " on %s", o.Cluster)
+				}
+				fmt.Fprintf(w, " — `%s` → `%s`, %s no longer read:\n", o.From, o.To, plural(len(o.Keys), "setting"))
+				shown := o.Keys
+				if len(shown) > maxDroppedListed {
+					shown = shown[:maxDroppedListed]
+				}
+				for _, k := range shown {
+					fmt.Fprintf(w, "  - `%s`\n", k)
+				}
+				if n := len(o.Keys) - len(shown); n > 0 {
+					fmt.Fprintf(w, "  - …and %d more\n", n)
+				}
+			}
+			fmt.Fprintln(w)
 		}
 		fmt.Fprintf(w, "### Resources\n\n")
 		if len(api) > 0 {

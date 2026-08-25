@@ -298,12 +298,15 @@ func (g *GateService) run(ctx context.Context, pr *gitprovider.PullRequest) *gat
 
 	// Chart-diff and consumer annotation both want a worktree; the head is
 	// the one under judgement.
-	beforeOb, afterOb, warns := gate.ChartDiff(head, cfg, baseTable, headTable)
+	beforeOb, afterOb, valueDrops, warns := gate.ChartDiff(head, cfg, baseTable, headTable)
 	baseTable.Objects = append(baseTable.Objects, beforeOb...)
 	headTable.Objects = append(headTable.Objects, afterOb...)
 	baseTable.Warnings = append(baseTable.Warnings, warns...)
 
 	res := gate.Diff(baseTable, headTable)
+	// Not an object diff: a setting the new chart stops reading leaves the
+	// render identical, which is exactly why it needs saying out loud.
+	res.Objects = append(res.Objects, valueDrops...)
 	gate.AnnotateConsumers(res, head)
 
 	var report strings.Builder
@@ -373,21 +376,208 @@ func (g *GateService) status(ctx context.Context, pr *gitprovider.PullRequest, s
 	}
 }
 
-// comment posts the report, stamped with the head commit so a restarted pod
-// can see it already said this and stay quiet.
+// Stamps the gate leaves in its own comment so the next run can read what the
+// last one said. HTML comments: invisible in every markdown surface, and the
+// only per-pull-request memory a gate with no database has.
+const (
+	stampHead    = "<!-- gitops-gate:head "
+	stampVerdict = "<!-- gitops-gate:verdict "
+	stampWas     = "<!-- gitops-gate:was "
+)
+
+// maxHistory caps the remembered verdicts. Ten is far more than any pull
+// request needs and stops a long-lived one growing a comment without bound.
+const maxHistory = 10
+
+// verdictRow is one past answer on this pull request.
+type verdictRow struct {
+	SHA      string
+	Blocking bool
+	Headline string
+}
+
+// comment publishes the report as ONE comment per pull request, rewritten in
+// place on every run, carrying the verdicts that came before it.
+//
+// It used to post a fresh comment per head commit. A pull request the agent
+// repaired therefore ended up with two twenty-thousand-character reports that
+// differed only in their verdict -- and since neither stated a verdict, the
+// failed pass read as a duplicate of the pass that succeeded rather than as
+// the thing that had to be fixed.
+//
+// Editing in place alone would be worse: it would DELETE the failed pass. So
+// the body carries a compact history, which is the part a reviewer actually
+// wants -- what was wrong, and that it is not wrong any more.
 func (g *GateService) comment(ctx context.Context, pr *gitprovider.PullRequest, report string) {
-	headLine := fmt.Sprintf("<!-- gitops-gate:head %s -->", pr.HeadSHA)
+	blocking, headline := "0", ""
+	if b, h := g.lastVerdict(report); b {
+		blocking, headline = "1", h
+	} else {
+		headline = h
+	}
+
+	// Two different questions, deliberately answered by two different scans.
+	//
+	// "Has this already been said?" is about the COMMIT and must consider every
+	// author: a previous life of this pod, or a CI adapter still running during
+	// a migration, both count and neither is necessarily us.
+	//
+	// "Which comment may I rewrite?" is about OWNERSHIP -- a host lets an author
+	// edit only its own comments -- so that one is filtered by author, and the
+	// two must not be collapsed into one loop however similar they look.
+	var existing *gitprovider.Comment
+	var history []verdictRow
 	if comments, err := g.Git.ListComments(ctx, pr.Number); err == nil {
-		for _, c := range comments {
-			if strings.Contains(c.Body, headLine) {
+		for i := range comments {
+			if strings.Contains(comments[i].Body, stampHead+pr.HeadSHA+" -->") {
 				return
 			}
 		}
+		for i := range comments {
+			if strings.Contains(comments[i].Body, gate.ReportMarker) && comments[i].Author == g.Git.Name() {
+				existing = &comments[i]
+			}
+		}
 	}
-	body := strings.Replace(report, gate.ReportMarker+"\n", gate.ReportMarker+"\n"+headLine+"\n", 1)
+	if existing != nil {
+		history = append(parseHistory(existing.Body), currentAsRow(existing.Body)...)
+		if len(history) > maxHistory {
+			history = history[len(history)-maxHistory:]
+		}
+	}
+
+	var stamps strings.Builder
+	fmt.Fprintf(&stamps, "%s%s -->\n", stampHead, pr.HeadSHA)
+	fmt.Fprintf(&stamps, "%s%s %s -->\n", stampVerdict, blocking, headline)
+	for _, h := range history {
+		fmt.Fprintf(&stamps, "%s%s %s %s -->\n", stampWas, h.SHA, boolDigit(h.Blocking), h.Headline)
+	}
+
+	body := strings.Replace(report, gate.ReportMarker+"\n",
+		gate.ReportMarker+"\n"+stamps.String(), 1) + renderHistory(history)
+
+	if existing != nil {
+		if err := g.Git.UpdateComment(ctx, existing.ID, body); err == nil {
+			return
+		} else {
+			// Falling through to a new comment is deliberate: a report nobody
+			// can read is worse than a duplicate one.
+			g.logf("gate: PR %d: could not rewrite the report, posting a new one: %v", pr.Number, err)
+		}
+	}
 	if err := g.Git.Comment(ctx, pr.Number, body); err != nil {
 		g.logf("gate: PR %d: could not post the report: %v", pr.Number, err)
 	}
+}
+
+// lastVerdict reads the headline the report already rendered, rather than
+// recomputing it: one source of truth means the stamp and the visible headline
+// can never disagree.
+func (g *GateService) lastVerdict(report string) (bool, string) {
+	for _, line := range strings.Split(report, "\n") {
+		if !strings.HasPrefix(line, "## ") {
+			continue
+		}
+		text := strings.TrimSpace(strings.TrimPrefix(line, "## "))
+		switch {
+		case strings.HasPrefix(text, "🔴 "):
+			return true, strings.TrimSpace(strings.TrimPrefix(text, "🔴 "))
+		case strings.HasPrefix(text, "✅ "):
+			return false, strings.TrimSpace(strings.TrimPrefix(text, "✅ "))
+		}
+	}
+	return false, ""
+}
+
+func boolDigit(b bool) string {
+	if b {
+		return "1"
+	}
+	return "0"
+}
+
+// parseHistory reads the rows a previous body recorded.
+func parseHistory(body string) []verdictRow {
+	var out []verdictRow
+	for _, line := range strings.Split(body, "\n") {
+		if row, ok := parseStampedRow(line, stampWas, true); ok {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+// currentAsRow turns the body's OWN verdict into a history row, which is what
+// makes the failed pass survive being edited over.
+func currentAsRow(body string) []verdictRow {
+	var sha string
+	for _, line := range strings.Split(body, "\n") {
+		if rest, ok := trimStamp(line, stampHead); ok {
+			sha = strings.TrimSpace(rest)
+			break
+		}
+	}
+	for _, line := range strings.Split(body, "\n") {
+		if row, ok := parseStampedRow(line, stampVerdict, false); ok {
+			row.SHA = sha
+			if row.SHA == "" {
+				return nil
+			}
+			return []verdictRow{row}
+		}
+	}
+	return nil
+}
+
+func trimStamp(line, stamp string) (string, bool) {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, stamp) || !strings.HasSuffix(line, "-->") {
+		return "", false
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(line, stamp), "-->"), true
+}
+
+// parseStampedRow reads "<sha> <0|1> <headline>" when withSHA, else
+// "<0|1> <headline>".
+func parseStampedRow(line, stamp string, withSHA bool) (verdictRow, bool) {
+	rest, ok := trimStamp(line, stamp)
+	if !ok {
+		return verdictRow{}, false
+	}
+	fields := strings.SplitN(strings.TrimSpace(rest), " ", map[bool]int{true: 3, false: 2}[withSHA])
+	if len(fields) < 2 {
+		return verdictRow{}, false
+	}
+	var row verdictRow
+	if withSHA {
+		if len(fields) < 3 {
+			return verdictRow{}, false
+		}
+		row.SHA, fields = fields[0], fields[1:]
+	}
+	row.Blocking = fields[0] == "1"
+	row.Headline = strings.TrimSpace(fields[1])
+	return row, row.Headline != ""
+}
+
+// renderHistory is the visible half. Collapsed, because on a healthy pull
+// request it is noise, and on a repaired one it is the whole story.
+func renderHistory(history []verdictRow) string {
+	if len(history) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n<details><summary>Earlier verdicts on this pull request (%d)</summary>\n\n", len(history))
+	fmt.Fprintf(&b, "| Head | Verdict |\n|---|---|\n")
+	for _, h := range history {
+		mark := "✅"
+		if h.Blocking {
+			mark = "🔴"
+		}
+		fmt.Fprintf(&b, "| `%s` | %s %s |\n", shortSHA(h.SHA), mark, h.Headline)
+	}
+	fmt.Fprintf(&b, "\n</details>\n")
+	return b.String()
 }
 
 // checkout clones the head branch shallowly and adds a worktree at the base
