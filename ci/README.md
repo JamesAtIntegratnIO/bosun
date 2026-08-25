@@ -41,6 +41,19 @@ The marker is emitted by the **binary**, as the first line of `-report` output.
 An adapter posts the file verbatim and is correct by construction; it does not
 need to know the string. Do not prepend your own — you will get two.
 
+Two more lines follow it, and they are emitted by the binary for the same
+reason: a verdict headline (`## 🔴 …` / `## ✅ …`) so a reader knows the answer
+before reading the findings, and a machine-readable breakdown of why:
+
+```
+<!-- gitops-gate:blockers targeting=0 source=0 apiVersion=1 consumers=0 unscanned=0 valuesDropped=48 -->
+```
+
+An adapter posting the report verbatim carries both. **Do not strip or rewrite
+them** — the agent reads the breakdown to decide whether anything in the
+repository could fix the red at all, and a report without it falls back to
+guessing from prose.
+
 Three details worth copying from [`github/`](github):
 
 - **Post before you fail.** The step that turns exit `1` into a failed build
