@@ -413,6 +413,8 @@ func (g *GitHub) PushFix(ctx context.Context, pr *PullRequest, root, message str
 			return fmt.Errorf("%s: %w: %s", s[1], err, snippet([]byte(msg)))
 		}
 	}
+	// The branch head moved; tell the caller so its statuses land on it.
+	pr.HeadSHA = headSHA(ctx, root, pr.HeadSHA)
 	return nil
 }
 

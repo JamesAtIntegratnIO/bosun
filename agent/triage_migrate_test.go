@@ -283,3 +283,42 @@ func TestBlockersRoundTripThroughTheReport(t *testing.T) {
 		t.Fatal("a report with no breakdown must report absence, not zero")
 	}
 }
+
+// The bug this pins was observed twice in production before it was traced.
+//
+// When the migration path pushes, the branch head moves. The verdict written
+// afterwards used to land on the PRE-push SHA, so the commit that is actually
+// the head carried a green gate and no `bosun` status at all -- and because
+// `bosun` is a required check, that pull request could never go green. Silence
+// that reads as a dead agent, which is the failure this service exists to find.
+func TestTheVerdictLandsOnTheCommitTheMigrationPushed(t *testing.T) {
+	h := migrateHarness(t)
+	h.writeFile(t, "addons/external-secrets/externalsecret.yaml", externalSecretBefore)
+
+	before := h.git.PR.HeadSHA
+	if err := h.triage.Run(context.Background(), promotion()); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.git.Pushes) != 1 {
+		t.Fatalf("want one pushed migration, got %d", len(h.git.Pushes))
+	}
+
+	// The run holds its own copy of the pull request, so the observable is
+	// where the verdict was written: it must be the commit the push created.
+	head := h.git.Pushes[0].SHA
+	if head == "" || head == before {
+		t.Fatal("PushFix must advance the head to the commit it pushed")
+	}
+
+	last := h.git.Statuses[len(h.git.Statuses)-1]
+	if last.State != gitprovider.StateSuccess {
+		t.Fatalf("want a resolved verdict, got %+v", last)
+	}
+	if last.SHA != head {
+		t.Errorf("verdict landed on %q but the head is %q -- the head carries no verdict",
+			last.SHA, head)
+	}
+	if last.SHA == before {
+		t.Error("verdict landed on the commit the migration superseded")
+	}
+}

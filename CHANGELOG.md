@@ -3,6 +3,28 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.18.5] - 2026-08-25
+
+### Fixed
+
+- **A pushed migration left its own verdict on the wrong commit.** When the
+  repair path pushes, the branch head moves — but the agent went on holding the
+  pre-push SHA, so the `bosun` status it wrote afterwards landed on a commit
+  that was no longer the head. The head ended up carrying a green gate and no
+  verdict at all, and because `bosun` is a required check, that pull request
+  could never go green again.
+
+  The failure mode is the one this service exists to find: silence. Nothing
+  errored, nothing retried, and the pull request simply sat there looking like
+  the agent had died mid-run. Observed on two independent promotions —
+  external-secrets under 0.18.3 and again under 0.18.4 — before it was traced.
+
+  `PushFix` now advances `pr.HeadSHA` to the commit it just created, which is
+  the branch head by definition, so every status written afterwards lands on
+  it. The provider fake records the target SHA too: it did not, which is
+  exactly why no test could see this. A test asserting only state and
+  description passes happily while production writes to a superseded commit.
+
 ## [0.18.4] - 2026-08-25
 
 ### Fixed
