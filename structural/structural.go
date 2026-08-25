@@ -39,6 +39,8 @@ package structural
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -125,7 +127,7 @@ func walk(prefix string, node any, schema Schema, out *[]Finding) {
 		props, _ := schema["properties"].(map[string]any)
 		additional := schema["additionalProperties"]
 
-		for _, name := range sortedKeys(typed) {
+		for _, name := range slices.Sorted(maps.Keys(typed)) {
 			child := join(prefix, name)
 			// apiVersion, kind and metadata belong to the API machinery, not to
 			// a CustomResourceDefinition's own schema. Kubernetes' structural
@@ -240,15 +242,6 @@ func join(prefix, name string) string {
 		return name
 	}
 	return prefix + "." + name
-}
-
-func sortedKeys(m map[string]any) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 func stringList(v any) []string {

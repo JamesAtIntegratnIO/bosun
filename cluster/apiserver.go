@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -176,27 +177,16 @@ type statusError struct {
 
 func (e *statusError) Error() string { return fmt.Sprintf("%s: %s", e.Path, e.Status) }
 
+// code is the apiserver status a failure carries, or 0 if it carries none.
+// Zero is deliberately not a status: it means "this was not an HTTP answer",
+// which is what the callers distinguishing 403 from 404 from everything else
+// need to see.
 func code(err error) int {
 	var se *statusError
-	if ok := asStatus(err, &se); ok {
+	if errors.As(err, &se) {
 		return se.Code
 	}
 	return 0
-}
-
-func asStatus(err error, target **statusError) bool {
-	for err != nil {
-		if se, ok := err.(*statusError); ok {
-			*target = se
-			return true
-		}
-		u, ok := err.(interface{ Unwrap() error })
-		if !ok {
-			return false
-		}
-		err = u.Unwrap()
-	}
-	return false
 }
 
 // CountLive walks the collection and counts it.

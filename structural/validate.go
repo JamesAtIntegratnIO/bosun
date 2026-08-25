@@ -2,7 +2,8 @@ package structural
 
 import (
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 )
 
@@ -58,11 +59,9 @@ func Validate(original, proposed map[string]any, targetAPIVersion string, target
 		v.Refusals = append(v.Refusals, fmt.Sprintf(
 			"apiVersion is %q and must be %q", got, targetAPIVersion))
 	}
-	for _, field := range []string{"kind"} {
-		if str(proposed[field]) != str(original[field]) {
-			v.Refusals = append(v.Refusals, fmt.Sprintf(
-				"%s changed from %q to %q", field, str(original[field]), str(proposed[field])))
-		}
+	if str(proposed["kind"]) != str(original["kind"]) {
+		v.Refusals = append(v.Refusals, fmt.Sprintf(
+			"kind changed from %q to %q", str(original["kind"]), str(proposed["kind"])))
 	}
 	om, _ := original["metadata"].(map[string]any)
 	pm, _ := proposed["metadata"].(map[string]any)
@@ -109,7 +108,7 @@ func Validate(original, proposed map[string]any, targetAPIVersion string, target
 	displaced := displacedValues(original, target)
 	allowed := schemaVocabulary(target)
 
-	for _, path := range sortedKeysOf(propAt) {
+	for _, path := range slices.Sorted(maps.Keys(propAt)) {
 		val := propAt[path]
 		if was, ok := origAt[path]; ok && was == val {
 			continue
@@ -125,7 +124,7 @@ func Validate(original, proposed map[string]any, targetAPIVersion string, target
 	// And the report. Not a refusal: a field the target schema no longer
 	// accepts has to go somewhere, and sometimes nowhere is right.
 	propVals := leafValues(proposed)
-	for _, val := range sortedSet(leafValues(original)) {
+	for _, val := range slices.Sorted(maps.Keys(leafValues(original))) {
 		if propVals[val] {
 			continue
 		}
@@ -149,7 +148,7 @@ func respelledBy(val string, proposed map[string]bool, allowed map[string]bool) 
 	// Sorted: two vocabulary members differing only in case is pathological,
 	// but a report that names a different one on each run is worse than either
 	// answer.
-	for _, cand := range sortedSet(proposed) {
+	for _, cand := range slices.Sorted(maps.Keys(proposed)) {
 		if allowed[cand] && cand != val && strings.EqualFold(cand, val) {
 			return cand, true
 		}
@@ -211,15 +210,6 @@ func leafPaths(node any) map[string]string {
 		}
 	}
 	rec("", node)
-	return out
-}
-
-func sortedKeysOf(m map[string]string) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
 	return out
 }
 
@@ -298,15 +288,6 @@ func schemaVocabulary(s Schema) map[string]bool {
 		}
 	}
 	rec(map[string]any(s))
-	return out
-}
-
-func sortedSet(m map[string]bool) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
 	return out
 }
 

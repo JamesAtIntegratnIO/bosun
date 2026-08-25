@@ -272,38 +272,6 @@ func helmTemplateRaw(repoRoot, chartPath string, valueFiles []string) ([]byte, e
 	return stdout.Bytes(), nil
 }
 
-func unmarshalMap(raw []byte) (map[string]any, error) {
-	var m map[string]any
-	if err := yaml.Unmarshal(raw, &m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// helmTemplate renders the factory chart and returns every ApplicationSet in
-// the output.
-func helmTemplate(repoRoot, chartPath string, valueFiles []string) ([]map[string]any, error) {
-	stream, err := helmTemplateRaw(repoRoot, chartPath, valueFiles)
-	if err != nil {
-		return nil, err
-	}
-
-	var out []map[string]any
-	for _, doc := range splitYAML(stream) {
-		var obj map[string]any
-		if err := yaml.Unmarshal(doc, &obj); err != nil {
-			return nil, fmt.Errorf("parsing helm output: %w", err)
-		}
-		if obj == nil {
-			continue
-		}
-		if kind, _ := obj["kind"].(string); kind == "ApplicationSet" {
-			out = append(out, obj)
-		}
-	}
-	return out, nil
-}
-
 func splitYAML(b []byte) [][]byte {
 	parts := bytes.Split(b, []byte("\n---"))
 	var out [][]byte
@@ -400,8 +368,8 @@ func collectBootstrap(repoRoot string, cfg *Config, inv *Inventory, s Source) ([
 	if err != nil {
 		return nil, fmt.Errorf("source %q: reading %s: %w", s.Name, s.Path, err)
 	}
-	bs, err := unmarshalMap(raw)
-	if err != nil {
+	var bs map[string]any
+	if err := yaml.Unmarshal(raw, &bs); err != nil {
 		return nil, fmt.Errorf("source %q: parsing %s: %w", s.Name, s.Path, err)
 	}
 

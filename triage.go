@@ -428,23 +428,20 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 		pr.Branch, attempt, t.MaxAttempts)))
 }
 
-func (t *Triage) escalate(ctx context.Context, pr *gitprovider.PullRequest, reason string, v *llm.Verdict) error {
-	return t.escalateWith(ctx, pr, reason, v, nil)
-}
-
-// escalateWith is escalate plus the applier's result, so a comment can list
-// every refused edit rather than summarising one of them.
+// escalate hands a pull request to a human with the process fact that made it
+// necessary.
 //
 // reason is for PROCESS facts the verdict does not carry -- "rejected before
 // anything was written", "could not push". A model's own escalation reason is
 // passed as "" on purpose: the verdict's summary says the same thing, and the
 // comment should say it once.
-func (t *Triage) escalateWith(ctx context.Context, pr *gitprovider.PullRequest, reason string, v *llm.Verdict, res *edits.Result) error {
-	return t.escalateInformed(ctx, pr, reason, v, res, nil, nil)
+func (t *Triage) escalate(ctx context.Context, pr *gitprovider.PullRequest, reason string, v *llm.Verdict) error {
+	return t.escalateInformed(ctx, pr, reason, v, nil, nil, nil)
 }
 
-// escalateInformed is escalateWith plus what the maintainers changed between
-// the two versions.
+// escalateInformed is escalate plus the applier's result -- so a comment can
+// list every refused edit rather than summarising one of them -- and what the
+// maintainers changed between the two versions.
 //
 // A handoff is somebody's next twenty minutes. "The chart removed its
 // ClusterRole and no release note explains why" is an honest sentence and it
