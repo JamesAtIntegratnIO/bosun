@@ -3,6 +3,22 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.18.3] - 2026-08-25
+
+### Fixed
+
+- **A merged pull request is not a lost one.** `promotion_without_pr` looked
+  for a promotion whose branch has no *open* pull request — but "not open"
+  covers merged, and the seconds between a merge and Kargo noticing it are
+  exactly when a promotion is doing the right thing. Reporting that window
+  would have been a false alarm on every successful promotion, which is the
+  fastest possible way to teach someone to ignore a supervisor.
+
+  Caught by running it: the first live sweep after deploying flagged bosun's
+  own promotion three minutes after its pull request merged. There is now a
+  15-minute grace, which costs nothing real — the genuinely stranded ones
+  observed had been running for hours.
+
 ## [0.18.2] - 2026-08-25
 
 ### Fixed
