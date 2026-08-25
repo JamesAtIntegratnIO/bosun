@@ -194,6 +194,16 @@
         },
         "reportAuthor": {
           "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "cluster",
+            "ci"
+          ]
+        },
+        "forkPRs": {
+          "type": "boolean"
         }
       }
     },

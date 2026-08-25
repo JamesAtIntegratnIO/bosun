@@ -110,10 +110,37 @@ llm:
   apiKeyKey: api-key
 
 gate:
-  # The single aggregate check the agent waits on. Must match the name in your
-  # branch protection rule.
+  # Where the gate runs.
+  #
+  #   cluster (default) -- the agent IS the gate. It polls the open pull
+  #     requests, renders base and head against the LIVE ArgoCD cluster
+  #     inventory, and posts the `checkName` status and the report comment
+  #     itself. Nothing to install in CI, no checked-in cluster inventory to
+  #     go stale, no paths filter to hand-edit -- every pull request is
+  #     rendered, and "no change to what gets deployed" is an answer rather
+  #     than a guess. WHAT IT COSTS: get/list on Secrets in the ArgoCD
+  #     namespace (the inventory lives in the ArgoCD cluster Secrets, which
+  #     also carry cluster credentials -- rbac.create scopes the grant to
+  #     that one namespace), and the render runs over pull-request content
+  #     in-cluster, which is why fork pull requests are refused unless
+  #     `forkPRs` says otherwise.
+  #   ci -- the original shape: the gate runs in CI (see ci/ in the bosun
+  #     repository), the agent waits on the check and reads the report from
+  #     a comment. The fallback for public repositories taking fork pull
+  #     requests, and for clusters that will not grant the Secret read.
+  mode: cluster
+  # Render pull requests whose head branch lives in another repository.
+  # OFF by default: in cluster mode the render runs helm over the pull
+  # request's content, inside the cluster, and whose content that is should
+  # be an operator's decision. Off, a fork pull request gets an `error`
+  # status naming this value rather than an unreported required check.
+  forkPRs: false
+  # The single aggregate check the agent posts (cluster mode) or waits on
+  # (ci mode). Must match the name in your branch protection rule.
   checkName: addons-gate
-  # How long to wait for the gate to reach a verdict.
+  # How long to wait for the gate to reach a verdict. CI mode only: an
+  # in-process gate is run, not waited for. `poll` also paces the cluster
+  # mode sweep for new pull requests.
   wait: 10m
   poll: 30s
 
@@ -395,7 +422,9 @@ networkPolicy:
     namespaces: []
     # e.g. [{cidr: 10.1.2.3/32, port: 8000}] for a model endpoint on your LAN
     ipBlocks: []
-    # The Kubernetes apiserver, needed only when liveReads.enabled is true.
+    # The Kubernetes apiserver, needed when liveReads is enabled OR gate.mode
+    # is cluster -- the gate reads its inventory from the ArgoCD cluster
+    # Secrets through the same door.
     #
     # It has its own key because it is the destination people get wrong. The
     # apiserver is reached at `kubernetes.default.svc`, whose ClusterIP is

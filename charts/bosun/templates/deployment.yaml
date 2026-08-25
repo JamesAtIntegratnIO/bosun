@@ -115,6 +115,10 @@ spec:
                   name: {{ .Values.llm.existingSecret }}
                   key: {{ .Values.llm.apiKeyKey }}
             {{- end }}
+            - name: GATE_MODE
+              value: {{ .Values.gate.mode | quote }}
+            - name: GATE_FORK_PRS
+              value: {{ .Values.gate.forkPRs | quote }}
             - name: GATE_CHECK_NAME
               value: {{ .Values.gate.checkName | quote }}
             - name: GATE_WAIT
@@ -147,7 +151,10 @@ spec:
               value: {{ .Values.triage.upstreamNotes.maxReleases | quote }}
             - name: LIVE_READS
               value: {{ .Values.liveReads.enabled | quote }}
-            {{- if .Values.liveReads.enabled }}
+            {{- if or .Values.liveReads.enabled (eq .Values.gate.mode "cluster") }}
+            # The one ArgoCD-namespace value serves both readers: liveReads
+            # (Application health for briefs) and the cluster-mode gate (the
+            # inventory in the cluster Secrets).
             - name: LIVE_READS_ARGOCD_NS
               value: {{ .Values.liveReads.argocdNamespace | quote }}
             {{- end }}

@@ -105,7 +105,7 @@ spec:
           port: 443
     {{- end }}
 {{- if eq $np.flavor "cilium" }}
-{{- if or $np.egress.fqdns $np.egress.fqdnPatterns $np.egress.allowInternet $.Values.liveReads.enabled }}
+{{- if or $np.egress.fqdns $np.egress.fqdnPatterns $np.egress.allowInternet $.Values.liveReads.enabled (eq $.Values.gate.mode "cluster") }}
 ---
 {{- /* FQDN egress is materially tighter than an ipBlock: it names the hosts
      the agent may reach rather than a range that happens to contain them. */}}
@@ -138,8 +138,10 @@ spec:
             - port: "443"
               protocol: TCP
     {{- end }}
-    {{- if $.Values.liveReads.enabled }}
-    {{- /* The idiomatic Cilium answer to "reach the apiserver": an entity,
+    {{- if or $.Values.liveReads.enabled (eq $.Values.gate.mode "cluster") }}
+    {{- /* Both readers of the apiserver -- liveReads and the cluster-mode
+           gate's inventory -- arrive here.
+           The idiomatic Cilium answer to "reach the apiserver": an entity,
            resolved by the agent on every node, rather than a list of
            control-plane addresses that goes stale the first time one is
            replaced. This is why `cilium` needs no egress.apiServer.ipBlocks. */}}
