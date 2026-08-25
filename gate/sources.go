@@ -179,6 +179,12 @@ func readGlobs(repoRoot string, patterns []string) ([]map[string]any, error) {
 	// this pull request.
 	var out []map[string]any
 	for _, f := range files {
+		// A glob can match a directory -- `paths: [apps]` rather than
+		// `apps/*.yaml`. Not a manifest, and not an error either: skipped
+		// explicitly so it does not arrive at ReadFile and become one.
+		if info, err := os.Stat(f); err == nil && info.IsDir() {
+			continue
+		}
 		raw, err := os.ReadFile(f)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", f, err)

@@ -16,9 +16,18 @@ import (
 // requireTool skips rather than fails when an external binary is absent. The
 // alternative -- a hard failure -- makes `go test ./...` depend on the
 // developer's PATH, and a suite that cannot run is a suite nobody runs.
+//
+// REQUIRE_TOOLS=1 turns the skip into a failure, and CI sets it. A skip is the
+// right answer on a workstation and the wrong one on a runner: these tests
+// cover the helm and kubeconform seams, and a seam whose tests quietly did not
+// run reports exactly the same green as one that passed.
 func requireTool(t *testing.T, name string) {
 	t.Helper()
 	if _, err := exec.LookPath(name); err != nil {
+		if os.Getenv("REQUIRE_TOOLS") != "" {
+			t.Fatalf("%s is not on PATH and REQUIRE_TOOLS is set: "+
+				"this seam must be exercised here, not skipped", name)
+		}
 		t.Skipf("%s is not on PATH; skipping", name)
 	}
 }
