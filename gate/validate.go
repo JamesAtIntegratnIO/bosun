@@ -1,63 +1,38 @@
-package main
+package gate
 
 import (
 	"bytes"
 	"encoding/json"
-	"flag"
 	"fmt"
-	"os"
+	"io"
 	"os/exec"
 
 	"sigs.k8s.io/yaml"
 )
 
-// cmdValidate schema-validates every rendered manifest with kubeconform.
+// ValidateManifests renders every source and schema-validates the result with
+// kubeconform, writing a markdown report of the findings to w. It returns the
+// number of manifests that failed.
 //
 // -ignore-missing-schemas is effectively mandatory rather than a convenience:
 // CRDs outside the big projects are in no published catalogue, and without it
 // one unknown kind fails a run that had nothing wrong with it. The cost is
 // real and worth stating -- those kinds are simply not checked.
-func cmdValidate(args []string) (bool, error) {
-	fs := flag.NewFlagSet("validate", flag.ExitOnError)
-	root := fs.String("repo", ".", "path to the repository worktree")
-	cfgPath := fs.String("config", "", "path to .gitops-gate.yaml (default: <repo>/.gitops-gate.yaml)")
-	report := fs.String("report", "", "write a markdown report here (default: stdout)")
-	if err := fs.Parse(args); err != nil {
-		return false, err
-	}
-
-	cfg, inv, err := load(*root, *cfgPath)
-	if err != nil {
-		return false, err
-	}
-	if !cfg.Validate.Enabled {
-		fmt.Fprintln(os.Stderr, "validation is disabled in .gitops-gate.yaml")
-		return false, nil
-	}
+func ValidateManifests(root string, cfg *Config, inv *Inventory, w io.Writer) (int, error) {
 	if _, err := exec.LookPath("kubeconform"); err != nil {
-		return false, fmt.Errorf("kubeconform is not on PATH: %w", err)
+		return 0, fmt.Errorf("kubeconform is not on PATH: %w", err)
 	}
 
-	streams, err := renderStreams(*root, cfg, inv)
+	streams, err := renderStreams(root, cfg, inv)
 	if err != nil {
-		return false, err
-	}
-
-	w := os.Stdout
-	if *report != "" {
-		f, err := os.Create(*report)
-		if err != nil {
-			return false, err
-		}
-		defer f.Close()
-		w = f
+		return 0, err
 	}
 
 	var failures int
 	for name, doc := range streams {
 		out, err := runKubeconform(cfg, doc)
 		if err != nil {
-			return false, fmt.Errorf("running kubeconform on %s: %w", name, err)
+			return 0, fmt.Errorf("running kubeconform on %s: %w", name, err)
 		}
 		if len(out) > 0 {
 			failures += len(out)
@@ -69,12 +44,10 @@ func cmdValidate(args []string) (bool, error) {
 		}
 	}
 
-	if failures > 0 {
-		fmt.Fprintf(os.Stderr, "gitops-gate: %d manifest(s) failed schema validation\n", failures)
-		return true, nil
+	if failures == 0 {
+		fmt.Fprintf(w, "All rendered manifests passed schema validation.\n")
 	}
-	fmt.Fprintf(w, "All rendered manifests passed schema validation.\n")
-	return false, nil
+	return failures, nil
 }
 
 type kubeconformResult struct {
@@ -153,15 +126,4 @@ func renderStreams(root string, cfg *Config, inv *Inventory) (map[string][]byte,
 		}
 	}
 	return out, nil
-}
-
-func writeJSONFile(path string, v any) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	enc := json.NewEncoder(f)
-	enc.SetIndent("", "  ")
-	return enc.Encode(v)
 }

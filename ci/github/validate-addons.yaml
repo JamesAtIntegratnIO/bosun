@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GATE_IMAGE: ghcr.io/OWNER/delivery-kit/gitops-gate:latest   # <- pin a digest
+  GATE_IMAGE: ghcr.io/jamesatintegratnio/gitops-gate:main   # <- pin a digest
 
 jobs:
   scope:

@@ -3,6 +3,74 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.16.0] - 2026-08-24
+
+### Changed
+
+- **The agent is the gate.** `gate.mode: cluster` — the new default — runs
+  the same render, diff and validation the CLI performs, in the agent,
+  against an inventory read LIVE from the ArgoCD cluster Secrets. It polls
+  the open pull requests and posts the `addons-gate` status and report
+  comment itself; the triage reads the verdict in-process instead of
+  scraping its own comment back off the host.
+
+  What this deletes from an operator's plate: the CI workflow and its image
+  pin, the checked-in inventory snapshot and its export/drift-check loop,
+  the paths filter (every pull request is rendered; "no change to what gets
+  deployed" is an answer, not a guess), and the rule that the bot's token
+  must be able to re-trigger CI — a pushed fix is a new head commit, and the
+  sweep re-gates it because it is there.
+
+  What it costs, stated where it is paid: get/list on Secrets in the ArgoCD
+  namespace (they are the inventory, and they also carry cluster
+  credentials — the chart scopes the grant to a namespaced Role that exists
+  only in this mode), and a required check that now depends on the agent
+  being up. `gate.mode: ci` is the old behaviour, kept whole, for fork pull
+  requests on public repositories and for operators who decline either cost.
+  Fork pull requests in cluster mode get an `error` status naming
+  `gate.forkPRs` rather than an unreported required check. See ADR 0008 and
+  the new `docs/onboarding.md`.
+
+  **Upgrading from the CI shape:** nothing breaks on upgrade — the agent
+  skips commits that already carry a verdict, so a still-running CI gate
+  coexists with it — but the mode is a default change, and the migration
+  checklist in `docs/onboarding.md` is the tidy path. Set `gate.mode: ci`
+  to keep the old shape unchanged.
+
+### Added
+
+- **`docs/onboarding.md`** — the single guide onboarding never had: six
+  steps, each ending in a verifiable state, with the CI shape demoted to an
+  appendix. Previously the path was scattered across five READMEs and the
+  reference consumer's commit history.
+
+- **A dev shell** (`nix develop`) carrying the toolchain, with helm and
+  kubeconform pinned to the versions the images render with. The gate's
+  verdict is the output of `helm template`, so a contributor rendering with a
+  different helm than production gets a verdict that is locally true and
+  globally wrong; `hack/portability-test.sh` now asserts the flake and both
+  Dockerfiles agree.
+
+### Fixed
+
+- **A gate report and the "pending" that announced it tie, and Gitea broke
+  the tie wrong.** Gitea returns commit statuses newest first and stamps them
+  in whole seconds, so a gate that reports its progress lands both inside one
+  second and the order within the tie is arbitrary. Taking the first match
+  read a check that had gone green in seconds as permanently pending: the
+  agent waited out the whole of `gate.wait` and announced "still had no
+  verdict" about a gate that had already answered. Ties now break on meaning
+  — a verdict cannot precede the pending that announced it. GitHub is
+  unaffected; it reports through check runs and a documented order.
+
+- **A gate that could not run never tried again.** A verdict answers a commit
+  and is kept, but a *failure to run* was kept on the same terms — and its
+  cause is almost always cluster-side (RBAC not granted yet, a chart
+  repository briefly unreachable). The `error` status outlived its own cause
+  and cleared only when somebody pushed. Broken runs now retry after five
+  minutes; a refusal to gate fork content does not, being a decision rather
+  than a failure.
+
 ## [0.15.2] - 2026-08-24
 
 ### Fixed

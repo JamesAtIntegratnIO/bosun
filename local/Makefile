@@ -10,6 +10,7 @@ SCRIPTS := scripts
 help:
 	@echo "make up      colima + idpbuilder + platform + kit + seed  (everything)"
 	@echo "make demo    run the whole flow, asserted at every step"
+	@echo "make demo-cluster-gate  the gate with no CI anywhere: the agent renders, blocks, re-gates"
 	@echo "make demo-triage  a PR the gate REFUSES, and the agent's verdict on it"
 	@echo "make scenarios    replay the ten recorded incidents against the live agent"
 	@echo "make demo-structural  a bump the swap cannot fix, and the model that can"
@@ -59,6 +60,15 @@ demo:
 .PHONY: demo-triage
 demo-triage:
 	@bash $(SCRIPTS)/50-demo-triage.sh
+
+# Act one-and-a-half: gate.mode=cluster, proved on three properties the CI
+# shape could not have by construction -- a rendered answer instead of a paths
+# guess, a report posted by the agent itself, and a pushed fix re-gated
+# because it exists rather than because a token was minted right. Flips the
+# running deployment to cluster mode and puts it back.
+.PHONY: demo-cluster-gate
+demo-cluster-gate:
+	@bash $(SCRIPTS)/45-demo-cluster-gate.sh
 
 # The eval suite's cases, replayed as real pull requests against the live
 # in-cluster agent. The gate report each posts is the recorded one; the agent,

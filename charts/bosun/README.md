@@ -48,7 +48,27 @@ triage:
   url: http://<release>-bosun.<namespace>.svc:8080/v1/promotion-opened
 ```
 
-## Whose report the agent believes
+## Where the gate runs
+
+`gate.mode: cluster` (the default) makes the agent the gate: it polls the
+open pull requests, renders base and head against the live ArgoCD cluster
+inventory, and posts the `gate.checkName` status and report comment itself.
+Nothing to install in CI, no inventory snapshot to keep fresh — and two costs
+stated plainly. The ServiceAccount gets **get/list on Secrets in the ArgoCD
+namespace** (the inventory lives in the ArgoCD cluster Secrets, which also
+hold cluster credentials; `rbac.create` scopes the grant to a namespaced
+Role that exists only in this mode). And the render runs over pull-request
+content in-cluster, so **fork pull requests are refused** with an `error`
+status unless `gate.forkPRs` says otherwise.
+
+`gate.mode: ci` is the original shape — the gate runs in CI
+([`ci/`](../../ci)), the agent waits on the check and reads the report from a
+comment. The fallback for public repositories taking fork pull requests, and
+for clusters that will not grant the Secret read. Everything below about
+`gate.reportAuthor` applies to this mode; in cluster mode the verdict never
+travels through a comment, so there is nothing to authenticate.
+
+## Whose report the agent believes (ci mode)
 
 The gate publishes its verdict as a pull-request comment carrying a marker, and
 the agent reads that comment to decide what to do. A comment is a surface

@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"fmt"
@@ -164,12 +164,18 @@ func LoadConfig(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}
+	return ParseConfig(raw, path)
+}
+
+// ParseConfig parses and normalises a config already read from somewhere --
+// a file, or a git revision that is not checked out. `clusters` is NOT
+// required here: it names the checked-in inventory snapshot, which only the
+// CLI reads. A caller with a live inventory has no use for the key, and the
+// CLI enforces it where the snapshot is actually loaded.
+func ParseConfig(raw []byte, path string) (*Config, error) {
 	var c Config
 	if err := yaml.UnmarshalStrict(raw, &c); err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
-	}
-	if c.Clusters == "" {
-		return nil, fmt.Errorf("%s: `clusters` is required -- run `gitops-gate clusters export` to create one", path)
 	}
 	if c.ValuesRef == "" {
 		c.ValuesRef = "values"

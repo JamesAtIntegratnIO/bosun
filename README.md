@@ -32,8 +32,8 @@ piece doing its one job.
 
 | Piece | What it does |
 |---|---|
-| [`gate/`](gate) | **The inspection round.** Renders your ApplicationSets at base and at head, fails on a *cluster-targeting* change, an apiVersion migration, or a CRD dropping a served version your manifests still declare; diffs the old and new chart render down to the field; schema-validates the result. A container with an exit code — run it from any CI. |
-| the agent *(this module's root)* | **The repair.** Reads the gate's verdict. Migrates manifests off dropped API versions deterministically, fixes what the rendered diff *proves* is mechanical, explains what a green gate cannot show, and escalates the rest as a handoff. |
+| [`gate/`](gate) | **The inspection round.** Renders your ApplicationSets at base and at head, fails on a *cluster-targeting* change, an apiVersion migration, or a CRD dropping a served version your manifests still declare; diffs the old and new chart render down to the field; schema-validates the result. One engine, two faces: the agent runs it in-cluster against the live inventory by default, and the same code ships as a container with an exit code for local runs and CI. |
+| the agent *(this module's root)* | **The rounds and the repair.** Runs the gate on every open pull request, then acts on the verdict: migrates manifests off dropped API versions deterministically, fixes what the rendered diff *proves* is mechanical, explains what a green gate cannot show, and escalates the rest as a handoff. |
 | [`charts/kargo-pipelines`](charts/kargo-pipelines) | Warehouses and Stages from one target list, with multi-stage promotion chains, verification gating and the triage hook that calls the agent. |
 | [`charts/bosun`](charts/bosun) | Runs the agent in-cluster, triggered by Kargo rather than polled. |
 
@@ -82,13 +82,24 @@ See [`adr/0001-structured-edits-not-agentic-loop.md`](adr/0001-structured-edits-
 
 ## Install
 
+**[`docs/onboarding.md`](docs/onboarding.md) is the whole path** — six steps,
+each ending in a state you can verify. The short version:
+
 ```bash
 helm install bosun oci://ghcr.io/jamesatintegratnio/charts/bosun \
   --namespace bosun --create-namespace \
   -f my-values.yaml
 ```
 
-The gate runs in CI, not the cluster:
+then protect the `addons-gate` check and commit a sources-only
+`.gitops-gate.yaml`. The agent gates its own pull requests by default
+(`gate.mode: cluster`): it renders every open pull request against the live
+ArgoCD cluster inventory and posts the status and report itself — no CI
+workflow, no checked-in inventory snapshot, no paths filter.
+
+The same gate is still a container with an exit code, for local runs before
+pushing and for the CI fallback (`gate.mode: ci` — fork pull requests, or a
+gate that must outlive the cluster):
 
 ```bash
 docker run --rm -v "$PWD:/repo" -w /repo \
@@ -118,9 +129,10 @@ Then point Kargo's promotion at it:
 ## Requirements
 
 - **Kargo** 1.11 or newer, or anything else that can POST a promotion event.
-- A **gate** that posts a report comment and a commit status on the pull
-  request. Bosun reads that comment; it does not render anything itself.
-- A **git host** — `github` or `gitea` today, behind a six-method interface.
+- **ArgoCD**, whose cluster Secrets are the live inventory the gate renders
+  against. (In `gate.mode: ci`, this becomes: a CI system running the gate
+  and posting its report comment and commit status.)
+- A **git host** — `github` or `gitea` today, behind a small interface.
 - An **OpenAI- or Anthropic-compatible model endpoint**. There is no default,
   on purpose: a service that silently starts spending money against a vendor
   you did not choose is a bad default.
@@ -132,6 +144,7 @@ host or model provider. Those are values.
 
 | | |
 |---|---|
+| [`docs/onboarding.md`](docs/onboarding.md) | putting bosun onto a repository, start to finish |
 | [`docs/the-loop.md`](docs/the-loop.md) | the whole system, walked through one pull request |
 | [`docs/safety-model.md`](docs/safety-model.md) | allowlist, deny-list, attempt cap — what is enforced where |
 | [`docs/classification.md`](docs/classification.md) | mechanical vs escalate, with worked examples |
@@ -146,10 +159,16 @@ host or model provider. Those are values.
 ## Development
 
 ```bash
+nix develop            # go, kubectl, kind, and helm pinned to the image's version
 go test ./...          # unit tests and the eval suite
 go test ./evals/...    # just the evals
 hack/lint.sh           # helm lint + values schema validation
 ```
+
+The dev shell pins helm to the version the images carry, because the gate's
+verdict is the output of `helm template` — rendering locally with a different
+helm than production is a difference that looks like nothing at all. See
+[`CONTRIBUTING.md`](CONTRIBUTING.md#the-toolchain).
 
 The [local proving ground](local) builds a throwaway cluster and replays ten
 incidents that really happened to the platform this was built for — real pull

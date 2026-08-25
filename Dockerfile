@@ -28,13 +28,21 @@ ARG HELM_VERSION=v3.19.0
 # fallback is computed inside RUN instead, so BuildKit stays authoritative
 # where it sets the arg and a plain `docker build` still resolves natively.
 ARG TARGETARCH
+# kubeconform joined helm when the gate moved in-process: an agent gating in
+# cluster mode runs the same schema validation the CI adapter ran, and a
+# missing binary would silently mean "validate: enabled" validates nothing.
+# Same version as the gate's image, same reason as helm.
+ARG KUBECONFORM_VERSION=v0.7.0
 RUN set -eux; \
     arch="${TARGETARCH:-$(apk --print-arch | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')}"; \
     wget -qO- "https://get.helm.sh/helm-${HELM_VERSION}-linux-${arch}.tar.gz" \
       | tar -xz -C /tmp; \
     mv "/tmp/linux-${arch}/helm" /usr/local/bin/helm; \
     rm -rf /tmp/linux-*; \
-    helm version --short
+    wget -qO- "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-${arch}.tar.gz" \
+      | tar -xz -C /usr/local/bin kubeconform; \
+    helm version --short; \
+    kubeconform -v
 
 COPY --from=build /out/bosun /usr/local/bin/bosun
 

@@ -1,6 +1,9 @@
 # 2. Deterministic checks in CI; judgement in the cluster
 
-- **Status:** accepted
+- **Status:** amended by [ADR 0008](0008-the-gate-moves-in-cluster.md) — the
+  deterministic half now runs in-cluster by default too, with CI as the
+  fallback. The premise that dated: "CI is where the checkout already is"
+  stopped being true when the agent grew a checkout of its own.
 - **Date:** 2026-08-22
 
 ## Context

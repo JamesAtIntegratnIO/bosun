@@ -92,6 +92,42 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# The dev shell renders with the same tools the images do.
+#
+# The gate's verdict is the output of `helm template`, so the helm that
+# produces it is part of the answer. A contributor whose shell renders with a
+# different helm than the image gets a verdict that is locally true and
+# globally wrong -- and nothing about it looks like a version problem. Both
+# Dockerfiles already pin helm and kubeconform and say why; this asserts the
+# flake pins the same strings, because three copies of a version number is
+# exactly the shape that drifts.
+# ---------------------------------------------------------------------------
+echo "==> the dev shell and the images agree on what renders"
+if [ -f flake.nix ]; then
+  check_pin() { # <flake attribute> <Dockerfile ARG>
+    local attr="$1" arg="$2" fv dv f mismatch=0
+    fv="$(sed -n "s/^ *${attr} = \"\([^\"]*\)\";.*/\1/p" flake.nix | head -1)"
+    if [ -z "$fv" ]; then
+      bad "flake.nix does not pin ${attr}"
+      return 0
+    fi
+    for f in Dockerfile gate/Dockerfile; do
+      dv="$(sed -n "s/^ARG ${arg}=v\{0,1\}\(.*\)/\1/p" "$f" | head -1)"
+      if [ "$dv" != "$fv" ]; then
+        bad "${f} builds with ${arg}=${dv:-<unset>}, the dev shell with ${attr}=${fv}"
+        mismatch=1
+      fi
+    done
+    if [ "$mismatch" -eq 0 ]; then ok "${attr} ${fv} matches both images"; fi
+    return 0
+  }
+  check_pin helmVersion HELM_VERSION
+  check_pin kubeconformVersion KUBECONFORM_VERSION
+else
+  echo "  skip  no flake.nix"
+fi
+
+# ---------------------------------------------------------------------------
 # Every unit documents itself.
 # ---------------------------------------------------------------------------
 echo "==> every unit documents itself"

@@ -24,7 +24,7 @@ silently at least once:
 
 | Contract | How it broke |
 |---|---|
-| The agent finds the gate's verdict by searching comments for `<!-- gitops-gate -->` | The marker lived in one demo script and in no CI adapter, so no agent could ever find a report CI published |
+| The agent finds the gate's verdict by searching comments for `<!-- gitops-gate -->` *(ci mode only — in cluster mode the verdict never leaves the process, which is one reason ADR 0008 moved it)* | The marker lived in one demo script and in no CI adapter, so no agent could ever find a report CI published |
 | Any version the agent writes must appear verbatim in the gate's report | Still untested. Change how the report renders a version and every mechanical fix silently becomes an escalation |
 | `kargo-pipelines` POSTs a promotion body the agent's handler must parse | Untested |
 
@@ -54,6 +54,30 @@ and [`docs/safety-model.md`](docs/safety-model.md).
 
 A change that alters behaviour and does not touch the relevant documentation is
 incomplete.
+
+## The toolchain
+
+```bash
+nix develop     # or `direnv allow`, which does it on cd
+```
+
+Go, kubectl, kind, kubeconform and helm, at the versions this repository is
+meant to be built and tested with. **helm and kubeconform are pinned to the
+versions the images carry**, and taken from the same upstream releases rather
+than from nixpkgs — which currently ships Helm 4.
+
+That pin is not tidiness. The gate's verdict *is* the output of `helm
+template`, so the helm that produced it is part of the answer: render with a
+different one and you get a verdict that is locally true and globally wrong,
+looking nothing like a version problem while you chase it. Both Dockerfiles
+already say this where they pin; `hack/portability-test.sh` now asserts the
+flake agrees with both, because three copies of a version number is exactly
+the shape that drifts.
+
+Two tools stay outside the shell, because they manage host state a second
+copy would fight over: **colima** (a VM with state in `~/.colima`) and
+**idpbuilder** (not in nixpkgs). `local/scripts/00-runtime.sh` installs both
+with brew, and the shell says so if they are missing.
 
 ## Checks
 

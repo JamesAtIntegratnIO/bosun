@@ -21,6 +21,10 @@ type Fake struct {
 	// PR is what GetPullRequest returns. Nil makes the read fail, which is the
 	// only way this provider can fail that way.
 	PR *PullRequest
+	// OpenPRs is what ListOpenPullRequests returns. Independent of PR so a
+	// gate test can serve a list while a triage test keeps serving one.
+	OpenPRs []PullRequest
+	ListErr error
 	// Comments is the pull request's history, oldest first. The gate's report
 	// belongs here, marked, or triage has nothing to hand the model.
 	Comments []Comment
@@ -68,6 +72,13 @@ func (f *Fake) GetPullRequest(_ context.Context, number int) (*PullRequest, erro
 	out := *f.PR
 	out.Labels = append([]string(nil), f.PR.Labels...)
 	return &out, nil
+}
+
+func (f *Fake) ListOpenPullRequests(_ context.Context) ([]PullRequest, error) {
+	if f.ListErr != nil {
+		return nil, f.ListErr
+	}
+	return append([]PullRequest(nil), f.OpenPRs...), nil
 }
 
 func (f *Fake) ListComments(_ context.Context, _ int) ([]Comment, error) {

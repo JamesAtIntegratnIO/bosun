@@ -154,8 +154,12 @@ func main() {
 		Log:              func(f string, a ...any) { logger.Printf(f, a...) },
 	}
 
-	if cfg.LiveReads {
-		reader := &cluster.APIServer{ArgoCDNamespace: cfg.LiveReadsArgoCDNamespace}
+	// One reader serves both features that look at the cluster: liveReads
+	// (facts for briefs) and the in-cluster gate (the inventory it renders
+	// against).
+	var reader *cluster.APIServer
+	if cfg.LiveReads || cfg.GateMode == "cluster" {
+		reader = &cluster.APIServer{ArgoCDNamespace: cfg.LiveReadsArgoCDNamespace}
 		// Fail at start-up, the same rule as the App's key -- and here it
 		// matters more, not less. Every failure inside this reader is
 		// deliberately soft: an unreachable apiserver reports "not permitted
@@ -167,11 +171,14 @@ func main() {
 		err := reader.Check(ctx)
 		cancel()
 		if err != nil {
-			logger.Fatalf("live cluster reads are enabled and the apiserver could not be read: %v\n"+
+			logger.Fatalf("the apiserver could not be read: %v\n"+
 				"  the NetworkPolicy needs an explicit egress rule for the apiserver: a ClusterIP is "+
 				"DNAT'd before policy is evaluated, so kubernetes.default.svc is not reachable by "+
 				"default and the symptom is a hang with zero bytes", err)
 		}
+	}
+
+	if cfg.LiveReads {
 		ns, _ := reader.Namespace()
 		logger.Printf("reading the cluster read-only from %s (Applications in %s)",
 			ns, cfg.LiveReadsArgoCDNamespace)
@@ -179,6 +186,43 @@ func main() {
 	} else {
 		logger.Print("live cluster reads are off; briefs say what the repository holds " +
 			"and nothing about what is running")
+	}
+
+	// The context the background work answers to. Cancelled at shutdown, after
+	// the HTTP server has stopped taking new promotions.
+	runCtx, stopRun := context.WithCancel(context.Background())
+	defer stopRun()
+
+	if cfg.GateMode == "cluster" {
+		// Same fail-at-start-up rule as everything above: a ServiceAccount the
+		// RBAC does not let read the ArgoCD cluster Secrets would otherwise
+		// surface as an `error` status on every pull request -- a broken
+		// required check, discovered by whoever tries to merge next.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		inv, err := reader.ClusterInventory(ctx)
+		cancel()
+		if err != nil {
+			logger.Fatalf("gate.mode is cluster and the inventory could not be read: %v\n"+
+				"  the gate renders against the ArgoCD cluster Secrets, which needs get/list on "+
+				"Secrets in the ArgoCD namespace (the chart creates the Role when gate.mode is "+
+				"cluster). Set gate.mode to ci to keep running the gate in CI instead", err)
+		}
+		gs := &GateService{
+			Git:       git,
+			Inventory: reader.ClusterInventory,
+			CheckName: cfg.CheckName,
+			RepoURL:   cfg.GitRepoURL,
+			CloneRoot: cfg.CloneRoot,
+			ForkPRs:   cfg.GateForkPRs,
+			Poll:      cfg.GatePoll,
+			Log:       func(f string, a ...any) { logger.Printf(f, a...) },
+		}
+		t.Gate = gs
+		go gs.Run(runCtx)
+		logger.Printf("gate: in-cluster, polling for open pull requests every %s (%d cluster(s) in the live inventory)",
+			cfg.GatePoll, len(inv.Clusters))
+	} else {
+		logger.Printf("gate: ci -- waiting on the %s check and reading the report from comments", cfg.CheckName)
 	}
 
 	// Said at start-up, because the alternative is a deployment that silently
@@ -224,6 +268,7 @@ func main() {
 	<-stop
 
 	logger.Print("shutting down; waiting for in-flight triage")
+	stopRun()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(ctx)

@@ -117,10 +117,14 @@ func (g *Gitea) GetPullRequest(ctx context.Context, number int) (*PullRequest, e
 		Body   string `json:"body"`
 		HTML   string `json:"html_url"`
 		Head   struct {
-			Ref string `json:"ref"`
-			SHA string `json:"sha"`
+			Ref  string `json:"ref"`
+			SHA  string `json:"sha"`
+			Repo struct {
+				FullName string `json:"full_name"`
+			} `json:"repo"`
 		} `json:"head"`
 		Base struct {
+			Ref string `json:"ref"`
 			SHA string `json:"sha"`
 		} `json:"base"`
 		User   struct{ Login string } `json:"user"`
@@ -133,11 +137,67 @@ func (g *Gitea) GetPullRequest(ctx context.Context, number int) (*PullRequest, e
 	}
 	out := &PullRequest{
 		Number: pr.Number, Title: pr.Title, Body: pr.Body,
-		Branch: pr.Head.Ref, HeadSHA: pr.Head.SHA, BaseSHA: pr.Base.SHA,
+		Branch: pr.Head.Ref, BaseBranch: pr.Base.Ref, HeadSHA: pr.Head.SHA, BaseSHA: pr.Base.SHA,
 		Author: pr.User.Login, URL: pr.HTML,
+		FromFork: g.fromFork(pr.Head.Repo.FullName),
 	}
 	for _, l := range pr.Labels {
 		out.Labels = append(out.Labels, l.Name)
+	}
+	return out, nil
+}
+
+// fromFork decides whether a head repository is this one. An empty name --
+// a deleted fork -- is still not this repository; unknown must not read as
+// trusted.
+func (g *Gitea) fromFork(headRepo string) bool {
+	return !strings.EqualFold(headRepo, g.Owner+"/"+g.Repo)
+}
+
+// ListOpenPullRequests pages through the open pull requests, with the same
+// page bound as the comment walk so a paging bug cannot loop forever.
+func (g *Gitea) ListOpenPullRequests(ctx context.Context) ([]PullRequest, error) {
+	var out []PullRequest
+	for page := 1; page <= maxCommentPages; page++ {
+		var raw []struct {
+			Number int    `json:"number"`
+			Title  string `json:"title"`
+			HTML   string `json:"html_url"`
+			Head   struct {
+				Ref  string `json:"ref"`
+				SHA  string `json:"sha"`
+				Repo struct {
+					FullName string `json:"full_name"`
+				} `json:"repo"`
+			} `json:"head"`
+			Base struct {
+				Ref string `json:"ref"`
+				SHA string `json:"sha"`
+			} `json:"base"`
+			User   struct{ Login string } `json:"user"`
+			Labels []struct {
+				Name string `json:"name"`
+			} `json:"labels"`
+		}
+		if err := g.do(ctx, http.MethodGet, g.repoPath(fmt.Sprintf(
+			"/pulls?state=open&limit=100&page=%d", page)), nil, &raw); err != nil {
+			return nil, err
+		}
+		for _, pr := range raw {
+			p := PullRequest{
+				Number: pr.Number, Title: pr.Title,
+				Branch: pr.Head.Ref, BaseBranch: pr.Base.Ref, HeadSHA: pr.Head.SHA, BaseSHA: pr.Base.SHA,
+				Author: pr.User.Login, URL: pr.HTML,
+				FromFork: g.fromFork(pr.Head.Repo.FullName),
+			}
+			for _, l := range pr.Labels {
+				p.Labels = append(p.Labels, l.Name)
+			}
+			out = append(out, p)
+		}
+		if len(raw) < 100 {
+			break
+		}
 	}
 	return out, nil
 }
@@ -186,33 +246,61 @@ func (g *Gitea) ListComments(ctx context.Context, number int) ([]Comment, error)
 // two -- but the same failure mode if the name does not match, so a check
 // nobody reported is CheckMissing rather than an error.
 //
-// Statuses are returned newest first and a commit may carry several for one
-// context as CI re-runs. The first match therefore wins, and re-reading an
-// older one would report a result that has already been superseded.
+// Statuses come back newest first, and a commit carries several for one
+// context as CI re-runs, so the newest is the one that counts.
+//
+// POSITION IS NOT ENOUGH TO FIND IT. Gitea stamps whole seconds, and a gate
+// that announces itself pending and then publishes a verdict routinely lands
+// both inside one -- at which point "newest first" has nothing to sort by and
+// the order within the tie is arbitrary. Observed on the proving ground:
+// `pending` and `success` both at 01:04:02, pending listed first, and the
+// agent -- which took the first match -- read a check that had gone green in
+// seconds as permanently pending, waited out GATE_WAIT, and reported "still
+// had no verdict". Nothing failed, which is how it survived a demo whose CI
+// adapter happens to write exactly one status per context.
+//
+// So ties are broken on meaning rather than on position: a settled state beats
+// pending, because a verdict cannot precede the pending that announced it. A
+// tie between two settled states keeps the earlier entry, which under
+// newest-first is the newer one.
 func (g *Gitea) CheckStatus(ctx context.Context, sha, checkName string) (CheckState, error) {
 	var statuses []struct {
-		Context string `json:"context"`
-		Status  string `json:"status"`
+		Context string    `json:"context"`
+		Status  string    `json:"status"`
+		Created time.Time `json:"created_at"`
 	}
 	if err := g.do(ctx, http.MethodGet,
 		g.repoPath(fmt.Sprintf("/statuses/%s?limit=100", url.PathEscape(sha))), nil, &statuses); err != nil {
 		return CheckMissing, err
 	}
+
+	out := CheckMissing
+	var newest time.Time
 	for _, s := range statuses {
 		if s.Context != checkName {
 			continue
 		}
-		switch s.Status {
-		case "success":
-			return CheckSuccess, nil
-		case "pending":
-			return CheckPending, nil
-		default:
-			// `failure`, `error` and `warning` all mean do not merge.
-			return CheckFailure, nil
+		state := giteaState(s.Status)
+		switch {
+		case out == CheckMissing,
+			s.Created.After(newest),
+			s.Created.Equal(newest) && out == CheckPending && state != CheckPending:
+			out, newest = state, s.Created
 		}
 	}
-	return CheckMissing, nil
+	return out, nil
+}
+
+func giteaState(s string) CheckState {
+	switch s {
+	case "success":
+		return CheckSuccess
+	case "pending":
+		return CheckPending
+	default:
+		// `failure`, `error` and `warning` all mean do not merge.
+		return CheckFailure
+	}
 }
 
 func (g *Gitea) Comment(ctx context.Context, number int, body string) error {

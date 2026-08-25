@@ -145,6 +145,12 @@ while read -r ip; do
 done <<< "$APISERVER_EPS"
 
 say "bosun"
+# gate.mode=ci, NOT the chart default. The incident-replay acts (60, 85) feed
+# the agent RECORDED gate reports as comments -- replaying an incident means
+# replaying its evidence, and only ci mode reads a verdict off a comment. An
+# in-cluster gate would render the sample repo as it actually is and answer
+# about the wrong world. The cluster-mode act (45) flips this and puts it
+# back, the way the egress act treats the deny list.
 helm upgrade --install bosun "$ROOT/../charts/bosun" \
   --kube-context "$CLUSTER_CONTEXT" \
   --namespace bosun \
@@ -169,6 +175,7 @@ helm upgrade --install bosun "$ROOT/../charts/bosun" \
   --set llm.provider=openai \
   --set llm.baseURL="$LLM_BASE_URL" \
   --set llm.model="$LLM_MODEL" \
+  --set gate.mode=ci \
   --set gate.checkName=gate \
   --set gate.wait=3m \
   --set gate.poll=10s \

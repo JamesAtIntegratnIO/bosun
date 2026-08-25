@@ -5,6 +5,19 @@ All notable changes to `gitops-gate`. Format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The engine is a package; the CLI is one caller of it.** `gate/` compiled
+  as a single main package, so the only way to run a render was the binary.
+  Now the engine is importable — the agent imports it and runs the gate
+  in-cluster (ADR 0008) — and the CLI moved to `cmd/gitops-gate` with
+  identical flags, output and exit codes. Two consequences visible from
+  outside: `clusters` in `.gitops-gate.yaml` is required only where the
+  snapshot is actually read (the CLI; a live-inventory caller has no use for
+  the key), and the ArgoCD Secret decode is one shared function, so the
+  exported snapshot and the agent's live read can never disagree about what
+  a Secret means.
+
 ### Added
 
 - **A removed CRD is inspected, not just listed.** Removal is the limiting

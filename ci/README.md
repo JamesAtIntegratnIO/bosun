@@ -1,5 +1,13 @@
 # CI adapters
 
+**This is the fallback path.** Since [ADR
+0008](../adr/0008-the-gate-moves-in-cluster.md) the agent runs the gate
+in-cluster by default (`gate.mode: cluster`), and a repository onboarding
+today needs nothing in this directory — see
+[`docs/onboarding.md`](../docs/onboarding.md). An adapter is for
+`gate.mode: ci`: fork pull requests on a public repository, a gate that must
+keep answering while the cluster is down, or the gate with no agent at all.
+
 The gate is a container. An adapter's whole job is:
 
 1. Check out the pull request **and** its merge base — the gate compares two

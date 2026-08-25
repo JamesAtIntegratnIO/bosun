@@ -35,7 +35,7 @@ releases, and both are there because they are built from your checkout and
 there is no git ref for ArgoCD to point at:
 
 ```
-bosun            bosun   bosun-0.15.2
+bosun            bosun   bosun-0.16.0
 kargo-pipelines  kargo   kargo-pipelines-0.1.2
 ```
 
@@ -112,16 +112,28 @@ nothing for hours because kube-state-metrics prefixes custom-resource metrics
 unless told not to. It went with `kargo-observability`, which is not part of
 this repository: it shares no contract with the gate or the agent.
 
-## The three acts
+## The acts
 
 ```bash
-make demo             # a green gate, promoted and merged
-make demo-triage      # a red gate the agent refuses to fix, and says why
-make demo-structural  # a red gate the swap alone cannot fix
-make demo-forged      # a gate report the agent refuses to believe
-make demo-egress      # a host the agent is told not to visit
-make scenarios        # the recorded incidents, replayed live
+make demo              # a green gate, promoted and merged
+make demo-cluster-gate # the gate with no CI anywhere: renders, blocks, re-gates
+make demo-triage       # a red gate the agent refuses to fix, and says why
+make demo-structural   # a red gate the swap alone cannot fix
+make demo-forged       # a gate report the agent refuses to believe
+make demo-egress       # a host the agent is told not to visit
+make scenarios         # the recorded incidents, replayed live
 ```
+
+The kit installs the agent with `gate.mode: ci` — deliberately not the chart's
+default. The replay acts feed the agent **recorded** gate reports, and
+replaying an incident means replaying its evidence: only ci mode reads a
+verdict off a comment, where an in-cluster gate would render the sample repo
+as it actually is and answer about the wrong world. `make demo-cluster-gate`
+flips the running deployment to the default mode, proves the three properties
+the CI shape could not have by construction — a comment-only change answered
+by a render rather than a paths guess, the report posted by the agent itself,
+and a pushed fix re-gated because the commit exists rather than because a
+token was minted right — and puts the mode back.
 
 `make demo-structural` is the one that needs the whole stack at once. It pins
 cert-manager `v1.5.5` with a `cert-manager.io/v1alpha2` Certificate that has
