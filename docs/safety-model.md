@@ -80,8 +80,15 @@ Every entry is a way to make a red gate green without fixing anything:
 .gitops-gate.yaml     what the gate renders, and how
 .gitops-gate/**       the cluster inventory it compares against
 delivery/**           the kit itself, including this agent and its prompt
-**/kargo-*/**         the merge policy and version constraints
+.gitlab-ci.yml        the GitLab and Bitbucket equivalents of .github/**
+bitbucket-pipelines.yml
+**/kargo-projects/**  the merge policy and version constraints
+**/kargo-pipelines/** the promotion pipelines themselves
 ```
+
+These are the patterns as enforced. The matcher understands `**` at the start
+of a pattern, at the end, or at both — not in the middle — so a wildcard in the
+directory name itself (`**/kargo-*/**`) is not something the deny-list can say.
 
 An operator can add to the deny-list. They cannot remove from it.
 

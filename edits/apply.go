@@ -81,11 +81,11 @@ var DefaultDeny = []string{
 	".github/**",     // the gate's own workflows
 	".gitlab-ci.yml", //
 	"bitbucket-pipelines.yml",
-	".gitops-gate.yaml",             // what the gate renders, and how
-	".gitops-gate/**",               // the cluster inventory the gate compares against
-	"delivery/**",                   // the kit itself, including this agent
-	"**/kargo-projects/values.yaml", // merge policy and constraints
-	"**/kargo-pipelines/**",
+	".gitops-gate.yaml",     // what the gate renders, and how
+	".gitops-gate/**",       // the cluster inventory the gate compares against
+	"delivery/**",           // the kit itself, including this agent
+	"**/kargo-projects/**",  // merge policy and constraints
+	"**/kargo-pipelines/**", // the promotion pipelines themselves
 }
 
 type Result struct {
@@ -188,10 +188,21 @@ func (p Policy) Check(path string) string {
 
 // matchGlob supports the `**` prefix/suffix form used in the policies, which
 // filepath.Match does not.
+//
+// The both-ends form (`**/dir/**`) is checked first. Without it the `/**`
+// suffix case claims the pattern, strips only the tail, and then compares a
+// real path against one that still begins with a literal `**/` -- so the entry
+// silently never matches and a deny-list line that looks enforced is not.
 func matchGlob(pattern, path string) bool {
 	switch {
 	case pattern == path:
 		return true
+	case strings.HasPrefix(pattern, "**/") && strings.HasSuffix(pattern, "/**"):
+		mid := strings.TrimSuffix(strings.TrimPrefix(pattern, "**/"), "/**")
+		return path == mid ||
+			strings.HasPrefix(path, mid+"/") ||
+			strings.HasSuffix(path, "/"+mid) ||
+			strings.Contains(path, "/"+mid+"/")
 	case strings.HasSuffix(pattern, "/**"):
 		prefix := strings.TrimSuffix(pattern, "/**")
 		return path == prefix || strings.HasPrefix(path, prefix+"/")

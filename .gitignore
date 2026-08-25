@@ -3,3 +3,6 @@
 
 # helm package output
 *.tgz
+
+# desloppify local state
+.desloppify/

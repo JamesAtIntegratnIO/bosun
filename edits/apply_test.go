@@ -106,6 +106,12 @@ func TestAlwaysDeniesTheGateAndThePolicy(t *testing.T) {
 		"addons/cluster-roles/control-plane/addons/kargo-projects/values.yaml",
 		".gitlab-ci.yml",
 		"bitbucket-pipelines.yml",
+		// Deliberately outside delivery/, so the two kargo entries are tested
+		// on their own rather than riding on the `delivery/**` denial.
+		"charts/kargo-pipelines/values.yaml",
+		"charts/kargo-projects/values.yaml",
+		"kargo-pipelines/values.yaml",
+		"platform/tenant/kargo-pipelines/promote/stage.yaml",
 	}
 	files := map[string]string{}
 	for _, f := range forbidden {
@@ -328,5 +334,33 @@ func TestEmptyScopeIsUnscoped(t *testing.T) {
 	}
 	if len(res.Applied) != 1 {
 		t.Fatalf("empty Scope must not refuse anything, got %+v", res.Rejected)
+	}
+}
+
+// matchGlob's `**` forms are what the deny-list is written in, so a form the
+// matcher quietly fails to support is a deny-list entry that does not hold.
+func TestMatchGlobDoubleStarForms(t *testing.T) {
+	cases := []struct {
+		pattern, path string
+		want          bool
+	}{
+		{"**/kargo-pipelines/**", "charts/kargo-pipelines/values.yaml", true},
+		{"**/kargo-pipelines/**", "a/b/c/kargo-pipelines/d/e.yaml", true},
+		{"**/kargo-pipelines/**", "kargo-pipelines/values.yaml", true},
+		{"**/kargo-pipelines/**", "kargo-pipelines", true},
+		{"**/kargo-pipelines/**", "charts/kargo-pipelines", true},
+		{"**/kargo-pipelines/**", "charts/kargo-pipelines-staging/values.yaml", false},
+		{"**/kargo-pipelines/**", "charts/other/values.yaml", false},
+		{"delivery/**", "delivery/images/bosun/prompt.go", true},
+		{"delivery/**", "delivery", true},
+		{"delivery/**", "deliverance/x.yaml", false},
+		{"**/values.yaml", "charts/app/values.yaml", true},
+		{"**/values.yaml", "values.yaml", true},
+		{"**/values.yaml", "charts/app/other.yaml", false},
+	}
+	for _, c := range cases {
+		if got := matchGlob(c.pattern, c.path); got != c.want {
+			t.Errorf("matchGlob(%q, %q) = %v, want %v", c.pattern, c.path, got, c.want)
+		}
 	}
 }
