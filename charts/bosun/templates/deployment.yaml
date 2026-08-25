@@ -119,6 +119,10 @@ spec:
               value: {{ .Values.gate.checkName | quote }}
             - name: GATE_WAIT
               value: {{ .Values.gate.wait | quote }}
+            - name: SUPERVISE_PIPELINE
+              value: {{ .Values.supervise.enabled | quote }}
+            - name: SUPERVISE_INTERVAL
+              value: {{ .Values.supervise.interval | quote }}
             - name: GATE_POLL
               value: {{ .Values.gate.poll | quote }}
             {{- with .Values.gate.reportAuthor }}

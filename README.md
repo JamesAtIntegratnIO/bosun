@@ -151,6 +151,7 @@ host or model provider. Those are values.
 | [`docs/prompt-contract.md`](docs/prompt-contract.md) | the prompt the eval numbers come from |
 | [`docs/llm-providers.md`](docs/llm-providers.md) | the `LLMProvider` interface; adding one |
 | [`docs/git-providers.md`](docs/git-providers.md) | the `GitProvider` interface; adding one |
+| [`docs/supervisor.md`](docs/supervisor.md) | watching the promotion pipeline for what has silently stopped |
 | [`gate/README.md`](gate/README.md) | the gate: what it checks, and what it deliberately does not |
 | [`ci/`](ci) | CI adapters, and the contract an adapter must satisfy |
 | [`local/`](local) | a disposable cluster that runs the whole flow, and replays the ten recorded incidents against the live agent |

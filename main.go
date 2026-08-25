@@ -31,6 +31,7 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/egress"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
+	"github.com/JamesAtIntegratnIO/bosun/pipeline"
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
 
@@ -248,6 +249,31 @@ func main() {
 	mux.HandleFunc("POST /v1/promotion-opened", srv.PromotionOpened)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+
+	// The supervisor. A second job, on a timer, answering the question nobody
+	// asks: not "is this pull request safe" but "are the pull requests that
+	// should exist being opened at all". Nothing about a promotion that never
+	// happened produces an event, so a timer is the only way to see it.
+	if cfg.Supervise {
+		if reader == nil {
+			logger.Print("pipeline supervision is on but no cluster reader was built; " +
+				"it needs the same apiserver access liveReads and cluster-mode gating use")
+		} else {
+			sup := &Supervisor{
+				Collector: &pipeline.Collector{Kargo: reader, PRs: git},
+				Every:     cfg.SuperviseEvery,
+				Log:       func(f string, a ...any) { logger.Printf(f, a...) },
+				// The default branch, because a pin that writes nowhere is a
+				// property of what is merged.
+				Checkout: shallowCheckout(cfg.GitRepoURL, "", cfg.CloneRoot),
+			}
+			mux.HandleFunc("GET /pipeline", sup.Handler("markdown"))
+			mux.HandleFunc("GET /metrics", sup.Handler("metrics"))
+			go sup.Run(runCtx)
+			logger.Printf("pipeline: supervising Kargo every %s; report on /pipeline, metrics on /metrics",
+				cfg.SuperviseEvery)
+		}
+	}
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,

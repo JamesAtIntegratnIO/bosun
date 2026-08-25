@@ -479,6 +479,19 @@
           "minLength": 1
         }
       }
+    },
+    "supervise": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "interval": {
+          "type": "string",
+          "pattern": "^\\d+[smh]$|^\\d+[hm]\\d+[ms]$|^\\d+h\\d+m\\d+s$"
+        }
+      }
     }
   }
 }
