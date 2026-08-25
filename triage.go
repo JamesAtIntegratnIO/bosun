@@ -305,6 +305,21 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 		}
 	}
 
+	// A red with nothing in this repository to change. Deterministic, and
+	// deliberately not a model call.
+	//
+	// The gate blocks on an object whose apiVersion moved even when the CHART
+	// renders that object and nothing here declares it -- correctly, because
+	// somebody should look. But there is no edit to propose, and asking a
+	// model to explain that produced a paragraph restating the report and
+	// burying the one sentence that mattered: there are no values to change.
+	// Saying it in one line, from the gate's own count, is both truer and
+	// faster.
+	if b, ok := migrate.ParseBlockers(report); ok && b.Any() && !b.RepoSideRemedy() {
+		t.say(ctx, pr, "escalated: nothing in this repository can change what blocks this")
+		return t.escalateInformed(ctx, pr, noRemedyReason(b), nil, nil, t.upstreamFor(ctx, p, report), live)
+	}
+
 	prompt, err := buildUserPrompt(p, pr, report, root)
 	if err != nil {
 		return err
@@ -681,6 +696,30 @@ func countOf(n int, noun string) string {
 		return "1 " + noun
 	}
 	return fmt.Sprintf("%d %ss", n, noun)
+}
+
+// noRemedyReason states, from the gate's own count, exactly why no fix was
+// attempted. A reader's next question after "needs a human" is always "what
+// would I even change?", and the honest answer here is nothing in this
+// repository -- so the comment leads with that instead of implying a search.
+func noRemedyReason(b migrate.Blockers) string {
+	var what string
+	switch {
+	case b.APIVersion == 1:
+		what = "An object this chart renders has moved to a new apiVersion."
+	case b.APIVersion > 1:
+		what = fmt.Sprintf("%d objects this chart renders have moved to new apiVersions.", b.APIVersion)
+	default:
+		what = "The gate is blocking."
+	}
+	return what + "\n\n" +
+		"**Nothing in this repository declares them, so there is nothing here to rewrite** — " +
+		"no manifest to migrate and no value to change. The move is the chart's own, and it " +
+		"will apply when this merges.\n\n" +
+		"What is worth checking before it does: that the new apiVersion is served by this " +
+		"cluster, and that anything outside this repository which addresses those objects " +
+		"still can. The gate blocks on this class because it renders perfectly and can break " +
+		"at runtime — not because it found something you can edit."
 }
 
 // attemptSuffix names the attempt only when there has been more than one.

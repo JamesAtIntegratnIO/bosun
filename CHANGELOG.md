@@ -3,6 +3,67 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.17.0] - 2026-08-25
+
+### Added
+
+- **The gate finds settings a bump stops reading.** Helm ignores a value it
+  does not recognise rather than failing on it, so a chart that renames or
+  removes a key takes the setting with it and renders perfectly — the values
+  file did not change, the chart did. Measured on kyverno 3.2.8 → 3.9.0: 48 of
+  the 77 values the consuming repository sets are no longer declared, six of
+  them keys Kargo rewrites on every image promotion. That bump gated **green**
+  before this.
+
+  The chart's declared surface is read from its own `values.yaml` and, when
+  present, a helm-docs README table. Absence only counts when the OLD version's
+  surface accounted for at least 90% of what the repository already sets —
+  below that, a chart we cannot read cannot prove an absence, and the check
+  says nothing. Blocking, and printed above the resource diffs, because it is
+  the finding with no other symptom.
+
+  Measured for false positives rather than hoped: authentik 2025.12.4 →
+  2026.2.3, trivy-operator 0.35.0 → 0.36.0 and kube-prometheus-stack 88.5.3 →
+  88.5.4 all report zero.
+
+- **The report leads with its verdict**, red or green, naming what blocks and
+  how much of it — and carries a machine-readable breakdown of why, so an agent
+  reading it does not have to infer that from prose written for a person. CI
+  adapters that post the report verbatim carry it for free.
+
+### Changed
+
+- **One gate report per pull request, rewritten in place**, carrying the
+  verdicts that came before it. Posting a fresh report per head commit left a
+  repaired pull request with two twenty-thousand-character comments that
+  differed only in a verdict neither stated. Editing alone would have deleted
+  the failed pass, so the body keeps a bounded history of what each head was
+  judged to be.
+
+- **A red with no repository-side fix is answered without a model.** The gate
+  blocks when an object the CHART renders moves apiVersion, which is right —
+  somebody should look — but there is no edit to propose. Asking a model to
+  explain that produced a paragraph restating the report with the one useful
+  sentence buried in it.
+
+- **Comments no longer carry an identity header.** Authenticating as a GitHub
+  App puts the name and avatar above every comment; a bold "⚓ Bosun" under
+  that was the agent introducing itself twice. The footer still records whether
+  a model was involved, which the host cannot supply.
+
+- **The attempt counter appears only on a retry.** "(attempt 1 of 2)" on every
+  comment described a sequence that had not happened. The cap itself is
+  unchanged — the label remains its only memory across a restart.
+
+- **The migrated-file table is collapsed.** Twenty-seven rows restating the
+  commit's own file list pushed the live-cluster facts off the bottom, and
+  those are the part only an in-cluster agent can supply.
+
+### Deprecated
+
+- `branding.mark` is ignored. Still accepted so no upgrade fails on a values
+  file that sets it.
+
 ## [0.16.1] - 2026-08-25
 
 ### Fixed
