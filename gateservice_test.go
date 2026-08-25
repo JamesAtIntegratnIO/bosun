@@ -302,6 +302,51 @@ func TestASettledStatusIsNotRelitigated(t *testing.T) {
 	}
 }
 
+// A verdict answers a commit and the commit does not change, so it is kept.
+// A FAILURE TO RUN is not a verdict: its cause is usually cluster-side, and
+// the fix for those is not a commit. Cached forever, the error status would
+// outlive its own cause and clear only when somebody pushed.
+func TestABrokenGateTriesAgainWhenItsCauseMayHaveBeenFixed(t *testing.T) {
+	files := map[string]string{".gitops-gate.yaml": gateConfig,
+		"apps/podinfo.yaml": appManifest("podinfo", "https://kubernetes.default.svc", "6.7.0")}
+	h := newGateHarness(t, files, files)
+	h.git.OpenPRs = []gitprovider.PullRequest{*gatePR("re7r1ed")}
+
+	// The RBAC for the inventory has not been granted yet.
+	denied := true
+	h.gs.Inventory = func(context.Context) (*gate.Inventory, error) {
+		if denied {
+			return nil, fmt.Errorf("secrets is forbidden")
+		}
+		return testInventory(), nil
+	}
+
+	h.gs.sweep(context.Background())
+	if s := lastStatus(t, h.git); s.State != gitprovider.StateError {
+		t.Fatalf("a gate that could not look must say so; got %s %q", s.State, s.Description)
+	}
+
+	// Not on the very next poll, though: a genuinely broken gate must not
+	// re-render every ten seconds for as long as the pull request is open.
+	before := len(h.git.Statuses)
+	h.gs.sweep(context.Background())
+	if len(h.git.Statuses) != before {
+		t.Fatal("a broken gate retried immediately is a busy loop")
+	}
+
+	// The operator grants the permission. No commit is pushed -- the head is
+	// the same -- so the gate trying again is the only thing that can clear it.
+	denied = false
+	h.gs.mu.Lock()
+	h.gs.results["re7r1ed"].retryAfter = time.Now().Add(-time.Second)
+	h.gs.mu.Unlock()
+
+	h.gs.sweep(context.Background())
+	if s := lastStatus(t, h.git); s.State != gitprovider.StateSuccess {
+		t.Fatalf("fixing the cause should not need a push; got %s %q", s.State, s.Description)
+	}
+}
+
 func TestAForkPullRequestIsRefusedNotIgnored(t *testing.T) {
 	files := map[string]string{".gitops-gate.yaml": gateConfig,
 		"apps/podinfo.yaml": appManifest("podinfo", "https://kubernetes.default.svc", "6.7.0")}
@@ -317,6 +362,15 @@ func TestAForkPullRequestIsRefusedNotIgnored(t *testing.T) {
 	s := lastStatus(t, h.git)
 	if s.State != gitprovider.StateError || !strings.Contains(s.Description, "fork") {
 		t.Fatalf("an unreported required check blocks the merge with no explanation -- the paths-filter trap in a new hat; got %s %q", s.State, s.Description)
+	}
+
+	// And it is not retried. Refusing to render fork content is a decision,
+	// not a failure, so it carries no retry deadline -- otherwise every sweep
+	// would repost the same refusal for the life of the pull request.
+	before := len(h.git.Statuses)
+	h.gs.sweep(context.Background())
+	if len(h.git.Statuses) != before {
+		t.Fatal("a policy refusal must be stated once, not on every poll")
 	}
 }
 

@@ -82,7 +82,30 @@ type gateOutcome struct {
 	// Err is the gate failing to run, which is a different thing from a
 	// failing verdict -- exit 2, not exit 1.
 	Err error
+	// retryAfter is when a BROKEN run may be attempted again. Zero means
+	// never: a verdict is final, and so is a refusal to gate fork content.
+	retryAfter time.Time
 }
+
+// spent reports whether a broken run has waited long enough to be worth
+// another attempt.
+//
+// A verdict is kept forever -- it answers a commit, and the commit does not
+// change. A FAILURE TO RUN is different: its cause is usually cluster-side --
+// RBAC not granted yet, a chart repository briefly unreachable, an apiserver
+// mid-upgrade -- and the fix for those is not a commit. Cached forever, the
+// `error` status would outlive its own cause and clear only when somebody
+// pushed to the pull request, which is exactly the quiet trap this service
+// exists to remove. Retried immediately, a genuinely broken config would
+// re-render on every poll for as long as the pull request stays open.
+func (o *gateOutcome) spent() bool {
+	return o.Err != nil && !o.retryAfter.IsZero() && time.Now().After(o.retryAfter)
+}
+
+// gateRetryAfter is how long a broken gate waits before trying again. Long
+// enough that a permanent breakage is not a busy loop, short enough that
+// fixing the cause does not need a push to take effect.
+const gateRetryAfter = 5 * time.Minute
 
 func (g *GateService) logf(f string, a ...any) {
 	if g.Log != nil {
@@ -163,9 +186,11 @@ func (g *GateService) sweep(ctx context.Context) {
 func (g *GateService) known(sha string) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	_, done := g.results[sha]
-	_, running := g.inflight[sha]
-	return done || running
+	if _, running := g.inflight[sha]; running {
+		return true
+	}
+	out, done := g.results[sha]
+	return done && !out.spent()
 }
 
 func (g *GateService) store(sha string, out *gateOutcome) {
@@ -184,8 +209,12 @@ func (g *GateService) store(sha string, out *gateOutcome) {
 func (g *GateService) Ensure(ctx context.Context, pr *gitprovider.PullRequest) *gateOutcome {
 	g.mu.Lock()
 	if out, ok := g.results[pr.HeadSHA]; ok {
-		g.mu.Unlock()
-		return out
+		if !out.spent() {
+			g.mu.Unlock()
+			return out
+		}
+		// A broken run that has waited out its delay gets another attempt.
+		delete(g.results, pr.HeadSHA)
 	}
 	if ch, ok := g.inflight[pr.HeadSHA]; ok {
 		g.mu.Unlock()
@@ -333,7 +362,7 @@ func (g *GateService) run(ctx context.Context, pr *gitprovider.PullRequest) *gat
 // people to ignore the check.
 func (g *GateService) broke(ctx context.Context, pr *gitprovider.PullRequest, err error) *gateOutcome {
 	g.status(ctx, pr, gitprovider.StateError, "the gate could not run: %v", err)
-	return &gateOutcome{Err: err}
+	return &gateOutcome{Err: err, retryAfter: time.Now().Add(gateRetryAfter)}
 }
 
 func (g *GateService) status(ctx context.Context, pr *gitprovider.PullRequest, state gitprovider.CommitState, format string, a ...any) {
