@@ -3,6 +3,23 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.16.1] - 2026-08-25
+
+### Fixed
+
+- **A writable `/tmp`, which cluster mode needs and the pod did not have.**
+  `readOnlyRootFilesystem: true` with `/work` as the only writable mount meant
+  chart-diff's `os.CreateTemp("", "inline-*.yaml")` failed EROFS for any
+  Application carrying inline values. The gate does not treat that as fatal —
+  it reports the Application as *"could not render at both versions, so its
+  resource changes are NOT covered"* — so the effect was **silently reduced
+  coverage on every version bump**, not an error. CI mode never showed it
+  because the runner supplied `/tmp`. Found on the first real bumps after a
+  live CI-to-cluster migration.
+
+  No Go change; the version moves only to keep chart and appVersion in
+  lockstep, which is what lets a consumer leave `image.tag` unset.
+
 ## [0.16.0] - 2026-08-24
 
 ### Changed
