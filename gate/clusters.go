@@ -1,10 +1,9 @@
-package main
+package gate
 
 import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io/fs"
 	"os"
@@ -17,87 +16,53 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// cmdClusters regenerates the inventory from the live ArgoCD cluster Secrets.
-//
-// The inventory has to be checked in, because CI cannot reach the cluster. That
-// makes it a snapshot, and snapshots go stale silently. Running this somewhere
-// with cluster access and diffing the result is the only way that drift ever
-// surfaces -- so `export` is built to be run in a check, not just by hand.
-func cmdClusters(args []string) error {
-	if len(args) == 0 || args[0] != "export" {
-		return fmt.Errorf("usage: gitops-gate clusters export [-out FILE] [-context CTX] [-namespace NS]")
-	}
-	fs := flag.NewFlagSet("clusters export", flag.ExitOnError)
-	out := fs.String("out", "", "write the inventory here (default: stdout)")
-	kubeContext := fs.String("context", "", "kubectl context to read from")
-	namespace := fs.String("namespace", "argocd", "namespace holding the ArgoCD cluster Secrets")
-	check := fs.Bool("check", false, "compare against an existing inventory and exit non-zero if it has drifted")
-	configPath := fs.String("config", ".gitops-gate.yaml", "config to read clustersExport.ignoreKeys from")
-	if err := fs.Parse(args[1:]); err != nil {
-		return err
-	}
-
-	// Pick up site-specific ignore keys if a config is reachable. Export is
-	// deliberately usable without one, so a missing config is not an error.
-	if cfg, err := LoadConfig(*configPath); err == nil {
-		noisyKeys = append(append([]string{}, defaultNoisyKeys...), cfg.ClustersExport.IgnoreKeys...)
-		root := filepath.Dir(*configPath)
-		if used, err := annotationsUsedBy(root); err == nil && len(used) > 0 {
-			keepAnnotations = used
-		}
-	}
-
-	inv, err := exportClusters(*kubeContext, *namespace)
-	if err != nil {
-		return err
-	}
-
-	rendered, err := yaml.Marshal(inv)
-	if err != nil {
-		return err
-	}
-
-	if *check {
-		if *out == "" {
-			return fmt.Errorf("-check needs -out to name the inventory to compare against")
-		}
-		existing, err := os.ReadFile(*out)
-		if err != nil {
-			return fmt.Errorf("reading %s to compare: %w", *out, err)
-		}
-		if normalizeInventory(existing) != normalizeInventory(rendered) {
-			fmt.Fprintf(os.Stderr, "cluster inventory has drifted from the live cluster.\n"+
-				"The gate's targeting check is only as good as this file.\n"+
-				"Refresh it with: gitops-gate clusters export -out %s\n", *out)
-			return fmt.Errorf("inventory is stale")
-		}
-		fmt.Fprintln(os.Stderr, "cluster inventory matches the live cluster")
-		return nil
-	}
-
-	if *out == "" {
-		_, err = os.Stdout.Write(rendered)
-		return err
-	}
-	return os.WriteFile(*out, rendered, 0o644)
+// ClusterSecret is the subset of an ArgoCD cluster Secret the inventory is
+// built from, in the shape the Kubernetes API serves it: `data` values are
+// base64 strings on the JSON wire. Both readers of these Secrets -- the CLI
+// shelling out to kubectl, and the agent reading the API server directly --
+// parse into this and hand it to InventoryFromSecrets, so the two can never
+// decode the same Secret two different ways.
+type ClusterSecret struct {
+	Metadata struct {
+		Name        string            `json:"name"`
+		Labels      map[string]string `json:"labels"`
+		Annotations map[string]string `json:"annotations"`
+	} `json:"metadata"`
+	Data map[string]string `json:"data"`
 }
 
-// normalizeInventory drops the generatedAt stamp so a re-export does not report
-// drift purely because time passed.
-func normalizeInventory(raw []byte) string {
-	var inv Inventory
-	if err := yaml.Unmarshal(raw, &inv); err != nil {
-		return string(raw)
-	}
-	inv.GeneratedAt = ""
-	out, err := yaml.Marshal(inv)
-	if err != nil {
-		return string(raw)
-	}
-	return string(out)
+// ExportFilter trims snapshot noise from an exported inventory. The zero
+// value keeps everything -- which is exactly right for a live read: nothing
+// is ever diffed against a live inventory, so churn cannot cause drift and
+// an extra annotation costs nothing.
+type ExportFilter struct {
+	// IgnoreKeys are label and annotation keys to drop. A trailing `*`
+	// matches by prefix.
+	IgnoreKeys []string
+	// KeepAnnotations are the annotation keys to keep. Empty keeps all.
+	KeepAnnotations map[string]bool
 }
 
-func exportClusters(kubeContext, namespace string) (*Inventory, error) {
+// NewExportFilter builds the filter a snapshot export wants: the defaults
+// common to any ArgoCD install, plus whatever the config declares, plus the
+// annotation keys the repository actually templates with.
+func NewExportFilter(cfg *Config, repoRoot string) ExportFilter {
+	f := ExportFilter{IgnoreKeys: append([]string{}, defaultNoisyKeys...)}
+	if cfg != nil {
+		f.IgnoreKeys = append(f.IgnoreKeys, cfg.ClustersExport.IgnoreKeys...)
+	}
+	if repoRoot != "" {
+		if used, err := annotationsUsedBy(repoRoot); err == nil && len(used) > 0 {
+			f.KeepAnnotations = used
+		}
+	}
+	return f
+}
+
+// ExportClusters reads the ArgoCD cluster Secrets through kubectl and builds
+// an inventory snapshot, stamped with the export time so a reviewer can see
+// its age.
+func ExportClusters(kubeContext, namespace string, filter ExportFilter) (*Inventory, error) {
 	args := []string{"get", "secrets", "-n", namespace,
 		"-l", "argocd.argoproj.io/secret-type=cluster", "-o", "json"}
 	if kubeContext != "" {
@@ -113,23 +78,34 @@ func exportClusters(kubeContext, namespace string) (*Inventory, error) {
 	}
 
 	var list struct {
-		Items []struct {
-			Metadata struct {
-				Name        string            `json:"name"`
-				Labels      map[string]string `json:"labels"`
-				Annotations map[string]string `json:"annotations"`
-			} `json:"metadata"`
-			Data map[string]string `json:"data"`
-		} `json:"items"`
+		Items []ClusterSecret `json:"items"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &list); err != nil {
 		return nil, fmt.Errorf("parsing kubectl output: %w", err)
 	}
 
-	inv := &Inventory{GeneratedAt: time.Now().UTC().Format(time.RFC3339)}
+	inv := InventoryFromSecrets(list.Items, filter)
+	if len(inv.Clusters) == 0 {
+		return nil, fmt.Errorf("no cluster Secrets found in namespace %q", namespace)
+	}
+	inv.GeneratedAt = time.Now().UTC().Format(time.RFC3339)
+	return inv, nil
+}
 
-	for _, item := range list.Items {
-		labels := stripNoise(item.Metadata.Labels)
+// InventoryFromSecrets builds an inventory from ArgoCD cluster Secrets. It
+// does not stamp GeneratedAt -- that is a property of a snapshot, and the
+// caller taking one adds it.
+func InventoryFromSecrets(items []ClusterSecret, filter ExportFilter) *Inventory {
+	inv := &Inventory{}
+	for _, item := range items {
+		labels := filter.strip(item.Metadata.Labels)
+		// Every ArgoCD cluster Secret carries this label -- it is the one the
+		// Secrets are found by -- and generators in the wild routinely select
+		// on it. LoadInventory adds it for snapshots that omitted it; a live
+		// read never passes through LoadInventory, so it is added here too.
+		if _, ok := labels["argocd.argoproj.io/secret-type"]; !ok {
+			labels["argocd.argoproj.io/secret-type"] = "cluster"
+		}
 		c := Cluster{
 			Labels: labels,
 			// Annotations are trimmed to what the bootstraps actually
@@ -137,7 +113,7 @@ func exportClusters(kubeContext, namespace string) (*Inventory, error) {
 			// which ones a future selector will match on is unknowable, so
 			// dropping any would reintroduce the stale-fixture failure this
 			// export exists to prevent.
-			Annotations: keepOnly(stripNoise(item.Metadata.Annotations), keepAnnotations),
+			Annotations: keepOnly(filter.strip(item.Metadata.Annotations), filter.KeepAnnotations),
 		}
 		c.Name = decode(item.Data["name"])
 		if c.Name == "" {
@@ -146,16 +122,23 @@ func exportClusters(kubeContext, namespace string) (*Inventory, error) {
 		c.Server = decode(item.Data["server"])
 		inv.Clusters = append(inv.Clusters, c)
 	}
-	if len(inv.Clusters) == 0 {
-		return nil, fmt.Errorf("no cluster Secrets found in namespace %q", namespace)
-	}
-
-	return inv, nil
+	return inv
 }
 
-// keepAnnotations is the set of annotation keys the bootstraps reference,
-// discovered from their own templates. Empty means keep everything.
-var keepAnnotations map[string]bool
+// NormalizeInventory drops the generatedAt stamp so a re-export does not
+// report drift purely because time passed.
+func NormalizeInventory(raw []byte) string {
+	var inv Inventory
+	if err := yaml.Unmarshal(raw, &inv); err != nil {
+		return string(raw)
+	}
+	inv.GeneratedAt = ""
+	out, err := yaml.Marshal(inv)
+	if err != nil {
+		return string(raw)
+	}
+	return string(out)
+}
 
 func keepOnly(m map[string]string, keep map[string]bool) map[string]string {
 	if len(keep) == 0 {
@@ -230,7 +213,7 @@ func decode(s string) string {
 	return string(b)
 }
 
-// stripNoise removes keys that churn without changing what any selector or
+// defaultNoisyKeys are keys that churn without changing what any selector or
 // template sees -- a resync timestamp, a content hash. Otherwise every export
 // reports drift, and a check that always fails gets switched off, which is
 // worse than not having it.
@@ -245,14 +228,11 @@ var defaultNoisyKeys = []string{
 	"reconcile.external-secrets.io/created-by",
 }
 
-// noisyKeys is the effective ignore list, defaults plus configuration.
-var noisyKeys = defaultNoisyKeys
-
-func stripNoise(m map[string]string) map[string]string {
+func (f ExportFilter) strip(m map[string]string) map[string]string {
 	out := map[string]string{}
 	for k, v := range m {
 		skip := false
-		for _, n := range noisyKeys {
+		for _, n := range f.IgnoreKeys {
 			if k == n || (strings.HasSuffix(n, "*") && strings.HasPrefix(k, strings.TrimSuffix(n, "*"))) {
 				skip = true
 				break

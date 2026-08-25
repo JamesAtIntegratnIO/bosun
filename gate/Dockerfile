@@ -33,7 +33,7 @@ RUN go mod download
 # module wholesale for the same reason.
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH:-$(go env GOARCH)}" \
-    go build -trimpath -ldflags='-s -w' -o /out/gitops-gate ./gate
+    go build -trimpath -ldflags='-s -w' -o /out/gitops-gate ./gate/cmd/gitops-gate
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates git bash

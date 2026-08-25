@@ -34,7 +34,7 @@ load_credentials
 step "building the gate from the working tree"
 # GOTOOLCHAIN=auto lets an older local Go fetch the one go.mod requires,
 # which is exactly the mismatch that broke the published image.
-(cd "$ROOT/.." && GOTOOLCHAIN=auto go build -o "$GATE_BIN" ./gate)
+(cd "$ROOT/.." && GOTOOLCHAIN=auto go build -o "$GATE_BIN" ./gate/cmd/gitops-gate)
 
 say "gate: pull request #${PR}"
 PR_JSON="$(gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls/${PR}")"
