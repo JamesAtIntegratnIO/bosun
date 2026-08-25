@@ -3,6 +3,8 @@ package gate
 import (
 	"strings"
 	"testing"
+
+	"github.com/JamesAtIntegratnIO/bosun/egress"
 )
 
 type denyAll struct{ rule string }
@@ -13,18 +15,32 @@ type denyNone struct{}
 
 func (denyNone) Denied(string) (string, bool) { return "", false }
 
-func TestHostOfChartReferences(t *testing.T) {
+// The destination rule lives in egress now, because two private copies fed the
+// same deny check and disagreed about a chart repository written without a
+// scheme -- which is a real destination, and one of them skipped it.
+func TestAChartRepositoryWithoutASchemeIsStillADestination(t *testing.T) {
 	for _, tc := range []struct{ ref, want string }{
-		{"https://charts.example.io", "charts.example.io"},
-		{"https://charts.example.io/stable", "charts.example.io"},
-		{"http://charts.example.io:8080/x", "charts.example.io"},
 		{"oci://ghcr.io/org/chart", "ghcr.io"},
+		// The case that was being skipped: helm is handed this as
+		// oci://ghcr.io/... moments later.
+		{"ghcr.io/akuity/kargo-charts", "ghcr.io"},
+		{"https://charts.example.io/stable", "charts.example.io"},
+		// A bare chart name reaches nothing on its own and must not be
+		// checked as though it were a hostname.
 		{"podinfo", ""},
 		{"", ""},
 	} {
-		if got := hostOf(tc.ref); got != tc.want {
-			t.Errorf("hostOf(%q) = %q, want %q", tc.ref, got, tc.want)
+		if got := egress.HostOf(tc.ref); got != tc.want {
+			t.Errorf("HostOf(%q) = %q, want %q", tc.ref, got, tc.want)
 		}
+	}
+}
+
+// And the check that consumes it must refuse the scheme-less form too.
+func TestEgressCheckRefusesASchemelessDeniedHost(t *testing.T) {
+	cfg := &Config{Egress: denyAll{rule: "ghcr.io"}}
+	if reason := cfg.egressCheck("ghcr.io/akuity/kargo-charts", "chart", "1.0.0"); reason == "" {
+		t.Fatal("a scheme-less repository must not bypass the deny-list")
 	}
 }
 

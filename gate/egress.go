@@ -1,6 +1,6 @@
 package gate
 
-import "strings"
+import "github.com/JamesAtIntegratnIO/bosun/egress"
 
 // EgressPolicy is the operator's deny-list, consulted before the gate lets a
 // subprocess reach a remote chart repository.
@@ -27,7 +27,7 @@ type EgressPolicy interface {
 // Returns the reason to report when the host is denied, empty when the call may
 // proceed. An unset policy is open, which is what the CLI wants.
 func (c *Config) egressCheck(ref, chart, version string) string {
-	host := hostOf(ref)
+	host := egress.HostOf(ref)
 	if host == "" {
 		return ""
 	}
@@ -44,23 +44,4 @@ func (c *Config) egressCheck(ref, chart, version string) string {
 			host, chart, version)
 	}
 	return ""
-}
-
-// hostOf is the host a chart reference resolves to, for oci:// and https://
-// alike. A bare chart name has no host and yields "".
-func hostOf(ref string) string {
-	s := ref
-	for _, scheme := range []string{"oci://", "https://", "http://"} {
-		s = strings.TrimPrefix(s, scheme)
-	}
-	if !strings.Contains(ref, "://") {
-		return ""
-	}
-	if i := strings.IndexByte(s, '/'); i >= 0 {
-		s = s[:i]
-	}
-	if i := strings.IndexByte(s, ':'); i >= 0 {
-		s = s[:i]
-	}
-	return s
 }

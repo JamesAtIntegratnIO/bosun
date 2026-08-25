@@ -822,10 +822,22 @@ func (t *Triage) clone(ctx context.Context, pr *gitprovider.PullRequest) (string
 // buildUserPrompt assembles the evidence. The scalar inventory is the part
 // that matters: handed one, a model selects a key from a list instead of
 // inventing a path and paraphrasing a value.
+//
+// Every path is confined to the checkout before it is read. Promotion.Files
+// arrives in the request body, and this process holds the git token, the LLM
+// key and the App private key -- so `../../../root/.ssh/id_rsa` in that list
+// would otherwise be read and rendered into a prompt sent to a model. The
+// write path has said this in a comment since it was written; the read path
+// had no equivalent.
 func buildUserPrompt(p Promotion, pr *gitprovider.PullRequest, report, root string) string {
 	files := make([]prompt.File, 0, len(p.Files))
 	for _, f := range p.Files {
-		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f)))
+		full, err := containedPath(root, f)
+		if err != nil {
+			files = append(files, prompt.File{Path: f, Err: err})
+			continue
+		}
+		data, err := os.ReadFile(full)
 		files = append(files, prompt.File{Path: f, Data: data, Err: err})
 	}
 	return prompt.User(prompt.UserInput{
@@ -1045,4 +1057,19 @@ func appliedPaths(res *edits.Result) []string {
 		}
 	}
 	return out
+}
+
+// containedPath resolves one promotion-supplied path inside the checkout, and
+// refuses anything that leaves it.
+//
+// The same test edits.Apply makes before writing, for the same reason and on
+// input from the same place. Reading is not harmless here: what is read goes
+// into a prompt, and a prompt is published.
+func containedPath(root, rel string) (string, error) {
+	full := filepath.Join(root, filepath.FromSlash(rel))
+	within, err := filepath.Rel(root, full)
+	if err != nil || within == ".." || strings.HasPrefix(within, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path escapes the checkout")
+	}
+	return full, nil
 }

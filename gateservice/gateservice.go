@@ -166,16 +166,6 @@ func (g *Service) sweep(ctx context.Context) {
 		if g.known(pr.HeadSHA) {
 			continue
 		}
-		if pr.FromFork && !g.ForkPRs {
-			// An unreported required check blocks the merge with no
-			// explanation, which is the CI adapter's paths-filter trap wearing
-			// a new hat. Error, with the reason, says why and how to decide
-			// otherwise.
-			g.store(pr.HeadSHA, &Outcome{Err: fmt.Errorf("fork pull request")})
-			g.status(ctx, pr, gitprovider.StateError,
-				"not gated: fork pull request (gate.forkPRs renders fork content in-cluster)")
-			continue
-		}
 		// A verdict that already stands -- from a previous life of this pod,
 		// or from a CI adapter still running during a migration -- is not
 		// re-litigated. The triage re-renders on demand if it needs the
@@ -278,6 +268,21 @@ func (g *Service) Ensure(ctx context.Context, pr *gitprovider.PullRequest) *Outc
 func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome {
 	ctx, cancel := context.WithTimeout(ctx, g.timeout())
 	defer cancel()
+
+	// Here rather than in the sweep, because the sweep is not the only way in.
+	// Ensure is called directly by the triage on a network-triggered promotion,
+	// and a fork pull request the sweep had not reached yet would have been
+	// rendered -- with helm, in the cluster, over content somebody outside the
+	// repository controls. That is the trust decision gate.forkPRs exists to
+	// make, and it belongs on the path that does the work.
+	if pr.FromFork && !g.ForkPRs {
+		// An unreported required check blocks the merge with no explanation,
+		// which is the CI adapter's paths-filter trap wearing a new hat.
+		// Error, with the reason, says why and how to decide otherwise.
+		g.status(ctx, pr, gitprovider.StateError,
+			"not gated: fork pull request (gate.forkPRs renders fork content in-cluster)")
+		return &Outcome{Err: fmt.Errorf("fork pull request")}
+	}
 
 	g.status(ctx, pr, gitprovider.StatePending, "rendering %s and %s", refName(pr.BaseBranch), refName(pr.Branch))
 

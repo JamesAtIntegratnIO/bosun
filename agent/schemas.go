@@ -9,6 +9,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
+	"github.com/JamesAtIntegratnIO/bosun/egress"
 	"github.com/JamesAtIntegratnIO/bosun/gate"
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
 	"github.com/JamesAtIntegratnIO/bosun/structural"
@@ -142,7 +143,7 @@ func (t *Triage) renderTargetCRDs(ctx context.Context, p Promotion) (map[string]
 	// Only the repository is known in advance; helm follows the index to
 	// wherever the archive is served, and that hop is invisible from here. The
 	// log says so rather than implying this is the whole story.
-	if host := hostOf(ref); host != "" {
+	if host := egress.HostOf(ref); host != "" {
 		if rule, denied := t.Egress.Denied(host); denied {
 			return nil, fmt.Sprintf("egress to %s is denied by policy (rule %q), so the target schema was not read", host, rule)
 		}
@@ -206,17 +207,6 @@ func crdSchemasFromStream(stream string) map[string]map[string]structural.Schema
 }
 
 // hostOf is the host of a chart reference, however it is written.
-func hostOf(ref string) string {
-	s := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(ref, "oci://"), "https://"), "http://")
-	if i := strings.IndexAny(s, "/"); i >= 0 {
-		s = s[:i]
-	}
-	if i := strings.IndexByte(s, ':'); i >= 0 {
-		s = s[:i]
-	}
-	return s
-}
-
 func firstNonEmpty(vals ...string) string {
 	for _, v := range vals {
 		if strings.TrimSpace(v) != "" {

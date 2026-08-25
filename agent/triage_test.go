@@ -938,3 +938,49 @@ func TestThePromotionDecodesTheMergePolicyItDoesNotActOn(t *testing.T) {
 		}
 	}
 }
+
+// Promotion.Files arrives in the request body, and this process holds the git
+// token, the LLM key and the App private key. What is read here goes into a
+// prompt, and a prompt is published -- so reading is not harmless.
+func TestThePromptRefusesAPathOutsideTheCheckout(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "ok.yaml"), []byte("k: v\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A file that exists, outside the checkout, with recognisable contents.
+	outside := filepath.Join(filepath.Dir(root), "secret.yaml")
+	if err := os.WriteFile(outside, []byte("token: SHOULD-NOT-APPEAR\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(outside) })
+
+	got := buildUserPrompt(
+		Promotion{Files: []string{"ok.yaml", "../secret.yaml", "../../etc/passwd"}},
+		&gitprovider.PullRequest{Number: 7, Title: "bump"}, "the gate is RED", root)
+
+	if strings.Contains(got, "SHOULD-NOT-APPEAR") {
+		t.Fatalf("a file outside the checkout reached the prompt:\n%s", got)
+	}
+	if !strings.Contains(got, "k: v") && !strings.Contains(got, "ok.yaml") {
+		t.Errorf("the legitimate file must still be described:\n%s", got)
+	}
+	// Refused, not silently dropped: the prompt is also the evidence string
+	// the applier corroborates against.
+	if !strings.Contains(got, "could not be read") {
+		t.Errorf("the refusal must be visible in the prompt:\n%s", got)
+	}
+}
+
+func TestContainedPath(t *testing.T) {
+	root := t.TempDir()
+	for _, bad := range []string{"../x", "../../etc/passwd", "a/../../x"} {
+		if _, err := containedPath(root, bad); err == nil {
+			t.Errorf("%q must be refused", bad)
+		}
+	}
+	for _, ok := range []string{"a.yaml", "a/b/c.yaml", "a/../b.yaml"} {
+		if _, err := containedPath(root, ok); err != nil {
+			t.Errorf("%q resolves inside the checkout: %v", ok, err)
+		}
+	}
+}

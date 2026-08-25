@@ -159,3 +159,43 @@ func (p Policy) Client(base *http.Client) *http.Client {
 	c.Transport = &Transport{Policy: p, Base: base.Transport}
 	return &c
 }
+
+// HostOf is the host a reference will actually reach, and the single owner of
+// that question.
+//
+// It lived privately in two packages that both feed it to Denied, and they
+// disagreed on the case that matters: a chart repository written WITHOUT a
+// scheme. `ghcr.io/org/charts` is a real destination -- helm is handed it as
+// `oci://ghcr.io/org/charts` moments later -- and one copy returned "" for it,
+// so the deny-list and the outbound log were both skipped for exactly those
+// references. The other copy returned the first segment of anything, so a bare
+// chart name like `podinfo` was checked as though it were a hostname.
+//
+// The rule that separates them is the one a registry uses: the first element
+// is a host if it looks like one -- it contains a dot, or it is localhost,
+// with an optional port. Anything else is a chart name and reaches nothing on
+// its own.
+func HostOf(ref string) string {
+	s := strings.TrimSpace(ref)
+	for _, scheme := range []string{"oci://", "https://", "http://"} {
+		s = strings.TrimPrefix(s, scheme)
+	}
+	if i := strings.IndexByte(s, '/'); i >= 0 {
+		s = s[:i]
+	}
+	host := s
+	if i := strings.IndexByte(host, ':'); i >= 0 {
+		host = host[:i]
+	}
+	if host == "" {
+		return ""
+	}
+	// A scheme is proof enough on its own; without one, the shape has to say so.
+	if strings.Contains(ref, "://") {
+		return host
+	}
+	if strings.Contains(host, ".") || host == "localhost" {
+		return host
+	}
+	return ""
+}

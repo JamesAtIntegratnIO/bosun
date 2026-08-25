@@ -515,3 +515,43 @@ func TestTheReportNamesChecksThisPullRequestTurnedOff(t *testing.T) {
 		}
 	})
 }
+
+// The sweep is not the only way in. Ensure is called directly by the triage on
+// a network-triggered promotion, so a fork pull request the sweep had not
+// reached yet used to be rendered -- with helm, in the cluster, over content
+// somebody outside the repository controls.
+func TestAForkPullRequestIsRefusedOnEveryPath(t *testing.T) {
+	git := &gitprovider.Fake{}
+	g := &Service{Git: git, CheckName: "gate", Log: t.Logf}
+
+	pr := &gitprovider.PullRequest{Number: 7, HeadSHA: "c0ffee", Branch: "b", FromFork: true}
+	out := g.Ensure(context.Background(), pr)
+
+	if out.Err == nil || !strings.Contains(out.Err.Error(), "fork") {
+		t.Fatalf("a fork pull request must not be gated: %+v", out)
+	}
+	// And it says so on the pull request, because an unreported required check
+	// blocks the merge with no explanation.
+	if len(git.Statuses) == 0 {
+		t.Fatal("the refusal must be reported")
+	}
+	last := git.Statuses[len(git.Statuses)-1]
+	if last.State != gitprovider.StateError || !strings.Contains(last.Description, "forkPRs") {
+		t.Errorf("the status must name the setting that changes it: %s %q", last.State, last.Description)
+	}
+}
+
+// With forkPRs on, the operator has made the trust decision and the gate runs.
+func TestForkPRsLetsItThrough(t *testing.T) {
+	git := &gitprovider.Fake{}
+	g := &Service{Git: git, CheckName: "gate", Log: t.Logf, ForkPRs: true,
+		Inventory: func(context.Context) (*gate.Inventory, error) {
+			return nil, fmt.Errorf("inventory unavailable in this test")
+		}}
+
+	out := g.Ensure(context.Background(),
+		&gitprovider.PullRequest{Number: 7, HeadSHA: "c0ffee", FromFork: true})
+	if out.Err == nil || strings.Contains(out.Err.Error(), "fork") {
+		t.Fatalf("forkPRs must permit the run: %+v", out)
+	}
+}
