@@ -193,10 +193,10 @@ func mergeInto(dst, src map[string]any) {
 	}
 }
 
-// covered reports whether a surface accounts for a path: the path itself, any
+// pathCovered reports whether a surface accounts for a path: the path itself, any
 // ancestor of it (a documented object covers what is inside it), or any key
 // beneath it (setting a parent of documented children is setting known keys).
-func covered(path string, surface map[string]bool) bool {
+func pathCovered(path string, surface map[string]bool) bool {
 	parts := strings.Split(path, ".")
 	for i := len(parts); i > 0; i-- {
 		if surface[strings.Join(parts[:i], ".")] {
@@ -237,11 +237,11 @@ func droppedValues(repoRoot string, before, after Row) ([]string, error) {
 	var recognised int
 	var gone []string
 	for _, p := range set {
-		if !covered(p, oldSurface) {
+		if !pathCovered(p, oldSurface) {
 			continue
 		}
 		recognised++
-		if !covered(p, newSurface) {
+		if !pathCovered(p, newSurface) {
 			gone = append(gone, p)
 		}
 	}

@@ -125,7 +125,7 @@ func Render(repoRoot string, cfg *Config, inv *Inventory) (*Table, error) {
 	}
 
 	table.Rows = dedupeRows(table.Rows)
-	table.Warnings = dedupeStrings(table.Warnings)
+	table.Warnings = dedupeOrdered(table.Warnings)
 	table.Sort()
 	return table, nil
 }
@@ -298,7 +298,10 @@ func dedupeRows(rows []Row) []Row {
 	return out
 }
 
-func dedupeStrings(in []string) []string {
+// dedupeOrdered keeps first-seen order and does NOT trim or drop blanks. Named
+// for both, because package main has a dedupeSorted that does the opposite on
+// each count.
+func dedupeOrdered(in []string) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, s := range in {
@@ -333,7 +336,7 @@ func bootstrapRow(bs map[string]any, p Param, appsetName, chartPath string) (Row
 		AppSet:     appsetName,
 		Cluster:    p.Cluster.Name,
 		App:        name,
-		SourceType: "path",
+		SourceType: RowPath,
 		Path:       chartPath,
 	}
 	tspec, _ := tmpl["spec"].(map[string]any)

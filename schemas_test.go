@@ -1,6 +1,8 @@
 package main
 
 import (
+	"maps"
+	"slices"
 	"testing"
 )
 
@@ -59,10 +61,10 @@ func TestTheTargetSchemaIsFoundInARenderedChart(t *testing.T) {
 	got := crdSchemasFromStream(renderedStream)
 	byVersion, ok := got["externalsecrets.external-secrets.io"]
 	if !ok {
-		t.Fatalf("the definition was not found: %v", keysOf(got))
+		t.Fatalf("the definition was not found: %v", slices.Sorted(maps.Keys(got)))
 	}
 	if len(byVersion) != 2 {
-		t.Fatalf("versions = %v, want both", keysOf2(byVersion))
+		t.Fatalf("versions = %v, want both", slices.Sorted(maps.Keys(byVersion)))
 	}
 	v1, ok := byVersion["v1"]
 	if !ok {
@@ -75,7 +77,7 @@ func TestTheTargetSchemaIsFoundInARenderedChart(t *testing.T) {
 	// Everything that is not a CustomResourceDefinition is ignored rather than
 	// half-decoded into the map.
 	if len(got) != 1 {
-		t.Fatalf("picked up %v, want only the definition", keysOf(got))
+		t.Fatalf("picked up %v, want only the definition", slices.Sorted(maps.Keys(got)))
 	}
 }
 
@@ -87,29 +89,13 @@ func TestTheTargetSchemaIsFoundInARenderedChart(t *testing.T) {
 func TestARenderedStreamWithJunkStillYieldsItsSchemas(t *testing.T) {
 	junk := "---\nthis: [is not, valid: yaml\n" + renderedStream + "\n---\n\n---\n# just a comment\n"
 	if got := crdSchemasFromStream(junk); len(got) != 1 {
-		t.Fatalf("schemas lost to unrelated junk: %v", keysOf(got))
+		t.Fatalf("schemas lost to unrelated junk: %v", slices.Sorted(maps.Keys(got)))
 	}
 }
 
 // A chart that ships no CustomResourceDefinitions is ordinary, not broken.
 func TestAChartWithNoDefinitionsYieldsNothingAndNotAnError(t *testing.T) {
 	if got := crdSchemasFromStream("apiVersion: v1\nkind: ConfigMap\nmetadata: {name: x}\n"); len(got) != 0 {
-		t.Fatalf("invented %v", keysOf(got))
+		t.Fatalf("invented %v", slices.Sorted(maps.Keys(got)))
 	}
-}
-
-func keysOf(m map[string]map[string]map[string]any) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	return out
-}
-
-func keysOf2(m map[string]map[string]any) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	return out
 }

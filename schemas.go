@@ -85,7 +85,7 @@ func (t *Triage) schemasFor(ctx context.Context, p Promotion, drops []migrate.Dr
 		}
 
 		if sch, ok := rendered[d.CRD][d.Target]; ok {
-			pair.New = structural.Schema(sch)
+			pair.New = sch
 		} else if sch, ok := live.Schemas[d.Target]; ok {
 			pair.New = structural.Schema(sch)
 			pair.Note = firstNonEmpty(renderNote, "") +
@@ -101,13 +101,18 @@ func (t *Triage) schemasFor(ctx context.Context, p Promotion, drops []migrate.Dr
 }
 
 // renderTargetCRDs renders the chart at the version being promoted TO and
-// returns every CRD schema in it, keyed by definition name and version.
+// returns every CRD schema in it, keyed by definition name then version.
+//
+// The value is structural.Schema rather than a third raw map: the runtime
+// representation is identical, but the name says which of the three nesting
+// levels is the schema and which two are keys, and it removes the cast every
+// caller was making anyway.
 //
 // `helm template` rather than a registry client, and helm rather than a Go
 // library, for the reason the gate's image already states: rendering has to
 // match what the cluster's own Helm does, and the only thing guaranteed to do
 // that is Helm.
-func (t *Triage) renderTargetCRDs(ctx context.Context, p Promotion) (map[string]map[string]map[string]any, string) {
+func (t *Triage) renderTargetCRDs(ctx context.Context, p Promotion) (map[string]map[string]structural.Schema, string) {
 	if strings.TrimSpace(p.Artifact) == "" || strings.TrimSpace(p.To) == "" {
 		return nil, "the promotion names no chart to render"
 	}
@@ -175,8 +180,8 @@ func (t *Triage) renderTargetCRDs(ctx context.Context, p Promotion) (map[string]
 
 // crdSchemasFromStream picks the CustomResourceDefinitions out of a rendered
 // manifest stream.
-func crdSchemasFromStream(stream string) map[string]map[string]map[string]any {
-	found := map[string]map[string]map[string]any{}
+func crdSchemasFromStream(stream string) map[string]map[string]structural.Schema {
+	found := map[string]map[string]structural.Schema{}
 	for _, part := range strings.Split(stream, "\n---") {
 		if !strings.Contains(part, "CustomResourceDefinition") {
 			continue
@@ -203,7 +208,7 @@ func crdSchemasFromStream(stream string) map[string]map[string]map[string]any {
 		if obj.Kind != "CustomResourceDefinition" || obj.Metadata.Name == "" {
 			continue
 		}
-		byVersion := map[string]map[string]any{}
+		byVersion := map[string]structural.Schema{}
 		for _, v := range obj.Spec.Versions {
 			if len(v.Schema.OpenAPIV3Schema) > 0 {
 				byVersion[v.Name] = v.Schema.OpenAPIV3Schema

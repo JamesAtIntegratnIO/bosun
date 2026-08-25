@@ -18,7 +18,7 @@ import (
 func AnnotateConsumers(res *DiffResult, root string) {
 	for i := range res.Objects {
 		o := &res.Objects[i]
-		if o.Kind != "crdVersionRemoved" {
+		if o.Kind != ObjectCRDVersionRemoved {
 			continue
 		}
 		d, ok := droppedFromChange(*o)
@@ -54,7 +54,7 @@ func AnnotateConsumers(res *DiffResult, root string) {
 func markMigrationConsistent(objects []ObjectChange) {
 	allowed := map[string]bool{}
 	for _, o := range objects {
-		if o.Kind != "crdVersionRemoved" {
+		if o.Kind != ObjectCRDVersionRemoved {
 			continue
 		}
 		d, ok := droppedFromChange(o)
@@ -70,7 +70,7 @@ func markMigrationConsistent(objects []ObjectChange) {
 	}
 	for i := range objects {
 		o := &objects[i]
-		if o.Kind != "apiVersion" {
+		if o.Kind != ObjectAPIVersionMoved {
 			continue
 		}
 		kind := o.Object

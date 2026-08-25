@@ -71,9 +71,10 @@ type restructureResult struct {
 	// fallback had not been used. A fallback that works is silent, which is the
 	// wrong way round.
 	Provenance []string
-	// Called counts model calls, so a comment can say honestly whether a model
-	// was involved at all.
-	Called int
+	// ModelCalls counts model calls, so a comment can say honestly whether a
+	// model was involved at all. Named for what it counts: `Called` read as a
+	// boolean beside Applied, Refused and Skipped.
+	ModelCalls int
 }
 
 func (r *restructureResult) touched() bool {
@@ -173,14 +174,14 @@ func (t *Triage) restructureAll(ctx context.Context, root string, drops []migrat
 					[]string{"no model available to propose a migration"}, findings})
 				continue
 			}
-			if res.Called >= maxDocs {
+			if res.ModelCalls >= maxDocs {
 				res.Refused = append(res.Refused, refused{rel, head.Kind, head.Metadata.Name,
 					[]string{fmt.Sprintf("the per-pull-request limit of %d document migrations was reached", maxDocs)},
 					findings})
 				continue
 			}
 
-			res.Called++
+			res.ModelCalls++
 			prompt := structural.Prompt(rel, chunk.body,
 				tgt.pair.From, tgt.pair.To, tgt.pair.Old, tgt.pair.New, findings)
 			m, err := rs.Restructure(ctx, restructurePrompt, prompt)

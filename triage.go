@@ -607,7 +607,7 @@ func (t *Triage) renderMigration(drops []migrate.Dropped, res *migrate.Result, r
 	// claim a reader uses to decide how carefully to look, and it stops being
 	// true the moment a document was reshaped.
 	how := "deterministic repair, no model"
-	if rr != nil && rr.Called > 0 {
+	if rr != nil && rr.ModelCalls > 0 {
 		how = "schema-guided migration · " + t.LLM.Name()
 	}
 	fmt.Fprintf(&b, "\n<sub>%s · %s · automated triage, not a review</sub>\n", brand, how)
@@ -886,7 +886,7 @@ func (t *Triage) gateReport(ctx context.Context, pr *gitprovider.PullRequest) (s
 			"PR %d carries the gate's marker from %s, but %s is configured as the gate: "+
 				"ignoring it. Set gate.reportAuthor to the account your gate comments as, "+
 				"or to \"*\" to read the report whoever wrote it",
-			pr.Number, strings.Join(dedupe(untrusted), ", "), quoted(t.GateReportAuthor))
+			pr.Number, strings.Join(namedAuthors(untrusted), ", "), quoted(t.GateReportAuthor))
 	}
 	return "", fmt.Errorf("%w: the gate is red but published no report comment on PR %d",
 		errNoGateReport, pr.Number)
@@ -903,12 +903,21 @@ func (t *Triage) trustsReportFrom(author string) bool {
 	return strings.EqualFold(strings.TrimSpace(author), want)
 }
 
-func dedupe(in []string) []string {
+// namedAuthors renders a set of comment authors for a message, deduplicated
+// and in first-seen order.
+//
+// The empty author is a real case -- some hosts omit it -- and it becomes a
+// phrase rather than a gap in the list, because "carries the gate's marker
+// from , alice" reads as a bug in this agent rather than as a fact about the
+// pull request. Named for the substitution: `dedupe` said nothing about it,
+// and a caller reaching for a general-purpose deduplicator got a rewriter.
+func namedAuthors(in []string) []string {
+	const unnamed = "an account the host did not name"
 	seen := map[string]bool{}
 	out := make([]string, 0, len(in))
 	for _, s := range in {
 		if s == "" {
-			s = "an account the host did not name"
+			s = unnamed
 		}
 		if !seen[s] {
 			seen[s] = true

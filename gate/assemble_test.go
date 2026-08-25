@@ -43,7 +43,7 @@ func TestAssembleKeepsObjectChangesSorted(t *testing.T) {
 
 	var got []string
 	for _, o := range res.Objects {
-		got = append(got, o.Kind+"|"+o.Object)
+		got = append(got, string(o.Kind)+"|"+o.Object)
 	}
 	want := []string{
 		"added|ConfigMap/m in x",

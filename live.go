@@ -138,7 +138,7 @@ func (t *Triage) liveFor(ctx context.Context, p Promotion, report string) *liveF
 		}
 		plural, group := name[:dot], name[dot+1:]
 
-		versions := dedupeStrings(want[name])
+		versions := dedupeSorted(want[name])
 		if len(versions) == 0 {
 			// The definition is going away entirely and the report does not
 			// say under which versions anything is stored. Pre-merge it is
@@ -177,7 +177,10 @@ func (t *Triage) liveFor(ctx context.Context, p Promotion, report string) *liveF
 	return f
 }
 
-func dedupeStrings(in []string) []string {
+// dedupeSorted trims, drops blanks and sorts. The gate has a dedupeOrdered
+// that does none of those; the names carry the difference so learning one does
+// not mispredict the other.
+func dedupeSorted(in []string) []string {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(in))
 	for _, s := range in {

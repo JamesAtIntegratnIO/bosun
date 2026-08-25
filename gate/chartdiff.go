@@ -38,7 +38,7 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) ([]Object, []Obj
 	var pairs []pair
 	for _, h := range head.Rows {
 		b, ok := baseByKey[h.Key()]
-		if !ok || h.SourceType != "helm" || b.SourceType != "helm" {
+		if !ok || h.SourceType != RowHelm || b.SourceType != RowHelm {
 			continue
 		}
 		if b.Version == h.Version || b.Chart != h.Chart || b.ChartRepo != h.ChartRepo {
@@ -124,7 +124,7 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) ([]Object, []Obj
 					p.after.App, p.after.Chart, err))
 			case len(gone) > 0:
 				res.drop = &ObjectChange{
-					Kind:    "valuesKeyDropped",
+					Kind:    ObjectValuesKeyDropped,
 					Object:  p.after.App,
 					Cluster: p.after.Cluster,
 					From:    p.before.Version,

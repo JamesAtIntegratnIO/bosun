@@ -392,7 +392,7 @@ func (g *GateService) broke(ctx context.Context, pr *gitprovider.PullRequest, er
 
 func (g *GateService) status(ctx context.Context, pr *gitprovider.PullRequest, state gitprovider.CommitState, format string, a ...any) {
 	desc := fmt.Sprintf(format, a...)
-	g.logf("gate: PR %d %s: %s (%s)", pr.Number, shortSHA(pr.HeadSHA), state, desc)
+	g.logf("gate: PR %d %s: %s (%s)", pr.Number, shortSHA8(pr.HeadSHA), state, desc)
 	if err := g.Git.SetCommitStatus(ctx, pr.HeadSHA, g.CheckName, state, desc); err != nil {
 		g.logf("gate: PR %d: could not set the %q status: %v", pr.Number, g.CheckName, err)
 	}
@@ -610,7 +610,7 @@ func renderHistory(history []verdictRow) string {
 		if h.Blocking {
 			mark = "🔴"
 		}
-		fmt.Fprintf(&b, "| `%s` | %s %s |\n", shortSHA(h.SHA), mark, h.Headline)
+		fmt.Fprintf(&b, "| `%s` | %s %s |\n", shortSHA8(h.SHA), mark, h.Headline)
 	}
 	fmt.Fprintf(&b, "\n</details>\n")
 	return b.String()
@@ -658,7 +658,10 @@ func refName(s string) string {
 	return s
 }
 
-func shortSHA(s string) string {
+// shortSHA8 is the eight-character form the gate's log lines use. The length
+// is in the name because upstream has a twelve-character shortSHA12, and a
+// reader who learns one of them must not mispredict the other.
+func shortSHA8(s string) string {
 	if len(s) > 8 {
 		return s[:8]
 	}

@@ -133,14 +133,14 @@ func rowFromApp(asName, clusterName string, app any) (Row, error) {
 		path, _ := src["path"].(string)
 		switch {
 		case chart != "":
-			row.SourceType = "helm"
+			row.SourceType = RowHelm
 			row.Chart = chart
 			row.ChartRepo, _ = src["repoURL"].(string)
 			row.Version, _ = src["targetRevision"].(string)
 			row.ValueFiles, row.ValuesInline = helmValues(src)
 			return row, nil
 		case path != "":
-			row.SourceType = "path"
+			row.SourceType = RowPath
 			row.Path = path
 			row.Version, _ = src["targetRevision"].(string)
 			// Keep looking: a manifest-source Application can carry both a

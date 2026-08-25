@@ -10,7 +10,7 @@ import (
 // renders per Application is real cost, and on a typical bump pull request
 // exactly one row qualifies.
 func TestChartDiffOnlyConsidersVersionChanges(t *testing.T) {
-	mk := func(app, chart, version, sourceType string) Row {
+	mk := func(app, chart, version string, sourceType RowSource) Row {
 		return Row{
 			Cluster: "prod", App: app, Chart: chart, ChartRepo: "https://charts.example.com",
 			Version: version, SourceType: sourceType,

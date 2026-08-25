@@ -201,12 +201,32 @@ func survivingVersion(o Object) string {
 }
 
 // ObjectChange is one difference between two renders of the same object set.
+// ObjectChangeKind is what happened to a rendered object.
+//
+// A named type, not a string with a comment listing the values: the comment
+// fell behind the code once already, and `Kind` on this struct is a CHANGE
+// class while `Kind` on Object twenty lines up is the Kubernetes kind. The
+// compiler can keep those apart; a comment cannot.
+type ObjectChangeKind string
+
+const (
+	ObjectAdded             ObjectChangeKind = "added"
+	ObjectRemoved           ObjectChangeKind = "removed"
+	ObjectChanged           ObjectChangeKind = "changed"
+	ObjectAPIVersionMoved   ObjectChangeKind = "apiVersion"
+	ObjectCRDVersionRemoved ObjectChangeKind = "crdVersionRemoved"
+	ObjectValuesKeyDropped  ObjectChangeKind = "valuesKeyDropped"
+)
+
 type ObjectChange struct {
-	Kind    string `json:"kind"` // added | removed | changed | apiVersion | crdVersionRemoved | valuesKeyDropped
-	Object  string `json:"object"`
-	Cluster string `json:"cluster,omitempty"`
-	From    string `json:"from,omitempty"`
-	To      string `json:"to,omitempty"`
+	// Kind is the class of change. Not the Kubernetes kind -- that is
+	// Object.Kind, and for a crdVersionRemoved finding the kind consumers
+	// declare is Resource below.
+	Kind    ObjectChangeKind `json:"kind"`
+	Object  string           `json:"object"`
+	Cluster string           `json:"cluster,omitempty"`
+	From    string           `json:"from,omitempty"`
+	To      string           `json:"to,omitempty"`
 
 	// crdVersionRemoved only. Resource is the kind consumers declare
 	// (spec.names.kind); To above carries the served version they must move
@@ -363,13 +383,13 @@ func diffObjects(base, head []Object) []ObjectChange {
 		prev, ok := b[id]
 		switch {
 		case !ok:
-			out = append(out, ObjectChange{Kind: "added", Object: o.Describe(), Cluster: o.Cluster, To: o.APIVersion})
+			out = append(out, ObjectChange{Kind: ObjectAdded, Object: o.Describe(), Cluster: o.Cluster, To: o.APIVersion})
 		case prev.APIVersion != o.APIVersion:
 			// Called out separately because it is never routine: an API
 			// version moving under a resource is a migration, and it is the
 			// single most reliable signal that a bump needs a human.
 			out = append(out, ObjectChange{
-				Kind: "apiVersion", Object: o.Describe(), Cluster: o.Cluster,
+				Kind: ObjectAPIVersionMoved, Object: o.Describe(), Cluster: o.Cluster,
 				From: prev.APIVersion, To: o.APIVersion,
 			})
 		case prev.Hash != o.Hash:
@@ -380,7 +400,7 @@ func diffObjects(base, head []Object) []ObjectChange {
 			// declaring the dropped version breaks at apply time.
 			if gone := droppedVersions(prev, o); len(gone) > 0 {
 				out = append(out, ObjectChange{
-					Kind: "crdVersionRemoved", Object: o.Describe(), Cluster: o.Cluster,
+					Kind: ObjectCRDVersionRemoved, Object: o.Describe(), Cluster: o.Cluster,
 					From: strings.Join(gone, ", "),
 					// The repair contract: which kind consumers declare, and
 					// where they must move. Both from the head body, so a
@@ -391,7 +411,7 @@ func diffObjects(base, head []Object) []ObjectChange {
 				})
 				continue
 			}
-			c := ObjectChange{Kind: "changed", Object: o.Describe(), Cluster: o.Cluster}
+			c := ObjectChange{Kind: ObjectChanged, Object: o.Describe(), Cluster: o.Cluster}
 			if prev.Body != nil && o.Body != nil {
 				c.Fields, c.Truncated = diffFields(prev.Body, o.Body)
 			}
@@ -417,13 +437,13 @@ func diffObjects(base, head []Object) []ObjectChange {
 				}
 				sort.Strings(all)
 				out = append(out, ObjectChange{
-					Kind: "crdVersionRemoved", Object: o.Describe(), Cluster: o.Cluster,
+					Kind: ObjectCRDVersionRemoved, Object: o.Describe(), Cluster: o.Cluster,
 					From:     strings.Join(all, ", "),
 					Resource: crdConsumerKind(o),
 				})
 				continue
 			}
-			c := ObjectChange{Kind: "removed", Object: o.Describe(), Cluster: o.Cluster, From: o.APIVersion}
+			c := ObjectChange{Kind: ObjectRemoved, Object: o.Describe(), Cluster: o.Cluster, From: o.APIVersion}
 			// A removed binding's blast radius is its subjects: a
 			// ServiceAccount that no remaining binding grants anything is how
 			// "the chart tidied its RBAC" and "the workload just lost every
@@ -448,7 +468,7 @@ func diffObjects(base, head []Object) []ObjectChange {
 	var order []string
 	for i := range out {
 		c := out[i]
-		k := c.Kind + "|" + c.Object + "|" + c.From + "|" + c.To
+		k := string(c.Kind) + "|" + c.Object + "|" + c.From + "|" + c.To
 		if _, ok := collapsed[k]; !ok {
 			cp := c
 			collapsed[k] = &cp

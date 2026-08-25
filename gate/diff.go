@@ -9,14 +9,37 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
 )
 
+// ChangeKind is what happened to an Application's targeting or its source.
+//
+// A named type rather than a string with a comment listing the values, because
+// the comment named four of these while the code assigned all nine -- and the
+// three it omitted (project, namespace, source-type) are the ones a reader
+// would go looking for the meaning of.
+type ChangeKind string
+
+const (
+	// Targeting.
+	ChangeAdded      ChangeKind = "added"
+	ChangeRemoved    ChangeKind = "removed"
+	ChangeMoved      ChangeKind = "moved"
+	ChangeIntroduced ChangeKind = "introduced"
+	// The source itself.
+	ChangeSource     ChangeKind = "source"
+	ChangeSourceType ChangeKind = "source-type"
+	ChangeProject    ChangeKind = "project"
+	ChangeNamespace  ChangeKind = "namespace"
+	// Reported, never blocking.
+	ChangeVersion ChangeKind = "version"
+)
+
 type Change struct {
-	Kind    string `json:"kind"` // added | removed | version | moved
-	Cluster string `json:"cluster"`
-	App     string `json:"app"`
-	AppSet  string `json:"appset,omitempty"`
-	From    string `json:"from,omitempty"`
-	To      string `json:"to,omitempty"`
-	Detail  string `json:"detail,omitempty"`
+	Kind    ChangeKind `json:"kind"`
+	Cluster string     `json:"cluster"`
+	App     string     `json:"app"`
+	AppSet  string     `json:"appset,omitempty"`
+	From    string     `json:"from,omitempty"`
+	To      string     `json:"to,omitempty"`
+	Detail  string     `json:"detail,omitempty"`
 }
 
 type DiffResult struct {
@@ -69,7 +92,7 @@ func (d *DiffResult) Blocking() bool {
 		// moved; the second is a CustomResourceDefinition that stopped serving
 		// one, which the first cannot see because the CRD object itself is
 		// apiextensions.k8s.io/v1 on both sides.
-		if o.Kind == "apiVersion" && !o.PartOfMigration {
+		if o.Kind == ObjectAPIVersionMoved && !o.PartOfMigration {
 			return true
 		}
 		// A dropped served version blocks exactly while manifests in this
@@ -79,13 +102,13 @@ func (d *DiffResult) Blocking() bool {
 		// turn this red green on the re-run. Not scanned means not counted:
 		// "we could not look" blocks, for the same reason a bodiless CRD is
 		// reported as changed rather than claimed safe.
-		if o.Kind == "crdVersionRemoved" && (!o.ConsumersKnown || len(o.ConsumerFiles) > 0) {
+		if o.Kind == ObjectCRDVersionRemoved && (!o.ConsumersKnown || len(o.ConsumerFiles) > 0) {
 			return true
 		}
 		// A setting the new chart no longer reads. It renders green by
 		// construction -- helm ignores an unknown value -- so if this does not
 		// block, nothing anywhere will ever mention it.
-		if o.Kind == "valuesKeyDropped" && len(o.Keys) > 0 {
+		if o.Kind == ObjectValuesKeyDropped && len(o.Keys) > 0 {
 			return true
 		}
 	}
@@ -137,8 +160,8 @@ func Diff(base, head *Table) *DiffResult {
 
 	for appset, removed := range removedByApp {
 		added := addedByApp[appset]
-		byCluster(removed)
-		byCluster(added)
+		sortRows(removed)
+		sortRows(added)
 
 		if len(removed) == 1 && len(added) == 1 {
 			r, a := removed[0], added[0]
@@ -148,7 +171,7 @@ func Diff(base, head *Table) *DiffResult {
 				// departure by something that did not exist before the change
 				// -- which reads as the gate being wrong about its own report.
 				// The ApplicationSet is the identity that survives the move.
-				Kind: "moved", AppSet: appset, App: appset,
+				Kind: ChangeMoved, AppSet: appset, App: appset,
 				From: r.Cluster, To: a.Cluster,
 				Detail: fmt.Sprintf("ApplicationSet no longer generates for %s; now generates for %s",
 					r.Cluster, a.Cluster),
@@ -162,7 +185,7 @@ func Diff(base, head *Table) *DiffResult {
 		// `added` is left for the loop below to report on its own terms.
 		for _, r := range removed {
 			res.Targeting = append(res.Targeting, Change{
-				Kind: "removed", AppSet: appset, App: r.App, Cluster: r.Cluster,
+				Kind: ChangeRemoved, AppSet: appset, App: r.App, Cluster: r.Cluster,
 				From: r.Describe(), Detail: "no longer generated for this cluster",
 			})
 		}
@@ -173,11 +196,11 @@ func Diff(base, head *Table) *DiffResult {
 				AppSet: appset, App: a.App, Cluster: a.Cluster, To: a.Describe(),
 			}
 			if baseAppSets[appset] {
-				c.Kind = "added"
+				c.Kind = ChangeAdded
 				c.Detail = "newly generated for this cluster -- this addon already existed and has gained a cluster"
 				res.Targeting = append(res.Targeting, c)
 			} else {
-				c.Kind = "introduced"
+				c.Kind = ChangeIntroduced
 				c.Detail = "new addon, first appearance"
 				res.Introduced = append(res.Introduced, c)
 			}
@@ -192,29 +215,29 @@ func Diff(base, head *Table) *DiffResult {
 		switch {
 		case b.SourceType != h.SourceType:
 			res.Other = append(res.Other, Change{
-				Kind: "source-type", Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
+				Kind: ChangeSourceType, Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
 				From: b.Describe(), To: h.Describe(),
 				Detail: "the kind of source changed",
 			})
 		case b.Chart != h.Chart || b.ChartRepo != h.ChartRepo || b.Path != h.Path:
 			res.Other = append(res.Other, Change{
-				Kind: "source", Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
+				Kind: ChangeSource, Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
 				From: b.Describe(), To: h.Describe(),
 				Detail: "the source itself changed, not just its version",
 			})
 		case b.Project != h.Project:
 			res.Other = append(res.Other, Change{
-				Kind: "project", Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
+				Kind: ChangeProject, Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
 				From: b.Project, To: h.Project, Detail: "ArgoCD project changed",
 			})
 		case b.Namespace != h.Namespace:
 			res.Other = append(res.Other, Change{
-				Kind: "namespace", Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
+				Kind: ChangeNamespace, Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
 				From: b.Namespace, To: h.Namespace, Detail: "destination namespace changed",
 			})
 		case b.Version != h.Version:
 			res.Versions = append(res.Versions, Change{
-				Kind: "version", Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
+				Kind: ChangeVersion, Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
 				From: b.Version, To: h.Version,
 			})
 		}
@@ -238,10 +261,13 @@ func Diff(base, head *Table) *DiffResult {
 	return res
 }
 
-// byCluster makes an order out of one that came from a Go map. Without it the
+// sortRows makes an order out of one that came from a Go map. Without it the
 // same two rows can be reported in either order, and a diff that describes
 // itself differently on identical input is a diff nobody can diff.
-func byCluster(rows []Row) {
+//
+// A verb, like sortChanges below: `byCluster` read as a grouping that returns
+// something, and it sorts its argument in place.
+func sortRows(rows []Row) {
 	sort.Slice(rows, func(i, j int) bool {
 		if rows[i].Cluster != rows[j].Cluster {
 			return rows[i].Cluster < rows[j].Cluster
@@ -336,13 +362,13 @@ func (d *DiffResult) Blockers() migrate.Blockers {
 	b.Source = len(d.Other)
 	for _, o := range d.Objects {
 		switch {
-		case o.Kind == "apiVersion" && !o.PartOfMigration:
+		case o.Kind == ObjectAPIVersionMoved && !o.PartOfMigration:
 			b.APIVersion++
-		case o.Kind == "crdVersionRemoved" && !o.ConsumersKnown:
+		case o.Kind == ObjectCRDVersionRemoved && !o.ConsumersKnown:
 			b.Unscanned++
-		case o.Kind == "crdVersionRemoved" && len(o.ConsumerFiles) > 0:
+		case o.Kind == ObjectCRDVersionRemoved && len(o.ConsumerFiles) > 0:
 			b.Consumers += len(o.ConsumerFiles)
-		case o.Kind == "valuesKeyDropped":
+		case o.Kind == ObjectValuesKeyDropped:
 			b.ValuesDropped += len(o.Keys)
 		}
 	}
@@ -393,7 +419,7 @@ func (d *DiffResult) Verdict() (blocking bool, headline string) {
 			return false, NothingChanged
 		}
 	}
-	return true, "Blocking — " + join(why)
+	return true, "Blocking — " + joinAnd(why)
 }
 
 // plural is "1 thing" / "3 things", because "1 manifest(s)" in a headline
@@ -405,8 +431,14 @@ func plural(n int, noun string) string {
 	return fmt.Sprintf("%d %ss", n, noun)
 }
 
-func join(parts []string) string {
+// joinAnd is an English list. Same name and shape as pipeline.joinAnd -- two
+// packages that never import each other, each rendering findings for a human,
+// and a shared helper package for one function would cost more than the
+// duplicate does.
+func joinAnd(parts []string) string {
 	switch len(parts) {
+	case 0:
+		return ""
 	case 1:
 		return parts[0]
 	case 2:
