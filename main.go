@@ -13,6 +13,22 @@
 // the gate", "never invent a version" and "never invent data" are properties of
 // the code, not requests in a prompt. See docs/safety-model.md,
 // docs/prompt-contract.md and adr/0007.
+//
+// # What lives here
+//
+// The composition root, and nothing else. This file reads the environment,
+// builds one of each collaborator, wires them together and serves; config.go
+// is the reading. Every decision lives in a package that can be imported and
+// tested without this one:
+//
+//	agent        judges a pull request and writes the comment
+//	gateservice  runs the gate in-process, on a timer, per open pull request
+//	supervisor   sweeps the pipeline for the promotions that never happened
+//	gate         renders the repository and diffs it
+//	prompt       what the model is told, and what the eval suite measures
+//
+// The HTTP surface is here for the same reason the wiring is: Kargo POSTs a
+// promotion, and turning that into a call is plumbing, not judgement.
 package main
 
 import (
@@ -26,12 +42,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/JamesAtIntegratnIO/bosun/agent"
 	"github.com/JamesAtIntegratnIO/bosun/cluster"
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/egress"
+	"github.com/JamesAtIntegratnIO/bosun/gateservice"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 	"github.com/JamesAtIntegratnIO/bosun/pipeline"
+	"github.com/JamesAtIntegratnIO/bosun/supervisor"
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
 
@@ -135,7 +154,7 @@ func main() {
 		Log:  func(f string, a ...any) { logger.Printf(f, a...) },
 	}
 
-	t := &Triage{
+	t := &agent.Triage{
 		Git: git, LLM: model,
 		Brand:            cfg.Brand,
 		Policy:           edits.Policy{Allow: cfg.AllowPaths, Deny: cfg.DenyPaths},
@@ -208,7 +227,7 @@ func main() {
 				"Secrets in the ArgoCD namespace (the chart creates the Role when gate.mode is "+
 				"cluster). Set gate.mode to ci to keep running the gate in CI instead", err)
 		}
-		gs := &GateService{
+		gs := &gateservice.Service{
 			Git:       git,
 			Inventory: reader.ClusterInventory,
 			CheckName: cfg.CheckName,
@@ -260,13 +279,13 @@ func main() {
 	// turns supervision on without the apiserver access it needs, so there is
 	// no nil case left to log about.
 	if cfg.Supervise {
-		sup := &Supervisor{
+		sup := &supervisor.Supervisor{
 			Collector: &pipeline.Collector{Kargo: reader, PRs: git},
 			Every:     cfg.SuperviseEvery,
 			Log:       func(f string, a ...any) { logger.Printf(f, a...) },
 			// The default branch, because a pin that writes nowhere is a
 			// property of what is merged.
-			Checkout: shallowCheckout(cfg.GitRepoURL, "", cfg.CloneRoot),
+			Checkout: supervisor.ShallowCheckout(cfg.GitRepoURL, "", cfg.CloneRoot),
 		}
 		mux.HandleFunc("GET /pipeline", sup.Handler("markdown"))
 		mux.HandleFunc("GET /metrics", sup.Handler("metrics"))
@@ -304,7 +323,7 @@ func main() {
 
 // Server accepts Kargo's call and gets out of the way.
 type Server struct {
-	Triage  *Triage
+	Triage  *agent.Triage
 	Log     *log.Logger
 	Timeout time.Duration
 
@@ -315,13 +334,13 @@ type Server struct {
 	mu       sync.Mutex
 	inFlight map[int]bool
 
-	// runFn is the work the handler dispatches. Defaults to Triage.Run; tests
+	// runFn is the work the handler dispatches. Defaults to agent.Triage.Run; tests
 	// substitute it so the handler's concurrency behaviour can be exercised
 	// without a git host or a model behind it.
-	runFn func(Promotion) error
+	runFn func(agent.Promotion) error
 }
 
-func (s *Server) run(ctx context.Context, p Promotion) error {
+func (s *Server) run(ctx context.Context, p agent.Promotion) error {
 	if s.runFn != nil {
 		return s.runFn(p)
 	}
@@ -334,7 +353,7 @@ func (s *Server) run(ctx context.Context, p Promotion) error {
 // so a handler that blocked would put a model round trip -- minutes, on a
 // local model -- inside the critical path of every promotion.
 func (s *Server) PromotionOpened(w http.ResponseWriter, r *http.Request) {
-	var p Promotion
+	var p agent.Promotion
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&p); err != nil {
 		http.Error(w, "invalid payload", http.StatusBadRequest)
 		return

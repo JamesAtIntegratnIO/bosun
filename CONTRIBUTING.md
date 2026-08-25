@@ -45,7 +45,7 @@ both**, and adding one is worth more than almost any feature.
 The model returns a verdict and an edit set. It does not edit files, and it
 does not choose what it is allowed to touch.
 
-Any change that moves an invariant from `edits/` or `triage.go` into the prompt
+Any change that moves an invariant from `edits/` or `agent/` into the prompt
 is a regression, however well the prompt performs. A prompt is a request; the
 allowlist is a guarantee. See
 [`adr/0001-structured-edits-not-agentic-loop.md`](adr/0001-structured-edits-not-agentic-loop.md)

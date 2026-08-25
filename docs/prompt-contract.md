@@ -2,7 +2,7 @@
 
 The agent's job is narrow and its output is checked, which is what makes a
 small local model viable. This is the reasoning behind the prompt in
-`prompt.go`, and the measurements that produced it.
+`prompt/`, and the measurements that produced it.
 
 ## The problem is the edit format, not the judgement
 

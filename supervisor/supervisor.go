@@ -1,4 +1,15 @@
-package main
+// Package supervisor runs the pipeline sweep on a timer and serves what it
+// found.
+//
+// The job nobody asks for. Every other part of this system answers a question
+// somebody raised -- is this pull request safe, what did this bump change --
+// and each is triggered by an event. This one asks whether the pull requests
+// that SHOULD exist are being opened at all, and nothing about a promotion
+// that never happened produces an event. A timer is the only way to see it.
+//
+// pipeline decides what is wrong; this decides when to look and how to hand
+// the answer to an operator or a scrape.
+package supervisor
 
 import (
 	"context"
@@ -161,14 +172,14 @@ func (s *Supervisor) Handler(format string) http.HandlerFunc {
 	}
 }
 
-// shallowCheckout clones the default branch, shallowly, into the same writable
+// ShallowCheckout clones the default branch, shallowly, into the same writable
 // scratch the gate uses.
 //
 // Depth one and no worktrees: the pin check reads files and asks nothing about
 // history. On the repository this was built against that is a two-second clone,
 // which is why the sweep can afford to do it every time rather than hold a
 // working copy that would drift from the branch it claims to describe.
-func shallowCheckout(repoURL, branch, root string) func(context.Context) (string, func(), error) {
+func ShallowCheckout(repoURL, branch, root string) func(context.Context) (string, func(), error) {
 	return func(ctx context.Context) (string, func(), error) {
 		dir, err := os.MkdirTemp(root, "pipeline")
 		if err != nil {

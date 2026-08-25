@@ -1,4 +1,4 @@
-package main
+package gateservice
 
 import (
 	"context"
@@ -12,7 +12,6 @@ import (
 
 	"github.com/JamesAtIntegratnIO/bosun/gate"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
-	"github.com/JamesAtIntegratnIO/bosun/llm"
 )
 
 // The gate service is the CI adapter rebuilt as a loop the agent owns, so
@@ -70,7 +69,7 @@ func testInventory() *gate.Inventory {
 }
 
 type gateHarness struct {
-	gs        *GateService
+	gs        *Service
 	git       *gitprovider.Fake
 	checkouts int
 }
@@ -85,7 +84,7 @@ func newGateHarness(t *testing.T, baseFiles, headFiles map[string]string) *gateH
 	writeGateRepo(t, head, headFiles)
 
 	h := &gateHarness{git: &gitprovider.Fake{}}
-	h.gs = &GateService{
+	h.gs = &Service{
 		Git:       h.git,
 		Inventory: func(context.Context) (*gate.Inventory, error) { return testInventory(), nil },
 		CheckName: "addons-gate",
@@ -399,7 +398,7 @@ func TestTwoRevisionCheckout(t *testing.T) {
 	}
 	run("commit", "--quiet", "-am", "bump")
 
-	gs := &GateService{RepoURL: origin, Log: t.Logf}
+	gs := &Service{RepoURL: origin, Log: t.Logf}
 	base, head, cleanup, err := gs.checkout(context.Background(),
 		&gitprovider.PullRequest{Branch: "kargo/bump", BaseBranch: "main"})
 	if err != nil {
@@ -424,54 +423,6 @@ func TestTwoRevisionCheckout(t *testing.T) {
 func execGit(args ...string) (string, error) {
 	out, err := exec.Command("git", args...).CombinedOutput()
 	return string(out), err
-}
-
-// The triage reading the verdict in-process: no gate comment on the pull
-// request, no check to poll -- the evidence is handed over, not scraped back.
-func TestTriageReadsTheVerdictInProcess(t *testing.T) {
-	h := newHarness(t)
-	// Strip away everything the CI path needed: no report comment, no check.
-	h.git.Comments = nil
-	h.git.Check = gitprovider.CheckMissing
-
-	h.triage.Gate = &GateService{Git: h.git, CheckName: "addons-gate", Log: t.Logf}
-	h.triage.Gate.store(h.git.PR.HeadSHA, &gateOutcome{
-		State:  gitprovider.CheckFailure,
-		Report: gateReport,
-	})
-	h.model.Verdict = &llm.Verdict{
-		Classification: llm.ClassEscalate,
-		Summary:        "This is a migration.", Reasoning: "The CRD schema changed.",
-		EscalationReason: "The upgrade needs a CRD migration.",
-	}
-
-	if err := h.triage.Run(context.Background(), Promotion{PRNumber: 42, Files: []string{valuesPath}}); err != nil {
-		t.Fatal(err)
-	}
-	if h.git.CheckCalls != 0 {
-		t.Fatal("an in-process verdict must not be waited for through the check API")
-	}
-	if len(h.git.Posted) != 1 || !strings.Contains(h.git.Posted[0], "Needs a human.") {
-		t.Fatalf("the red verdict must reach the model and the human: %v", h.git.Posted)
-	}
-	if !strings.Contains(h.model.User, "0.16.1") {
-		t.Fatal("the model must be shown the same report the gate produced in-process")
-	}
-}
-
-// A broken in-process gate resolves the triage status rather than leaving it
-// pending forever -- the same rule every other error path answers to.
-func TestTriageSurfacesABrokenInProcessGate(t *testing.T) {
-	h := newHarness(t)
-	h.git.Comments = nil
-	h.triage.Gate = &GateService{Git: h.git, CheckName: "addons-gate", Log: t.Logf}
-	h.triage.Gate.store(h.git.PR.HeadSHA, &gateOutcome{Err: fmt.Errorf("secrets is forbidden")})
-
-	_ = h.triage.Run(context.Background(), Promotion{PRNumber: 42})
-	s := h.git.Statuses[len(h.git.Statuses)-1]
-	if s.State != gitprovider.StateSuccess || !strings.Contains(s.Description, "did not finish") {
-		t.Fatalf("a broken gate must resolve the advisory status with the reason: %s %q", s.State, s.Description)
-	}
 }
 
 // A pull request blocked for a reason that is neither targeting nor source

@@ -1,4 +1,12 @@
-package main
+// Package gateservice runs the gate inside this process, on a timer, for every
+// open pull request.
+//
+// Its own package because it needs gitprovider -- which gate deliberately does
+// not import, so this cannot live there -- and because the agent needs only one
+// thing from it: a verdict for a head commit. Everything else here (the sweep,
+// the per-SHA cache, the retry window, the comment and its verdict history) is
+// how that verdict gets produced and published, and is nobody else's business.
+package gateservice
 
 import (
 	"bytes"
@@ -15,7 +23,7 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 )
 
-// GateService is the gate, run by the agent instead of by CI.
+// Service is the gate, run by the agent instead of by CI.
 //
 // The CI shape existed because ADR 0002 said "CI is where the checkout
 // already is" -- and then the agent grew its own checkout, its own commit
@@ -37,7 +45,7 @@ import (
 // this change relevant?" is to render it and let the diff say "no change to
 // what gets deployed". A docs-only pull request costs one render and gets a
 // truthful green instead of a guessed one.
-type GateService struct {
+type Service struct {
 	Git gitprovider.Provider
 	// Inventory reads the live cluster inventory. In production this is
 	// cluster.APIServer.ClusterInventory; there is no snapshot fallback in
@@ -74,13 +82,13 @@ type GateService struct {
 	Checkout func(ctx context.Context, pr *gitprovider.PullRequest) (base, head string, cleanup func(), err error)
 
 	mu       sync.Mutex
-	results  map[string]*gateOutcome
+	results  map[string]*Outcome
 	inflight map[string]chan struct{}
 }
 
-// gateOutcome is one head commit's verdict, kept so the triage can read it
+// Outcome is one head commit's verdict, kept so the triage can read it
 // in-process and a sweep never runs the same commit twice.
-type gateOutcome struct {
+type Outcome struct {
 	// State is CheckSuccess or CheckFailure. Zero when Err is set.
 	State gitprovider.CheckState
 	// Report is the same markdown the comment carries, marker first --
@@ -106,7 +114,7 @@ type gateOutcome struct {
 // pushed to the pull request, which is exactly the quiet trap this service
 // exists to remove. Retried immediately, a genuinely broken config would
 // re-render on every poll for as long as the pull request stays open.
-func (o *gateOutcome) spent() bool {
+func (o *Outcome) spent() bool {
 	return o.Err != nil && !o.retryAfter.IsZero() && time.Now().After(o.retryAfter)
 }
 
@@ -115,13 +123,13 @@ func (o *gateOutcome) spent() bool {
 // fixing the cause does not need a push to take effect.
 const gateRetryAfter = 5 * time.Minute
 
-func (g *GateService) logf(f string, a ...any) {
+func (g *Service) logf(f string, a ...any) {
 	if g.Log != nil {
 		g.Log(f, a...)
 	}
 }
 
-func (g *GateService) timeout() time.Duration {
+func (g *Service) timeout() time.Duration {
 	if g.Timeout > 0 {
 		return g.Timeout
 	}
@@ -132,7 +140,7 @@ func (g *GateService) timeout() time.Duration {
 // sequence: a gate run shells helm with its own concurrency, and stacking
 // renders on top of each other buys wall-clock nothing a poll interval
 // doesn't.
-func (g *GateService) Run(ctx context.Context) {
+func (g *Service) Run(ctx context.Context) {
 	for {
 		g.sweep(ctx)
 		select {
@@ -143,7 +151,7 @@ func (g *GateService) Run(ctx context.Context) {
 	}
 }
 
-func (g *GateService) sweep(ctx context.Context) {
+func (g *Service) sweep(ctx context.Context) {
 	prs, err := g.Git.ListOpenPullRequests(ctx)
 	if err != nil {
 		g.logf("gate: listing open pull requests: %v", err)
@@ -163,7 +171,7 @@ func (g *GateService) sweep(ctx context.Context) {
 			// explanation, which is the CI adapter's paths-filter trap wearing
 			// a new hat. Error, with the reason, says why and how to decide
 			// otherwise.
-			g.store(pr.HeadSHA, &gateOutcome{Err: fmt.Errorf("fork pull request")})
+			g.store(pr.HeadSHA, &Outcome{Err: fmt.Errorf("fork pull request")})
 			g.status(ctx, pr, gitprovider.StateError,
 				"not gated: fork pull request (gate.forkPRs renders fork content in-cluster)")
 			continue
@@ -197,7 +205,7 @@ func (g *GateService) sweep(ctx context.Context) {
 	g.mu.Unlock()
 }
 
-func (g *GateService) known(sha string) bool {
+func (g *Service) known(sha string) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if _, running := g.inflight[sha]; running {
@@ -207,10 +215,10 @@ func (g *GateService) known(sha string) bool {
 	return done && !out.spent()
 }
 
-func (g *GateService) store(sha string, out *gateOutcome) {
+func (g *Service) store(sha string, out *Outcome) {
 	g.mu.Lock()
 	if g.results == nil {
-		g.results = map[string]*gateOutcome{}
+		g.results = map[string]*Outcome{}
 	}
 	g.results[sha] = out
 	g.mu.Unlock()
@@ -220,7 +228,7 @@ func (g *GateService) store(sha string, out *gateOutcome) {
 // gate if no run has answered for it yet. Concurrent callers for the same
 // commit share one run -- the sweep and a Kargo-triggered triage arriving
 // together must not render twice and comment twice.
-func (g *GateService) Ensure(ctx context.Context, pr *gitprovider.PullRequest) *gateOutcome {
+func (g *Service) Ensure(ctx context.Context, pr *gitprovider.PullRequest) *Outcome {
 	g.mu.Lock()
 	if out, ok := g.results[pr.HeadSHA]; ok {
 		if !out.spent() {
@@ -238,11 +246,11 @@ func (g *GateService) Ensure(ctx context.Context, pr *gitprovider.PullRequest) *
 			out := g.results[pr.HeadSHA]
 			g.mu.Unlock()
 			if out == nil {
-				return &gateOutcome{Err: fmt.Errorf("the gate run for %s was abandoned", pr.HeadSHA)}
+				return &Outcome{Err: fmt.Errorf("the gate run for %s was abandoned", pr.HeadSHA)}
 			}
 			return out
 		case <-ctx.Done():
-			return &gateOutcome{Err: ctx.Err()}
+			return &Outcome{Err: ctx.Err()}
 		}
 	}
 	if g.inflight == nil {
@@ -256,7 +264,7 @@ func (g *GateService) Ensure(ctx context.Context, pr *gitprovider.PullRequest) *
 
 	g.mu.Lock()
 	if g.results == nil {
-		g.results = map[string]*gateOutcome{}
+		g.results = map[string]*Outcome{}
 	}
 	g.results[pr.HeadSHA] = out
 	delete(g.inflight, pr.HeadSHA)
@@ -267,7 +275,7 @@ func (g *GateService) Ensure(ctx context.Context, pr *gitprovider.PullRequest) *
 
 // run is one gate run: the same render, diff and validation the CLI performs,
 // against the live inventory, published as a status and a report comment.
-func (g *GateService) run(ctx context.Context, pr *gitprovider.PullRequest) *gateOutcome {
+func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome {
 	ctx, cancel := context.WithTimeout(ctx, g.timeout())
 	defer cancel()
 
@@ -346,7 +354,7 @@ func (g *GateService) run(ctx context.Context, pr *gitprovider.PullRequest) *gat
 		fmt.Fprintf(&report, "### Schema validation\n\n%s\n", schemaDetail.String())
 	}
 
-	out := &gateOutcome{Report: report.String()}
+	out := &Outcome{Report: report.String()}
 	blocking := res.Blocking()
 
 	// The comment is for humans and for the audit trail; the verdict no
@@ -387,12 +395,12 @@ func (g *GateService) run(ctx context.Context, pr *gitprovider.PullRequest) *gat
 // reason exit 2 is not exit 1: "this change is bad" and "the gate is broken"
 // want opposite reactions, and a status that shows them identically teaches
 // people to ignore the check.
-func (g *GateService) broke(ctx context.Context, pr *gitprovider.PullRequest, err error) *gateOutcome {
+func (g *Service) broke(ctx context.Context, pr *gitprovider.PullRequest, err error) *Outcome {
 	g.status(ctx, pr, gitprovider.StateError, "the gate could not run: %v", err)
-	return &gateOutcome{Err: err, retryAfter: time.Now().Add(gateRetryAfter)}
+	return &Outcome{Err: err, retryAfter: time.Now().Add(gateRetryAfter)}
 }
 
-func (g *GateService) status(ctx context.Context, pr *gitprovider.PullRequest, state gitprovider.CommitState, format string, a ...any) {
+func (g *Service) status(ctx context.Context, pr *gitprovider.PullRequest, state gitprovider.CommitState, format string, a ...any) {
 	desc := fmt.Sprintf(format, a...)
 	g.logf("gate: PR %d %s: %s (%s)", pr.Number, shortSHA8(pr.HeadSHA), state, desc)
 	if err := g.Git.SetCommitStatus(ctx, pr.HeadSHA, g.CheckName, state, desc); err != nil {
@@ -412,7 +420,7 @@ func (g *GateService) status(ctx context.Context, pr *gitprovider.PullRequest, s
 // Editing in place alone would be worse: it would DELETE the failed pass. So
 // the body carries a compact history, which is the part a reviewer actually
 // wants -- what was wrong, and that it is not wrong any more.
-func (g *GateService) comment(ctx context.Context, pr *gitprovider.PullRequest, report string) {
+func (g *Service) comment(ctx context.Context, pr *gitprovider.PullRequest, report string) {
 	blocking, headline := "0", ""
 	if b, h := g.lastVerdict(report); b {
 		blocking, headline = "1", h
@@ -491,7 +499,7 @@ func (g *GateService) comment(ctx context.Context, pr *gitprovider.PullRequest, 
 // lastVerdict reads the headline the report already rendered, rather than
 // recomputing it: one source of truth means the stamp and the visible headline
 // can never disagree.
-func (g *GateService) lastVerdict(report string) (bool, string) {
+func (g *Service) lastVerdict(report string) (bool, string) {
 	for _, line := range strings.Split(report, "\n") {
 		if !strings.HasPrefix(line, "## ") {
 			continue
@@ -512,7 +520,7 @@ func (g *GateService) lastVerdict(report string) (bool, string) {
 // base is fetched by NAME, not by SHA: hosts reliably serve their advertised
 // refs, and `github.event.pull_request.base.sha` was only ever CI's
 // approximation of the same thing.
-func (g *GateService) checkout(ctx context.Context, pr *gitprovider.PullRequest) (string, string, func(), error) {
+func (g *Service) checkout(ctx context.Context, pr *gitprovider.PullRequest) (string, string, func(), error) {
 	dir, err := os.MkdirTemp(g.CloneRoot, "gate")
 	if err != nil {
 		return "", "", func() {}, err

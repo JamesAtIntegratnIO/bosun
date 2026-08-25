@@ -1,4 +1,4 @@
-package main
+package gateservice
 
 import (
 	"context"
@@ -18,10 +18,10 @@ func reportFor(blocking bool, headline, body string) string {
 	return gate.ReportMarker + "\n## " + mark + " " + headline + "\n\n" + body + "\n"
 }
 
-func commentHarness(t *testing.T) (*GateService, *gitprovider.Fake) {
+func commentHarness(t *testing.T) (*Service, *gitprovider.Fake) {
 	t.Helper()
 	f := &gitprovider.Fake{PR: &gitprovider.PullRequest{Number: 7}}
-	return &GateService{Git: f, Log: t.Logf}, f
+	return &Service{Git: f, Log: t.Logf}, f
 }
 
 // The shape the whole change exists for: a pull request that was red, got

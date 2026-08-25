@@ -1,4 +1,17 @@
-package main
+// Package agent is the judgement half: what to do about one promotion's pull
+// request, and what to say about it.
+//
+// The gate answers "did anything structural change". This answers the question
+// after it -- is the change explicable, is it repairable without a human, and
+// if not, what does the human need in front of them. Those are different jobs
+// with different failure modes, which is why they are different packages: the
+// gate must be boring and deterministic, and this one talks to a model.
+//
+// Everything it reaches for is a consumer-defined interface with a fake beside
+// it -- the git host, the model, the cluster, the upstream resolver, the
+// in-process gate -- so the workflow can be tested end to end without any of
+// them. main.go is the only place that knows which implementations are real.
+package agent
 
 import (
 	"context"
@@ -14,12 +27,28 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/egress"
 	"github.com/JamesAtIntegratnIO/bosun/gate"
+	"github.com/JamesAtIntegratnIO/bosun/gateservice"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
 	"github.com/JamesAtIntegratnIO/bosun/prompt"
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
+
+// InProcessGate is the gate, when it runs in this process rather than in CI.
+//
+// A consumer-defined interface, like every other seam the agent holds: the one
+// thing it wants is a verdict for a head commit, and everything else the
+// service does -- the sweep, the per-SHA cache, the retry window, publishing
+// the comment -- is none of its business. It also means the tests here supply a
+// verdict directly instead of reaching into the service to seed one.
+type InProcessGate interface {
+	// Ensure returns the verdict for this pull request's head commit, running
+	// the gate if no run has produced one yet. It does not return until there
+	// is a verdict or a broken gate, so CheckPending and CheckMissing cannot
+	// come back from it.
+	Ensure(ctx context.Context, pr *gitprovider.PullRequest) *gateservice.Outcome
+}
 
 // Promotion is the context Kargo POSTs when a pull request opens.
 type Promotion struct {
@@ -78,7 +107,7 @@ type Triage struct {
 	// report back out of its own comment. The verdict arrives as a value, so
 	// the reportAuthor trust check has nothing to check -- the evidence never
 	// left the process.
-	Gate *GateService
+	Gate InProcessGate
 	// Upstream, when set, fetches what the maintainers wrote between the two
 	// versions. Optional: without it the explanation is grounded in the render
 	// alone, says so, and is still worth reading.

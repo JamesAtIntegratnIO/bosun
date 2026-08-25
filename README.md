@@ -33,7 +33,10 @@ piece doing its one job.
 | Piece | What it does |
 |---|---|
 | [`gate/`](gate) | **The inspection round.** Renders your ApplicationSets at base and at head, fails on a *cluster-targeting* change, an apiVersion migration, or a CRD dropping a served version your manifests still declare; diffs the old and new chart render down to the field; schema-validates the result. One engine, two faces: the agent runs it in-cluster against the live inventory by default, and the same code ships as a container with an exit code for local runs and CI. |
-| the agent *(this module's root)* | **The rounds and the repair.** Runs the gate on every open pull request, then acts on the verdict: migrates manifests off dropped API versions deterministically, fixes what the rendered diff *proves* is mechanical, explains what a green gate cannot show, and escalates the rest as a handoff. |
+| [`agent/`](agent) | **The rounds and the repair.** Acts on the verdict: migrates manifests off dropped API versions deterministically, fixes what the rendered diff *proves* is mechanical, explains what a green gate cannot show, and escalates the rest as a handoff. |
+| [`gateservice/`](gateservice) | Runs the gate in-process for every open pull request, on a timer, and publishes the verdict — so the agent reads it as a value instead of scraping its own comment. |
+| [`supervisor/`](supervisor) | Sweeps the Kargo pipeline for the promotions that *never happened*. Nothing about one produces an event, so a timer is the only way to see it. |
+| [`prompt/`](prompt) | What the model is told, and the constant the eval suite scores. |
 | [`charts/kargo-pipelines`](charts/kargo-pipelines) | Warehouses and Stages from one target list, with multi-stage promotion chains, verification gating and the triage hook that calls the agent. |
 | [`charts/bosun`](charts/bosun) | Runs the agent in-cluster, triggered by Kargo rather than polled. |
 

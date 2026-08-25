@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/JamesAtIntegratnIO/bosun/agent"
 )
 
 // Kargo's http step is synchronous, so the handler must answer before doing
@@ -18,7 +20,7 @@ func TestPromotionOpenedAnswersImmediately(t *testing.T) {
 		Log:     testLogger(t),
 		Timeout: time.Minute,
 	}
-	s.runFn = func(p Promotion) error {
+	s.runFn = func(p agent.Promotion) error {
 		<-blocked // hold the "work" open
 		return nil
 	}
@@ -48,7 +50,7 @@ func TestDuplicateCallsForOnePRCollapse(t *testing.T) {
 	started := make(chan struct{}, 4)
 	release := make(chan struct{})
 	s := &Server{Log: testLogger(t), Timeout: time.Minute}
-	s.runFn = func(p Promotion) error {
+	s.runFn = func(p agent.Promotion) error {
 		started <- struct{}{}
 		<-release
 		return nil
@@ -82,7 +84,7 @@ func TestDuplicateCallsForOnePRCollapse(t *testing.T) {
 
 func TestRejectsPayloadWithoutAPRNumber(t *testing.T) {
 	s := &Server{Log: testLogger(t), Timeout: time.Minute}
-	s.runFn = func(Promotion) error { t.Fatal("should not run"); return nil }
+	s.runFn = func(agent.Promotion) error { t.Fatal("should not run"); return nil }
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/promotion-opened",
 		bytes.NewReader([]byte(`{"stage":"cert-manager"}`)))
@@ -97,7 +99,7 @@ func TestRejectsPayloadWithoutAPRNumber(t *testing.T) {
 // request should not stop the agent handling the next.
 func TestPanicInTriageIsContained(t *testing.T) {
 	s := &Server{Log: testLogger(t), Timeout: time.Minute}
-	s.runFn = func(Promotion) error { panic("boom") }
+	s.runFn = func(agent.Promotion) error { panic("boom") }
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/promotion-opened",
 		bytes.NewReader([]byte(`{"prNumber":1}`)))
