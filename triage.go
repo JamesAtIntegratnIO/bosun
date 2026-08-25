@@ -150,14 +150,27 @@ func (t *Triage) logf(f string, a ...any) {
 	}
 }
 
+// defaultBrand is the name the agent signs its work with when an operator has
+// not chosen one.
+const defaultBrand = "bosun"
+
+// brand is the operator's name for this agent, or the default.
+//
+// One method rather than the three open-coded copies this replaced -- two of
+// which fell back to the literal and one of which lowercased it, so a rename
+// changed the footer and the commit status in different ways.
+func (t *Triage) brand() string {
+	if t.Brand == "" {
+		return defaultBrand
+	}
+	return t.Brand
+}
+
 // statusName is what the agent's own commit status is called. It follows the
 // brand for the same reason the attempt label does: two agents on one
 // repository must not overwrite each other's verdict.
 func (t *Triage) statusName() string {
-	if t.Brand == "" {
-		return "bosun"
-	}
-	return strings.ToLower(t.Brand)
+	return strings.ToLower(t.brand())
 }
 
 // say publishes the agent's verdict as a commit status, and logs it.
@@ -356,7 +369,7 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	switch verdict.Classification {
 	case llm.ClassNoAction:
 		t.say(ctx, pr, "no action needed: %s", verdict.Summary)
-		return t.Git.Comment(ctx, pr.Number, t.render(verdict, nil, "No change proposed."))
+		return t.Git.Comment(ctx, pr.Number, render(t.brand(), t.LLM.Name(), verdict, nil, "No change proposed."))
 
 	case llm.ClassEscalate:
 		t.say(ctx, pr, "escalated: %s", verdict.EscalationReason)
@@ -423,7 +436,7 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 		t.logf("PR %d: could not label attempt %d: %v", pr.Number, attempt, err)
 	}
 	t.say(ctx, pr, "pushed a fix (attempt %d of %d): %s", attempt, t.MaxAttempts, verdict.Summary)
-	return t.Git.Comment(ctx, pr.Number, t.render(verdict, res, fmt.Sprintf(
+	return t.Git.Comment(ctx, pr.Number, render(t.brand(), t.LLM.Name(), verdict, res, fmt.Sprintf(
 		"Pushed a fix to `%s` (attempt %d of %d). The gate will re-run.",
 		pr.Branch, attempt, t.MaxAttempts)))
 }
@@ -458,7 +471,7 @@ func (t *Triage) escalateInformed(ctx context.Context, pr *gitprovider.PullReque
 		if reason != "" {
 			head += " " + reason
 		}
-		body = t.render(v, res, head)
+		body = render(t.brand(), t.LLM.Name(), v, res, head)
 	}
 	body += renderLive(live)
 	body += renderUpstream(up)
@@ -512,7 +525,7 @@ func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider
 		// find.
 		t.say(ctx, pr, "escalated: %d document(s) need reshaping and the proposal was refused", len(rr.Refused))
 		return t.escalateInformed(ctx, pr,
-			t.renderMigration(drops, total, rr,
+			renderMigration(t.brand(), t.LLM.Name(), drops, total, rr,
 				"**Needs a human.** The chart moved fields between these API versions. "+
 					"Swapping the version alone would leave manifests the new schema does not accept, "+
 					"so nothing was pushed.", live),
@@ -522,7 +535,7 @@ func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider
 	if len(total.Applied) == 0 {
 		if len(total.Refused) > 0 {
 			t.say(ctx, pr, "escalated: every consumer the gate named was refused by policy")
-			return t.escalateInformed(ctx, pr, t.renderMigration(drops, total, nil,
+			return t.escalateInformed(ctx, pr, renderMigration(t.brand(), t.LLM.Name(), drops, total, nil,
 				"**Needs a human.** The gate names manifests that must move off a dropped API version, but policy refuses every one of them.",
 				live), nil, nil, t.upstreamFor(ctx, p, report), live)
 		}
@@ -557,7 +570,7 @@ func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider
 		t.logf("PR %d: could not label attempt %d: %v", pr.Number, attempt, err)
 	}
 	t.say(ctx, pr, "migrated %d manifest(s) off dropped API version(s)%s", files, t.attemptSuffix(attempt))
-	return t.Git.Comment(ctx, pr.Number, t.renderMigration(drops, total, rr, fmt.Sprintf(
+	return t.Git.Comment(ctx, pr.Number, renderMigration(t.brand(), t.LLM.Name(), drops, total, rr, fmt.Sprintf(
 		"Pushed a migration to `%s`%s. The gate will re-run and re-count.",
 		pr.Branch, t.attemptSuffix(attempt)), live))
 }
@@ -565,7 +578,12 @@ func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider
 // renderMigration is the comment for the deterministic path. Its footer names
 // no model, because none was involved -- a reader deciding how much to trust
 // this needs to know it is arithmetic, not judgement.
-func (t *Triage) renderMigration(drops []migrate.Dropped, res *migrate.Result, rr *restructureResult,
+// renderMigration builds the migration comment.
+//
+// A package function taking the two strings it needs, not a method: the report
+// text is the agent's most-read output and it should be changeable and
+// testable without standing up a 28-field Triage.
+func renderMigration(brand, model string, drops []migrate.Dropped, res *migrate.Result, rr *restructureResult,
 	headline string, live *liveFacts) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", headline)
@@ -599,16 +617,12 @@ func (t *Triage) renderMigration(drops []migrate.Dropped, res *migrate.Result, r
 	}
 	b.WriteString(renderRestructured(rr))
 	b.WriteString(renderLive(live))
-	brand := t.Brand
-	if brand == "" {
-		brand = "bosun"
-	}
 	// The footer says honestly which kind of work this was. "No model" is a
 	// claim a reader uses to decide how carefully to look, and it stops being
 	// true the moment a document was reshaped.
 	how := "deterministic repair, no model"
 	if rr != nil && rr.ModelCalls > 0 {
-		how = "schema-guided migration · " + t.LLM.Name()
+		how = "schema-guided migration · " + model
 	}
 	fmt.Fprintf(&b, "\n<sub>%s · %s · automated triage, not a review</sub>\n", brand, how)
 	return b.String()
@@ -767,7 +781,7 @@ func (t *Triage) attemptPrefix() string {
 // render builds the pull-request comment. It always states which model
 // produced the verdict, and always lists what was refused -- a silent refusal
 // would let a reader believe a fix was applied when it was not.
-func (t *Triage) render(v *llm.Verdict, res *edits.Result, headline string) string {
+func render(brand, model string, v *llm.Verdict, res *edits.Result, headline string) string {
 	var b strings.Builder
 	// No identity header. It was here because the agent used to comment as
 	// whoever owned its token -- a person -- so a comment opening with a
@@ -791,11 +805,7 @@ func (t *Triage) render(v *llm.Verdict, res *edits.Result, headline string) stri
 			fmt.Fprintf(&b, "- `%s` in `%s` — %s\n", r.Key, r.Path, r.Reason)
 		}
 	}
-	brand := t.Brand
-	if brand == "" {
-		brand = "bosun"
-	}
-	fmt.Fprintf(&b, "\n<sub>%s · %s · automated triage, not a review</sub>\n", brand, t.LLM.Name())
+	fmt.Fprintf(&b, "\n<sub>%s · %s · automated triage, not a review</sub>\n", brand, model)
 	return b.String()
 }
 
@@ -1100,14 +1110,14 @@ func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, 
 		}
 		t.say(ctx, pr, "%s is green, but flagged: %s", t.CheckName, reason)
 		if err := t.Git.Comment(ctx, pr.Number,
-			t.renderExplanation(v, notes)+renderLive(live)+renderUpstream(notes)); err != nil {
+			renderExplanation(t.LLM.Name(), v, notes)+renderLive(live)+renderUpstream(notes)); err != nil {
 			return err
 		}
 		return t.Git.AddLabel(ctx, pr.Number, labelNeedsHuman)
 	}
 
 	t.say(ctx, pr, "%s is green: %s", t.CheckName, v.Summary)
-	return t.Git.Comment(ctx, pr.Number, t.renderExplanation(v, notes))
+	return t.Git.Comment(ctx, pr.Number, renderExplanation(t.LLM.Name(), v, notes))
 }
 
 // alreadyExplained keeps the agent to one explanation per pull request. Kargo
@@ -1132,7 +1142,7 @@ const explanationMarker = "<!-- bosun:explanation -->"
 // and nothing was refused, so there are no tables to show -- and a long comment
 // on a green pull request is the fastest way to teach people to ignore this
 // agent entirely.
-func (t *Triage) renderExplanation(v *llm.Verdict, notes *upstream.Notes) string {
+func renderExplanation(model string, v *llm.Verdict, notes *upstream.Notes) string {
 	var b strings.Builder
 	b.WriteString(explanationMarker + "\n")
 	if v.Classification == llm.ClassEscalate {
@@ -1171,21 +1181,21 @@ func (t *Triage) renderExplanation(v *llm.Verdict, notes *upstream.Notes) string
 			b.WriteString(", truncated")
 		}
 		b.WriteString(commitProvenance(c))
-		fmt.Fprintf(&b, ". Explained by %s._\n", t.LLM.Name())
+		fmt.Fprintf(&b, ". Explained by %s._\n", model)
 	case c.Any():
 		// The case this feature was built for: no release note explains the
 		// finding, and the commits do. The provenance has to say which of the
 		// two it had, or a reader credits the explanation with the wrong one.
 		fmt.Fprintf(&b, "_Grounded in the gate's render diff%s -- "+
 			"no release note in this range explains it. Explained by %s._\n",
-			commitProvenance(c), t.LLM.Name())
+			commitProvenance(c), model)
 	default:
 		reason := "no upstream release notes were read"
 		if notes != nil && notes.Note != "" {
 			reason = strings.TrimSuffix(strings.TrimPrefix(notes.Note, "No upstream release notes: "), ".")
 		}
 		fmt.Fprintf(&b, "_Grounded in the gate's render diff ONLY -- %s. Explained by %s._\n",
-			reason, t.LLM.Name())
+			reason, model)
 	}
 	return b.String()
 }

@@ -22,11 +22,16 @@ import (
 // only for rows whose version actually moved, which on a typical bump pull
 // request is one.
 //
-// The third return is findings that are NOT object diffs: settings this
+// valuesDropped is findings that are NOT object diffs: settings this
 // repository makes that the new chart version no longer declares. They come
 // from here because this is the only place that has both chart versions and
 // the Application's own value files in hand.
-func ChartDiff(repoRoot string, cfg *Config, base, head *Table) ([]Object, []Object, []ObjectChange, []string) {
+//
+// The results are named because two of them are adjacent same-typed slices --
+// "the third return" only tells a reader which one to count to, and swapping
+// before and after at a call site would compile and silently invert the diff.
+func ChartDiff(repoRoot string, cfg *Config, base, head *Table) (
+	before, after []Object, valuesDropped []ObjectChange, warnings []string) {
 	type pair struct{ before, after Row }
 
 	baseByKey := map[string]Row{}
@@ -135,21 +140,15 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) ([]Object, []Obj
 	}
 	wg.Wait()
 
-	var (
-		beforeOb []Object
-		afterOb  []Object
-		drops    []ObjectChange
-		warnings []string
-	)
 	for _, res := range results {
-		beforeOb = append(beforeOb, res.before...)
-		afterOb = append(afterOb, res.after...)
+		before = append(before, res.before...)
+		after = append(after, res.after...)
 		if res.drop != nil {
-			drops = append(drops, *res.drop)
+			valuesDropped = append(valuesDropped, *res.drop)
 		}
 		warnings = append(warnings, res.warnings...)
 	}
-	return beforeOb, afterOb, drops, warnings
+	return before, after, valuesDropped, warnings
 }
 
 // renderChartVersion renders one Application's chart at its pinned version,

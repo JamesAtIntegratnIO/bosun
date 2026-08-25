@@ -255,7 +255,7 @@ func TestTheProvenanceDistinguishesAnEmptyRangeFromAnUnhelpfulOne(t *testing.T) 
 		t.Run(tc.name, func(t *testing.T) {
 			h := newHarness(t)
 			h.triage.Brand = "Bosun"
-			got := h.triage.renderExplanation(
+			got := renderExplanation(h.triage.LLM.Name(),
 				&llm.Verdict{Classification: llm.ClassNoAction, Summary: "s", Reasoning: "r"},
 				&upstream.Notes{
 					SourceRepo: "org/repo", Origin: "releases",
@@ -278,7 +278,7 @@ func TestTheProvenanceDistinguishesAnEmptyRangeFromAnUnhelpfulOne(t *testing.T) 
 func TestATruncatedSearchSaysHowManyItActuallyRead(t *testing.T) {
 	h := newHarness(t)
 	h.triage.Brand = "Bosun"
-	got := h.triage.renderExplanation(
+	got := renderExplanation(h.triage.LLM.Name(),
 		&llm.Verdict{Classification: llm.ClassNoAction, Summary: "s", Reasoning: "r"},
 		&upstream.Notes{
 			SourceRepo: "org/repo", Origin: "releases",

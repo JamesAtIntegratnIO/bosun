@@ -177,8 +177,8 @@ func Run(ctx context.Context, p llm.Provider, system string, c Case, withInvento
 	for _, a := range applied.Applied {
 		got[a.Key] = a.To
 	}
-	res.EditsOK = len(got) == len(c.WantEdits)
-	for k, want := range c.WantEdits {
+	res.EditsOK = len(got) == len(c.Triage.WantEdits)
+	for k, want := range c.Triage.WantEdits {
 		if got[k] != want {
 			res.EditsOK = false
 			res.Notes = append(res.Notes, fmt.Sprintf("expected %s=%s, got %q", k, want, got[k]))
@@ -204,7 +204,7 @@ func runExplain(ctx context.Context, p llm.Provider, system string, c Case, with
 	// the triage path builds, through the same function. Rendering it here
 	// through upstream.Render rather than pasting a copy is what stops the
 	// suite measuring a prompt nobody is given.
-	prompt := BuildPrompt(c, withInventory) + upstream.Render(c.Notes)
+	prompt := BuildPrompt(c, withInventory) + upstream.Render(c.Explain.Notes)
 
 	start := time.Now()
 	v, err := p.Classify(ctx, system, prompt)
@@ -231,13 +231,13 @@ func runExplain(ctx context.Context, p llm.Provider, system string, c Case, with
 	// The answer as a reader receives it: both fields, because a claim moved
 	// from the summary into the reasoning is the same claim.
 	answer := v.Summary + "\n" + v.Reasoning
-	for _, want := range c.MustMention {
+	for _, want := range c.Explain.MustMention {
 		if !strings.Contains(strings.ToLower(answer), strings.ToLower(want)) {
 			res.Grounded = false
 			res.Notes = append(res.Notes, fmt.Sprintf("never cited %q, which the evidence gave it", want))
 		}
 	}
-	for _, never := range c.MustNotMention {
+	for _, never := range c.Explain.MustNotMention {
 		if containsWord(answer, never) {
 			res.Grounded = false
 			res.Unsafe = true
@@ -299,18 +299,18 @@ func boundary(s string, i int) bool {
 func runRestructure(ctx context.Context, p llm.Provider, system string, c Case) Result {
 	res := Result{Case: c.Name, WantClass: PathRestructure, EditsOK: true, Grounded: true}
 
-	oldSchema, err := decodeSchema(c.OldSchema)
+	oldSchema, err := decodeSchema(c.Restructure.OldSchema)
 	if err != nil {
 		res.Notes = append(res.Notes, "old schema: "+err.Error())
 		return res
 	}
-	newSchema, err := decodeSchema(c.NewSchema)
+	newSchema, err := decodeSchema(c.Restructure.NewSchema)
 	if err != nil {
 		res.Notes = append(res.Notes, "new schema: "+err.Error())
 		return res
 	}
 	var doc map[string]any
-	if err := yaml.Unmarshal([]byte(c.Document), &doc); err != nil {
+	if err := yaml.Unmarshal([]byte(c.Restructure.Document), &doc); err != nil {
 		res.Notes = append(res.Notes, "document: "+err.Error())
 		return res
 	}
@@ -325,7 +325,7 @@ func runRestructure(ctx context.Context, p llm.Provider, system string, c Case) 
 	// and mean opposite things: no expected document is "nothing should have
 	// been asked", and WantRefused is "something was asked and nothing should
 	// be written".
-	if c.WantDocument == "" && !c.WantRefused {
+	if c.Restructure.WantDocument == "" && !c.Restructure.WantRefused {
 		res.Class = "not-called"
 		res.ClassOK = len(findings) == 0
 		if !res.ClassOK {
@@ -348,7 +348,7 @@ func runRestructure(ctx context.Context, p llm.Provider, system string, c Case) 
 
 	start := time.Now()
 	m, err := rs.Restructure(ctx, system,
-		structural.Prompt("fixture.yaml", c.Document, c.FromVersion, c.TargetAPIVersion, oldSchema, newSchema, findings))
+		structural.Prompt("fixture.yaml", c.Restructure.Document, c.Restructure.FromVersion, c.Restructure.TargetAPIVersion, oldSchema, newSchema, findings))
 	res.Elapsed = time.Since(start)
 	if err != nil || m == nil {
 		res.Notes = append(res.Notes, fmt.Sprintf("provider error: %v", err))
@@ -362,10 +362,10 @@ func runRestructure(ctx context.Context, p llm.Provider, system string, c Case) 
 		return res
 	}
 
-	verdict := structural.Validate(doc, proposed, c.TargetAPIVersion, newSchema)
+	verdict := structural.Validate(doc, proposed, c.Restructure.TargetAPIVersion, newSchema)
 	res.Rejected = append(res.Rejected, verdict.Refusals...)
 
-	if c.WantRefused {
+	if c.Restructure.WantRefused {
 		// Some migrations have no honest answer -- a newly required field with
 		// nothing in the document to fill it. The measurement is that whatever
 		// came back was stopped, and accepting it is the unsafe outcome.
@@ -391,7 +391,7 @@ func runRestructure(ctx context.Context, p llm.Provider, system string, c Case) 
 	res.ClassOK = true
 
 	var want map[string]any
-	if err := yaml.Unmarshal([]byte(c.WantDocument), &want); err != nil {
+	if err := yaml.Unmarshal([]byte(c.Restructure.WantDocument), &want); err != nil {
 		res.Notes = append(res.Notes, "expected document: "+err.Error())
 		return res
 	}

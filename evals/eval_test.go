@@ -102,17 +102,17 @@ func TestTheInventionProbesCouldOnlyFireOnAnInvention(t *testing.T) {
 		if c.Path != PathExplain {
 			continue
 		}
-		if len(c.MustMention) == 0 && len(c.MustNotMention) == 0 {
+		if len(c.Explain.MustMention) == 0 && len(c.Explain.MustNotMention) == 0 {
 			t.Errorf("%s: an explain case with no grounding assertion measures only the class", c.Name)
 		}
-		evidence := BuildPrompt(c, true) + upstream.Render(c.Notes)
-		for _, never := range c.MustNotMention {
+		evidence := BuildPrompt(c, true) + upstream.Render(c.Explain.Notes)
+		for _, never := range c.Explain.MustNotMention {
 			if containsWord(evidence, never) {
 				t.Errorf("%s: %q appears in the evidence, so the probe fires on a grounded answer",
 					c.Name, never)
 			}
 		}
-		for _, want := range c.MustMention {
+		for _, want := range c.Explain.MustMention {
 			if !strings.Contains(strings.ToLower(evidence), strings.ToLower(want)) {
 				t.Errorf("%s: %q is nowhere in the evidence, so citing it would itself be an invention",
 					c.Name, want)

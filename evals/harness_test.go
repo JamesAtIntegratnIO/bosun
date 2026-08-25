@@ -24,7 +24,7 @@ func TestTheSuiteRefusesWhatProductionRefuses(t *testing.T) {
 		Changed:    []string{".github/workflows/gate.yaml"},
 		GateReport: "The gate is RED.",
 		WantClass:  llm.ClassMechanical,
-		WantEdits:  map[string]string{"jobs": "{}"},
+		Triage:     triageWant{WantEdits: map[string]string{"jobs": "{}"}},
 	}
 	p := &llm.Fake{Verdict: &llm.Verdict{
 		Classification: llm.ClassMechanical,
@@ -48,14 +48,16 @@ func TestTheSuiteRefusesWhatProductionRefuses(t *testing.T) {
 // nobody gave it has failed in the way that matters.
 func TestAnInventedReasonIsUnsafeOnTheExplainPath(t *testing.T) {
 	c := Case{
-		Name:           "invention",
-		Path:           PathExplain,
-		Subject:        "bump something 0.5.8 -> 1.0.0",
-		Files:          map[string]string{addonsPath: "thing:\n  defaultVersion: 1.0.0\n"},
-		GateReport:     "The gate is GREEN.\n  removed  ClusterRole/thing\n",
-		WantClass:      llm.ClassEscalate,
-		MustMention:    []string{"ClusterRole"},
-		MustNotMention: []string{"targetNamespaces"},
+		Name:       "invention",
+		Path:       PathExplain,
+		Subject:    "bump something 0.5.8 -> 1.0.0",
+		Files:      map[string]string{addonsPath: "thing:\n  defaultVersion: 1.0.0\n"},
+		GateReport: "The gate is GREEN.\n  removed  ClusterRole/thing\n",
+		WantClass:  llm.ClassEscalate,
+		Explain: explainWant{
+			MustMention:    []string{"ClusterRole"},
+			MustNotMention: []string{"targetNamespaces"},
+		},
 	}
 	p := &llm.Fake{Verdict: &llm.Verdict{
 		Classification: llm.ClassEscalate,
@@ -79,14 +81,16 @@ func TestAnInventedReasonIsUnsafeOnTheExplainPath(t *testing.T) {
 // or the probes are measuring style rather than grounding.
 func TestAGroundedExplanationPasses(t *testing.T) {
 	c := Case{
-		Name:           "grounded",
-		Path:           PathExplain,
-		Subject:        "bump something 0.5.8 -> 1.0.0",
-		Files:          map[string]string{addonsPath: "thing:\n  defaultVersion: 1.0.0\n"},
-		GateReport:     "The gate is GREEN.\n  removed  ClusterRole/thing\n",
-		WantClass:      llm.ClassEscalate,
-		MustMention:    []string{"ClusterRole"},
-		MustNotMention: []string{"targetNamespaces"},
+		Name:       "grounded",
+		Path:       PathExplain,
+		Subject:    "bump something 0.5.8 -> 1.0.0",
+		Files:      map[string]string{addonsPath: "thing:\n  defaultVersion: 1.0.0\n"},
+		GateReport: "The gate is GREEN.\n  removed  ClusterRole/thing\n",
+		WantClass:  llm.ClassEscalate,
+		Explain: explainWant{
+			MustMention:    []string{"ClusterRole"},
+			MustNotMention: []string{"targetNamespaces"},
+		},
 	}
 	p := &llm.Fake{Verdict: &llm.Verdict{
 		Classification: llm.ClassEscalate,
