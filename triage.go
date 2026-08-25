@@ -704,9 +704,6 @@ func renderRestructured(rr *restructureResult) string {
 	return b.String()
 }
 
-// render builds the pull-request comment. It always states which model
-// produced the verdict, and always lists what was refused -- a silent refusal
-// would let a reader believe a fix was applied when it was not.
 // countOf is "1 file" / "27 files".
 func countOf(n int, noun string) string {
 	if n == 1 {
@@ -767,6 +764,9 @@ func (t *Triage) attemptPrefix() string {
 	return fmt.Sprintf(labelAttemptFmt, strings.ToLower(t.Brand))
 }
 
+// render builds the pull-request comment. It always states which model
+// produced the verdict, and always lists what was refused -- a silent refusal
+// would let a reader believe a fix was applied when it was not.
 func (t *Triage) render(v *llm.Verdict, res *edits.Result, headline string) string {
 	var b strings.Builder
 	// No identity header. It was here because the agent used to comment as

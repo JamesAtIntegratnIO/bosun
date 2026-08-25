@@ -21,7 +21,6 @@ import (
 // It costs a chart pull and two renders per changed Application, so it runs
 // only for rows whose version actually moved, which on a typical bump pull
 // request is one.
-// ChartDiff renders every moved chart at both versions.
 //
 // The third return is findings that are NOT object diffs: settings this
 // repository makes that the new chart version no longer declares. They come

@@ -1,6 +1,10 @@
 # Git providers
 
-Six methods, chosen because they are what the workflow needs and nothing more.
+Deliberately small: it carries what the workflow needs and nothing more. The
+methods group into four jobs — read a pull request, read what has been said on
+it, say something, and push a fix. `gitprovider/provider.go` is the list; a
+count repeated here would go stale, and this one had (it said six against an
+interface of ten).
 (ADR 0004 committed to four; reading a pull request and listing its comments
 turned out to be workflow needs too, which is the kind of growth the ADR's
 "lowest common denominator" cost paragraph predicted.)

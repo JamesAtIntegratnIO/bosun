@@ -182,12 +182,12 @@ func LoadConfig() (*Config, error) {
 	if c.GateWait, err = envDur("GATE_WAIT", 10*time.Minute); err != nil {
 		return nil, err
 	}
-	// Default ON. The agent's whole complaint about itself was that it only
-	// spoke when something was wrong, and a green gate on a chart bump still
-	// changed something worth reading.
 	c.AppID = os.Getenv("GITHUB_APP_ID")
 	c.AppPrivateKey = os.Getenv("GITHUB_APP_PRIVATE_KEY")
 	c.AppInstallID = os.Getenv("GITHUB_APP_INSTALLATION_ID")
+	// Default ON. The agent's whole complaint about itself was that it only
+	// spoke when something was wrong, and a green gate on a chart bump still
+	// changed something worth reading.
 	c.Explain = os.Getenv("EXPLAIN_GREEN") != "false"
 	// Default ON. The repair is deterministic, answers to the same deny-list
 	// and allowlist as every other write, and the re-run gate re-counts what

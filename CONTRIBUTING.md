@@ -18,9 +18,16 @@ Nothing in `charts/` or the service may assume:
 
 ## Rule 1a — the contracts between the halves are the fragile part
 
-There are no code dependencies between the gate, the agent and the charts.
-They are joined by **wire contracts**, and every one of them has broken
-silently at least once:
+The gate, the agent and the charts are joined by **wire contracts**, and every
+one of them has broken silently at least once.
+
+The Go dependency runs one way only: `package main` (the agent) and `cluster`
+import `gate`, and `gate` imports `migrate` for the report format both sides
+read. Nothing points back — the gate cannot import the agent, and neither
+touches the charts. That single direction is what ADR 0008 bought when it moved
+the gate in-cluster, and it is why the shared report vocabulary lives in `gate`
+and `migrate` rather than being spelled out twice. What follows are the
+contracts that still cross a process boundary, where no compiler is watching:
 
 | Contract | How it broke |
 |---|---|
@@ -115,7 +122,7 @@ say so in the changelog with the model it was measured against.
 - **A merge publishes only the images it changed.** `image.yaml` diffs the
   push: `gate/**` (plus `go.mod`/`go.sum`) rebuilds `gitops-gate`, anything
   else in the module rebuilds `bosun`, a release or a manual run builds both.
-  Rule 1a cuts both ways -- with no code dependencies between the halves, a
+  Rule 1a cuts both ways -- the gate imports nothing from the agent, so a
   triage fix is not a reason to republish the gate.
 
   It used to publish both from one matrix, and that was not merely wasteful.

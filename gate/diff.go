@@ -340,19 +340,6 @@ func SaysNothingChanged(report string) bool {
 	return strings.Contains(report, NothingChanged)
 }
 
-// Verdict is the report's own answer, in one line, so a reader knows what they
-// are looking at before they read anything else.
-//
-// This exists because a report that merely LISTS findings reads the same when
-// it is blocking and when it is not. Two of them on one pull request -- a red
-// one and the green one after a repair -- were indistinguishable at a glance,
-// and the failed pass looked like a duplicate of the pass that succeeded
-// rather than the thing that had to be fixed.
-//
-// The wording deliberately avoids the parser's heading strings, which live in
-// the migrate package and are matched with strings.Contains: a headline that
-// happened to contain "**API version changed**" would make the agent believe
-// there was an unrepairable blocker in every report that mentioned one.
 // Blockers counts the reasons this result is blocking. The type lives in the
 // migrate package with the rest of the report's format, so that the writer and
 // the reader cannot drift.
@@ -376,6 +363,19 @@ func (d *DiffResult) Blockers() migrate.Blockers {
 	return b
 }
 
+// Verdict is the report's own answer, in one line, so a reader knows what they
+// are looking at before they read anything else.
+//
+// This exists because a report that merely LISTS findings reads the same when
+// it is blocking and when it is not. Two of them on one pull request -- a red
+// one and the green one after a repair -- were indistinguishable at a glance,
+// and the failed pass looked like a duplicate of the pass that succeeded
+// rather than the thing that had to be fixed.
+//
+// The wording deliberately avoids the parser's heading strings, which live in
+// the migrate package and are matched with strings.Contains: a headline that
+// happened to contain "**API version changed**" would make the agent believe
+// there was an unrepairable blocker in every report that mentioned one.
 func (d *DiffResult) Verdict() (blocking bool, headline string) {
 	bl := d.Blockers()
 	var why []string

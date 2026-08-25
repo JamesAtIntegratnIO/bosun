@@ -117,6 +117,19 @@ type declaration struct {
 	covered bool
 }
 
+// onlyCovered filters declarations to the ones some migration actually names.
+// A verb, not an adjective: it returns the subset, not a yes or no -- which is
+// what `covered` read as beside every other adjective-named predicate here.
+func onlyCovered(in []declaration) []declaration {
+	var out []declaration
+	for _, f := range in {
+		if f.covered {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 // declarations finds every manifest in data declaring one of the dropped
 // versions: top-level documents, mappings nested at any depth (an
 // `extraObjects:` list), and manifests embedded in block-scalar strings.
@@ -131,19 +144,6 @@ type declaration struct {
 // never counted as consumers and never edited: that CRD still serves the
 // version, and rewriting its manifests would break what the migration exists
 // to protect.
-
-// onlyCovered filters declarations to the ones some migration actually names.
-// A verb, not an adjective: it returns the subset, not a yes or no -- which is
-// what `covered` read as beside every other adjective-named predicate here.
-func onlyCovered(in []declaration) []declaration {
-	var out []declaration
-	for _, f := range in {
-		if f.covered {
-			out = append(out, f)
-		}
-	}
-	return out
-}
 func declarations(data []byte, drops []Dropped) []declaration {
 	oldToNew := map[string]string{} // dropped group/version -> group/target
 	oldKinds := map[string]map[string]bool{}

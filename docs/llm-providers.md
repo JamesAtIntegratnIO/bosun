@@ -55,13 +55,24 @@ more than it needs to, which costs a human two minutes.
 
 ## Adding a provider
 
-Implement one method:
+Implement `llm.Provider`:
 
 ```go
 Classify(ctx context.Context, systemPrompt, userPrompt string) (*Verdict, error)
+Name() string   // provider and model, for logs and PR comments
 ```
 
 Constrain the model to `VerdictSchema()` if the backend can. Call `Verdict.Valid()`
-before returning. Do not retry indefinitely — the caller is asynchronous but
+before returning.
+
+Structural migration is a **separate, optional** interface. A provider that does
+not implement it simply does not offer that path — the agent type-asserts for it
+and falls back to the deterministic apiVersion swap:
+
+```go
+Restructure(ctx context.Context, systemPrompt, userPrompt string) (*Migration, error)
+```
+
+Constrain that one to `MigrationSchema()`. Do not retry indefinitely — the caller is asynchronous but
 not patient, and a wedged provider should surface as a comment rather than a
 hang.

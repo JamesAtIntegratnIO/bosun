@@ -149,8 +149,8 @@ host or model provider. Those are values.
 | [`docs/safety-model.md`](docs/safety-model.md) | allowlist, deny-list, attempt cap — what is enforced where |
 | [`docs/classification.md`](docs/classification.md) | mechanical vs escalate, with worked examples |
 | [`docs/prompt-contract.md`](docs/prompt-contract.md) | the prompt the eval numbers come from |
-| [`docs/llm-providers.md`](docs/llm-providers.md) | the `LLMProvider` interface; adding one |
-| [`docs/git-providers.md`](docs/git-providers.md) | the `GitProvider` interface; adding one |
+| [`docs/llm-providers.md`](docs/llm-providers.md) | the `llm.Provider` interface; adding one |
+| [`docs/git-providers.md`](docs/git-providers.md) | the `gitprovider.Provider` interface; adding one |
 | [`docs/supervisor.md`](docs/supervisor.md) | watching the promotion pipeline for what has silently stopped |
 | [`gate/README.md`](gate/README.md) | the gate: what it checks, and what it deliberately does not |
 | [`ci/`](ci) | CI adapters, and the contract an adapter must satisfy |
