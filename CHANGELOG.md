@@ -44,6 +44,33 @@ All notable changes to `bosun`. Format follows
   appendix. Previously the path was scattered across five READMEs and the
   reference consumer's commit history.
 
+- **A dev shell** (`nix develop`) carrying the toolchain, with helm and
+  kubeconform pinned to the versions the images render with. The gate's
+  verdict is the output of `helm template`, so a contributor rendering with a
+  different helm than production gets a verdict that is locally true and
+  globally wrong; `hack/portability-test.sh` now asserts the flake and both
+  Dockerfiles agree.
+
+### Fixed
+
+- **A gate report and the "pending" that announced it tie, and Gitea broke
+  the tie wrong.** Gitea returns commit statuses newest first and stamps them
+  in whole seconds, so a gate that reports its progress lands both inside one
+  second and the order within the tie is arbitrary. Taking the first match
+  read a check that had gone green in seconds as permanently pending: the
+  agent waited out the whole of `gate.wait` and announced "still had no
+  verdict" about a gate that had already answered. Ties now break on meaning
+  — a verdict cannot precede the pending that announced it. GitHub is
+  unaffected; it reports through check runs and a documented order.
+
+- **A gate that could not run never tried again.** A verdict answers a commit
+  and is kept, but a *failure to run* was kept on the same terms — and its
+  cause is almost always cluster-side (RBAC not granted yet, a chart
+  repository briefly unreachable). The `error` status outlived its own cause
+  and cleared only when somebody pushed. Broken runs now retry after five
+  minutes; a refusal to gate fork content does not, being a decision rather
+  than a failure.
+
 ## [0.15.2] - 2026-08-24
 
 ### Fixed
