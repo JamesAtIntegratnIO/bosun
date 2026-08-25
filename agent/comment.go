@@ -239,11 +239,11 @@ func renderExplanation(model string, v *llm.Verdict, notes *upstream.Notes) stri
 		// as the change rather than at the moment of release. A reader
 		// weighing an explanation should be told which they got.
 		what := "upstream release note(s)"
-		if notes.Origin != "" && notes.Origin != "releases" {
+		if notes.Origin != "" && notes.Origin != upstream.OriginReleases {
 			what = fmt.Sprintf("upstream changelog entr(ies) from `%s`", notes.Origin)
 		}
 		fmt.Fprintf(&b, "_Grounded in the gate's render diff and %d %s", len(notes.Releases), what)
-		if notes.SourceRepo != "" && (notes.Origin == "" || notes.Origin == "releases") {
+		if notes.SourceRepo != "" && (notes.Origin == "" || notes.Origin == upstream.OriginReleases) {
 			fmt.Fprintf(&b, " from [%s](https://github.com/%s/releases)", notes.SourceRepo, notes.SourceRepo)
 		} else if notes.SourceRepo != "" {
 			fmt.Fprintf(&b, " in [%s](https://github.com/%s)", notes.SourceRepo, notes.SourceRepo)

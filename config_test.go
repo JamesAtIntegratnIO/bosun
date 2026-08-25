@@ -173,3 +173,62 @@ func TestEveryBooleanSettingAcceptsTheSameWords(t *testing.T) {
 		}
 	}
 }
+
+// Each of these three is validated in one switch and dispatched in another, in
+// a different file. A value the validator accepts and the dispatcher does not
+// is a pod that starts healthy and then does nothing -- so the two sets have to
+// be the same, and a named type is what lets a test say so.
+func TestTheValidatorAcceptsExactlyTheValuesThatDispatch(t *testing.T) {
+	base := func() *Config {
+		return &Config{
+			GitOwner: "o", GitRepo: "r", GitRepoURL: "u", GitToken: "t",
+			GitProvider: GitGitHub,
+			LLMProvider: LLMAnthropic, LLMModel: "m",
+			AllowPaths: []string{"addons/**"},
+			GateMode:   GateInCluster,
+		}
+	}
+
+	for _, p := range []GitProviderName{GitGitHub, GitGitea} {
+		c := base()
+		c.GitProvider = p
+		if err := c.validate(); err != nil {
+			t.Errorf("GIT_PROVIDER %q is dispatched but rejected: %v", p, err)
+		}
+	}
+	c := base()
+	c.GitProvider = "bitbucket"
+	if err := c.validate(); err == nil {
+		t.Error("a provider with no dispatch branch must not start")
+	}
+
+	for _, p := range []LLMProviderName{LLMOpenAI, LLMAnthropic} {
+		c := base()
+		c.LLMProvider = p
+		// openai needs a base URL; that is a separate rule, not a rejection
+		// of the provider itself.
+		c.LLMBaseURL = "http://x"
+		if err := c.validate(); err != nil {
+			t.Errorf("LLM_PROVIDER %q is dispatched but rejected: %v", p, err)
+		}
+	}
+	c = base()
+	c.LLMProvider = "ollama"
+	if err := c.validate(); err == nil {
+		t.Error("a model provider with no dispatch branch must not start")
+	}
+
+	for _, m := range []GateMode{GateInCluster, GateInCI} {
+		c := base()
+		c.GateMode = m
+		c.Supervise = false // ci mode has no cluster reader; a separate rule
+		if err := c.validate(); err != nil {
+			t.Errorf("GATE_MODE %q is a mode but was rejected: %v", m, err)
+		}
+	}
+	c = base()
+	c.GateMode = "local"
+	if err := c.validate(); err == nil {
+		t.Error("an unknown gate mode must not start")
+	}
+}

@@ -26,6 +26,19 @@ const (
 	PhaseAborted   = "Aborted"
 )
 
+// Verification phases an AnalysisRun reports. A DIFFERENT vocabulary from the
+// promotion phases above, and deliberately so -- they overlap on "Failed" and
+// "Aborted" and differ everywhere else, and the near-miss is the trap: the
+// promotion phase is PhaseErrored, "Errored", while a verification says
+// "Error". Tidying these into the constants twenty lines up would silently
+// break the verify-stuck detector.
+const (
+	VerifyFailed       = "Failed"
+	VerifyError        = "Error"
+	VerifyAborted      = "Aborted"
+	VerifyInconclusive = "Inconclusive"
+)
+
 // Terminal reports whether a phase is final.
 func Terminal(phase string) bool {
 	switch phase {

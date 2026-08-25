@@ -35,6 +35,21 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
 
+// MergePolicy is how far a target may move before a human has to approve the
+// merge. Set per target and tightenable per stage, in charts/kargo-pipelines.
+type MergePolicy string
+
+const (
+	// MergeAlways merges any version change.
+	MergeAlways MergePolicy = "always"
+	// MergeMinor merges patch and minor changes on a 1.x or later chart.
+	MergeMinor MergePolicy = "minor"
+	// MergePatch merges patch and metadata changes only.
+	MergePatch MergePolicy = "patch"
+	// MergeNever always waits for a human.
+	MergeNever MergePolicy = "never"
+)
+
 // InProcessGate is the gate, when it runs in this process rather than in CI.
 //
 // A consumer-defined interface, like every other seam the agent holds: the one
@@ -52,18 +67,29 @@ type InProcessGate interface {
 
 // Promotion is the context Kargo POSTs when a pull request opens.
 type Promotion struct {
-	Project     string   `json:"project"`
-	Stage       string   `json:"stage"`
-	PromotionID string   `json:"promotion"`
-	Artifact    string   `json:"artifact"`
-	From        string   `json:"from"`
-	To          string   `json:"to"`
-	AutoMerge   string   `json:"autoMerge"`
-	PRNumber    int      `json:"prNumber"`
-	PRURL       string   `json:"prURL"`
-	Branch      string   `json:"branch"`
-	Files       []string `json:"files"`
-	VerifyApps  []string `json:"verifyApps"`
+	Project     string `json:"project"`
+	Stage       string `json:"stage"`
+	PromotionID string `json:"promotion"`
+	Artifact    string `json:"artifact"`
+	From        string `json:"from"`
+	To          string `json:"to"`
+	// AutoMerge is the target's merge policy, and this agent deliberately does
+	// not act on it.
+	//
+	// The Stage evaluates the same policy itself and decides whether to merge;
+	// the agent's job is the verdict, not the merge. It is decoded because the
+	// chart sends it, and a payload field the receiver silently drops is one
+	// nobody can tell is being ignored on purpose.
+	//
+	// Typed rather than a bare string so its four values are written down
+	// somewhere -- `AutoMerge string` read like a boolean somebody had spelled
+	// wrong.
+	AutoMerge  MergePolicy `json:"autoMerge"`
+	PRNumber   int         `json:"prNumber"`
+	PRURL      string      `json:"prURL"`
+	Branch     string      `json:"branch"`
+	Files      []string    `json:"files"`
+	VerifyApps []string    `json:"verifyApps"`
 }
 
 // Triage runs one promotion end to end.

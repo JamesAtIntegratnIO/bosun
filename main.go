@@ -68,12 +68,12 @@ func main() {
 
 	var model llm.Provider
 	switch cfg.LLMProvider {
-	case "openai":
+	case LLMOpenAI:
 		model = &llm.OpenAI{
 			BaseURL: cfg.LLMBaseURL, APIKey: cfg.LLMKey, Model: cfg.LLMModel,
 			ReasoningEffort: cfg.LLMReasoningEffort, Timeout: cfg.LLMTimeout,
 		}
-	case "anthropic":
+	case LLMAnthropic:
 		model = &llm.Anthropic{
 			BaseURL: cfg.LLMBaseURL, APIKey: cfg.LLMKey, Model: cfg.LLMModel,
 			Timeout: cfg.LLMTimeout,
@@ -89,7 +89,7 @@ func main() {
 	// static token is empty.
 	var upstreamToken func(context.Context) (string, error)
 	switch cfg.GitProvider {
-	case "gitea":
+	case GitGitea:
 		git = &gitprovider.Gitea{
 			BaseURL: cfg.GitAPIBase, Owner: cfg.GitOwner, Repo: cfg.GitRepo,
 			Token: cfg.GitToken, Username: cfg.GitOwner,
@@ -178,7 +178,7 @@ func main() {
 	// (facts for briefs) and the in-cluster gate (the inventory it renders
 	// against).
 	var reader *cluster.APIServer
-	if cfg.LiveReads || cfg.GateMode == "cluster" {
+	if cfg.LiveReads || cfg.GateMode == GateInCluster {
 		reader = &cluster.APIServer{ArgoCDNamespace: cfg.LiveReadsArgoCDNamespace}
 		// Fail at start-up, the same rule as the App's key -- and here it
 		// matters more, not less. Every failure inside this reader is
@@ -213,7 +213,7 @@ func main() {
 	runCtx, stopRun := context.WithCancel(context.Background())
 	defer stopRun()
 
-	if cfg.GateMode == "cluster" {
+	if cfg.GateMode == GateInCluster {
 		// Same fail-at-start-up rule as everything above: a ServiceAccount the
 		// RBAC does not let read the ArgoCD cluster Secrets would otherwise
 		// surface as an `error` status on every pull request -- a broken

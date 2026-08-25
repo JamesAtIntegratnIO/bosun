@@ -409,7 +409,7 @@ func detectVerificationStuck(s *Snapshot) []Finding {
 
 func isTerminalVerification(phase string) bool {
 	switch phase {
-	case "Failed", "Error", "Aborted", "Inconclusive":
+	case VerifyFailed, VerifyError, VerifyAborted, VerifyInconclusive:
 		return true
 	}
 	return false

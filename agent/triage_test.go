@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -915,5 +916,25 @@ func TestThePromptIsSilentWhenEveryFileWasRead(t *testing.T) {
 		&gitprovider.PullRequest{Number: 1, Title: "t"}, "report", root)
 	if strings.Contains(got, "could not be read") {
 		t.Errorf("nothing was skipped, but the prompt says otherwise:\n%s", got)
+	}
+}
+
+// autoMerge is on the wire, sent by charts/kargo-pipelines, and this agent
+// deliberately does not act on it -- the Stage evaluates the same policy and
+// decides the merge. Decoding it is how "ignored on purpose" is visible.
+func TestThePromotionDecodesTheMergePolicyItDoesNotActOn(t *testing.T) {
+	var p Promotion
+	body := `{"project":"x","stage":"s","autoMerge":"patch","prNumber":7}`
+	if err := json.Unmarshal([]byte(body), &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.AutoMerge != MergePatch {
+		t.Errorf("got %q, want %q", p.AutoMerge, MergePatch)
+	}
+	// The four the chart's own validation accepts.
+	for _, want := range []MergePolicy{MergeAlways, MergeMinor, MergePatch, MergeNever} {
+		if want == "" {
+			t.Error("a merge policy must not be the empty string")
+		}
 	}
 }

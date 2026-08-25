@@ -41,11 +41,17 @@ type Notes struct {
 	Releases []Release
 	// Note explains an empty or partial result in one sentence, for the reader.
 	Note string
-	// Origin says WHERE the notes came from -- "releases" or a changelog's
-	// path. Not decoration: a GitHub Release is written once at the moment of
-	// release, and a changelog is a file at the default branch that can have
-	// been edited since. A reader weighing an explanation should know which
-	// they got.
+	// Origin says WHERE the notes came from: OriginReleases, or a changelog's
+	// path. Not decoration -- a GitHub Release is written once at the moment
+	// of release, and a changelog is a file at the default branch that can
+	// have been edited since. A reader weighing an explanation should know
+	// which they got.
+	//
+	// One string carrying a sentinel OR a path, which is a union the type
+	// does not express. Kept because the two are genuinely alternatives and
+	// the renderers print whichever it is, but compare against OriginReleases
+	// rather than the literal: it was spelled out at four sites in three
+	// files, and a value that means "not a path" has to mean it everywhere.
 	Origin string
 	// Truncated is set when releases or bodies were cut to fit a prompt.
 	Truncated bool
@@ -71,3 +77,7 @@ type Resolver interface {
 	Notes(ctx context.Context, artifact, from, to string) (*Notes, error)
 	Name() string
 }
+
+// OriginReleases is the Origin value meaning "the host's own release notes",
+// as opposed to a path to a changelog file in the repository.
+const OriginReleases = "releases"

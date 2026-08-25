@@ -20,7 +20,7 @@ type Config struct {
 	Addr string
 
 	// Git host.
-	GitProvider string // github | gitea
+	GitProvider GitProviderName
 	// GitAPIBase means different things per host, because the hosts do:
 	// on GitHub it is the API root (.../api/v3 for Enterprise), on Gitea it
 	// is the INSTANCE root and the client appends /api/v1 itself, because it
@@ -37,7 +37,7 @@ type Config struct {
 	GitInsecureSkipTLSVerify bool
 
 	// Model.
-	LLMProvider        string // openai | anthropic
+	LLMProvider        LLMProviderName
 	LLMBaseURL         string
 	LLMModel           string
 	LLMKey             string
@@ -62,7 +62,7 @@ type Config struct {
 	//     the check and reads the report out of a comment. The fallback for
 	//     public repositories taking fork pull requests, and for clusters
 	//     whose RBAC will not grant the ArgoCD Secret read.
-	GateMode string
+	GateMode GateMode
 	// GateForkPRs lets cluster mode render fork pull requests. Off by
 	// default: rendering runs helm over the pull request's content, inside
 	// the cluster, and whose content that is should be an operator's call.
@@ -135,7 +135,7 @@ func LoadConfig() (*Config, error) {
 	c := &Config{
 		Addr:                     env("AGENT_ADDR", ":8080"),
 		Brand:                    env("AGENT_BRAND", "Bosun"),
-		GitProvider:              env("GIT_PROVIDER", "github"),
+		GitProvider:              GitProviderName(env("GIT_PROVIDER", "github")),
 		GitInsecureSkipTLSVerify: envBool("GIT_INSECURE_SKIP_TLS_VERIFY", false),
 		GitAPIBase:               os.Getenv("GIT_API_BASE"),
 		GitOwner:                 os.Getenv("GIT_OWNER"),
@@ -150,14 +150,14 @@ func LoadConfig() (*Config, error) {
 		AuthorName:  os.Getenv("GIT_AUTHOR_NAME"),
 		AuthorEmail: os.Getenv("GIT_AUTHOR_EMAIL"),
 
-		LLMProvider:        os.Getenv("LLM_PROVIDER"),
+		LLMProvider:        LLMProviderName(os.Getenv("LLM_PROVIDER")),
 		LLMBaseURL:         os.Getenv("LLM_BASE_URL"),
 		LLMModel:           os.Getenv("LLM_MODEL"),
 		LLMKey:             os.Getenv("LLM_API_KEY"),
 		LLMReasoningEffort: os.Getenv("LLM_REASONING_EFFORT"),
 
 		CheckName: env("GATE_CHECK_NAME", "addons-gate"),
-		GateMode:  env("GATE_MODE", "cluster"),
+		GateMode:  GateMode(env("GATE_MODE", "cluster")),
 		CloneRoot: env("CLONE_ROOT", ""),
 	}
 	c.GateForkPRs = envBool("GATE_FORK_PRS", false)
@@ -171,7 +171,7 @@ func LoadConfig() (*Config, error) {
 	// know. Defaulting that to a GitHub name would break every Gitea install
 	// on upgrade in the name of a check it could not perform.
 	c.GateReportAuthor = os.Getenv("GATE_REPORT_AUTHOR")
-	if c.GateReportAuthor == "" && c.GitProvider == "github" {
+	if c.GateReportAuthor == "" && c.GitProvider == GitGitHub {
 		c.GateReportAuthor = "github-actions[bot]"
 	}
 
@@ -237,7 +237,7 @@ func (c *Config) validate() error {
 	need := map[string]string{
 		"GIT_OWNER": c.GitOwner, "GIT_REPO": c.GitRepo,
 		"GIT_REPO_URL": c.GitRepoURL,
-		"LLM_PROVIDER": c.LLMProvider, "LLM_MODEL": c.LLMModel,
+		"LLM_PROVIDER": string(c.LLMProvider), "LLM_MODEL": c.LLMModel,
 	}
 	// A credential is required; WHICH one depends on how the agent
 	// authenticates. App auth sets no GIT_TOKEN at all -- installation tokens
@@ -267,23 +267,23 @@ func (c *Config) validate() error {
 	}
 
 	switch c.LLMProvider {
-	case "openai":
+	case LLMOpenAI:
 		if c.LLMBaseURL == "" {
 			return fmt.Errorf("LLM_BASE_URL is required for the openai provider (it is what makes a self-hosted model work)")
 		}
-	case "anthropic":
+	case LLMAnthropic:
 	default:
 		return fmt.Errorf("unknown LLM_PROVIDER %q (openai or anthropic)", c.LLMProvider)
 	}
 
 	switch c.GitProvider {
-	case "github", "gitea":
+	case GitGitHub, GitGitea:
 	default:
 		return fmt.Errorf("GIT_PROVIDER %q is not implemented yet -- see docs/git-providers.md", c.GitProvider)
 	}
 
 	switch c.GateMode {
-	case "cluster", "ci":
+	case GateInCluster, GateInCI:
 	default:
 		return fmt.Errorf("GATE_MODE %q is not a mode (cluster or ci)", c.GateMode)
 	}
@@ -393,3 +393,34 @@ func envList(k string) []string {
 	}
 	return out
 }
+
+// GitProviderName, LLMProviderName and GateMode are the three settings whose
+// value selects a code path.
+//
+// Named types with const blocks rather than bare strings with a trailing
+// comment. Each is validated in one switch and dispatched in another, in a
+// different file, and a bare string lets those two drift silently -- a value
+// the validator accepts and the dispatcher does not is a pod that starts
+// healthy and then does nothing.
+type GitProviderName string
+
+const (
+	GitGitHub GitProviderName = "github"
+	GitGitea  GitProviderName = "gitea"
+)
+
+type LLMProviderName string
+
+const (
+	LLMOpenAI    LLMProviderName = "openai"
+	LLMAnthropic LLMProviderName = "anthropic"
+)
+
+// GateMode is where the gate runs: in this process against the live cluster,
+// or in CI with the agent reading the report from a comment.
+type GateMode string
+
+const (
+	GateInCluster GateMode = "cluster"
+	GateInCI      GateMode = "ci"
+)

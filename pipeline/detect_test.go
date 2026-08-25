@@ -502,3 +502,23 @@ func TestAQueuedStageProducesOneFindingOnTheOldest(t *testing.T) {
 		t.Errorf("the detail must say how deep the queue is: %q", found[0].Detail)
 	}
 }
+
+// The two phase vocabularies overlap on "Failed" and "Aborted" and differ
+// everywhere else, and the near-miss is the trap: a promotion says "Errored",
+// a verification says "Error". Tidying one set into the other would silently
+// stop this detector firing.
+func TestVerificationPhasesAreNotPromotionPhases(t *testing.T) {
+	if VerifyError == PhaseErrored {
+		t.Fatal("these are different words on purpose: Error vs Errored")
+	}
+	for _, terminal := range []string{VerifyFailed, VerifyError, VerifyAborted, VerifyInconclusive} {
+		if !isTerminalVerification(terminal) {
+			t.Errorf("%q is terminal: nothing re-runs it, so the Stage is stuck", terminal)
+		}
+	}
+	for _, running := range []string{"Running", "Pending", "Successful", PhaseErrored, ""} {
+		if isTerminalVerification(running) {
+			t.Errorf("%q must not read as a finished verification", running)
+		}
+	}
+}
