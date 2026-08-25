@@ -48,6 +48,14 @@ type Fake struct {
 	// allowed to change about a pull request lands in one of the three, so a
 	// test asserting all three has covered the whole write surface.
 	Posted   []string
+	// Updated are bodies written by UpdateComment, oldest first. A gate that
+	// re-ran on a repaired pull request should leave ONE report, so a test
+	// asserting "two runs, one comment" reads len(Posted)==1 && len(Updated)==1.
+	Updated []string
+	// UpdateErr makes every UpdateComment fail, which is how a test reaches
+	// the path where the host refuses an edit and the gate must still publish.
+	UpdateErr error
+	nextID    int64
 	Labelled []string
 	Pushes   []Push
 }
@@ -102,9 +110,27 @@ func (f *Fake) CheckStatus(_ context.Context, _, _ string) (CheckState, error) {
 func (f *Fake) Comment(_ context.Context, _ int, body string) error {
 	f.Posted = append(f.Posted, body)
 	if f.PR != nil {
-		f.Comments = append(f.Comments, Comment{Author: f.Name(), Body: body})
+		f.nextID++
+		f.Comments = append(f.Comments, Comment{ID: f.nextID, Author: f.Name(), Body: body})
 	}
 	return nil
+}
+
+// UpdateComment rewrites a comment in place and records that it did. Tests
+// assert on Updated rather than Posted when the point is that ONE report
+// exists however many times the gate ran.
+func (f *Fake) UpdateComment(_ context.Context, id int64, body string) error {
+	if f.UpdateErr != nil {
+		return f.UpdateErr
+	}
+	for i := range f.Comments {
+		if f.Comments[i].ID == id {
+			f.Comments[i].Body = body
+			f.Updated = append(f.Updated, body)
+			return nil
+		}
+	}
+	return fmt.Errorf("fake: no comment with id %d", id)
 }
 
 // Statuses records every commit status set, in order, so a test can assert

@@ -281,10 +281,98 @@ func sortChanges(c []Change) {
 // including a CI job summary.
 const ReportMarker = "<!-- gitops-gate -->"
 
+// Verdict is the report's own answer, in one line, so a reader knows what they
+// are looking at before they read anything else.
+//
+// This exists because a report that merely LISTS findings reads the same when
+// it is blocking and when it is not. Two of them on one pull request -- a red
+// one and the green one after a repair -- were indistinguishable at a glance,
+// and the failed pass looked like a duplicate of the pass that succeeded
+// rather than the thing that had to be fixed.
+//
+// The wording deliberately avoids the parser's heading strings, which live in
+// the migrate package and are matched with strings.Contains: a headline that
+// happened to contain "**API version changed**" would make the agent believe
+// there was an unrepairable blocker in every report that mentioned one.
+func (d *DiffResult) Verdict() (blocking bool, headline string) {
+	var why []string
+	if n := len(d.Targeting); n > 0 {
+		why = append(why, fmt.Sprintf("%s now generated for a different set of clusters", plural(n, "Application")))
+	}
+	if n := len(d.Other); n > 0 {
+		why = append(why, fmt.Sprintf("%s moved", plural(n, "source")))
+	}
+	var apiMoved, consumers, unscanned int
+	for _, o := range d.Objects {
+		switch {
+		case o.Kind == "apiVersion" && !o.PartOfMigration:
+			apiMoved++
+		case o.Kind == "crdVersionRemoved" && !o.ConsumersKnown:
+			unscanned++
+		case o.Kind == "crdVersionRemoved" && len(o.ConsumerFiles) > 0:
+			consumers += len(o.ConsumerFiles)
+		}
+	}
+	if apiMoved > 0 {
+		why = append(why, fmt.Sprintf("%s whose own apiVersion moved", plural(apiMoved, "object")))
+	}
+	if consumers > 0 {
+		why = append(why, fmt.Sprintf("%s still declaring a dropped API version", plural(consumers, "manifest")))
+	}
+	if unscanned > 0 {
+		why = append(why, fmt.Sprintf("%s whose consumers could not be counted", plural(unscanned, "definition")))
+	}
+	if len(why) == 0 {
+		// Not blocking. Say what DID change, because "nothing blocking" and
+		// "nothing changed" are different answers and only one of them means
+		// the reader can stop reading.
+		switch {
+		case len(d.Versions) > 0:
+			return false, fmt.Sprintf("No blocking findings — %s changed, nothing else",
+				plural(len(d.Versions), "version"))
+		case len(d.Introduced) > 0:
+			return false, fmt.Sprintf("No blocking findings — %s, first appearance",
+				plural(len(d.Introduced), "new Application"))
+		case len(d.Objects) > 0:
+			return false, fmt.Sprintf("No blocking findings — %s changed",
+				plural(len(d.Objects), "rendered object"))
+		default:
+			return false, "No change to what gets deployed"
+		}
+	}
+	return true, "Blocking — " + join(why)
+}
+
+// plural is "1 thing" / "3 things", because "1 manifest(s)" in a headline
+// reads like a machine wrote it and nobody proof-read it.
+func plural(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
+}
+
+func join(parts []string) string {
+	switch len(parts) {
+	case 1:
+		return parts[0]
+	case 2:
+		return parts[0] + " and " + parts[1]
+	default:
+		return strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1]
+	}
+}
+
 // Report writes a markdown summary suitable for a pull-request comment or a CI
 // job summary.
 func (d *DiffResult) Report(w io.Writer) {
 	fmt.Fprintf(w, "%s\n", ReportMarker)
+	blocking, headline := d.Verdict()
+	mark := "✅"
+	if blocking {
+		mark = "🔴"
+	}
+	fmt.Fprintf(w, "## %s %s\n\n", mark, headline)
 	if len(d.Targeting) > 0 {
 		// The section headings the agent keys on come from the migrate
 		// package, so both sides of that contract read the same bytes by
