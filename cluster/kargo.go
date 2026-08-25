@@ -11,11 +11,19 @@ import (
 
 // Reading Kargo, for the pipeline supervisor.
 //
-// Same three rules as the rest of this package: only GET and LIST, never an
-// error for "could not look", and no vendored types. The last one earns its
-// keep here more than anywhere else -- these structs name eleven fields out of
-// Kargo's CRDs, and a release that adds a field to any of them cannot break
-// this build.
+// Two of this package's three rules hold here unchanged: only GET and LIST,
+// and no vendored types. The last earns its keep here more than anywhere else
+// -- these structs name eleven fields out of Kargo's CRDs, and a release that
+// adds a field to any of them cannot break this build.
+//
+// The THIRD rule is deliberately inverted, and the file used to claim
+// otherwise. Reader's methods answer with Known/Note because their caller is
+// rendering one line of a brief and has nothing useful to say about a failure.
+// These three return an error instead, because their caller is the sweep, and
+// pipeline.Collector turns each failure into a note naming the detector that
+// therefore did not run ("promotions could not be read, so a wedged Stage
+// would not have been found"). Deciding that is the sweep's job, not this
+// file's -- so the failure has to reach it intact.
 
 const kargoAPI = "/apis/kargo.akuity.io/v1alpha1"
 
@@ -153,6 +161,11 @@ func (a *APIServer) Stages(ctx context.Context) ([]KargoStage, error) {
 	return out, nil
 }
 
+// Warehouses lists every Warehouse, with the freight it last discovered.
+//
+// The discovery timestamp is the point: a Warehouse that is Ready and has
+// discovered nothing since last week is the failure that produces no event and
+// no error, which is exactly what the sweep exists to find.
 func (a *APIServer) Warehouses(ctx context.Context) ([]KargoWarehouse, error) {
 	var raw struct {
 		Items []struct {
@@ -215,6 +228,11 @@ func (a *APIServer) Warehouses(ctx context.Context) ([]KargoWarehouse, error) {
 	return out, nil
 }
 
+// Promotions lists every Promotion, newest last.
+//
+// Both timestamps are carried because a Pending promotion has no StartedAt --
+// it has not begun -- and its age is the only thing that distinguishes a queue
+// that is moving from one that has stopped.
 func (a *APIServer) Promotions(ctx context.Context) ([]KargoPromotion, error) {
 	var raw struct {
 		Items []struct {

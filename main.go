@@ -271,7 +271,7 @@ func main() {
 		mux.HandleFunc("GET /pipeline", sup.Handler("markdown"))
 		mux.HandleFunc("GET /metrics", sup.Handler("metrics"))
 		go sup.Run(runCtx)
-		logger.Printf("pipeline: supervising Kargo every %s; report on /pipeline, metrics on /metrics",
+		logger.Printf("pipeline: supervising Kargo every %s; report on /pipeline (?format=text for a terminal), metrics on /metrics",
 			cfg.SuperviseEvery)
 	}
 

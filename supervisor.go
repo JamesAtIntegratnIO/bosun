@@ -133,7 +133,7 @@ func (s *Supervisor) Report() *pipeline.Report {
 // Handler serves the report as markdown for a human and Prometheus text for a
 // scraper.
 func (s *Supervisor) Handler(format string) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
+	return func(w http.ResponseWriter, req *http.Request) {
 		r := s.Report()
 		if r == nil {
 			// 503 rather than an empty 200. A scraper that reads zeroes from
@@ -146,6 +146,14 @@ func (s *Supervisor) Handler(format string) http.HandlerFunc {
 		if format == "metrics" {
 			w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 			r.Metrics(w)
+			return
+		}
+		// ?format=text is the same report without the markdown, for an
+		// operator reading it in a terminal while fixing it -- which is what
+		// Report.Text was written for and had no caller to reach it through.
+		if req.URL.Query().Get("format") == "text" {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			r.Text(w)
 			return
 		}
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")

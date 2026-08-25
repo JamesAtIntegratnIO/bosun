@@ -16,6 +16,21 @@ type KargoSource interface {
 	Promotions(ctx context.Context) ([]cluster.KargoPromotion, error)
 }
 
+// kargoPresence is the optional capability of answering whether the cluster
+// serves Kargo at all.
+//
+// Type-asserted rather than required, matching the other capability seams
+// here: a source that cannot answer is read as it always was.
+//
+// Worth asking because without it a cluster with no Kargo installed produces
+// three separate read failures -- "Stages could not be read", "Warehouses
+// could not be read", "promotions could not be read" -- which reads as three
+// things going wrong rather than one thing being absent, and sends the reader
+// looking for a permissions problem that is not there.
+type kargoPresence interface {
+	KargoAvailable(ctx context.Context) bool
+}
+
 // PRSource is the git half. Optional: without it the orphan and superseded
 // detectors stay quiet rather than guessing.
 type PRSource interface {
@@ -53,6 +68,11 @@ func (c *Collector) Collect(ctx context.Context) *Snapshot {
 
 	if c.Kargo == nil {
 		s.Notes = append(s.Notes, "no cluster reader: nothing about Kargo could be checked")
+		return s
+	}
+	if p, ok := c.Kargo.(kargoPresence); ok && !p.KargoAvailable(ctx) {
+		s.Notes = append(s.Notes,
+			"this cluster does not serve the Kargo API, so there is no pipeline here to supervise")
 		return s
 	}
 	if stages, err := c.Kargo.Stages(ctx); err != nil {

@@ -137,3 +137,27 @@ func TestAFailedCheckoutDoesNotLoseTheSweep(t *testing.T) {
 }
 
 var _ = gitprovider.PullRequest{}
+
+// Report.Text was written for "an operator reading this in a terminal while
+// fixing it" and had no caller to reach it through. ?format=text is that
+// caller; the default stays markdown so nothing that scrapes /pipeline moves.
+func TestPipelineHandlerServesPlainTextOnRequest(t *testing.T) {
+	s := &Supervisor{}
+	s.mu.Lock()
+	s.last = &pipeline.Report{At: time.Now()}
+	s.mu.Unlock()
+
+	for _, tc := range []struct{ query, wantType string }{
+		{"", "text/markdown; charset=utf-8"},
+		{"?format=text", "text/plain; charset=utf-8"},
+	} {
+		rec := httptest.NewRecorder()
+		s.Handler("markdown")(rec, httptest.NewRequest(http.MethodGet, "/pipeline"+tc.query, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%q: got %d", tc.query, rec.Code)
+		}
+		if got := rec.Header().Get("Content-Type"); got != tc.wantType {
+			t.Errorf("%q: Content-Type = %q, want %q", tc.query, got, tc.wantType)
+		}
+	}
+}
