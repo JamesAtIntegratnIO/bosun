@@ -83,12 +83,22 @@ func TestClusterInventoryDecodesSecretsTheWayTheExportDoes(t *testing.T) {
 	}
 }
 
-func TestClusterInventoryRefusesAnEmptyWorld(t *testing.T) {
+func TestNoSecretsMeansTheImplicitLocalCluster(t *testing.T) {
 	a := serverFor(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, secretList())
 	}))
-	if _, err := a.ClusterInventory(context.Background()); err == nil {
-		t.Fatal("an empty inventory must be refused -- a render against no clusters finds no targeting and waves everything through")
+	inv, err := a.ClusterInventory(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A single-cluster ArgoCD registers no Secret; its clusters generator
+	// still yields the local cluster. The inventory says what ArgoCD says.
+	if len(inv.Clusters) != 1 || inv.Clusters[0].Name != "in-cluster" ||
+		inv.Clusters[0].Server != "https://kubernetes.default.svc" {
+		t.Fatalf("zero Secrets should answer as ArgoCD does -- the implicit local cluster; got %+v", inv.Clusters)
+	}
+	if len(inv.Clusters[0].Labels) != 0 {
+		t.Fatal("the implicit cluster carries no labels in ArgoCD, so inventing any here would make selectors match a world that does not exist")
 	}
 }
 

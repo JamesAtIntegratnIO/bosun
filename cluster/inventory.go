@@ -17,10 +17,12 @@ import (
 // error for could-not-look" rule on purpose. That rule exists so a lost
 // cluster fact can never leave a pull request unattended -- a brief is merely
 // poorer without one. The inventory is not a fact in a brief; it is the
-// ground the gate stands on. An empty or unreadable inventory does not make
-// the verdict poorer, it makes it WRONG -- a render against no clusters finds
-// no targeting and waves everything through -- so the honest behaviour is to
-// refuse, and the caller reports the gate itself as broken.
+// ground the gate stands on. An unreadable inventory does not make the
+// verdict poorer, it makes it WRONG -- a render against a world the gate
+// could not see finds no targeting and waves everything through -- so the
+// honest behaviour is to refuse, and the caller reports the gate itself as
+// broken. (Zero Secrets is not that case: it is what a single-cluster ArgoCD
+// looks like, and the answer is the implicit local cluster, below.)
 //
 // No ExportFilter: filtering exists to stabilise a snapshot against churn,
 // and a live read is never diffed against anything.
@@ -39,7 +41,19 @@ func (a *APIServer) ClusterInventory(ctx context.Context) (*gate.Inventory, erro
 	}
 	inv := gate.InventoryFromSecrets(out.Items, gate.ExportFilter{})
 	if len(inv.Clusters) == 0 {
-		return nil, fmt.Errorf("no ArgoCD cluster Secrets in namespace %q -- the gate cannot expand a generator against an empty inventory", ns)
+		// A single-cluster ArgoCD managing only itself registers no Secret at
+		// all -- the local cluster is implicit. ArgoCD's own clusters
+		// generator still includes it, as `in-cluster` with no labels, so an
+		// inventory that mirrors ArgoCD says the same thing. No labels is
+		// faithful, not lazy: a selector that matches on a label this entry
+		// lacks excludes it in ArgoCD too, and the inventory validator will
+		// say so out loud.
+		return &gate.Inventory{Clusters: []gate.Cluster{{
+			Name:        "in-cluster",
+			Server:      "https://kubernetes.default.svc",
+			Labels:      map[string]string{},
+			Annotations: map[string]string{},
+		}}}, nil
 	}
 	return inv, nil
 }
