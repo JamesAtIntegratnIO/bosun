@@ -57,14 +57,25 @@ restore() {
 }
 trap restore EXIT
 
+# EVERY pod carrying the label, not whichever one `head -1` names.
+#
+# The agent waits up to a minute for in-flight triage before it exits, so the
+# outgoing ci-mode pod is still Running while the incoming one starts, and
+# asking a single pod is a coin flip on which mode answers. This script lost
+# that flip too: `the agent did not announce the in-cluster gate`, from a pod
+# that was on its way out and had never been in cluster mode. lib.sh documents
+# the same hazard for `agent_pod`; the deployment's own spec and the whole set
+# of pods are the answers that do not race.
+announced_cluster_gate() {
+  kc -n bosun logs -l app.kubernetes.io/name=bosun --tail=200 2>/dev/null \
+    | grep -q "gate: in-cluster"
+}
+
 say "the agent becomes the gate"
 step "was: GATE_MODE=${ORIGINAL:-<chart default>}"
 set_mode cluster
-POD="$(agent_pod)"
-[ -n "$POD" ] || { bad "no agent pod"; exit 1; }
-kc -n bosun logs "$POD" | grep -q "gate: in-cluster" \
-  || { bad "the agent did not announce the in-cluster gate"; exit 1; }
-ok "polling for open pull requests -- no CI anywhere in this act"
+[ "$(mode_now)" = "cluster" ] || { bad "the deployment did not take the new mode"; exit 1; }
+wait_for "polling for open pull requests -- no CI anywhere in this act" 120 announced_cluster_gate
 
 # One status, by context name. Gitea has no check-runs API, so this is the
 # whole surface. It arrives newest first -- but Gitea stamps whole seconds, and
