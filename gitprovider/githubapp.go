@@ -192,7 +192,7 @@ func (a *AppAuth) call(ctx context.Context, method, url, jwt string, out any) er
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("%s: %s", url, resp.Status)
 	}

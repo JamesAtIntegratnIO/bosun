@@ -140,11 +140,21 @@ func runTriage(ctx context.Context, p llm.Provider, system string, c Case, withI
 		res.Notes = append(res.Notes, err.Error())
 		return res
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 	for path, content := range c.Files {
 		full := filepath.Join(root, path)
-		_ = os.MkdirAll(filepath.Dir(full), 0o755)
-		_ = os.WriteFile(full, []byte(content), 0o644)
+		// The only two failures in this file that were not turned into a Note.
+		// A case whose fixture is not on disk measures nothing, and scores
+		// whatever the applier does with a repository that is not there -- so
+		// it stops rather than reporting a number about it.
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			res.Notes = append(res.Notes, "fixture: "+err.Error())
+			return res
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			res.Notes = append(res.Notes, "fixture: "+err.Error())
+			return res
+		}
 	}
 
 	in := make([]edits.Edit, 0, len(v.Edits))
@@ -295,7 +305,7 @@ func boundary(s string, i int) bool {
 		return true
 	}
 	c := s[i]
-	return !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9')
+	return (c < 'a' || c > 'z') && (c < '0' || c > '9')
 }
 
 // runRestructure measures the document migration.

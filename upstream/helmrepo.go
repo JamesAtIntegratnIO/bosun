@@ -89,7 +89,7 @@ func (g *GitHubReleases) helmIndexSource(ctx context.Context, repoURL, chart, ve
 	if err != nil {
 		return "", fmt.Errorf("reading %s: %w", u, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		return "", fmt.Errorf("%s: %s", u, resp.Status)
 	}

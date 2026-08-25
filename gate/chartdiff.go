@@ -180,12 +180,17 @@ func renderChartVersion(repoRoot string, r Row) ([]Object, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer os.Remove(f.Name())
+		defer func() { _ = os.Remove(f.Name()) }()
 		if _, err := f.WriteString(r.ValuesInline); err != nil {
-			f.Close()
+			_ = f.Close()
 			return nil, err
 		}
-		f.Close()
+		// Checked: helm is about to read this file, and a short write here
+		// renders a chart with half the Application's inline values -- a diff
+		// that looks like the bump removed settings it did not touch.
+		if err := f.Close(); err != nil {
+			return nil, fmt.Errorf("writing inline values for %s: %w", r.App, err)
+		}
 		args = append(args, "-f", f.Name())
 	}
 

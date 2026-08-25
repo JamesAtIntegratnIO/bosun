@@ -155,7 +155,7 @@ func (a *APIServer) get(ctx context.Context, path string, out any) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return &statusError{Path: path, Code: resp.StatusCode, Status: resp.Status}

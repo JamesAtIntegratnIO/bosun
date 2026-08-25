@@ -83,12 +83,34 @@ func WriteTableFile(path string, t *Table) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	bw := bufio.NewWriter(f)
-	if err := t.WriteJSON(bw); err != nil {
+	if err := writeThenClose(f, path, func() error {
+		bw := bufio.NewWriter(f)
+		if err := t.WriteJSON(bw); err != nil {
+			return err
+		}
+		return bw.Flush()
+	}); err != nil {
 		return err
 	}
-	return bw.Flush()
+	return nil
+}
+
+// writeThenClose runs write against an open file and closes it, reporting
+// whichever failed.
+//
+// Close is CHECKED rather than deferred. On a file that was written to, close
+// is where a short write finally surfaces, and this one produces the target
+// table the whole diff is computed against -- a truncated table is a diff
+// that quietly compares against less than it says it did.
+func writeThenClose(f *os.File, path string, write func() error) error {
+	if err := write(); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("closing %s: %w", path, err)
+	}
+	return nil
 }
 
 func ReadTableFile(path string) (*Table, error) {

@@ -172,11 +172,16 @@ func readGlobs(repoRoot string, patterns []string) ([]map[string]any, error) {
 	}
 	sort.Strings(files)
 
+	// One policy for both failures, because these manifests ARE the render: a
+	// file that will not parse fails the source, and a file that will not read
+	// used to vanish from it silently -- so a permission problem produced a
+	// smaller target table, which the diff then reported as objects removed by
+	// this pull request.
 	var out []map[string]any
 	for _, f := range files {
 		raw, err := os.ReadFile(f)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("%s: %w", f, err)
 		}
 		objs, err := parseStream(raw)
 		if err != nil {

@@ -173,7 +173,7 @@ func Apply(root string, policy Policy, in []Edit) (*Result, error) {
 			// repository, the one the caller could say nothing about.
 			return res, fmt.Errorf("writing %s: %w", e.Path, err)
 		}
-		res.Applied = append(res.Applied, Applied{e.Path, e.Key, e.From, e.To, e.Rationale})
+		res.Applied = append(res.Applied, Applied(e))
 	}
 	return res, nil
 }

@@ -198,6 +198,10 @@ func annotationsUsedBy(repoRoot string) (map[string]bool, error) {
 		}
 		raw, err := os.ReadFile(path)
 		if err != nil {
+			// Best-effort enrichment, and a miss is safe in the direction that
+			// matters: a file this cannot read contributes no annotation to
+			// the keep-set, and an annotation kept unnecessarily costs one
+			// line -- which is the trade this whole scan is built on.
 			return nil
 		}
 		for _, m := range re.FindAllStringSubmatch(string(raw), -1) {

@@ -93,9 +93,14 @@ func (g *Gitea) do(ctx context.Context, method, path string, body any, out any) 
 
 	resp, err := g.client().Do(req)
 	if err != nil {
-		return fmt.Errorf("%s %s: %s", method, path, redactErr(err.Error(), g.Token))
+		// Wrapped, like GitHub's. The token travels in the Authorization
+		// header, not the URL, so a transport error's text cannot carry it --
+		// redacting here bought nothing and cost the Unwrap chain, which is
+		// what errors.Is and errors.As need. Redaction belongs where the
+		// credential really is embedded: the push remote, in PushFix.
+		return fmt.Errorf("%s %s: %w", method, path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	payload, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("%s %s returned %d: %s", method, path, resp.StatusCode, snippet(payload))
@@ -432,13 +437,4 @@ func (g *Gitea) PushFix(ctx context.Context, pr *PullRequest, root, message stri
 		}
 	}
 	return nil
-}
-
-// redactErr removes the token from anything on its way to a log or a comment.
-// The remote URL carries it, so a push failure prints it otherwise.
-func redactErr(s, token string) string {
-	if token == "" {
-		return s
-	}
-	return strings.ReplaceAll(s, token, "***")
 }

@@ -460,6 +460,14 @@ func joinAnd(parts []string) string {
 
 // Report writes a markdown summary suitable for a pull-request comment or a CI
 // job summary.
+//
+// Write errors are not checked here and it has no error to return, which is
+// deliberate: BOTH callers render into a strings.Builder, whose Write cannot
+// fail, and then perform one real write they do check -- gateservice into the
+// comment body, the CLI through writeReport. Checking forty individual writes
+// into a buffer would be forty branches that cannot be taken, in place of the
+// one that can. A third caller streaming this straight at a file would be
+// giving up that guarantee and should buffer like the other two.
 func (d *DiffResult) Report(w io.Writer) {
 	fmt.Fprintf(w, "%s\n", ReportMarker)
 	blocking, headline := d.Verdict()

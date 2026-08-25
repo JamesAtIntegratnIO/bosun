@@ -141,7 +141,7 @@ func (a *Anthropic) structured(ctx context.Context, systemPrompt, userPrompt, to
 	if err != nil {
 		return nil, "", fmt.Errorf("calling %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	payload, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, "", fmt.Errorf("%s returned %d: %s", url, resp.StatusCode, truncate(string(payload), 400))

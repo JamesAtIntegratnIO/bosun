@@ -155,7 +155,7 @@ func rowFromPlainApplication(source string, obj map[string]any, inv *Inventory) 
 			}
 		}
 	default:
-		return Row{}, fmt.Errorf("Application %q has no destination", row.App)
+		return Row{}, fmt.Errorf("application %q has no destination", row.App)
 	}
 	return row, nil
 }
@@ -451,11 +451,16 @@ func renderBootstrapPath(repoRoot, path string, valueFiles []string) ([]map[stri
 
 // readDirRecursive reads every YAML manifest under a directory, matching
 // ArgoCD's `directory.recurse: true`.
+//
+// Walk and read failures are FATAL, like the parse failure below them. What
+// this returns is the render, so a manifest that quietly does not arrive is
+// not a smaller answer -- it is the same answer with objects missing from it,
+// which the diff then attributes to the pull request.
 func readDirRecursive(dir string) ([]map[string]any, error) {
 	var out []map[string]any
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return fmt.Errorf("%s: %w", p, err)
 		}
 		if d.IsDir() {
 			if d.Name() == ".git" {
@@ -470,7 +475,7 @@ func readDirRecursive(dir string) ([]map[string]any, error) {
 		}
 		raw, readErr := os.ReadFile(p)
 		if readErr != nil {
-			return nil
+			return fmt.Errorf("%s: %w", p, readErr)
 		}
 		objs, parseErr := parseStream(raw)
 		if parseErr != nil {

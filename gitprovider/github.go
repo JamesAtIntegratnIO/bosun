@@ -92,7 +92,7 @@ func (g *GitHub) do(ctx context.Context, method, path string, body any, out any)
 	if err != nil {
 		return fmt.Errorf("%s %s: %w", method, path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	payload, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("%s %s returned %d: %s", method, path, resp.StatusCode, snippet(payload))
@@ -409,13 +409,7 @@ func (g *GitHub) PushFix(ctx context.Context, pr *PullRequest, root, message str
 			// one -- with an App they are different, and leaking a live
 			// installation token into a pull-request comment would be a poor
 			// way to learn that.
-			msg := stderr.String()
-			if tok != "" {
-				msg = strings.ReplaceAll(msg, tok, "***")
-			}
-			if g.Token != "" {
-				msg = strings.ReplaceAll(msg, g.Token, "***")
-			}
+			msg := redactErr(redactErr(stderr.String(), tok), g.Token)
 			return fmt.Errorf("%s: %w: %s", s[1], err, snippet([]byte(msg)))
 		}
 	}

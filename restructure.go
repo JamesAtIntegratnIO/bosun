@@ -138,6 +138,10 @@ func (t *Triage) restructureAll(ctx context.Context, root string, drops []migrat
 		full := filepath.Join(root, filepath.FromSlash(rel))
 		data, err := os.ReadFile(full)
 		if err != nil {
+			// Never silent: the struct has a channel for exactly this, and a
+			// document nobody looked at is the failure this whole pass exists
+			// to end.
+			res.Skipped = append(res.Skipped, fmt.Sprintf("`%s` could not be read: %v", rel, err))
 			continue
 		}
 		chunks := splitDocuments(string(data))

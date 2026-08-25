@@ -246,7 +246,7 @@ func (g *GitHubReleases) getJSON(ctx context.Context, url, token, accept string,
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		return newHTTPError(url, resp)
 	}
@@ -326,7 +326,7 @@ func (g *GitHubReleases) getJSONReq(req *http.Request, out any) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		return newHTTPError(req.URL.String(), resp)
 	}
