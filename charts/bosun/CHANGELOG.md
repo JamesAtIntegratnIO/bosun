@@ -3,6 +3,41 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.16.0]
+
+### Added
+
+- **`gate.mode`** — `cluster` (the new default) or `ci`. In cluster mode the
+  agent *is* the gate: it polls the open pull requests, renders base and head
+  against the live ArgoCD cluster inventory, and posts the `gate.checkName`
+  status and report comment itself. Nothing to install in CI, no checked-in
+  cluster inventory to go stale. `ci` is the previous behaviour, kept whole,
+  for public repositories taking fork pull requests and for clusters that will
+  not grant the Secret read below.
+
+- **`gate.forkPRs`** — off by default. In cluster mode the render runs helm
+  over the pull request's content, inside the cluster, so whose content that
+  is should be an operator's decision. Off, a fork pull request gets an
+  `error` status naming this value rather than an unreported required check.
+
+- **A namespaced Role on the ArgoCD namespace**, created only when
+  `gate.mode` is `cluster`. This is the one grant in this chart worth stopping
+  on: the live inventory *is* the ArgoCD cluster Secrets, and RBAC cannot
+  grant the labels without the data. `get`/`list`, that namespace only, gone
+  again in `ci` mode.
+
+### Changed
+
+- **The default is a behaviour change on upgrade.** With `gate.mode`
+  unset you get the in-cluster gate, and the agent will refuse to start if it
+  cannot read the inventory — loudly, rather than gating against a world it
+  cannot see. Set `gate.mode: ci` to keep exactly what 0.15.x did.
+
+- **Apiserver egress and the ArgoCD namespace follow either switch.** They
+  were conditional on `liveReads.enabled` alone; the cluster-mode gate reads
+  the apiserver through the same door, so both now render when either feature
+  asks for them.
+
 ## [0.15.2]
 
 No change to this chart's surface. The version tracks `appVersion`; the agent

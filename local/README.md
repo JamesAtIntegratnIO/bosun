@@ -35,7 +35,7 @@ releases, and both are there because they are built from your checkout and
 there is no git ref for ArgoCD to point at:
 
 ```
-bosun            bosun   bosun-0.15.2
+bosun            bosun   bosun-0.16.0
 kargo-pipelines  kargo   kargo-pipelines-0.1.2
 ```
 
