@@ -183,6 +183,17 @@ spec:
             # restart mid-triage should start clean rather than resume.
             - name: work
               mountPath: /work
+            # A writable /tmp, which a read-only root filesystem otherwise
+            # denies. This is not hypothetical tidiness: chart-diff writes the
+            # Application's inline values to `os.CreateTemp("", "inline-*.yaml")`
+            # before rendering, and with no /tmp that open fails EROFS. The
+            # gate does not treat it as fatal -- it reports the Application as
+            # "could not render at both versions, so its resource changes are
+            # NOT covered" -- so the symptom is silently reduced coverage on
+            # every version bump, not an error. In CI mode the runner supplied
+            # /tmp and nobody had to think about it.
+            - name: tmp
+              mountPath: /tmp
           livenessProbe:
             httpGet:
               path: /healthz
@@ -195,6 +206,8 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:
         - name: work
+          emptyDir: {}
+        - name: tmp
           emptyDir: {}
       {{- with .Values.nodeSelector }}
       nodeSelector:
