@@ -390,3 +390,38 @@ func TestMatchGlobDoubleStarForms(t *testing.T) {
 		}
 	}
 }
+
+// A write failing partway leaves the earlier edits on disk. Returning a nil
+// Result made a half-written repository the one case the caller could say
+// nothing about -- in a package whose contract is that a refusal is never
+// silent.
+func TestApplyReportsWhatItWroteBeforeFailing(t *testing.T) {
+	root := repo(t, map[string]string{
+		"addons/first.yaml":  sample,
+		"addons/second.yaml": sample,
+	})
+	// Readable so the edit resolves, unwritable so the write is what fails --
+	// a rejection would take the other branch and prove nothing.
+	unwritable := filepath.Join(root, "addons", "second.yaml")
+	if err := os.Chmod(unwritable, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if f, err := os.OpenFile(unwritable, os.O_WRONLY, 0); err == nil {
+		f.Close()
+		t.Skip("running with write access to a read-only file (root?)")
+	}
+
+	res, err := Apply(root, Policy{Allow: []string{"addons/**"}}, []Edit{
+		{Path: "addons/first.yaml", Key: "metallb.defaultVersion", From: "0.16.0", To: "0.16.1"},
+		{Path: "addons/second.yaml", Key: "metallb.defaultVersion", From: "0.16.0", To: "0.16.1"},
+	})
+	if err == nil {
+		t.Fatal("want the write failure reported")
+	}
+	if res == nil {
+		t.Fatal("the result must survive the error -- the first edit is on disk")
+	}
+	if len(res.Applied) != 1 || res.Applied[0].Path != "addons/first.yaml" {
+		t.Errorf("want the first edit reported as applied, got %+v", res)
+	}
+}

@@ -79,6 +79,8 @@ func TestEveryExportedKindCanActuallyBeProduced(t *testing.T) {
 			{Number: 1, Branch: "kargo/promotion/a.01x.1"}, {Number: 2, Branch: "kargo/promotion/a.01y.2"}}},
 		{Now: now, Stages: []Stage{{Name: "a", Ready: false, ReadyReason: "VerificationFailed",
 			ReadySince: 3 * time.Hour, VerificationPhase: "Failed"}}},
+		{Now: now, Stages: []Stage{{Name: "a", Namespace: "n", Ready: true}}, Promotions: []Promotion{
+			{Name: "a.01x.1", Namespace: "n", Stage: "a", Phase: PhasePending, CreatedAt: ago(4 * time.Hour)}}},
 	} {
 		for _, f := range Detect(s).Findings {
 			produced[f.Kind] = true
@@ -87,6 +89,19 @@ func TestEveryExportedKindCanActuallyBeProduced(t *testing.T) {
 	for _, k := range allKinds {
 		if !produced[k] {
 			t.Errorf("kind %q is exported but no detector produces it; it would be a permanent zero", k)
+		}
+	}
+}
+
+// The zeros are the point: an alert rule has to be writable against a series
+// that exists BEFORE the first occurrence, not one that appears at the same
+// moment as the problem it describes.
+func TestAnEmptyReportStillEmitsAZeroForEveryKind(t *testing.T) {
+	var sb strings.Builder
+	(&Report{At: now}).Metrics(&sb)
+	for _, k := range allKinds {
+		if !strings.Contains(sb.String(), string(k)) {
+			t.Errorf("an empty report must still emit a zero for %s", k)
 		}
 	}
 }

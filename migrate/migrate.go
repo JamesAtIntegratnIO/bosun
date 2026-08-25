@@ -59,11 +59,19 @@ const (
 	HeadingAPIVersion = "**API version changed**"
 )
 
-// OtherBlockers reports whether the gate's report contains a blocking finding
-// other than a dropped served version: a targeting change, a source change, or
-// an object whose own apiVersion moved. A repair that runs anyway would fix
-// the fixable half and leave a red gate implying it had not -- the agent
-// escalates those instead.
+// OtherBlockers is the PRE-MARKER FALLBACK for the same question
+// Blockers.OtherThanDropped answers, and should only be reached for a report
+// from a gate old enough not to emit the machine-readable breakdown.
+//
+// It scrapes three prose headings, so it answers a slightly different question
+// than the structured count and the two have already drifted: gate/diff.go
+// prints HeadingAPIVersion whenever any apiVersion object is present, while
+// Blockers.APIVersion excludes the ones marked PartOfMigration. After a partial
+// repair the deterministic path was therefore skipped on the retry the attempt
+// cap exists to allow.
+//
+// Callers should prefer ParseBlockers and fall back to this only when it
+// returns false.
 func OtherBlockers(report string) bool {
 	return strings.Contains(report, HeadingTargeting) ||
 		strings.Contains(report, HeadingSource) ||
@@ -234,6 +242,17 @@ type Blockers struct {
 	// APIVersion, it has no remedy the agent performs: the manifest is wrong
 	// in a way that needs an author, not a version swap.
 	Schema int `json:"schema"`
+}
+
+// OtherThanDropped reports whether anything blocks other than a dropped served
+// version: a targeting change, a source change, or an object whose own
+// apiVersion moved. A repair that runs anyway would fix the fixable half and
+// leave a red gate implying it had not.
+//
+// Counted from the structured breakdown, so an apiVersion object the repair is
+// already migrating does not read as an unrelated blocker.
+func (b Blockers) OtherThanDropped() bool {
+	return b.Targeting > 0 || b.Source > 0 || b.APIVersion > 0 || b.Schema > 0
 }
 
 func (b Blockers) Any() bool {

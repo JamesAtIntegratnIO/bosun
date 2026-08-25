@@ -59,10 +59,22 @@ func TestDuplicateCallsForOnePRCollapse(t *testing.T) {
 			bytes.NewReader([]byte(`{"prNumber":7}`)))
 		s.PromotionOpened(httptest.NewRecorder(), req)
 	}
-	// Give the first goroutine a moment to register.
-	time.Sleep(100 * time.Millisecond)
-	if len(started) != 1 {
-		t.Fatalf("want exactly 1 triage started, got %d", len(started))
+
+	// Wait for the first triage rather than for a duration. A sleep long
+	// enough to be reliable on a loaded CI runner is far longer than this
+	// needs, and one short enough to be quick fails at random -- and it fails
+	// as "0 started", which reads as the collapse being too aggressive rather
+	// than as the test being early.
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no triage started")
+	}
+	// Nothing else may arrive. The two duplicates were rejected synchronously
+	// inside PromotionOpened, which has already returned for all three, so
+	// this is a decided fact by now and not a race.
+	if n := len(started); n != 0 {
+		t.Fatalf("want the 2 duplicate calls collapsed, got %d more triage(s)", n)
 	}
 	close(release)
 	s.Wait()

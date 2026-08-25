@@ -111,6 +111,10 @@ type Edit struct {
 // Apply writes every permitted edit under root and reports both what it did
 // and, importantly, what it refused. A silent refusal would let a model
 // believe it had fixed something.
+//
+// The Result is non-nil even when the error is: a write failing partway
+// through leaves the earlier edits on disk, and that is exactly the moment a
+// caller needs to know which ones.
 func Apply(root string, policy Policy, in []Edit) (*Result, error) {
 	res := &Result{}
 
@@ -151,7 +155,12 @@ func Apply(root string, policy Policy, in []Edit) (*Result, error) {
 			continue
 		}
 		if err := os.WriteFile(full, updated, 0o644); err != nil {
-			return nil, fmt.Errorf("writing %s: %w", e.Path, err)
+			// The result travels WITH the error. A write that fails partway
+			// leaves the repository holding every edit before it, and this
+			// package's whole contract is that a refusal is never silent --
+			// returning nil here made the loudest possible case, a half-written
+			// repository, the one the caller could say nothing about.
+			return res, fmt.Errorf("writing %s: %w", e.Path, err)
 		}
 		res.Applied = append(res.Applied, Applied{e.Path, e.Key, e.From, e.To, e.Rationale})
 	}

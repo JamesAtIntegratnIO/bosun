@@ -92,9 +92,16 @@ func (r *Report) Metrics(w io.Writer) {
 	}
 }
 
+// allKinds is every kind the metrics endpoint emits a zero for, so an alert
+// rule can fire on a series that exists before the first occurrence rather than
+// on one that appears at the same moment as the problem.
+//
+// It must list every Kind the const block declares. A kind missing here has no
+// series at all until something goes wrong, which is the failure mode the zeros
+// exist to prevent -- TestEveryKindHasAMetricSeries pins the two together.
 var allKinds = []Kind{
 	KindWedged, KindStalled, KindDeadPin, KindOrphanedPR,
-	KindSupersededPR, KindVerifyStuck,
+	KindSupersededPR, KindVerifyStuck, KindPendingStuck,
 }
 
 func writeHeader(w io.Writer, name, typ, help string) {

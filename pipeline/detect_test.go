@@ -426,3 +426,79 @@ func TestAPromotionIsNotStrandedTheMomentItsPullRequestMerges(t *testing.T) {
 		t.Errorf("a promotion holding a queue against a dead pull request is blocking, got %s", f.Severity)
 	}
 }
+
+// Pending is the phase with no symptom: the Stage reports no error and every
+// Application it manages stays Synced and Healthy on the version it already
+// had, while the promotion that would move it never starts. Nothing about that
+// produces an event, which is why the supervisor is a timer.
+func TestAPromotionQueuedTooLongIsBlocking(t *testing.T) {
+	s := &Snapshot{
+		Now:    now,
+		Stages: []Stage{{Name: "cert-manager", Namespace: "addons", Ready: true}},
+		Promotions: []Promotion{{
+			Name: "cert-manager.01", Namespace: "addons", Stage: "cert-manager",
+			Phase: PhasePending, CreatedAt: now.Add(-4 * time.Hour),
+		}},
+	}
+	f := findingOf(t, Detect(s), KindPendingStuck)
+	if f.Severity != Blocking {
+		t.Errorf("a queue that never drains is the pipeline stopped, got %s", f.Severity)
+	}
+	if !strings.Contains(f.Summary, "cert-manager") {
+		t.Errorf("the summary must name the Stage: %q", f.Summary)
+	}
+	if !strings.Contains(f.Remedy, "cert-manager.01") {
+		t.Errorf("the remedy must name the promotion to look at: %q", f.Remedy)
+	}
+}
+
+// The grace matters as much as the detection. A promotion queued behind a
+// normal verification clears in minutes, and reporting that window is a false
+// alarm on every healthy promotion the repository makes.
+func TestARecentlyQueuedPromotionIsNotAFinding(t *testing.T) {
+	s := &Snapshot{
+		Now:    now,
+		Stages: []Stage{{Name: "cert-manager", Namespace: "addons", Ready: true}},
+		Promotions: []Promotion{{
+			Name: "cert-manager.01", Namespace: "addons", Stage: "cert-manager",
+			Phase: PhasePending, CreatedAt: now.Add(-10 * time.Minute),
+		}},
+	}
+	for _, f := range Detect(s).Findings {
+		if f.Kind == KindPendingStuck {
+			t.Fatalf("a promotion queued ten minutes ago is normal: %q", f.Summary)
+		}
+	}
+}
+
+// A wedged queue backs up behind one blocker. Reporting each promotion in it
+// separately turns one problem into a page of them.
+func TestAQueuedStageProducesOneFindingOnTheOldest(t *testing.T) {
+	s := &Snapshot{
+		Now:    now,
+		Stages: []Stage{{Name: "cert-manager", Namespace: "addons", Ready: true}},
+		Promotions: []Promotion{
+			{Name: "newest", Namespace: "addons", Stage: "cert-manager",
+				Phase: PhasePending, CreatedAt: now.Add(-3 * time.Hour)},
+			{Name: "oldest", Namespace: "addons", Stage: "cert-manager",
+				Phase: PhasePending, CreatedAt: now.Add(-9 * time.Hour)},
+			{Name: "middle", Namespace: "addons", Stage: "cert-manager",
+				Phase: PhasePending, CreatedAt: now.Add(-5 * time.Hour)},
+		},
+	}
+	var found []Finding
+	for _, f := range Detect(s).Findings {
+		if f.Kind == KindPendingStuck {
+			found = append(found, f)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("want one finding for the Stage, got %d", len(found))
+	}
+	if !strings.Contains(found[0].Remedy, "oldest") {
+		t.Errorf("the finding must point at the oldest queued promotion: %q", found[0].Remedy)
+	}
+	if !strings.Contains(found[0].Detail, "3 promotions are queued") {
+		t.Errorf("the detail must say how deep the queue is: %q", found[0].Detail)
+	}
+}

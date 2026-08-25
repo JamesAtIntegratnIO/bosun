@@ -300,7 +300,18 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	// judgement. Only when it is the sole reason the gate is red -- a repair
 	// beside an unexplained targeting change would fix the fixable half and
 	// leave a red gate implying it had not.
-	if t.Migrate && !migrate.OtherBlockers(report) {
+	//
+	// The structured marker is authoritative; the prose scrape is the fallback
+	// for a report from a gate old enough not to emit one. They had drifted --
+	// the heading appears for ANY apiVersion object while the count excludes
+	// the ones this repair is itself performing -- so after a partial repair
+	// the scrape reported an unrelated blocker and skipped the retry the
+	// attempt cap exists to allow.
+	other := migrate.OtherBlockers(report)
+	if b, ok := migrate.ParseBlockers(report); ok {
+		other = b.OtherThanDropped()
+	}
+	if t.Migrate && !other {
 		if drops := migrate.ParseReport(report); len(drops) > 0 {
 			return t.repairDropped(ctx, p, pr, root, report, drops, live, attempt)
 		}
@@ -378,6 +389,14 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	}
 	res, err := edits.Apply(root, policy, in)
 	if err != nil {
+		// Apply returns what it managed to write alongside the failure. A
+		// write that fails partway leaves the earlier edits on disk, and a
+		// pull request holding a half-applied fix is the situation most worth
+		// naming out loud.
+		if res != nil && len(res.Applied) > 0 {
+			t.say(ctx, pr, "the fix was applied partially before failing: %d edit(s) were written -- %s",
+				len(res.Applied), strings.Join(appliedPaths(res), ", "))
+		}
 		return err
 	}
 
@@ -1310,4 +1329,19 @@ func (t *Triage) checkout(ctx context.Context, pr *gitprovider.PullRequest) (str
 		return t.Checkout(ctx, pr)
 	}
 	return t.clone(ctx, pr)
+}
+
+// appliedPaths is the files an edits.Result actually wrote, deduplicated in
+// the order they were written -- one edit per key means one path can appear
+// several times, and repeating it in a message helps nobody.
+func appliedPaths(res *edits.Result) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, a := range res.Applied {
+		if !seen[a.Path] {
+			seen[a.Path] = true
+			out = append(out, a.Path)
+		}
+	}
+	return out
 }
