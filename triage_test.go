@@ -876,3 +876,44 @@ func TestARoutineGreenBumpIsNotFlagged(t *testing.T) {
 		t.Error("a routine bump must not carry the flag banner")
 	}
 }
+
+// The prompt is also the evidence string edits.Policy.corroborated checks
+// proposed versions against, so a file silently skipped narrows what the
+// applier will accept -- invisibly, at the moment the model most needs the
+// value that was dropped.
+func TestThePromptNamesFilesItCouldNotRead(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "readable.yaml"),
+		[]byte("metallb:\n  defaultVersion: 0.16.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := buildUserPrompt(
+		Promotion{Files: []string{"readable.yaml", "missing.yaml"}},
+		&gitprovider.PullRequest{Number: 7, Title: "bump"},
+		"the gate is RED", root)
+
+	if !strings.Contains(got, "0.16.0") {
+		t.Errorf("the readable file must still be described:\n%s", got)
+	}
+	if !strings.Contains(got, "missing.yaml") {
+		t.Errorf("the unreadable file must be named:\n%s", got)
+	}
+	if !strings.Contains(got, "could not be read") {
+		t.Errorf("the prompt must say what happened to it:\n%s", got)
+	}
+}
+
+// And says nothing when there is nothing to say.
+func TestThePromptIsSilentWhenEveryFileWasRead(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.yaml"), []byte("k: v\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := buildUserPrompt(
+		Promotion{Files: []string{"a.yaml"}},
+		&gitprovider.PullRequest{Number: 1, Title: "t"}, "report", root)
+	if strings.Contains(got, "could not be read") {
+		t.Errorf("nothing was skipped, but the prompt says otherwise:\n%s", got)
+	}
+}

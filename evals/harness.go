@@ -114,7 +114,14 @@ func Run(ctx context.Context, p llm.Provider, system string, c Case, withInvento
 		return runExplain(ctx, p, system, c, withInventory)
 	case PathRestructure:
 		return runRestructure(ctx, p, system, c)
+	default:
+		return runTriage(ctx, p, system, c, withInventory)
 	}
+}
+
+// runTriage scores the red-gate classifier on what the applier would actually
+// have written -- a perfect fix in the wrong shape has fixed nothing.
+func runTriage(ctx context.Context, p llm.Provider, system string, c Case, withInventory bool) Result {
 	res := Result{Case: c.Name, WantClass: c.WantClass, Grounded: true}
 
 	start := time.Now()
