@@ -3,6 +3,23 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.17.2] - 2026-08-25
+
+### Fixed
+
+- **One report per pull request, actually.** 0.17.0 looked for its own report
+  by comparing a comment's author to `Name()` — which is the *provider's* name
+  (`github`), never the account. It never matched, so every run posted a new
+  report and a repaired pull request still carried two twenty-thousand-character
+  comments: the exact thing the change was meant to end.
+
+  It shipped because the fake agreed with the mistake — it wrote comments
+  authored by its own `Name()`, so the match succeeded in every test and failed
+  on every real pull request. The fake now records an account, and the agent
+  finds its report by the verdict stamp only it writes. A report posted by a CI
+  adapter carries no stamp, is correctly not ours to rewrite, and gets one
+  posted beside it.
+
 ## [0.17.1] - 2026-08-25
 
 ### Fixed

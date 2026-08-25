@@ -114,3 +114,50 @@ func TestAFailedRewriteStillPublishes(t *testing.T) {
 		t.Fatalf("a refused edit must fall back to posting; posted=%d", len(f.Posted))
 	}
 }
+
+// The bug this guards shipped because the fake agreed with the mistake: the
+// agent looked for its own report by comparing the comment's author to
+// Name(), which is the PROVIDER's name ("github"), never the account. The
+// fake wrote comments authored by its own Name(), so the match succeeded in
+// every test and failed on every real pull request -- which then carried two
+// twenty-thousand-character reports, the exact thing the change was for.
+func TestTheReportIsFoundByItsStampNotItsAuthor(t *testing.T) {
+	gs, f := commentHarness(t)
+	f.CommentAuthor = "bosun-mate[bot]" // an account, and not "fake"
+	ctx := context.Background()
+
+	gs.comment(ctx, &gitprovider.PullRequest{Number: 7, HeadSHA: "3826221cb213"},
+		reportFor(true, "Blocking — 27 manifests still declaring a dropped API version", "red"))
+	gs.comment(ctx, &gitprovider.PullRequest{Number: 7, HeadSHA: "20908b7f0000"},
+		reportFor(false, "No blocking findings — 2 versions changed", "green"))
+
+	if len(f.Comments) != 1 {
+		t.Fatalf("a repaired pull request must carry ONE report; got %d", len(f.Comments))
+	}
+	if len(f.Updated) != 1 {
+		t.Fatalf("the second run must rewrite the first; updated=%d posted=%d", len(f.Updated), len(f.Posted))
+	}
+	if !strings.Contains(f.Comments[0].Body, "🔴 Blocking — 27 manifests") {
+		t.Fatalf("the red it used to be must survive:\n%s", f.Comments[0].Body)
+	}
+}
+
+// A report this agent did not write carries no verdict stamp, so it is not
+// ours to rewrite -- we post our own beside it rather than failing.
+func TestAForeignReportIsNotRewritten(t *testing.T) {
+	gs, f := commentHarness(t)
+	ctx := context.Background()
+	f.Comments = []gitprovider.Comment{{
+		ID: 99, Author: "github-actions[bot]",
+		Body: gate.ReportMarker + "\nposted by a CI adapter, with no verdict stamp",
+	}}
+	gs.comment(ctx, &gitprovider.PullRequest{Number: 7, HeadSHA: "abcdef12"},
+		reportFor(true, "Blocking — 1 object whose own apiVersion moved", "x"))
+
+	if len(f.Updated) != 0 {
+		t.Fatal("a comment we did not write must not be rewritten")
+	}
+	if len(f.Posted) != 1 {
+		t.Fatalf("we must still publish our own; posted=%d", len(f.Posted))
+	}
+}
