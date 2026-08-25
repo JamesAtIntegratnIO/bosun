@@ -68,9 +68,16 @@ type Triage struct {
 	// time the pod moved.
 	MaxAttempts int
 	// GateWait is how long to wait for the gate to reach a verdict before
-	// giving up on this run.
+	// giving up on this run. CI mode only: an in-process gate is not waited
+	// for, it is run.
 	GateWait time.Duration
 	GatePoll time.Duration
+	// Gate, when set, is the in-process gate: the agent renders and diffs the
+	// pull request itself instead of polling a CI check and scraping the
+	// report back out of its own comment. The verdict arrives as a value, so
+	// the reportAuthor trust check has nothing to check -- the evidence never
+	// left the process.
+	Gate *GateService
 	// Upstream, when set, fetches what the maintainers wrote between the two
 	// versions. Optional: without it the explanation is grounded in the render
 	// alone, says so, and is still worth reading.
@@ -234,13 +241,27 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 			"Reached the limit of %d automatic fix attempts without a green gate.", t.MaxAttempts), nil)
 	}
 
-	state, err := t.waitForGate(ctx, pr)
-	if err != nil {
-		return err
+	var state gitprovider.CheckState
+	var report string
+	if t.Gate != nil {
+		// The gate is in-process: run it (or read the run the poller already
+		// did) instead of waiting for CI. Missing and pending cannot happen --
+		// Ensure does not return until there is a verdict or a broken gate.
+		out := t.Gate.Ensure(ctx, pr)
+		if out.Err != nil {
+			return fmt.Errorf("the gate could not run: %w", out.Err)
+		}
+		state, report = out.State, out.Report
+	} else {
+		var err error
+		state, err = t.waitForGate(ctx, pr)
+		if err != nil {
+			return err
+		}
 	}
 	switch state {
 	case gitprovider.CheckSuccess:
-		return t.explainGreen(ctx, pr, p)
+		return t.explainGreen(ctx, pr, p, report)
 	case gitprovider.CheckMissing:
 		t.say(ctx, pr, "no %s check appeared within %s", t.CheckName, t.GateWait)
 		return nil
@@ -249,9 +270,12 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 		return nil
 	}
 
-	report, err := t.gateReport(ctx, pr)
-	if err != nil {
-		return err
+	if report == "" {
+		var err error
+		report, err = t.gateReport(ctx, pr)
+		if err != nil {
+			return err
+		}
 	}
 
 	// What is actually running, gathered once and used by whichever path this
@@ -914,26 +938,31 @@ const gateSaidNothingChanged = "No change to what gets deployed"
 //   - no failure. Explanation is a courtesy on a green gate. If the model is
 //     down or the report is unreadable, the merge is not this agent's business
 //     to hold up.
-func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, p Promotion) error {
+func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, p Promotion, report string) error {
 	if !t.Explain {
 		t.say(ctx, pr, "%s is green; nothing to triage", t.CheckName)
 		return nil
 	}
 
-	report, err := t.gateReport(ctx, pr)
-	switch {
-	case errors.Is(err, errNoGateReport):
-		// A green gate that published no report is normal on repositories where
-		// the gate only comments when it has something to say.
-		t.say(ctx, pr, "%s is green; no report to explain", t.CheckName)
-		return nil
-	case err != nil:
-		// Not the same thing, and it used to be reported as if it were. A
-		// report this agent refused to read -- wrong author -- or a comment
-		// list it could not finish is a fact about the deployment, and
-		// "nothing to explain" is exactly the sentence that hides it.
-		t.say(ctx, pr, "%s is green; %v", t.CheckName, err)
-		return nil
+	// An in-process gate hands its report in; only the CI path has to go
+	// find one on the pull request.
+	if report == "" {
+		var err error
+		report, err = t.gateReport(ctx, pr)
+		switch {
+		case errors.Is(err, errNoGateReport):
+			// A green gate that published no report is normal on repositories where
+			// the gate only comments when it has something to say.
+			t.say(ctx, pr, "%s is green; no report to explain", t.CheckName)
+			return nil
+		case err != nil:
+			// Not the same thing, and it used to be reported as if it were. A
+			// report this agent refused to read -- wrong author -- or a comment
+			// list it could not finish is a fact about the deployment, and
+			// "nothing to explain" is exactly the sentence that hides it.
+			t.say(ctx, pr, "%s is green; %v", t.CheckName, err)
+			return nil
+		}
 	}
 	if strings.Contains(report, gateSaidNothingChanged) {
 		t.say(ctx, pr, "%s is green; the render is unchanged", t.CheckName)

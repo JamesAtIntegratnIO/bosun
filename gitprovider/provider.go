@@ -14,15 +14,26 @@ import (
 
 // PullRequest is the subset of a pull request the agent reasons about.
 type PullRequest struct {
-	Number  int
-	Title   string
-	Body    string
-	Branch  string
-	BaseSHA string
-	HeadSHA string
-	Labels  []string
-	Author  string
-	URL     string
+	Number int
+	Title  string
+	Body   string
+	Branch string
+	// BaseBranch is the branch the pull request merges into. The in-cluster
+	// gate fetches it by NAME and renders its current tip -- which is what a
+	// merge would actually land on, and does not require the host to serve
+	// arbitrary commits by SHA.
+	BaseBranch string
+	BaseSHA    string
+	HeadSHA    string
+	Labels     []string
+	Author     string
+	URL        string
+	// FromFork is whether the head branch lives in a different repository.
+	// The in-cluster gate renders what a pull request contains, with helm,
+	// inside the cluster -- so whose content that is matters, and a branch
+	// somebody outside the repository controls is a different trust decision
+	// from a branch inside it.
+	FromFork bool
 }
 
 // Comment is one comment on a pull request. The agent reads these because the
@@ -59,23 +70,43 @@ const (
 	CheckMissing CheckState = "missing"
 )
 
-// CommitState is the colour of a commit status. Two values, deliberately:
-// the agent is advisory, so it never reports a failure, and everything that is
-// not "still working" is a verdict.
+// CommitState is the colour of a commit status.
+//
+// The agent wears two hats and they use different halves of this. Its OWN
+// branded status is advisory and uses only pending and success -- everything
+// that is not "still working" is a verdict, and a red advisory status would
+// quietly become a second gate. The GATE status it posts in cluster mode is
+// the opposite: it exists to block, failure is its whole point, and error is
+// how "the gate broke" stays distinguishable from "this change is bad" --
+// the same distinction the CLI draws between exit 1 and exit 2.
 type CommitState string
 
 const (
-	// StatePending -- triage is running. Not a verdict.
+	// StatePending -- still working. Not a verdict.
 	StatePending CommitState = "pending"
-	// StateSuccess -- triage finished. The description says what it decided,
-	// including when what it decided was "a human needs to look at this".
+	// StateSuccess -- finished. The description says what was decided,
+	// including when what was decided was "a human needs to look at this".
 	StateSuccess CommitState = "success"
+	// StateFailure -- the gate blocks this change. Gate statuses only; the
+	// agent's advisory status never reports it.
+	StateFailure CommitState = "failure"
+	// StateError -- the gate itself could not run. Distinct from failure for
+	// the reason exit 2 is distinct from exit 1: "this change is bad" and
+	// "the gate is broken" want opposite reactions.
+	StateError CommitState = "error"
 )
 
 // Provider is one git host.
 type Provider interface {
 	// GetPullRequest reads a pull request.
 	GetPullRequest(ctx context.Context, number int) (*PullRequest, error)
+
+	// ListOpenPullRequests returns every open pull request, newest activity
+	// first or in whatever order the host serves -- callers must not read
+	// meaning into it. This is how the in-cluster gate discovers work: no
+	// webhook to expose, no CI event to subscribe to, just the same polling
+	// the agent already does for check states.
+	ListOpenPullRequests(ctx context.Context) ([]PullRequest, error)
 
 	// ListComments returns the pull request's comments, oldest last.
 	//

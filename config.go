@@ -53,6 +53,21 @@ type Config struct {
 
 	// Behaviour.
 	CheckName string
+	// GateMode is where the gate runs.
+	//
+	//   cluster (default) -- the agent IS the gate: it polls open pull
+	//     requests, renders base and head against the live cluster inventory,
+	//     and posts the CheckName status and report comment itself. No CI
+	//     adapter, no checked-in inventory, no report scraping.
+	//   ci -- the gate runs in CI (the original shape); the agent waits for
+	//     the check and reads the report out of a comment. The fallback for
+	//     public repositories taking fork pull requests, and for clusters
+	//     whose RBAC will not grant the ArgoCD Secret read.
+	GateMode string
+	// GateForkPRs lets cluster mode render fork pull requests. Off by
+	// default: rendering runs helm over the pull request's content, inside
+	// the cluster, and whose content that is should be an operator's call.
+	GateForkPRs bool
 	// GateReportAuthor is the only account whose gate report the agent will
 	// read. The gate publishes its verdict as a pull-request comment, and a
 	// comment is something anybody with write access can write -- including a
@@ -138,8 +153,10 @@ func LoadConfig() (*Config, error) {
 		LLMReasoningEffort: os.Getenv("LLM_REASONING_EFFORT"),
 
 		CheckName: env("GATE_CHECK_NAME", "addons-gate"),
+		GateMode:  env("GATE_MODE", "cluster"),
 		CloneRoot: env("CLONE_ROOT", ""),
 	}
+	c.GateForkPRs = os.Getenv("GATE_FORK_PRS") == "true"
 
 	// Defaulted per host rather than globally, because the answer is a fact
 	// about the host and not a preference. A gate running in GitHub Actions
@@ -255,6 +272,12 @@ func (c *Config) validate() error {
 	case "github", "gitea":
 	default:
 		return fmt.Errorf("GIT_PROVIDER %q is not implemented yet -- see docs/git-providers.md", c.GitProvider)
+	}
+
+	switch c.GateMode {
+	case "cluster", "ci":
+	default:
+		return fmt.Errorf("GATE_MODE %q is not a mode (cluster or ci)", c.GateMode)
 	}
 
 	// An empty allowlist means the agent can write nothing. That is the safe

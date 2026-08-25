@@ -127,4 +127,3 @@ func renderStreams(root string, cfg *Config, inv *Inventory) (map[string][]byte,
 	}
 	return out, nil
 }
-

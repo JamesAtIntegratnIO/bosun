@@ -117,10 +117,14 @@ func (g *Gitea) GetPullRequest(ctx context.Context, number int) (*PullRequest, e
 		Body   string `json:"body"`
 		HTML   string `json:"html_url"`
 		Head   struct {
-			Ref string `json:"ref"`
-			SHA string `json:"sha"`
+			Ref  string `json:"ref"`
+			SHA  string `json:"sha"`
+			Repo struct {
+				FullName string `json:"full_name"`
+			} `json:"repo"`
 		} `json:"head"`
 		Base struct {
+			Ref string `json:"ref"`
 			SHA string `json:"sha"`
 		} `json:"base"`
 		User   struct{ Login string } `json:"user"`
@@ -133,11 +137,67 @@ func (g *Gitea) GetPullRequest(ctx context.Context, number int) (*PullRequest, e
 	}
 	out := &PullRequest{
 		Number: pr.Number, Title: pr.Title, Body: pr.Body,
-		Branch: pr.Head.Ref, HeadSHA: pr.Head.SHA, BaseSHA: pr.Base.SHA,
+		Branch: pr.Head.Ref, BaseBranch: pr.Base.Ref, HeadSHA: pr.Head.SHA, BaseSHA: pr.Base.SHA,
 		Author: pr.User.Login, URL: pr.HTML,
+		FromFork: g.fromFork(pr.Head.Repo.FullName),
 	}
 	for _, l := range pr.Labels {
 		out.Labels = append(out.Labels, l.Name)
+	}
+	return out, nil
+}
+
+// fromFork decides whether a head repository is this one. An empty name --
+// a deleted fork -- is still not this repository; unknown must not read as
+// trusted.
+func (g *Gitea) fromFork(headRepo string) bool {
+	return !strings.EqualFold(headRepo, g.Owner+"/"+g.Repo)
+}
+
+// ListOpenPullRequests pages through the open pull requests, with the same
+// page bound as the comment walk so a paging bug cannot loop forever.
+func (g *Gitea) ListOpenPullRequests(ctx context.Context) ([]PullRequest, error) {
+	var out []PullRequest
+	for page := 1; page <= maxCommentPages; page++ {
+		var raw []struct {
+			Number int    `json:"number"`
+			Title  string `json:"title"`
+			HTML   string `json:"html_url"`
+			Head   struct {
+				Ref  string `json:"ref"`
+				SHA  string `json:"sha"`
+				Repo struct {
+					FullName string `json:"full_name"`
+				} `json:"repo"`
+			} `json:"head"`
+			Base struct {
+				Ref string `json:"ref"`
+				SHA string `json:"sha"`
+			} `json:"base"`
+			User   struct{ Login string } `json:"user"`
+			Labels []struct {
+				Name string `json:"name"`
+			} `json:"labels"`
+		}
+		if err := g.do(ctx, http.MethodGet, g.repoPath(fmt.Sprintf(
+			"/pulls?state=open&limit=100&page=%d", page)), nil, &raw); err != nil {
+			return nil, err
+		}
+		for _, pr := range raw {
+			p := PullRequest{
+				Number: pr.Number, Title: pr.Title,
+				Branch: pr.Head.Ref, BaseBranch: pr.Base.Ref, HeadSHA: pr.Head.SHA, BaseSHA: pr.Base.SHA,
+				Author: pr.User.Login, URL: pr.HTML,
+				FromFork: g.fromFork(pr.Head.Repo.FullName),
+			}
+			for _, l := range pr.Labels {
+				p.Labels = append(p.Labels, l.Name)
+			}
+			out = append(out, p)
+		}
+		if len(raw) < 100 {
+			break
+		}
 	}
 	return out, nil
 }
