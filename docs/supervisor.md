@@ -38,7 +38,7 @@ one.
 |---|---|
 | `wedged_promotion` | The latest promotion ended without delivering. **It will never retry** — a terminal promotion is final, and auto-promotion does not re-run one, because from the controller's view that freight *has* been promoted; the attempt merely failed. |
 | `stalled_warehouse` | Not discovering, or has missed two of its own intervals. No new freight means no promotions and no pull requests, which looks exactly like being up to date. |
-| `verification_stuck` | A verification is holding a Stage's queue and not finishing. |
+| `verification_stuck` | A verification is holding a Stage's queue. If it already **failed**, it is over — Kargo does not re-run it, so the Stage is stuck permanently. |
 | `dead_pin` | A `yaml-update` key the target file does not have. The step writes nothing, reports success, and the pin looks maintained forever. |
 | `promotion_without_pr` | Running against a pull request that is no longer open, holding the queue until it times out. |
 | `superseded_pr` | More than one open promotion pull request for a Stage. Only the newest can merge; the rest collect gate runs and crowd the list. |
@@ -59,6 +59,11 @@ of the answers are guessable. So every finding carries the exact command:
 - A hand-written Promotion needs `generateName` **without** a trailing dot. The
   webhook computes Kargo's own name from it and then validates the
   `generateName` itself as RFC1123, which a trailing dot fails.
+- **Fixing the cause of a failed verification does not restart it.** The
+  verification is over; the Stage stays stuck until something asks again with
+  `kargo.akuity.io/reverify={"id":"…"}`. The id lives at
+  `status.freightHistory[0].verificationHistory[0].id`. Proved by fixing the
+  NetworkPolicy above and watching all three Stages not move.
 
 ## Turning it on
 

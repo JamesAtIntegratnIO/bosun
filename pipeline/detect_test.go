@@ -335,3 +335,65 @@ func fileHasFrom(files map[string]map[string]bool) func(string, string) (bool, e
 		return keys[key], nil
 	}
 }
+
+// A verification that FAILED is over. Kargo does not re-run it -- that freight
+// has been verified and the answer was no -- so the Stage sits Ready=False
+// forever while every Application stays Synced and Healthy. Three Stages were
+// held that way for three days.
+func TestAFinishedVerificationIsBlockingAndNamesItsId(t *testing.T) {
+	s := &Snapshot{
+		Now: now,
+		Stages: []Stage{{
+			Name: "cert-manager", Namespace: "addons", Ready: false,
+			ReadyReason: "VerificationError", ReadySince: 72 * time.Hour,
+			ReadyMessage:      `dial tcp 10.106.179.157:9090: connect: no route to host`,
+			VerificationID:    "a0108a58-5a02-4486-9699-14c6f9ee4458",
+			VerificationPhase: "Error",
+		}},
+	}
+	f := findingOf(t, Detect(s), KindVerifyStuck)
+	if f.Severity != Blocking {
+		t.Errorf("a Stage that stopped promoting is blocking, got %s", f.Severity)
+	}
+	if !strings.Contains(f.Summary, "will not re-run it") {
+		t.Errorf("the summary must say it is over, not that it is still running: %q", f.Summary)
+	}
+	if !strings.Contains(f.Remedy, `kargo.akuity.io/reverify={"id":"a0108a58-5a02-4486-9699-14c6f9ee4458"}`) {
+		t.Errorf("the remedy must carry the id; it is three levels deeper than anyone looks:\n%s", f.Remedy)
+	}
+	// The whole lesson from fixing the NetworkPolicy and watching nothing move.
+	if !strings.Contains(f.Remedy, "not enough") {
+		t.Errorf("the remedy must say that fixing the cause does not restart it:\n%s", f.Remedy)
+	}
+}
+
+// Still running is a different, softer situation, and only after long enough.
+func TestAVerificationStillRunningIsOnlyReportedOnceItIsLate(t *testing.T) {
+	running := func(since time.Duration) *Snapshot {
+		return &Snapshot{Now: now, Stages: []Stage{{
+			Name: "argo-cd", Ready: false, ReadyReason: "VerificationRunning",
+			ReadySince: since, VerificationPhase: "Running",
+		}}}
+	}
+	none(t, Detect(running(10*time.Minute)), KindVerifyStuck)
+
+	f := findingOf(t, Detect(running(2*time.Hour)), KindVerifyStuck)
+	if f.Severity != Degraded {
+		t.Errorf("still running is degraded, not blocking; got %s", f.Severity)
+	}
+	if strings.Contains(f.Remedy, "reverify") {
+		t.Errorf("a verification that has not finished must not be told to re-run:\n%s", f.Remedy)
+	}
+}
+
+// Without an id the remedy still has to be runnable: it says how to find it.
+func TestAMissingVerificationIdStillYieldsRunnableSteps(t *testing.T) {
+	s := &Snapshot{Now: now, Stages: []Stage{{
+		Name: "x", Namespace: "addons", Ready: false, ReadyReason: "VerificationFailed",
+		ReadySince: time.Hour, VerificationPhase: "Failed",
+	}}}
+	f := findingOf(t, Detect(s), KindVerifyStuck)
+	if !strings.Contains(f.Remedy, "verificationHistory[0].id") {
+		t.Fatalf("it must say where the id lives:\n%s", f.Remedy)
+	}
+}
