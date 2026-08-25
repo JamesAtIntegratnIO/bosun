@@ -321,6 +321,16 @@ func sortChanges(c []Change) {
 	})
 }
 
+// maxListed bounds any one list in the report.
+//
+// Twelve for the same reason maxDroppedListed is: the finding is "these
+// changed", and forty entries make that point no better than a dozen do, while
+// a comment nobody opens makes it not at all. Named because it appeared as a
+// bare 12 twice in this file, beside a maxDroppedListed the same size -- so a
+// reader had to check whether the three were the same decision or a
+// coincidence.
+const maxListed = maxDroppedListed
+
 // ReportMarker leads every report, and it is load-bearing rather than
 // decorative. A triage agent finds the gate's verdict by looking for this
 // string among the pull request's comments, and an adapter that publishes the
@@ -590,8 +600,8 @@ func (d *DiffResult) Report(w io.Writer) {
 				case o.ConsumersKnown && len(o.ConsumerFiles) > 0:
 					fmt.Fprintf(w, "  - **%d manifest(s) in this repository still declare a dropped version** — %s:\n", len(o.ConsumerFiles), blocking)
 					for i, f := range o.ConsumerFiles {
-						if i == 12 {
-							fmt.Fprintf(w, "    - …and %d more\n", len(o.ConsumerFiles)-12)
+						if i == maxListed {
+							fmt.Fprintf(w, "    - …and %d more\n", len(o.ConsumerFiles)-maxListed)
 							break
 						}
 						fmt.Fprintf(w, "    - `%s`\n", f)
@@ -615,8 +625,8 @@ func (d *DiffResult) Report(w io.Writer) {
 			// definition is gone" is the heading above it.
 			fmt.Fprintf(w, "%s\n\n", migrate.ObjectGroupHeading(g.label, len(g.items)))
 			for i, o := range g.items {
-				if i == 12 {
-					fmt.Fprintf(w, "- …and %d more\n", len(g.items)-12)
+				if i == maxListed {
+					fmt.Fprintf(w, "- …and %d more\n", len(g.items)-maxListed)
 					break
 				}
 				fmt.Fprintf(w, "- `%s`\n", o.Object)

@@ -90,21 +90,24 @@ func (s *Supervisor) sweep(ctx context.Context) {
 	// A checkout that fails is a note on the report, never a skipped sweep:
 	// the cluster half is worth having on its own, and the report is explicit
 	// about what it could not look at.
+	//
+	// The root is passed to the sweep rather than written onto the Collector.
+	// Set as a field, it was per-sweep state living on a shared collaborator,
+	// so two overlapping sweeps raced over which checkout the second one read
+	// -- and the deferred reset meant the loser read a directory that had
+	// already been removed.
+	var repoRoot string
 	if s.Checkout != nil {
 		dir, cleanup, err := s.Checkout(ctx)
 		if err != nil {
-			s.Collector.RepoRoot = ""
 			s.logf("pipeline: could not check out the repository (%v); pins were not checked", err)
 		} else {
-			s.Collector.RepoRoot = dir
-			defer func() {
-				cleanup()
-				s.Collector.RepoRoot = ""
-			}()
+			repoRoot = dir
+			defer cleanup()
 		}
 	}
 
-	r := s.Collector.Sweep(ctx)
+	r := s.Collector.Sweep(ctx, repoRoot)
 	s.mu.Lock()
 	s.last = r
 	changed := r.Headline() != s.prev

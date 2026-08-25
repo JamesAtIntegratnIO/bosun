@@ -15,7 +15,7 @@ import (
 // going wrong rather than one thing being absent, and sends the reader looking
 // for a permissions problem that is not there.
 func TestNoKargoOnTheClusterIsOneNoteNotThree(t *testing.T) {
-	s := (&Collector{Kargo: absentKargo{}, Now: func() time.Time { return now }}).Collect(context.Background())
+	s := (&Collector{Kargo: absentKargo{}, Now: func() time.Time { return now }}).Collect(context.Background(), "")
 
 	if len(s.Notes) != 1 {
 		t.Fatalf("want one note, got %d: %v", len(s.Notes), s.Notes)
@@ -27,7 +27,7 @@ func TestNoKargoOnTheClusterIsOneNoteNotThree(t *testing.T) {
 
 // A source that cannot answer the presence question is read exactly as before.
 func TestASourceWithoutThePresenceCheckStillReads(t *testing.T) {
-	s := (&Collector{Kargo: failingKargo{}, Now: func() time.Time { return now }}).Collect(context.Background())
+	s := (&Collector{Kargo: failingKargo{}, Now: func() time.Time { return now }}).Collect(context.Background(), "")
 
 	if len(s.Notes) != 3 {
 		t.Fatalf("want a note per failed read, got %d: %v", len(s.Notes), s.Notes)

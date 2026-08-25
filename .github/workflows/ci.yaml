@@ -26,10 +26,17 @@ jobs:
       - name: gofmt
         run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "run gofmt"; exit 1; }
       - run: go vet ./...
-      # The eval suite runs here too. It uses the recorded fixtures and a fake
-      # provider -- no model endpoint, no network, no spend. `./...` now covers
-      # the gate as well: one module, one command, both halves of the kit.
-      - run: go test ./...
+      # The eval suite runs here too: every case is checked for being
+      # well-formed and RUNNABLE against a fake provider -- no model endpoint,
+      # no network, no spend. Scoring against a real model is TestEval, which
+      # skips without DELIVERY_AGENT_LIVE. `./...` covers the gate as well: one
+      # module, one command, both halves of the kit.
+      #
+      # -race because the gate sweeps pull requests concurrently, the chart
+      # diff renders in parallel, and the service collapses duplicate calls
+      # under a mutex. Every one of those is a place where a test that passes
+      # a thousand times can still be wrong.
+      - run: go test -race ./...
 
   chart:
     runs-on: ubuntu-latest

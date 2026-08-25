@@ -326,11 +326,7 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	// a read-only view, and none of it is asserted by a model.
 	live := t.liveFor(ctx, p, report)
 
-	checkout := t.Checkout
-	if checkout == nil {
-		checkout = t.clone
-	}
-	root, cleanup, err := checkout(ctx, pr)
+	root, cleanup, err := t.checkout(ctx, pr)
 	if err != nil {
 		return fmt.Errorf("checking out %s: %w", pr.Branch, err)
 	}
