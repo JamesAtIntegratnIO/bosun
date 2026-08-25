@@ -1,20 +1,25 @@
 # gitops-gate
 
-The deterministic half of the delivery gate. A single binary that answers one
+The deterministic half of the delivery gate. One Go package that answers one
 question about a pull request: **does this change what actually gets deployed,
 and is what it produces still valid?**
 
-It is CI-agnostic by construction — you run the container, and the exit code is
-the verdict. Adapters in [`../ci`](../ci) are thin wrappers that pass a
-workspace in and turn the exit code into a commit status.
+It has two faces, same engine, same verdict. The agent imports it and runs it
+in-cluster against the live ArgoCD inventory — the default since [ADR
+0008](../adr/0008-the-gate-moves-in-cluster.md), and the reason onboarding no
+longer involves this directory at all. And it ships as a CLI
+([`cmd/gitops-gate`](cmd/gitops-gate)) whose exit code is the verdict, for
+running locally before a push and for the CI fallback; adapters in
+[`../ci`](../ci) are thin wrappers that pass a workspace in and turn the exit
+code into a commit status. The CLI renders against a checked-in inventory
+snapshot, which is what `clusters export` maintains.
 
 > **Status: shipped and judging every pull request** on the platform it was
 > built for, published as `ghcr.io/jamesatintegratnio/gitops-gate`. This README
 > opened as the contract the implementation was written against; the
 > implementation caught up and the contract grew — see
 > [`CHANGELOG.md`](CHANGELOG.md) for what it has learned since. The AI half is
-> deliberately *not* here: [ADR 0002, *deterministic checks in CI, judgement in
-> the cluster*](../adr/0002-triage-in-cluster-not-ci.md).
+> deliberately *not* here: it lives in the agent that calls this package.
 
 ## Subcommands
 

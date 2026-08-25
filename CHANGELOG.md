@@ -3,6 +3,47 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [Unreleased]
+
+### Changed
+
+- **The agent is the gate.** `gate.mode: cluster` — the new default — runs
+  the same render, diff and validation the CLI performs, in the agent,
+  against an inventory read LIVE from the ArgoCD cluster Secrets. It polls
+  the open pull requests and posts the `addons-gate` status and report
+  comment itself; the triage reads the verdict in-process instead of
+  scraping its own comment back off the host.
+
+  What this deletes from an operator's plate: the CI workflow and its image
+  pin, the checked-in inventory snapshot and its export/drift-check loop,
+  the paths filter (every pull request is rendered; "no change to what gets
+  deployed" is an answer, not a guess), and the rule that the bot's token
+  must be able to re-trigger CI — a pushed fix is a new head commit, and the
+  sweep re-gates it because it is there.
+
+  What it costs, stated where it is paid: get/list on Secrets in the ArgoCD
+  namespace (they are the inventory, and they also carry cluster
+  credentials — the chart scopes the grant to a namespaced Role that exists
+  only in this mode), and a required check that now depends on the agent
+  being up. `gate.mode: ci` is the old behaviour, kept whole, for fork pull
+  requests on public repositories and for operators who decline either cost.
+  Fork pull requests in cluster mode get an `error` status naming
+  `gate.forkPRs` rather than an unreported required check. See ADR 0008 and
+  the new `docs/onboarding.md`.
+
+  **Upgrading from the CI shape:** nothing breaks on upgrade — the agent
+  skips commits that already carry a verdict, so a still-running CI gate
+  coexists with it — but the mode is a default change, and the migration
+  checklist in `docs/onboarding.md` is the tidy path. Set `gate.mode: ci`
+  to keep the old shape unchanged.
+
+### Added
+
+- **`docs/onboarding.md`** — the single guide onboarding never had: six
+  steps, each ending in a verifiable state, with the CI shape demoted to an
+  appendix. Previously the path was scattered across five READMEs and the
+  reference consumer's commit history.
+
 ## [0.15.2] - 2026-08-24
 
 ### Fixed

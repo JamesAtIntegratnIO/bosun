@@ -4,8 +4,10 @@
 // property of the text: which manifests declare an API version, which
 // Applications target which clusters, what a chart's output looks like at two
 // versions. It cannot see the cluster, and CI structurally cannot -- which is
-// the argument ADR 0002 makes for putting triage in the cluster in the first
-// place.
+// the argument ADR 0002 made for putting triage in the cluster in the first
+// place, and which ADR 0008 finished: the gate itself now runs here too by
+// default, reading its inventory through this package instead of from a
+// checked-in snapshot.
 //
 // This is that argument's other half, finally built. A gate report saying "3
 // manifests in this repository still declare a version this chart stops

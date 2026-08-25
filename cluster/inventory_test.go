@@ -30,7 +30,7 @@ func TestClusterInventoryDecodesSecretsTheWayTheExportDoes(t *testing.T) {
 		fmt.Fprint(w, secretList(
 			map[string]any{
 				"metadata": map[string]any{
-					"name":   "cluster-the-cluster",
+					"name":   "cluster-hub",
 					"labels": map[string]string{"argocd.argoproj.io/secret-type": "cluster", "environment": "production"},
 					"annotations": map[string]string{
 						"addons_repo_path": "charts/application-sets",
@@ -40,12 +40,12 @@ func TestClusterInventoryDecodesSecretsTheWayTheExportDoes(t *testing.T) {
 						"kubectl.kubernetes.io/last-applied-configuration": "{}",
 					},
 				},
-				"data": map[string]string{"name": b64("the-cluster"), "server": b64("https://kubernetes.default.svc")},
+				"data": map[string]string{"name": b64("hub"), "server": b64("https://kubernetes.default.svc")},
 			},
 			map[string]any{
 				// No name in data: the Secret's own name is the fallback,
 				// same as the export.
-				"metadata": map[string]any{"name": "vcluster-media", "labels": map[string]string{"argocd.argoproj.io/secret-type": "cluster"}},
+				"metadata": map[string]any{"name": "tenant", "labels": map[string]string{"argocd.argoproj.io/secret-type": "cluster"}},
 				"data":     map[string]string{"server": b64("https://media.example:6443")},
 			},
 		))
@@ -66,7 +66,7 @@ func TestClusterInventoryDecodesSecretsTheWayTheExportDoes(t *testing.T) {
 		t.Fatalf("got %d clusters, want 2", len(inv.Clusters))
 	}
 	c := inv.Clusters[0]
-	if c.Name != "the-cluster" || c.Server != "https://kubernetes.default.svc" {
+	if c.Name != "hub" || c.Server != "https://kubernetes.default.svc" {
 		t.Fatalf("first cluster decoded as %q at %q", c.Name, c.Server)
 	}
 	if c.Labels["environment"] != "production" {
@@ -75,7 +75,7 @@ func TestClusterInventoryDecodesSecretsTheWayTheExportDoes(t *testing.T) {
 	if c.Annotations["addons_repo_path"] != "charts/application-sets" {
 		t.Fatal("annotations the bootstraps template with must survive")
 	}
-	if inv.Clusters[1].Name != "vcluster-media" {
+	if inv.Clusters[1].Name != "tenant" {
 		t.Fatalf("a Secret without a name in data must fall back to its own name, got %q", inv.Clusters[1].Name)
 	}
 	if inv.GeneratedAt != "" {

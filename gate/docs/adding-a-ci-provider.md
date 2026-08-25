@@ -1,5 +1,12 @@
 # Adding a CI provider
 
+**Check that you need one first.** Since [ADR
+0008](../../adr/0008-the-gate-moves-in-cluster.md) the agent runs the gate
+in-cluster by default (`gate.mode: cluster`) — no CI adapter, no checked-in
+inventory. An adapter is for the fallback: fork pull requests, a gate that
+must keep answering while the cluster is down, or the gate with no agent at
+all.
+
 The gate is a container with an exit code, so an adapter is thin by
 construction. There is no plugin interface to implement — just four things to
 get right.
@@ -22,8 +29,13 @@ fails on a repository that was fine.
 gitops-gate render -repo . -out targets-base.json   # at the base
 gitops-gate render -repo . -out targets-head.json   # at the head
 gitops-gate diff -base targets-base.json -head targets-head.json \
-  -report report.md -json render-diff.json
+  -repo . -report report.md -json render-diff.json
 ```
+
+`-repo` on the diff is load-bearing: it is what enables chart-diff, and
+without it the gate goes green on exactly the class of change it exists to
+catch. The reference adapter shipped without it once; see
+[`ci/github/README.md`](../../ci/github/README.md).
 
 **4. Turn the exit code into a commit status.**
 
@@ -44,10 +56,17 @@ protection then names one check, and adding a job later never requires editing
 the protection rule — a step that is easy to forget, and whose omission
 silently drops your gate.
 
-## Publish `render-diff.json`
+## Post `report.md` as a pull-request comment
 
-The delivery agent reads it. Put it wherever your CI system exposes build
-artifacts, and make sure the agent's credential can fetch it.
+Verbatim, and **before** the step that fails the build. The triage agent in
+CI mode reads the gate's verdict by listing the pull request's comments and
+taking the newest one that begins with the marker the report's first line
+carries — a comment is the one artifact surface every git host has. An
+earlier revision of this page said *"publish `render-diff.json` where the
+agent can fetch it"*; nothing fetches that file, and every adapter that
+implemented the instruction as written published a verdict no agent could
+find. The full contract, including the details that bite, is
+[`ci/README.md`](../../ci/README.md).
 
 ## Two things that will bite
 

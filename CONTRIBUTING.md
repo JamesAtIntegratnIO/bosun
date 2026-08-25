@@ -24,7 +24,7 @@ silently at least once:
 
 | Contract | How it broke |
 |---|---|
-| The agent finds the gate's verdict by searching comments for `<!-- gitops-gate -->` | The marker lived in one demo script and in no CI adapter, so no agent could ever find a report CI published |
+| The agent finds the gate's verdict by searching comments for `<!-- gitops-gate -->` *(ci mode only — in cluster mode the verdict never leaves the process, which is one reason ADR 0008 moved it)* | The marker lived in one demo script and in no CI adapter, so no agent could ever find a report CI published |
 | Any version the agent writes must appear verbatim in the gate's report | Still untested. Change how the report renders a version and every mechanical fix silently becomes an escalation |
 | `kargo-pipelines` POSTs a promotion body the agent's handler must parse | Untested |
 
