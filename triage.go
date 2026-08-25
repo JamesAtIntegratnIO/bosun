@@ -13,6 +13,7 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/cluster"
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/egress"
+	"github.com/JamesAtIntegratnIO/bosun/gate"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
@@ -844,7 +845,7 @@ func (t *Triage) gateReport(ctx context.Context, pr *gitprovider.PullRequest) (s
 	best := -1
 	var untrusted []string
 	for i, c := range comments {
-		if !strings.Contains(c.Body, gateReportMarker) {
+		if !strings.Contains(c.Body, gate.ReportMarker) {
 			continue
 		}
 		if !t.trustsReportFrom(c.Author) {
@@ -907,8 +908,6 @@ func quoted(s string) string {
 	}
 	return "\"" + s + "\""
 }
-
-const gateReportMarker = "<!-- gitops-gate -->"
 
 func (t *Triage) clone(ctx context.Context, pr *gitprovider.PullRequest) (string, func(), error) {
 	root, err := os.MkdirTemp(t.CloneRoot, "pr")
@@ -976,10 +975,6 @@ func attemptsSoFar(labels []string, prefix string) int {
 	return n
 }
 
-// gateSaidNothingChanged is what the gate writes when the render is identical.
-// Matching on it is how the agent avoids explaining a change that is not one.
-const gateSaidNothingChanged = "No change to what gets deployed"
-
 // explainGreen handles a gate that passed.
 //
 // A green gate is not the same as an uneventful change. The gate blocks on
@@ -1027,7 +1022,7 @@ func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, 
 			return nil
 		}
 	}
-	if strings.Contains(report, gateSaidNothingChanged) {
+	if gate.SaysNothingChanged(report) {
 		t.say(ctx, pr, "%s is green; the render is unchanged", t.CheckName)
 		return nil
 	}

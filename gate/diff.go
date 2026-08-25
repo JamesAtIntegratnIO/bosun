@@ -297,6 +297,23 @@ func sortChanges(c []Change) {
 // including a CI job summary.
 const ReportMarker = "<!-- gitops-gate -->"
 
+// NothingChanged is the report's answer when the render is identical on both
+// sides -- not "nothing blocking", but nothing at all.
+//
+// Exported for the same reason ReportMarker is. The agent decides whether to
+// spend a model call explaining a change by looking for this sentence, and it
+// used to look for its own copy of it: a private literal in package main, one
+// wording change away from an agent that explains every unchanged render or
+// explains none of them, with nothing failing to say so.
+const NothingChanged = "No change to what gets deployed"
+
+// SaysNothingChanged reports whether a published gate report is the
+// nothing-changed one. The CI path only ever has the rendered text, so the
+// question has to be answerable from it.
+func SaysNothingChanged(report string) bool {
+	return strings.Contains(report, NothingChanged)
+}
+
 // Verdict is the report's own answer, in one line, so a reader knows what they
 // are looking at before they read anything else.
 //
@@ -373,7 +390,7 @@ func (d *DiffResult) Verdict() (blocking bool, headline string) {
 			return false, fmt.Sprintf("No blocking findings — %s changed",
 				plural(len(d.Objects), "rendered object"))
 		default:
-			return false, "No change to what gets deployed"
+			return false, NothingChanged
 		}
 	}
 	return true, "Blocking — " + join(why)
@@ -538,11 +555,15 @@ func (d *DiffResult) Report(w io.Writer) {
 		for _, g := range []struct {
 			label string
 			items []ObjectChange
-		}{{"Added", added}, {"Removed", removed}, {"Changed", changed}} {
+		}{{migrate.GroupAdded, added}, {migrate.GroupRemoved, removed}, {migrate.GroupChanged, changed}} {
 			if len(g.items) == 0 {
 				continue
 			}
-			fmt.Fprintf(w, "**%s (%d)**\n\n", g.label, len(g.items))
+			// Written through migrate so the group a bullet sits in stays
+			// readable: all three groups render an identical bullet, and the
+			// only thing separating "this definition was added" from "this
+			// definition is gone" is the heading above it.
+			fmt.Fprintf(w, "%s\n\n", migrate.ObjectGroupHeading(g.label, len(g.items)))
 			for i, o := range g.items {
 				if i == 12 {
 					fmt.Fprintf(w, "- …and %d more\n", len(g.items)-12)
@@ -571,7 +592,7 @@ func (d *DiffResult) Report(w io.Writer) {
 	}
 	if len(d.Targeting) == 0 && len(d.Other) == 0 && len(d.Versions) == 0 &&
 		len(d.Introduced) == 0 && len(d.Objects) == 0 {
-		fmt.Fprintf(w, "No change to what gets deployed.\n\n")
+		fmt.Fprintf(w, "%s.\n\n", NothingChanged)
 	}
 	if len(d.Warnings) > 0 {
 		fmt.Fprintf(w, "### Not covered\n\n")

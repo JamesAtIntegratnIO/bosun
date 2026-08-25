@@ -246,6 +246,69 @@ func (b Blockers) RepoSideRemedy() bool {
 	return b.Targeting > 0 || b.Source > 0 || b.Consumers > 0 || b.Unscanned > 0 || b.ValuesDropped > 0
 }
 
+// The rendered-object changes are grouped under one heading per class. The
+// labels and the heading format live here for the same reason ReportMarker
+// does: the gate writes them, this package reads them, and a reader that
+// re-derives the format from memory drifts from the writer silently.
+//
+// It drifted once already. A reader matching the bullets without tracking
+// which group it was in treated an ADDED CustomResourceDefinition as a removed
+// one -- all three groups render a bullet of exactly the same shape.
+const (
+	GroupAdded   = "Added"
+	GroupRemoved = "Removed"
+	GroupChanged = "Changed"
+)
+
+// ObjectGroupHeading is the heading above one class of object change.
+func ObjectGroupHeading(label string, n int) string {
+	return fmt.Sprintf("**%s (%d)**", label, n)
+}
+
+// objectGroup matches any of the three group headings, so a scanner knows when
+// it has left the one it cares about.
+var objectGroup = regexp.MustCompile(`^\*\*(Added|Removed|Changed) \(\d+\)\*\*$`)
+
+// crdBullet matches an object bullet naming a CustomResourceDefinition. The
+// optional " in <namespace>" is there for the same reason it is on reportLine:
+// chart-diff stamps every object with the Application's destination namespace,
+// cluster-scoped or not.
+var crdBullet = regexp.MustCompile(
+	"^- `CustomResourceDefinition/([a-z0-9][a-z0-9.-]*\\.[a-z0-9.-]+)(?: in [^`]+)?`$")
+
+// ParseRemovedCRDs returns the definitions the report lists as removed
+// outright -- gone entirely, not merely no longer serving a version.
+//
+// The two are different findings and only the second carries its own versions,
+// which is why this exists alongside ParseReport rather than inside it.
+//
+// Only bullets inside the Removed group are returned. A reader that matched
+// the bullet shape alone fired on added and changed definitions too, and every
+// hit costs a live apiserver lookup on a path a human is waiting on.
+func ParseRemovedCRDs(report string) []string {
+	var out []string
+	inRemoved := false
+	for _, raw := range strings.Split(report, "\n") {
+		line := strings.TrimSpace(strings.TrimRight(raw, "\r"))
+		if g := objectGroup.FindStringSubmatch(line); g != nil {
+			inRemoved = g[1] == GroupRemoved
+			continue
+		}
+		// Any new section ends the group, whether or not another one starts.
+		if strings.HasPrefix(line, "###") {
+			inRemoved = false
+			continue
+		}
+		if !inRemoved {
+			continue
+		}
+		if m := crdBullet.FindStringSubmatch(line); m != nil {
+			out = append(out, m[1])
+		}
+	}
+	return out
+}
+
 // BlockersMarker prefixes the machine-readable breakdown. Same argument as the
 // headings above: the gate emits it, this package reads it, and one definition
 // means they cannot disagree.

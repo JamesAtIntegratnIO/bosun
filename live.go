@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -96,13 +95,6 @@ func (f *liveFacts) Any() bool {
 // otherwise become ninety API calls on a path a human is already waiting on.
 const maxLiveCRDs = 8
 
-// removedCRD matches the object bullets for a CustomResourceDefinition the
-// chart stops shipping ENTIRELY -- which is a different finding from one that
-// stops serving a version, and is the one the report cannot make countable on
-// its own: it names the definition and not the versions.
-var removedCRD = regexp.MustCompile(
-	"^\\s*- `CustomResourceDefinition/([a-z0-9][a-z0-9.-]*\\.[a-z0-9.-]+)(?: in [^`]+)?`\\s*$")
-
 // liveFor gathers the cluster facts a brief may carry.
 //
 // Never fails, never blocks anything. A reader that is not configured, not
@@ -126,10 +118,13 @@ func (t *Triage) liveFor(ctx context.Context, p Promotion, report string) *liveF
 	for _, d := range migrate.ParseReport(report) {
 		remember(d.CRD, d.Versions)
 	}
-	for _, raw := range strings.Split(report, "\n") {
-		if m := removedCRD.FindStringSubmatch(strings.TrimRight(raw, "\r")); m != nil {
-			remember(m[1], nil)
-		}
+	// Removed outright -- the finding that names a definition and no versions.
+	// Read through migrate rather than re-matched here: this file used to
+	// carry a third regexp for the gate's bullet format, and because it did
+	// not track which group the bullet was in, an ADDED definition sent us to
+	// the apiserver to ask what was running.
+	for _, name := range migrate.ParseRemovedCRDs(report) {
+		remember(name, nil)
 	}
 
 	for i, name := range order {

@@ -329,7 +329,7 @@ func (g *GateService) run(ctx context.Context, pr *gitprovider.PullRequest) *gat
 	// longer travels through it. Posted when there is something to read --
 	// a change, or a blocking finding -- and never twice for one commit,
 	// which the head line makes checkable across restarts.
-	if blocking || !strings.Contains(out.Report, gateSaidNothingChanged) {
+	if blocking || !gate.SaysNothingChanged(out.Report) {
 		g.comment(ctx, pr, out.Report)
 	}
 
@@ -351,7 +351,7 @@ func (g *GateService) run(ctx context.Context, pr *gitprovider.PullRequest) *gat
 	}
 
 	out.State = gitprovider.CheckSuccess
-	if strings.Contains(out.Report, gateSaidNothingChanged) {
+	if gate.SaysNothingChanged(out.Report) {
 		g.status(ctx, pr, gitprovider.StateSuccess, "no change to what gets deployed")
 	} else {
 		g.status(ctx, pr, gitprovider.StateSuccess, "no targeting change; %d version change(s)", len(res.Versions))

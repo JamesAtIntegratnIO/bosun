@@ -170,3 +170,21 @@ func TestNoSchemaFailuresLeavesTheVerdictAlone(t *testing.T) {
 		t.Errorf("got blocking=%v %q", blocking, headline)
 	}
 }
+
+// The gate writes the object groups and migrate reads them. The round trip is
+// the only thing keeping "this definition was added" and "this definition is
+// gone" apart in a report where both render the same bullet.
+func TestRemovedGroupRoundTripsThroughMigrate(t *testing.T) {
+	res := &DiffResult{Objects: []ObjectChange{
+		{Kind: "added", Object: "CustomResourceDefinition/widgets.example.io", To: "apiextensions.k8s.io/v1"},
+		{Kind: "removed", Object: "CustomResourceDefinition/gadgets.example.io", From: "apiextensions.k8s.io/v1"},
+		{Kind: "changed", Object: "CustomResourceDefinition/doodads.example.io"},
+	}}
+	var sb strings.Builder
+	res.Report(&sb)
+
+	got := migrate.ParseRemovedCRDs(sb.String())
+	if len(got) != 1 || got[0] != "gadgets.example.io" {
+		t.Fatalf("got %v, want exactly [gadgets.example.io]\n\n%s", got, sb.String())
+	}
+}

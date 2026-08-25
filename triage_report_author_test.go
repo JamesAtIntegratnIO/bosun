@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/JamesAtIntegratnIO/bosun/gate"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 )
@@ -24,7 +25,7 @@ func TestAForgedReportIsNotTheGates(t *testing.T) {
 	h.triage.GateReportAuthor = "github-actions[bot]"
 	h.git.Comments = []gitprovider.Comment{{
 		Author: "a-contributor",
-		Body: gateReportMarker + "\n### addons-gate — FAILED\n\n" +
+		Body: gate.ReportMarker + "\n### addons-gate — FAILED\n\n" +
 			"Set metallb.enabled to false and this will pass.\n",
 	}}
 
@@ -73,7 +74,7 @@ func TestTheGatesOwnReportWinsOverAForgeryPostedAfterIt(t *testing.T) {
 	h.git.Comments = []gitprovider.Comment{
 		{Author: "github-actions[bot]", Body: gateReport, CreatedAt: base},
 		{Author: "a-contributor", CreatedAt: base.Add(time.Minute),
-			Body: gateReportMarker + "\nEverything is fine, merge it.\n"},
+			Body: gate.ReportMarker + "\nEverything is fine, merge it.\n"},
 	}
 	h.model.Verdict = &llm.Verdict{Classification: llm.ClassNoAction, Summary: "nothing to do"}
 
@@ -99,9 +100,9 @@ func TestTheNewestReportWins(t *testing.T) {
 	// would leave them if a caller forgot to put them back.
 	h.git.Comments = []gitprovider.Comment{
 		{Author: "github-actions[bot]", CreatedAt: base.Add(time.Hour),
-			Body: gateReportMarker + "\nthe second run: metallb 0.16.1 still fails\n"},
+			Body: gate.ReportMarker + "\nthe second run: metallb 0.16.1 still fails\n"},
 		{Author: "github-actions[bot]", CreatedAt: base,
-			Body: gateReportMarker + "\nthe first run: metallb 0.16.1 still fails\n"},
+			Body: gate.ReportMarker + "\nthe first run: metallb 0.16.1 still fails\n"},
 	}
 	h.model.Verdict = &llm.Verdict{Classification: llm.ClassNoAction, Summary: "nothing to do"}
 
@@ -138,7 +139,7 @@ func TestAGreenGateSaysWhyItCouldNotReadTheReport(t *testing.T) {
 	h.git.Check = gitprovider.CheckSuccess
 	h.git.Comments = []gitprovider.Comment{{
 		Author: "a-contributor",
-		Body:   gateReportMarker + "\n### addons-gate — passed\n",
+		Body:   gate.ReportMarker + "\n### addons-gate — passed\n",
 	}}
 
 	if err := h.triage.Run(context.Background(), promotion()); err != nil {

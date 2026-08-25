@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/JamesAtIntegratnIO/bosun/cluster"
+	"github.com/JamesAtIntegratnIO/bosun/gate"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
@@ -57,7 +58,7 @@ spec:
 
 // A report whose only blocking finding is one CRD dropping one version.
 func oneDropReport() string {
-	return gateReportMarker + "\n### Resources\n\n" +
+	return gate.ReportMarker + "\n### Resources\n\n" +
 		"**A CustomResourceDefinition stopped serving a version**\n\n" +
 		migrate.Line("CustomResourceDefinition/externalsecrets.external-secrets.io",
 			"v1beta1", "ExternalSecret", "v1") + "\n"

@@ -92,3 +92,49 @@ func TestARemovalLineIsNotRepairable(t *testing.T) {
 		t.Fatalf("a removal has no destination and must parse as nothing, got %+v", got)
 	}
 }
+
+// All three object groups render an identical bullet. A reader that matched
+// the bullet without tracking its group treated an ADDED definition as a
+// removed one -- and every false hit is a live apiserver lookup on a path a
+// human is waiting on.
+func TestParseRemovedCRDsOnlyReadsTheRemovedGroup(t *testing.T) {
+	report := strings.Join([]string{
+		"### Rendered objects",
+		"",
+		ObjectGroupHeading(GroupAdded, 1),
+		"",
+		"- `CustomResourceDefinition/widgets.example.io`",
+		"",
+		ObjectGroupHeading(GroupRemoved, 2),
+		"",
+		"- `CustomResourceDefinition/gadgets.example.io`",
+		"- `CustomResourceDefinition/sprockets.example.io in tools`",
+		"  - a note about the removal",
+		"",
+		ObjectGroupHeading(GroupChanged, 1),
+		"",
+		"- `CustomResourceDefinition/doodads.example.io`",
+		"",
+		"### Versions",
+		"",
+		"- `CustomResourceDefinition/decoys.example.io`",
+	}, "\n")
+
+	got := ParseRemovedCRDs(report)
+	want := []string{"gadgets.example.io", "sprockets.example.io"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
+
+func TestParseRemovedCRDsFindsNothingWhenNothingWasRemoved(t *testing.T) {
+	report := ObjectGroupHeading(GroupAdded, 1) + "\n\n- `CustomResourceDefinition/widgets.example.io`\n"
+	if got := ParseRemovedCRDs(report); len(got) != 0 {
+		t.Errorf("added definitions must not read as removed: %v", got)
+	}
+}

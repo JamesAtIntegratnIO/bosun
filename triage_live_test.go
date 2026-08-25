@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/JamesAtIntegratnIO/bosun/cluster"
+	"github.com/JamesAtIntegratnIO/bosun/gate"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
@@ -16,7 +17,7 @@ import (
 // was counted and a zero that is the shape of nobody having looked.
 
 func droppedReport() string {
-	return gateReportMarker + "\n### Resources\n\n" +
+	return gate.ReportMarker + "\n### Resources\n\n" +
 		"**A CustomResourceDefinition stopped serving a version**\n\n" +
 		migrate.Line("CustomResourceDefinition/externalsecrets.external-secrets.io",
 			"v1alpha1, v1beta1", "ExternalSecret", "v1") + "\n"
@@ -101,7 +102,7 @@ func TestAPartialCountIsNotPresentedAsATotal(t *testing.T) {
 // has the definition, because this runs before the change is applied.
 func TestARemovedDefinitionGetsItsVersionsFromTheCluster(t *testing.T) {
 	h := newHarness(t)
-	h.git.Comments = []gitprovider.Comment{{Author: "gitops-gate", Body: gateReportMarker +
+	h.git.Comments = []gitprovider.Comment{{Author: "gitops-gate", Body: gate.ReportMarker +
 		"\n### Resources\n\n**Removed (1)**\n\n- `CustomResourceDefinition/policyexceptions.kyverno.io`\n"}}
 	fake := &cluster.Fake{
 		CRDs:   map[string]cluster.CRD{"policyexceptions.kyverno.io": {Versions: []string{"v2beta1"}, Known: true}},

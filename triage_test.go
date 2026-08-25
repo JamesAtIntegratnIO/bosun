@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/JamesAtIntegratnIO/bosun/edits"
+	"github.com/JamesAtIntegratnIO/bosun/gate"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
@@ -320,7 +321,7 @@ func TestTheModelIsShownTheGateReport(t *testing.T) {
 	if err := h.triage.Run(context.Background(), promotion()); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{gateReportMarker, "0.16.1", "metallb.defaultVersion"} {
+	for _, want := range []string{gate.ReportMarker, "0.16.1", "metallb.defaultVersion"} {
 		if !strings.Contains(h.model.User, want) {
 			t.Errorf("prompt does not contain %q:\n%s", want, h.model.User)
 		}
