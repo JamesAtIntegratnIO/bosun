@@ -52,6 +52,9 @@ type Fake struct {
 	// re-ran on a repaired pull request should leave ONE report, so a test
 	// asserting "two runs, one comment" reads len(Posted)==1 && len(Updated)==1.
 	Updated []string
+	// CommentAuthor is the account the fake records as having written a
+	// comment. Defaults to something that is plainly not the provider name.
+	CommentAuthor string
 	// UpdateErr makes every UpdateComment fail, which is how a test reaches
 	// the path where the host refuses an edit and the gate must still publish.
 	UpdateErr error
@@ -111,7 +114,15 @@ func (f *Fake) Comment(_ context.Context, _ int, body string) error {
 	f.Posted = append(f.Posted, body)
 	if f.PR != nil {
 		f.nextID++
-		f.Comments = append(f.Comments, Comment{ID: f.nextID, Author: f.Name(), Body: body})
+		// Deliberately NOT Name(): that is the provider ("fake"), and a real
+		// host records the ACCOUNT. Conflating them let a bug ship where the
+		// agent looked for its own comment by author and never found it,
+		// because the fake had agreed with the mistake.
+		author := f.CommentAuthor
+		if author == "" {
+			author = "agent[bot]"
+		}
+		f.Comments = append(f.Comments, Comment{ID: f.nextID, Author: author, Body: body})
 	}
 	return nil
 }

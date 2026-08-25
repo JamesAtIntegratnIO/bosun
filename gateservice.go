@@ -441,8 +441,14 @@ func (g *GateService) comment(ctx context.Context, pr *gitprovider.PullRequest, 
 				return
 			}
 		}
+		// Ours is the one carrying the verdict stamp, which only this code
+		// path writes. NOT the one whose author matches -- Name() is the
+		// PROVIDER's name ("github"), never the account, and a report posted
+		// by a CI adapter is not ours to rewrite anyway. Matching on the stamp
+		// is the same question asked of the artefact instead of the identity,
+		// and it is the question that has an answer here.
 		for i := range comments {
-			if strings.Contains(comments[i].Body, gate.ReportMarker) && comments[i].Author == g.Git.Name() {
+			if strings.Contains(comments[i].Body, stampVerdict) {
 				existing = &comments[i]
 			}
 		}
