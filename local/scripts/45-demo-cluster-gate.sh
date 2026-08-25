@@ -66,15 +66,27 @@ kc -n bosun logs "$POD" | grep -q "gate: in-cluster" \
   || { bad "the agent did not announce the in-cluster gate"; exit 1; }
 ok "polling for open pull requests -- no CI anywhere in this act"
 
-# One status, by context name, newest first -- Gitea has no check-runs API,
-# so this is the whole surface.
+# One status, by context name. Gitea has no check-runs API, so this is the
+# whole surface. It arrives newest first -- but Gitea stamps whole seconds, and
+# the gate posts `pending` and then its verdict inside one of them, so the
+# order within that tie is arbitrary and taking the first match is a coin flip.
+# This script lost that flip on its first run: it watched a `pending` from
+# 01:04:02 while the `success` beside it, same second, went unread for 180s.
+# Newest wins, and a tie is broken on meaning -- a verdict cannot precede the
+# pending that announced it. The same rule the Gitea client itself applies.
 gate_status() { # sha -> "state description"
   gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/statuses/$1?limit=50" \
     | python3 -c '
 import json,sys
+best = None
 for s in json.load(sys.stdin):
-    if s.get("context") == "gate":
-        print(s.get("status",""), s.get("description","")); break'
+    if s.get("context") != "gate":
+        continue
+    at, state = s.get("created_at",""), s.get("status","")
+    if best is None or at > best[0] or (at == best[0] and best[1] == "pending" and state != "pending"):
+        best = (at, state, s.get("description",""))
+if best:
+    print(best[1], best[2])'
 }
 status_is() { # sha state -> bool
   gate_status "$1" | grep -q "^$2"
@@ -84,9 +96,16 @@ head_sha() { # pr -> sha
     | python3 -c 'import json,sys; print(json.load(sys.stdin)["head"]["sha"])'
 }
 open_pr() { # branch title -> pr number
-  gitea_api POST "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls" \
+  local pr
+  pr="$(gitea_api POST "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls" \
     -d "$(BR="$1" TITLE="$2" python3 -c 'import json,os; print(json.dumps({"head":os.environ["BR"],"base":"main","title":os.environ["TITLE"],"body":"Opened by the local proving ground: the in-cluster gate act."}))')" \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin).get("number",""))'
+    | python3 -c 'import json,sys; print(json.load(sys.stdin).get("number",""))')"
+  # A second run force-pushes the same branches, and Gitea refuses to open a
+  # pull request that is already open. Reuse it -- the same fallback act two
+  # uses, and without it this script works exactly once per cluster.
+  [ -n "$pr" ] || pr="$(gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls?state=open" \
+    | BR="$1" python3 -c 'import json,os,sys; d=[p for p in json.load(sys.stdin) if p["head"]["ref"]==os.environ["BR"]]; print(d[0]["number"] if d else "")')"
+  printf '%s' "$pr"
 }
 
 WORK="$(mktemp -d)"
