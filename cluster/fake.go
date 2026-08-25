@@ -1,6 +1,11 @@
 package cluster
 
-import "context"
+import (
+	"context"
+	"fmt"
+
+	"github.com/JamesAtIntegratnIO/bosun/gate"
+)
 
 // Fake is an in-memory Reader.
 //
@@ -18,11 +23,28 @@ type Fake struct {
 	// CRDs are keyed by <plural>.<group>, same rule.
 	CRDs map[string]CRD
 
+	// Inventory is what ClusterInventory answers. Nil answers the way a
+	// cluster with no ArgoCD Secrets does -- an error -- because a fake that
+	// silently handed back an empty inventory would let a gate that renders
+	// against nothing pass its tests.
+	Inventory    *gate.Inventory
+	InventoryErr error
+
 	// CountCalls and AppCalls record what was asked, so a test can assert the
 	// agent did not read the cluster on a path that must not.
 	CountCalls []string
 	AppCalls   []string
 	CRDCalls   []string
+}
+
+func (f *Fake) ClusterInventory(_ context.Context) (*gate.Inventory, error) {
+	if f.InventoryErr != nil {
+		return nil, f.InventoryErr
+	}
+	if f.Inventory == nil {
+		return nil, fmt.Errorf("no ArgoCD cluster Secrets in namespace %q -- the gate cannot expand a generator against an empty inventory", "argocd")
+	}
+	return f.Inventory, nil
 }
 
 func (f *Fake) Name() string { return "fake-cluster" }
