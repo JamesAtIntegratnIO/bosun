@@ -287,7 +287,6 @@ func sortChanges(c []Change) {
 // including a CI job summary.
 const ReportMarker = "<!-- gitops-gate -->"
 
-
 // Verdict is the report's own answer, in one line, so a reader knows what they
 // are looking at before they read anything else.
 //

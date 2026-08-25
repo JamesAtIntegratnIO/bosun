@@ -48,7 +48,7 @@ type Config struct {
 	// deliberately NOT the same thing as the account the token belongs to --
 	// a reviewer should be able to tell a bot's comment from a colleague's at
 	// a glance, and the token's owner is whoever minted it.
-	Brand     string
+	Brand string
 
 	// Behaviour.
 	CheckName string

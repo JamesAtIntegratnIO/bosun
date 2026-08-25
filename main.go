@@ -136,7 +136,7 @@ func main() {
 
 	t := &Triage{
 		Git: git, LLM: model,
-		Brand: cfg.Brand,
+		Brand:            cfg.Brand,
 		Policy:           edits.Policy{Allow: cfg.AllowPaths, Deny: cfg.DenyPaths},
 		CheckName:        cfg.CheckName,
 		GateReportAuthor: cfg.GateReportAuthor,

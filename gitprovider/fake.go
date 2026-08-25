@@ -47,7 +47,7 @@ type Fake struct {
 	// Posted, Labelled and Pushes are what the run did. Everything the agent is
 	// allowed to change about a pull request lands in one of the three, so a
 	// test asserting all three has covered the whole write surface.
-	Posted   []string
+	Posted []string
 	// Updated are bodies written by UpdateComment, oldest first. A gate that
 	// re-ran on a repaired pull request should leave ONE report, so a test
 	// asserting "two runs, one comment" reads len(Posted)==1 && len(Updated)==1.
@@ -56,8 +56,8 @@ type Fake struct {
 	// the path where the host refuses an edit and the gate must still publish.
 	UpdateErr error
 	nextID    int64
-	Labelled []string
-	Pushes   []Push
+	Labelled  []string
+	Pushes    []Push
 }
 
 // Push is one recorded PushFix, including the working tree as it stood. The
