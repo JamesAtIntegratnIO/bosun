@@ -31,19 +31,35 @@ mode_now() {
   kc -n bosun get deploy bosun-bosun \
     -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="GATE_MODE")].value}'
 }
+
+# Through HELM, not `kubectl set env`, and that is not ceremony.
+#
+# Cluster mode reads the ArgoCD cluster Secrets, and the chart grants that with
+# a namespaced Role it creates ONLY in cluster mode. Setting the environment
+# variable by hand moves the switch and leaves the permission behind: the agent
+# comes up, asks for the inventory, is refused, and -- by design -- refuses to
+# start rather than gate against a world it cannot see. A CrashLoopBackOff that
+# says `secrets is forbidden` is the correct behaviour and a mystifying way to
+# open a demo. Helm moves both halves together, which is also how an operator
+# turns this on.
+set_mode() { # <mode>
+  helm upgrade bosun "$ROOT/../charts/bosun" \
+    --kube-context "$CLUSTER_CONTEXT" --namespace bosun \
+    --reuse-values --set gate.mode="$1" \
+    --wait --timeout 5m >/dev/null
+}
+
 ORIGINAL="$(mode_now)"
 restore() {
   say "putting the gate back where the other acts expect it"
-  kc -n bosun set env deploy/bosun-bosun "GATE_MODE=${ORIGINAL:-ci}" >/dev/null
-  kc -n bosun rollout status deploy/bosun-bosun --timeout=180s >/dev/null
+  set_mode "${ORIGINAL:-ci}"
   ok "GATE_MODE=$(mode_now)"
 }
 trap restore EXIT
 
 say "the agent becomes the gate"
 step "was: GATE_MODE=${ORIGINAL:-<chart default>}"
-kc -n bosun set env deploy/bosun-bosun GATE_MODE=cluster >/dev/null
-kc -n bosun rollout status deploy/bosun-bosun --timeout=180s >/dev/null
+set_mode cluster
 POD="$(agent_pod)"
 [ -n "$POD" ] || { bad "no agent pod"; exit 1; }
 kc -n bosun logs "$POD" | grep -q "gate: in-cluster" \
