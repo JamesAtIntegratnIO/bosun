@@ -159,10 +159,16 @@ host or model provider. Those are values.
 ## Development
 
 ```bash
+nix develop            # go, kubectl, kind, and helm pinned to the image's version
 go test ./...          # unit tests and the eval suite
 go test ./evals/...    # just the evals
 hack/lint.sh           # helm lint + values schema validation
 ```
+
+The dev shell pins helm to the version the images carry, because the gate's
+verdict is the output of `helm template` — rendering locally with a different
+helm than production is a difference that looks like nothing at all. See
+[`CONTRIBUTING.md`](CONTRIBUTING.md#the-toolchain).
 
 The [local proving ground](local) builds a throwaway cluster and replays ten
 incidents that really happened to the platform this was built for — real pull
