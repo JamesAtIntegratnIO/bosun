@@ -323,38 +323,91 @@ func trimHashes(in []string) []string {
 	return out
 }
 
-// detectVerificationStuck finds a Stage held by a verification that is not
-// finishing.
+// detectVerificationStuck finds a Stage that a verification has stopped.
 //
-// Kargo will not start the next promotion while the previous freight is being
-// verified, which is correct and occasionally indistinguishable from a stuck
-// pipeline: the Stage is not Ready, no promotion is running, and nothing says
-// what it is waiting for.
+// TWO SITUATIONS, and they read differently on purpose.
+//
+// A verification still RUNNING after long enough is a Stage nothing promotes
+// past while an AnalysisRun with no timeout takes its time.
+//
+// A verification that FAILED or ERRORED is worse and much easier to miss,
+// because it is over. Kargo does not re-run it: that freight has been
+// verified, and the answer was no. The Stage sits `Ready=False` forever,
+// declines every promotion behind it, and every Application it manages stays
+// Synced and Healthy on the version it already had. Measured: three Stages
+// held for three days by an AnalysisRun that could not reach Prometheus
+// because a NetworkPolicy excepted RFC1918 and Prometheus is a ClusterIP.
+//
+// Nothing about that produces an alert, which is why it needs one.
 func detectVerificationStuck(s *Snapshot) []Finding {
 	var out []Finding
 	for _, st := range s.Stages {
 		if st.Ready || !strings.Contains(strings.ToLower(st.ReadyReason), "verif") {
 			continue
 		}
-		if st.ReadySince > 0 && st.ReadySince < verifyStuck {
+		over := isTerminalVerification(st.VerificationPhase)
+		// A verification still running is only worth reporting once it has
+		// run long enough to be stuck. One that already failed is worth
+		// reporting immediately -- it is not going to change.
+		if !over && st.ReadySince > 0 && st.ReadySince < verifyStuck {
 			continue
 		}
-		out = append(out, Finding{
+		f := Finding{
 			Kind:     KindVerifyStuck,
-			Severity: Degraded,
 			Subject:  st.Name,
 			Since:    st.ReadySince,
-			Summary: fmt.Sprintf("%s has been verifying for %s, and nothing promotes past it meanwhile",
-				st.Name, human(st.ReadySince)),
-			Detail: strings.TrimSpace(st.ReadyMessage) + "\n\nA verification with no timeout holds the " +
-				"Stage's queue indefinitely, and the Stage reports only that it is not Ready.",
-			Remedy: fmt.Sprintf("kubectl -n %s get analysisruns --sort-by=.metadata.creationTimestamp | tail -5\n"+
-				"# then read the failing metric:\n"+
+			Severity: Degraded,
+			Detail:   strings.TrimSpace(st.ReadyMessage),
+		}
+		if over {
+			f.Severity = Blocking
+			f.Summary = fmt.Sprintf("%s stopped promoting %s ago: its verification ended %s and Kargo will not re-run it",
+				st.Name, human(st.ReadySince), strings.ToLower(st.VerificationPhase))
+			f.Detail += "\n\nThat freight has been verified and the answer was no, so nothing retries. " +
+				"The Stage declines every promotion behind it while every Application it manages stays " +
+				"Synced and Healthy on the version it already had."
+			f.Remedy = reverifyCmd(st.Namespace, st.Name, st.VerificationID)
+		} else {
+			f.Summary = fmt.Sprintf("%s has been verifying for %s, and nothing promotes past it meanwhile",
+				st.Name, human(st.ReadySince))
+			f.Detail += "\n\nAn AnalysisRun with no timeout holds the Stage's queue indefinitely, and the " +
+				"Stage reports only that it is not Ready."
+			f.Remedy = fmt.Sprintf("kubectl -n %s get analysisruns --sort-by=.metadata.creationTimestamp | tail -5\n"+
 				"kubectl -n %s get analysisrun <name> -o jsonpath='{.status.metricResults}'",
-				orNS(st.Namespace), orNS(st.Namespace)),
-		})
+				orNS(st.Namespace), orNS(st.Namespace))
+		}
+		out = append(out, f)
 	}
 	return out
+}
+
+func isTerminalVerification(phase string) bool {
+	switch phase {
+	case "Failed", "Error", "Aborted", "Inconclusive":
+		return true
+	}
+	return false
+}
+
+// reverifyCmd re-runs a verification that has already answered.
+//
+// The id is not optional and not discoverable from the Stage's conditions --
+// it lives in `status.freightHistory[0].verificationHistory[0].id`, which is
+// three levels deeper than anyone looks. Fixing the underlying cause does
+// NOTHING on its own: the verification is over, and the Stage stays stuck
+// until something asks it again. Proved by fixing a NetworkPolicy and watching
+// three Stages not move.
+func reverifyCmd(ns, stage, id string) string {
+	ns = orNS(ns)
+	if id == "" {
+		return fmt.Sprintf(`# find the verification id, then ask for it again:
+kubectl -n %s get stage %s -o jsonpath='{.status.freightHistory[0].verificationHistory[0].id}'
+kubectl -n %s annotate stage %s 'kargo.akuity.io/reverify={"id":"<id>"}' --overwrite`, ns, stage, ns, stage)
+	}
+	return fmt.Sprintf(`# Fixing the cause is not enough: the verification is over, and the Stage
+# stays stuck until something asks it again.
+kubectl -n %s annotate stage %s \
+  'kargo.akuity.io/reverify={"id":"%s"}' --overwrite`, ns, stage, id)
 }
 
 func orNS(ns string) string {

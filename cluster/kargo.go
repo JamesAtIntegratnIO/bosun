@@ -29,6 +29,11 @@ type KargoStage struct {
 	ReadyReason    string
 	ReadyMessage   string
 	ReadySince     time.Duration
+	// VerificationID is the id of the newest verification for the current
+	// freight. It is what `kargo.akuity.io/reverify` takes, and without it the
+	// remedy for a stuck verification is a paragraph instead of a command.
+	VerificationID    string
+	VerificationPhase string
 }
 
 // KargoUpdate is one `yaml-update` step's file and keys.
@@ -98,6 +103,10 @@ func (a *APIServer) Stages(ctx context.Context) ([]KargoStage, error) {
 					Items map[string]struct {
 						Name string `json:"name"`
 					} `json:"items"`
+					VerificationHistory []struct {
+						ID    string `json:"id"`
+						Phase string `json:"phase"`
+					} `json:"verificationHistory"`
 				} `json:"freightHistory"`
 				Conditions []condition `json:"conditions"`
 			} `json:"status"`
@@ -127,6 +136,9 @@ func (a *APIServer) Stages(ctx context.Context) ([]KargoStage, error) {
 			for _, v := range it.Status.FreightHistory[0].Items {
 				st.CurrentFreight = v.Name
 				break
+			}
+			if vh := it.Status.FreightHistory[0].VerificationHistory; len(vh) > 0 {
+				st.VerificationID, st.VerificationPhase = vh[0].ID, vh[0].Phase
 			}
 		}
 		if c, ok := findCondition(it.Status.Conditions, "Ready"); ok {

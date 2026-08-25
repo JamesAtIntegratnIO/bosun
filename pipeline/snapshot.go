@@ -90,6 +90,10 @@ type Stage struct {
 	ReadyMessage string
 	// ReadySince is how long the current Ready state has held.
 	ReadySince time.Duration
+	// VerificationID and VerificationPhase describe the newest verification
+	// of the current freight. The id is what re-runs it.
+	VerificationID    string
+	VerificationPhase string
 }
 
 type Warehouse struct {

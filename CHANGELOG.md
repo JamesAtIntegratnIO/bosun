@@ -3,6 +3,27 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.18.1] - 2026-08-25
+
+### Fixed
+
+- **A finished verification is a different situation from a slow one, and the
+  remedy is a different command.** 0.18.0 reported both as "has been verifying
+  for N", which is wrong for one that already failed: it is not verifying, it
+  is over. Kargo does not re-run it — that freight has been verified and the
+  answer was no — so the Stage sits `Ready=False` forever, declines every
+  promotion behind it, and every Application stays Synced and Healthy on the
+  version it already had.
+
+  It is now **blocking**, says so, and carries
+  `kargo.akuity.io/reverify={"id":"…"}` with the id filled in. Learned the hard
+  way an hour after 0.18.0 shipped: the NetworkPolicy that had been dropping
+  the AnalysisRun's Prometheus queries was fixed, and all three Stages stayed
+  exactly where they were. **Fixing the cause does nothing on its own.** The id
+  lives at `status.freightHistory[0].verificationHistory[0].id`, three levels
+  deeper than anyone looks, so a remedy without it is a paragraph rather than a
+  command.
+
 ## [0.18.0] - 2026-08-25
 
 ### Added

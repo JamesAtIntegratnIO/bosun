@@ -62,7 +62,8 @@ func (c *Collector) Collect(ctx context.Context) *Snapshot {
 			p := Stage{
 				Name: st.Name, Namespace: st.Namespace, CurrentFreight: st.CurrentFreight,
 				Ready: st.Ready, ReadyReason: st.ReadyReason, ReadyMessage: st.ReadyMessage,
-				ReadySince: st.ReadySince,
+				ReadySince:     st.ReadySince,
+				VerificationID: st.VerificationID, VerificationPhase: st.VerificationPhase,
 			}
 			for _, u := range st.Updates {
 				p.Updates = append(p.Updates, Update{Path: u.Path, Keys: u.Keys})
