@@ -1,6 +1,9 @@
 package gate
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestFastTemplateResolvesClusterPaths(t *testing.T) {
 	data := Cluster{
@@ -55,5 +58,42 @@ func TestSplitPathHandlesQuotedIndex(t *testing.T) {
 	got, ok := lookupPath(data, `metadata.labels["platform.example/team"]`)
 	if !ok || got != "core" {
 		t.Fatalf("want core, got %q ok=%v", got, ok)
+	}
+}
+
+// The template being rendered comes from the pull request under review, in a
+// process holding the git token, the LLM key and the App private key. A
+// template that can read the environment is a credential read.
+func TestGoTemplateCannotReachTheEnvironmentOrNetwork(t *testing.T) {
+	t.Setenv("GIT_TOKEN", "ghp_secret_value")
+
+	for _, fn := range []string{
+		`{{ env "GIT_TOKEN" }}`,
+		`{{ expandenv "$GIT_TOKEN" }}`,
+		`{{ getHostByName "example.com" }}`,
+	} {
+		node := map[string]any{"name": fn}
+		out, err := renderGoTemplate(node, map[string]any{})
+		if err == nil {
+			t.Errorf("%s rendered instead of failing: %v", fn, out)
+			continue
+		}
+		if !strings.Contains(err.Error(), "parsing template") {
+			t.Errorf("%s: want a parse failure, got %v", fn, err)
+		}
+	}
+}
+
+// Deleting the three must not cost us the rest of sprig -- the dialect has to
+// stay the one Argo CD renders, or the gate blocks changes Argo accepts.
+func TestGoTemplateKeepsOrdinarySprigFunctions(t *testing.T) {
+	node := map[string]any{"name": `{{ .cluster | upper | trunc 4 }}`}
+	out, err := renderGoTemplate(node, map[string]any{"cluster": "hub-east"})
+	if err != nil {
+		t.Fatalf("ordinary sprig functions should still render: %v", err)
+	}
+	m, ok := out.(map[string]any)
+	if !ok || m["name"] != "HUB-" {
+		t.Fatalf("got %#v, want name HUB-", out)
 	}
 }

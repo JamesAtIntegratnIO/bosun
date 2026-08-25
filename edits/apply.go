@@ -12,6 +12,17 @@
 //     rather than changing the wrong line;
 //   - the value is rewritten in place, preserving indentation, quoting style
 //     and any trailing comment, so a one-line change stays a one-line change.
+//
+// # Why gopkg.in/yaml.v3 here and sigs.k8s.io/yaml everywhere else
+//
+// The rest of the module decodes YAML into structs, which sigs.k8s.io/yaml
+// does by round-tripping through JSON -- so it honours `json:` tags and matches
+// what Kubernetes itself accepts. That round trip is exactly what this package
+// cannot use: it needs yaml.Node, which carries source positions, so a value
+// can be rewritten ON ITS OWN LINE with the indentation, quoting style and
+// trailing comment intact. Re-serialising a whole document instead would
+// reformat the file, discard comments, and turn a one-line change into an
+// unreviewable diff.
 package edits
 
 import (
@@ -81,11 +92,11 @@ var DefaultDeny = []string{
 	".github/**",     // the gate's own workflows
 	".gitlab-ci.yml", //
 	"bitbucket-pipelines.yml",
-	".gitops-gate.yaml",             // what the gate renders, and how
-	".gitops-gate/**",               // the cluster inventory the gate compares against
-	"delivery/**",                   // the kit itself, including this agent
-	"**/kargo-projects/values.yaml", // merge policy and constraints
-	"**/kargo-pipelines/**",
+	".gitops-gate.yaml",     // what the gate renders, and how
+	".gitops-gate/**",       // the cluster inventory the gate compares against
+	"delivery/**",           // the kit itself, including this agent
+	"**/kargo-projects/**",  // merge policy and constraints
+	"**/kargo-pipelines/**", // the promotion pipelines themselves
 }
 
 type Result struct {
@@ -111,6 +122,10 @@ type Edit struct {
 // Apply writes every permitted edit under root and reports both what it did
 // and, importantly, what it refused. A silent refusal would let a model
 // believe it had fixed something.
+//
+// The Result is non-nil even when the error is: a write failing partway
+// through leaves the earlier edits on disk, and that is exactly the moment a
+// caller needs to know which ones.
 func Apply(root string, policy Policy, in []Edit) (*Result, error) {
 	res := &Result{}
 
@@ -126,9 +141,15 @@ func Apply(root string, policy Policy, in []Edit) (*Result, error) {
 			continue
 		}
 
-		full := filepath.Join(root, filepath.Clean("/"+e.Path))
+		// Join, not Join(root, Clean("/"+path)). Rooting the path at "/" first
+		// resolved every ".." before Join ever saw it, so the containment test
+		// below could not fail -- a guard that read as the traversal defence
+		// and was in fact dead code, with the confinement happening silently
+		// one line earlier. Now Rel is the real test and rejects what it says
+		// it rejects.
+		full := filepath.Join(root, e.Path)
 		rel, err := filepath.Rel(root, full)
-		if err != nil || strings.HasPrefix(rel, "..") {
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			res.Rejected = append(res.Rejected, Rejected{e.Path, e.Key, "path escapes the repository"})
 			continue
 		}
@@ -145,9 +166,14 @@ func Apply(root string, policy Policy, in []Edit) (*Result, error) {
 			continue
 		}
 		if err := os.WriteFile(full, updated, 0o644); err != nil {
-			return nil, fmt.Errorf("writing %s: %w", e.Path, err)
+			// The result travels WITH the error. A write that fails partway
+			// leaves the repository holding every edit before it, and this
+			// package's whole contract is that a refusal is never silent --
+			// returning nil here made the loudest possible case, a half-written
+			// repository, the one the caller could say nothing about.
+			return res, fmt.Errorf("writing %s: %w", e.Path, err)
 		}
-		res.Applied = append(res.Applied, Applied{e.Path, e.Key, e.From, e.To, e.Rationale})
+		res.Applied = append(res.Applied, Applied(e))
 	}
 	return res, nil
 }
@@ -188,10 +214,21 @@ func (p Policy) Check(path string) string {
 
 // matchGlob supports the `**` prefix/suffix form used in the policies, which
 // filepath.Match does not.
+//
+// The both-ends form (`**/dir/**`) is checked first. Without it the `/**`
+// suffix case claims the pattern, strips only the tail, and then compares a
+// real path against one that still begins with a literal `**/` -- so the entry
+// silently never matches and a deny-list line that looks enforced is not.
 func matchGlob(pattern, path string) bool {
 	switch {
 	case pattern == path:
 		return true
+	case strings.HasPrefix(pattern, "**/") && strings.HasSuffix(pattern, "/**"):
+		mid := strings.TrimSuffix(strings.TrimPrefix(pattern, "**/"), "/**")
+		return path == mid ||
+			strings.HasPrefix(path, mid+"/") ||
+			strings.HasSuffix(path, "/"+mid) ||
+			strings.Contains(path, "/"+mid+"/")
 	case strings.HasSuffix(pattern, "/**"):
 		prefix := strings.TrimSuffix(pattern, "/**")
 		return path == prefix || strings.HasPrefix(path, prefix+"/")

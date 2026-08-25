@@ -106,6 +106,12 @@ func TestAlwaysDeniesTheGateAndThePolicy(t *testing.T) {
 		"addons/cluster-roles/control-plane/addons/kargo-projects/values.yaml",
 		".gitlab-ci.yml",
 		"bitbucket-pipelines.yml",
+		// Deliberately outside delivery/, so the two kargo entries are tested
+		// on their own rather than riding on the `delivery/**` denial.
+		"charts/kargo-pipelines/values.yaml",
+		"charts/kargo-projects/values.yaml",
+		"kargo-pipelines/values.yaml",
+		"platform/tenant/kargo-pipelines/promote/stage.yaml",
 	}
 	files := map[string]string{}
 	for _, f := range forbidden {
@@ -143,10 +149,36 @@ func TestRejectsPathOutsideTheAllowlist(t *testing.T) {
 
 func TestRejectsTraversalOutOfTheRepository(t *testing.T) {
 	root := repo(t, map[string]string{"addons/values.yaml": sample})
-	res, _ := Apply(root, Policy{Allow: []string{"**/*"}},
-		[]Edit{{Path: "../../../etc/passwd", Key: "key", From: "", To: "x"}})
-	if len(res.Applied) != 0 {
-		t.Fatal("traversal escaped the repository")
+	// The reason matters, not just the refusal. This used to pass through the
+	// allowlist while the containment guard below it was unreachable, so the
+	// test proved a policy decision and not the defence it is named for.
+	for _, path := range []string{
+		"../../../etc/passwd",
+		"addons/../../escape.yaml",
+		"./../outside.yaml",
+	} {
+		res, _ := Apply(root, Policy{Allow: []string{"**/*", "*", "../**"}},
+			[]Edit{{Path: path, Key: "key", From: "", To: "x"}})
+		if len(res.Applied) != 0 {
+			t.Fatalf("%s escaped the repository", path)
+		}
+		if len(res.Rejected) != 1 || res.Rejected[0].Reason != "path escapes the repository" {
+			t.Errorf("%s: want the containment refusal, got %+v", path, res.Rejected)
+		}
+	}
+}
+
+// The guard must not reject ordinary paths that merely contain a ".." segment
+// resolving back inside the repository.
+func TestAllowsATraversalThatStaysInside(t *testing.T) {
+	root := repo(t, map[string]string{"addons/values.yaml": sample})
+	res, err := Apply(root, Policy{Allow: []string{"addons/**"}},
+		[]Edit{{Path: "addons/nested/../values.yaml", Key: "metallb.defaultVersion", From: "0.16.0", To: "0.16.1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Applied) != 1 {
+		t.Fatalf("a path that stays inside must be applied, got %+v", res)
 	}
 }
 
@@ -328,5 +360,68 @@ func TestEmptyScopeIsUnscoped(t *testing.T) {
 	}
 	if len(res.Applied) != 1 {
 		t.Fatalf("empty Scope must not refuse anything, got %+v", res.Rejected)
+	}
+}
+
+// matchGlob's `**` forms are what the deny-list is written in, so a form the
+// matcher quietly fails to support is a deny-list entry that does not hold.
+func TestMatchGlobDoubleStarForms(t *testing.T) {
+	cases := []struct {
+		pattern, path string
+		want          bool
+	}{
+		{"**/kargo-pipelines/**", "charts/kargo-pipelines/values.yaml", true},
+		{"**/kargo-pipelines/**", "a/b/c/kargo-pipelines/d/e.yaml", true},
+		{"**/kargo-pipelines/**", "kargo-pipelines/values.yaml", true},
+		{"**/kargo-pipelines/**", "kargo-pipelines", true},
+		{"**/kargo-pipelines/**", "charts/kargo-pipelines", true},
+		{"**/kargo-pipelines/**", "charts/kargo-pipelines-staging/values.yaml", false},
+		{"**/kargo-pipelines/**", "charts/other/values.yaml", false},
+		{"delivery/**", "delivery/images/bosun/prompt.go", true},
+		{"delivery/**", "delivery", true},
+		{"delivery/**", "deliverance/x.yaml", false},
+		{"**/values.yaml", "charts/app/values.yaml", true},
+		{"**/values.yaml", "values.yaml", true},
+		{"**/values.yaml", "charts/app/other.yaml", false},
+	}
+	for _, c := range cases {
+		if got := matchGlob(c.pattern, c.path); got != c.want {
+			t.Errorf("matchGlob(%q, %q) = %v, want %v", c.pattern, c.path, got, c.want)
+		}
+	}
+}
+
+// A write failing partway leaves the earlier edits on disk. Returning a nil
+// Result made a half-written repository the one case the caller could say
+// nothing about -- in a package whose contract is that a refusal is never
+// silent.
+func TestApplyReportsWhatItWroteBeforeFailing(t *testing.T) {
+	root := repo(t, map[string]string{
+		"addons/first.yaml":  sample,
+		"addons/second.yaml": sample,
+	})
+	// Readable so the edit resolves, unwritable so the write is what fails --
+	// a rejection would take the other branch and prove nothing.
+	unwritable := filepath.Join(root, "addons", "second.yaml")
+	if err := os.Chmod(unwritable, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if f, err := os.OpenFile(unwritable, os.O_WRONLY, 0); err == nil {
+		f.Close()
+		t.Skip("running with write access to a read-only file (root?)")
+	}
+
+	res, err := Apply(root, Policy{Allow: []string{"addons/**"}}, []Edit{
+		{Path: "addons/first.yaml", Key: "metallb.defaultVersion", From: "0.16.0", To: "0.16.1"},
+		{Path: "addons/second.yaml", Key: "metallb.defaultVersion", From: "0.16.0", To: "0.16.1"},
+	})
+	if err == nil {
+		t.Fatal("want the write failure reported")
+	}
+	if res == nil {
+		t.Fatal("the result must survive the error -- the first edit is on disk")
+	}
+	if len(res.Applied) != 1 || res.Applied[0].Path != "addons/first.yaml" {
+		t.Errorf("want the first edit reported as applied, got %+v", res)
 	}
 }

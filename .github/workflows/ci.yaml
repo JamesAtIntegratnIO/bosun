@@ -6,6 +6,14 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Both jobs only read the checkout. Stated rather than inherited: without a
+# block the pull_request token takes whatever the repository default is, which
+# is a setting an operator can widen without touching this file -- and this is
+# the one workflow that runs on every pull request, including the ones the gate
+# exists to be suspicious of.
+permissions:
+  contents: read
+
 jobs:
   go:
     runs-on: ubuntu-latest
@@ -15,13 +23,37 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+      # helm and kubeconform are what the gate SHELLS OUT TO, and the tests
+      # covering those two seams skip when the binary is absent. Without these
+      # steps that skip happened here, silently, and a seam whose tests did not
+      # run reports exactly the same green as one that passed. Versions are
+      # pinned to the image's, which hack/portability-test.sh already checks
+      # against flake.nix.
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - name: kubeconform
+        run: |
+          wget -qO- https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz \
+            | tar -xz -C /usr/local/bin kubeconform
       - name: gofmt
         run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "run gofmt"; exit 1; }
       - run: go vet ./...
-      # The eval suite runs here too. It uses the recorded fixtures and a fake
-      # provider -- no model endpoint, no network, no spend. `./...` now covers
-      # the gate as well: one module, one command, both halves of the kit.
-      - run: go test ./...
+      # The eval suite runs here too: every case is checked for being
+      # well-formed and RUNNABLE against a fake provider -- no model endpoint,
+      # no network, no spend. Scoring against a real model is TestEval, which
+      # skips without DELIVERY_AGENT_LIVE. `./...` covers the gate as well: one
+      # module, one command, both halves of the kit.
+      #
+      # -race because the gate sweeps pull requests concurrently, the chart
+      # diff renders in parallel, and the service collapses duplicate calls
+      # under a mutex. Every one of those is a place where a test that passes
+      # a thousand times can still be wrong.
+      #
+      # REQUIRE_TOOLS turns "skipped because the binary is missing" into a
+      # failure. A skip is the right answer on a workstation and the wrong one
+      # here.
+      - run: REQUIRE_TOOLS=1 go test -race ./...
 
   chart:
     runs-on: ubuntu-latest

@@ -46,7 +46,7 @@ type ExportFilter struct {
 // NewExportFilter builds the filter a snapshot export wants: the defaults
 // common to any ArgoCD install, plus whatever the config declares, plus the
 // annotation keys the repository actually templates with.
-func NewExportFilter(cfg *Config, repoRoot string) ExportFilter {
+func NewExportFilter(repoRoot string, cfg *Config) ExportFilter {
 	f := ExportFilter{IgnoreKeys: append([]string{}, defaultNoisyKeys...)}
 	if cfg != nil {
 		f.IgnoreKeys = append(f.IgnoreKeys, cfg.ClustersExport.IgnoreKeys...)
@@ -62,7 +62,17 @@ func NewExportFilter(cfg *Config, repoRoot string) ExportFilter {
 // ExportClusters reads the ArgoCD cluster Secrets through kubectl and builds
 // an inventory snapshot, stamped with the export time so a reviewer can see
 // its age.
+//
+// A WORKSTATION command. kubectl is not in the gate's image -- which ships
+// helm and kubeconform only -- and this needs a kubeconfig pointing at the
+// cluster anyway, which the in-cluster gate does not have and does not want.
+// The in-cluster path reads the same Secrets through the apiserver directly
+// (see the cluster package).
 func ExportClusters(kubeContext, namespace string, filter ExportFilter) (*Inventory, error) {
+	if _, err := exec.LookPath("kubectl"); err != nil {
+		return nil, fmt.Errorf("kubectl is not on PATH: `clusters export` runs on a workstation " +
+			"against a kubeconfig, and is not part of the gate's image")
+	}
 	args := []string{"get", "secrets", "-n", namespace,
 		"-l", "argocd.argoproj.io/secret-type=cluster", "-o", "json"}
 	if kubeContext != "" {
@@ -125,9 +135,9 @@ func InventoryFromSecrets(items []ClusterSecret, filter ExportFilter) *Inventory
 	return inv
 }
 
-// NormalizeInventory drops the generatedAt stamp so a re-export does not
+// NormaliseInventory drops the generatedAt stamp so a re-export does not
 // report drift purely because time passed.
-func NormalizeInventory(raw []byte) string {
+func NormaliseInventory(raw []byte) string {
 	var inv Inventory
 	if err := yaml.Unmarshal(raw, &inv); err != nil {
 		return string(raw)
@@ -188,6 +198,10 @@ func annotationsUsedBy(repoRoot string) (map[string]bool, error) {
 		}
 		raw, err := os.ReadFile(path)
 		if err != nil {
+			// Best-effort enrichment, and a miss is safe in the direction that
+			// matters: a file this cannot read contributes no annotation to
+			// the keep-set, and an annotation kept unnecessarily costs one
+			// line -- which is the trade this whole scan is built on.
 			return nil
 		}
 		for _, m := range re.FindAllStringSubmatch(string(raw), -1) {

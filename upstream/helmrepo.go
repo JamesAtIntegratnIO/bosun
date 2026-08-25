@@ -27,8 +27,9 @@ import (
 // and trivy-operator-explorer, which is to say every chart in the eval suite
 // and the one this feature was designed around.
 
-// parseArtifact splits a promotion's artifact into a reference and, for a
+// ParseArtifact splits a promotion's artifact into a reference and, for a
 // chart, its name.
+//
 // Exported because the agent renders the same chart to read its target schema,
 // and "what shape is this artifact" must have ONE owner. Two answers to that
 // question is how the structural migration came to build
@@ -46,7 +47,7 @@ func ParseArtifact(artifact string) (ref, chart string) {
 	}
 }
 
-// isHelmRepoURL reports whether a reference is a classic Helm repository rather
+// IsHelmRepo reports whether a reference is a classic Helm repository rather
 // than an OCI one.
 func IsHelmRepo(ref string) bool {
 	return strings.HasPrefix(ref, "https://") || strings.HasPrefix(ref, "http://")
@@ -88,7 +89,7 @@ func (g *GitHubReleases) helmIndexSource(ctx context.Context, repoURL, chart, ve
 	if err != nil {
 		return "", fmt.Errorf("reading %s: %w", u, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		return "", fmt.Errorf("%s: %s", u, resp.Status)
 	}

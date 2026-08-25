@@ -14,16 +14,23 @@ import (
 // regardless of field ordering, whitespace, or where in the values layers a
 // setting came from.
 type Row struct {
-	AppSet     string `json:"appset"`
-	Cluster    string `json:"cluster"`
-	App        string `json:"app"`
-	Project    string `json:"project"`
-	Namespace  string `json:"namespace"`
-	SourceType string `json:"sourceType"` // helm | path | manifest
-	ChartRepo  string `json:"chartRepo"`
-	Chart      string `json:"chart"`
-	Version    string `json:"version"`
-	Path       string `json:"path"`
+	AppSet    string `json:"appset"`
+	Cluster   string `json:"cluster"`
+	App       string `json:"app"`
+	Project   string `json:"project"`
+	Namespace string `json:"namespace"`
+	// SourceType is how THIS Application gets its manifests, which is a
+	// different vocabulary from the config's SourceType (manifests, rendered,
+	// helm, kustomize, argocd-bootstrap) despite the shared name -- that one
+	// says where the gate reads Applications FROM. Named separately so the two
+	// cannot be assigned to each other, and typed so the accepted values are
+	// the const block rather than a trailing comment; the comment here claimed
+	// a `manifest` value nothing ever assigns.
+	SourceType RowSource `json:"sourceType"`
+	ChartRepo  string    `json:"chartRepo"`
+	Chart      string    `json:"chart"`
+	Version    string    `json:"version"`
+	Path       string    `json:"path"`
 
 	// ValueFiles and ValuesInline are what this Application renders its chart
 	// with. Carried on the row so a diff can re-render the chart at both
@@ -76,12 +83,34 @@ func WriteTableFile(path string, t *Table) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	bw := bufio.NewWriter(f)
-	if err := t.WriteJSON(bw); err != nil {
+	if err := writeThenClose(f, path, func() error {
+		bw := bufio.NewWriter(f)
+		if err := t.WriteJSON(bw); err != nil {
+			return err
+		}
+		return bw.Flush()
+	}); err != nil {
 		return err
 	}
-	return bw.Flush()
+	return nil
+}
+
+// writeThenClose runs write against an open file and closes it, reporting
+// whichever failed.
+//
+// Close is CHECKED rather than deferred. On a file that was written to, close
+// is where a short write finally surfaces, and this one produces the target
+// table the whole diff is computed against -- a truncated table is a diff
+// that quietly compares against less than it says it did.
+func writeThenClose(f *os.File, path string, write func() error) error {
+	if err := write(); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("closing %s: %w", path, err)
+	}
+	return nil
 }
 
 func ReadTableFile(path string) (*Table, error) {
@@ -99,15 +128,28 @@ func ReadTableFile(path string) (*Table, error) {
 // Describe renders a row's source in one human-readable string.
 func (r Row) Describe() string {
 	switch r.SourceType {
-	case "helm":
+	case RowHelm:
 		repo := r.ChartRepo
 		if repo != "" && !strings.HasSuffix(repo, "/") {
 			repo += "/"
 		}
 		return fmt.Sprintf("%s%s %s", repo, r.Chart, r.Version)
-	case "path", "manifest":
+	case RowPath:
 		return fmt.Sprintf("%s (%s)", r.Path, r.SourceType)
 	default:
-		return r.SourceType
+		// A row with no source type at all. It reads as the empty string,
+		// which is honest -- there is nothing to describe.
+		return string(r.SourceType)
 	}
 }
+
+// RowSource is how one Application in the table gets its manifests.
+type RowSource string
+
+const (
+	// RowHelm is a chart pulled at a pinned version -- the rows chart-diff can
+	// render on both sides of a bump.
+	RowHelm RowSource = "helm"
+	// RowPath is a directory in the repository, rendered as it stands.
+	RowPath RowSource = "path"
+)

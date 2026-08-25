@@ -6,13 +6,12 @@ import (
 	"strings"
 )
 
-// buildRestructurePrompt assembles the evidence for one document.
+// Prompt assembles the evidence for one document migration.
 //
 // Both schemas are pruned before they go in. A real CustomResourceDefinition
 // schema is tens of thousands of tokens of prose descriptions, and a prompt
 // that spends its budget on documentation has none left for the document it is
 // supposed to be migrating.
-// Prompt assembles the evidence for one document migration.
 //
 // It lives here rather than beside its one caller because it is measured as
 // well as used: the eval suite scores the restructure path against this exact
@@ -51,7 +50,7 @@ const maxSchemaDepth = 8
 // and an escalation -- never a bad write.
 const MaxSchemaChars = 12000
 
-// renderSchema prints the shape of a schema and nothing else: field names,
+// RenderSchema prints the shape of a schema and nothing else: field names,
 // types, requirements, and the values the schema itself dictates. Descriptions
 // are dropped, because they are the bulk of a real CRD schema and the model is
 // being asked where a field GOES, not what it means.

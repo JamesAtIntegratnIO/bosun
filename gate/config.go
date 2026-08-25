@@ -33,10 +33,27 @@ type Config struct {
 	// Concurrency caps parallel renders. Fleets are the reason this exists: a
 	// fifty-cluster inventory is fifty chart renders per revision, and serial
 	// execution turns a ninety-second gate into a coffee break.
+	//
+	// ParseConfig defaults this to 8. Read it through workers() rather than
+	// directly -- a Config built as a literal rather than parsed leaves it
+	// zero, and a zero-capacity semaphore is not "no limit", it is a channel
+	// nobody can send on.
 	Concurrency int `json:"concurrency"`
 
 	// Validate controls schema validation.
 	Validate ValidateConfig `json:"validate"`
+
+	// Egress is the operator's outbound deny-list, applied before helm pulls a
+	// remote chart. Nil is open, which is what the standalone CLI wants.
+	//
+	// Not from the config file -- it is the HOST's policy, not the reviewed
+	// repository's, and a pull request that could widen its own egress rules
+	// would be the deny-list configuring itself.
+	Egress EgressPolicy `json:"-"`
+
+	// Log records outbound destinations. Nil keeps no record, which an
+	// operator should have to choose rather than get by omission.
+	Log func(string, ...any) `json:"-"`
 
 	// ClustersExport tunes `clusters export`.
 	ClustersExport ClustersExportConfig `json:"clustersExport"`
@@ -181,7 +198,7 @@ func ParseConfig(raw []byte, path string) (*Config, error) {
 		c.ValuesRef = "values"
 	}
 	if c.Concurrency <= 0 {
-		c.Concurrency = 8
+		c.Concurrency = defaultConcurrency
 	}
 
 	// `bootstraps` is the older form. Fold it into sources so the rest of the
@@ -204,14 +221,21 @@ func ParseConfig(raw []byte, path string) (*Config, error) {
 		return nil, fmt.Errorf("%s: at least one entry under `sources` is required", path)
 	}
 	for i := range c.Sources {
-		if err := c.Sources[i].normalise(path, i); err != nil {
+		if err := c.Sources[i].validate(path, i); err != nil {
 			return nil, err
 		}
 	}
 	return &c, nil
 }
 
-func (s *Source) normalise(cfgPath string, i int) error {
+// validate defaults a source's name and checks that its type has the fields
+// that type needs.
+//
+// Named for what it does rather than `normalise`: the same package used that
+// word for stripping version stamps off a rendered object, and one word
+// meaning two unrelated things in one package is a word a reader has to look
+// up every time.
+func (s *Source) validate(cfgPath string, i int) error {
 	if s.Name == "" {
 		switch {
 		case s.Path != "":
@@ -236,7 +260,7 @@ func (s *Source) normalise(cfgPath string, i int) error {
 			return fmt.Errorf("%s: source %q is type %s and needs `path`", cfgPath, s.Name, s.Type)
 		}
 	case "":
-		return fmt.Errorf("%s: source %q has no `type` (manifests, helm, kustomize or argocd-bootstrap)", cfgPath, s.Name)
+		return fmt.Errorf("%s: source %q has no `type` (%s)", cfgPath, s.Name, sourceTypeList())
 	default:
 		return fmt.Errorf("%s: source %q has unknown type %q", cfgPath, s.Name, s.Type)
 	}
@@ -262,4 +286,44 @@ func (s *Source) matches(c Cluster) bool {
 		}
 	}
 	return true
+}
+
+// defaultConcurrency is the parallel-render cap when the config does not set
+// one. Eight keeps a fifty-cluster fleet inside a gate's time budget without
+// asking the host for fifty concurrent helm subprocesses.
+const defaultConcurrency = 8
+
+// workers is the render parallelism to actually use.
+//
+// Render and ChartDiff are exported and size their semaphore from this. Taking
+// Concurrency straight off the struct made a zero value -- any Config built as
+// a literal instead of through ParseConfig -- a permanent hang rather than an
+// error: `make(chan struct{}, 0)` is unbuffered, so the first worker blocks on
+// a send nobody will ever receive. A caller that got the config right is
+// unaffected; a caller that did not gets the default instead of a deadlock.
+func (c *Config) workers() int {
+	if c == nil || c.Concurrency < 1 {
+		return defaultConcurrency
+	}
+	return c.Concurrency
+}
+
+// sourceTypes is every value a source's `type` may take, in the order the const
+// block declares them.
+var sourceTypes = []SourceType{
+	SourceManifests, SourceRendered, SourceHelm, SourceKustomize, SourceArgoCDBootstrap,
+}
+
+// sourceTypeList renders them for the "you did not set one" error.
+//
+// Built from the constants rather than spelled out, because a hand-written list
+// falls behind the const block silently and did: `rendered` was added and the
+// message kept offering four of the five, so the one type an operator could not
+// discover was the one the error was there to teach them.
+func sourceTypeList() string {
+	names := make([]string, len(sourceTypes))
+	for i, t := range sourceTypes {
+		names[i] = string(t)
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
 }

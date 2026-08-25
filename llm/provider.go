@@ -55,9 +55,17 @@ const (
 	ClassNoAction   = "no_action"
 )
 
-// Valid reports whether a verdict is well-formed enough to act on. Schema
-// validation guarantees shape, not sense.
-func (v *Verdict) Valid() error {
+// Validate checks that a verdict is well-formed enough to act on, and REPAIRS
+// the one field worth recovering. Schema validation guarantees shape, not
+// sense.
+//
+// A verb, and named to match Inventory.Validate, because it is not a
+// predicate: the adjective-named checks in this codebase (Pass, Clean, Any,
+// Blocking, OK) return a bool and touch nothing. This returns an error and can
+// write to its receiver -- an escalation whose reason is empty gets the
+// reasoning copied into it rather than failing a correct verdict over a soft
+// field. `Valid() error` advertised the opposite of both.
+func (v *Verdict) Validate() error {
 	switch v.Classification {
 	case ClassMechanical:
 		if len(v.Edits) == 0 {

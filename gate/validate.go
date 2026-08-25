@@ -18,12 +18,12 @@ import (
 // CRDs outside the big projects are in no published catalogue, and without it
 // one unknown kind fails a run that had nothing wrong with it. The cost is
 // real and worth stating -- those kinds are simply not checked.
-func ValidateManifests(root string, cfg *Config, inv *Inventory, w io.Writer) (int, error) {
+func ValidateManifests(repoRoot string, cfg *Config, inv *Inventory, w io.Writer) (int, error) {
 	if _, err := exec.LookPath("kubeconform"); err != nil {
 		return 0, fmt.Errorf("kubeconform is not on PATH: %w", err)
 	}
 
-	streams, err := renderStreams(root, cfg, inv)
+	streams, err := renderStreams(repoRoot, cfg, inv)
 	if err != nil {
 		return 0, err
 	}
@@ -101,10 +101,10 @@ func runKubeconform(cfg *Config, doc []byte) ([]kubeconformResult, error) {
 
 // renderStreams re-collects every source and returns the raw manifests for
 // each, keyed by a human-readable name.
-func renderStreams(root string, cfg *Config, inv *Inventory) (map[string][]byte, error) {
+func renderStreams(repoRoot string, cfg *Config, inv *Inventory) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	for _, src := range cfg.Sources {
-		batch, err := collect(root, cfg, inv, src)
+		batch, err := collect(repoRoot, cfg, inv, src)
 		if err != nil {
 			return nil, err
 		}

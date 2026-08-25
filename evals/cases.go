@@ -7,6 +7,7 @@
 package evals
 
 import (
+	"slices"
 	"sort"
 
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
@@ -56,6 +57,12 @@ type Case struct {
 	Changed []string
 
 	// Subject is the bump: what moved, from where to where.
+	//
+	// Rendered into the prompt by BuildPrompt, which the triage and explain
+	// paths use. The restructure path builds its prompt from structural.Prompt
+	// instead and never sees this -- the restructure cases still set it, as a
+	// one-line description for whoever reads the fixture, and that is all it
+	// is there.
 	Subject string
 
 	// GateReport is what the pre-merge gate said, as a human would see it.
@@ -64,13 +71,31 @@ type Case struct {
 	// WantClass is the correct classification.
 	WantClass string
 
+	// Triage, Explain and Restructure hold the expectations that belong to one
+	// path each.
+	//
+	// Grouped because they are disjoint. Flat on one struct, a field set on a
+	// case whose Path never reads it was silently ignored and there was nothing
+	// to notice -- which is how the restructure cases came to carry a Subject
+	// that nothing renders.
+	Triage      triageWant
+	Explain     explainWant
+	Restructure restructureWant
+}
+
+// triageWant is what the red-gate classifier should have produced.
+type triageWant struct {
 	// WantEdits maps key -> expected new value. Only checked for mechanical
 	// cases. An answer may include these and no others.
 	WantEdits map[string]string
 
 	// EditFile is the path every expected edit targets.
 	EditFile string
+}
 
+// explainWant is what the green-gate explanation is given, and what it must
+// and must not say.
+type explainWant struct {
 	// Notes is the upstream testimony the explain path is given, rendered into
 	// the prompt by the same function the live agent uses. Nil is the case
 	// that matters most: with no maintainer account of WHY the render changed,
@@ -87,6 +112,20 @@ type Case struct {
 	// an answer that said the right thing surrounded by three inventions.
 	MustMention []string
 
+	// MustNotMention are strings that cannot legitimately appear: the
+	// distinctive noun of a reason the model was never shown, a component name
+	// nothing in the evidence names.
+	//
+	// Matched on WORD BOUNDARIES, and every entry must be a word that could
+	// only arrive by invention. Never a common word ("safe", "change"), never a
+	// version the report itself contains -- a probe that fires on the evidence
+	// measures the fixture rather than the model.
+	MustNotMention []string
+}
+
+// restructureWant is one document migration: the two schemas, the document as
+// the deterministic pass leaves it, and the answer.
+type restructureWant struct {
 	// Document is the manifest to migrate, with its apiVersion already swapped
 	// to the target -- the state the deterministic pass leaves it in.
 	Document string
@@ -110,16 +149,6 @@ type Case struct {
 	// opposite things: no expected document is "nothing should have been
 	// asked", and this is "something was asked and nothing should be written".
 	WantRefused bool
-
-	// MustNotMention are strings that cannot legitimately appear: the
-	// distinctive noun of a reason the model was never shown, a component name
-	// nothing in the evidence names.
-	//
-	// Matched on WORD BOUNDARIES, and every entry must be a word that could
-	// only arrive by invention. Never a common word ("safe", "change"), never a
-	// version the report itself contains -- a probe that fires on the evidence
-	// measures the fixture rather than the model.
-	MustNotMention []string
 }
 
 // ChangedFiles is what the promotion reports it rewrote. Defaults to every
@@ -143,8 +172,17 @@ const addonsPath = "addons/environments/production/addons/addons.yaml"
 // the promotion it claims to.
 const cpAddonsPath = "addons/cluster-roles/control-plane/addons/addons.yaml"
 
-// Cases are ordered roughly by how much judgement they need.
-var Cases = []Case{
+// Cases is every case the suite runs, in one place.
+//
+// Assembled by declaration rather than by two init() functions appending to an
+// exported global. The ordering below is part of the fixture -- roughly by how
+// much judgement a case needs -- and an init() in another file extended it
+// invisibly, from a function nothing calls and nothing can be read in order
+// with.
+var Cases = slices.Concat(triageCases, explainCases, restructureCases)
+
+// triageCases are ordered roughly by how much judgement they need.
+var triageCases = []Case{
 	{
 		Name:    "metallb-frr-defaults-flip",
 		Subject: "bump metallb chart 0.15.2 -> 0.16.0",
@@ -174,10 +212,12 @@ Chart 0.16.0 changed its defaults: speaker.frr.enabled now defaults false and
 frrk8s.enabled now defaults true. This cluster is L2-only and does not use FRR
 in any form.`,
 		WantClass: "mechanical",
-		EditFile:  addonsPath,
-		WantEdits: map[string]string{
-			"metallb.valuesObject.speaker.frr.enabled": "false",
-			"metallb.valuesObject.frrk8s.enabled":      "false",
+		Triage: triageWant{
+			EditFile: addonsPath,
+			WantEdits: map[string]string{
+				"metallb.valuesObject.speaker.frr.enabled": "false",
+				"metallb.valuesObject.frrk8s.enabled":      "false",
+			},
 		},
 	},
 	{
@@ -256,9 +296,11 @@ repository owns NetworkPolicies in a separate network-policies addon, plus a
 Kyverno default-deny policy that generates one per namespace. Chart-authored
 policies conflict with both.`,
 		WantClass: "mechanical",
-		EditFile:  addonsPath,
-		WantEdits: map[string]string{
-			"argocd.valuesObject.global.networkPolicy.create": "false",
+		Triage: triageWant{
+			EditFile: addonsPath,
+			WantEdits: map[string]string{
+				"argocd.valuesObject.global.networkPolicy.create": "false",
+			},
 		},
 	},
 	{
@@ -284,9 +326,11 @@ The exact version to move to is v1.5.1. The stored API versions in this
 cluster are already v1, and Gateway API v1.5.1 still serves v1beta1, so this is
 not a storage migration.`,
 		WantClass: "mechanical",
-		EditFile:  addonsPath,
-		WantEdits: map[string]string{
-			"gateway-api-crds.defaultVersion": "v1.5.1",
+		Triage: triageWant{
+			EditFile: addonsPath,
+			WantEdits: map[string]string{
+				"gateway-api-crds.defaultVersion": "v1.5.1",
+			},
 		},
 	},
 	{

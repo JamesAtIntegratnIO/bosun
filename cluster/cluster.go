@@ -116,10 +116,14 @@ type CRD struct {
 
 // Reader is the read-only view of the cluster the agent is allowed.
 //
-// Deliberately two questions rather than a generic client. A generic client is
-// an invitation to ask a new question from anywhere; two named methods make
-// every cluster read something a reviewer can find. It mirrors
-// upstream.Resolver's contract exactly: no error means "could not look", ever.
+// Deliberately a fixed set of named questions rather than a generic client. A
+// generic client is an invitation to ask a new question from anywhere; a named
+// method per question makes every cluster read something a reviewer can find
+// by searching for it. Each one below states what it answers and why it is
+// worth an apiserver round trip.
+//
+// It mirrors upstream.Resolver's contract exactly: no error means "could not
+// look", ever.
 type Reader interface {
 	// CountLive counts the objects live on one group/version/plural.
 	//

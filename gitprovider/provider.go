@@ -1,10 +1,15 @@
 // Package gitprovider is the git-host seam.
 //
-// Four methods, chosen because they are what the triage workflow actually
-// needs and nothing more. Adding a host is one implementation of this
-// interface with no change to the triage logic -- which is the whole reason
-// the judgement half lives in the cluster rather than in a CI system's native
-// syntax.
+// Provider is deliberately small: it carries what the triage workflow actually
+// needs and nothing more, so adding a host is one implementation with no
+// change to the triage logic -- which is the whole reason the judgement half
+// lives in the cluster rather than in a CI system's native syntax.
+//
+// The methods group into four jobs: read a pull request, read what has been
+// said on it, say something, and push a fix. The count is deliberately not
+// stated here -- it said "four" while the interface declared ten, and a
+// package doc that can be checked against the code below it and lose is worse
+// than one that does not try.
 package gitprovider
 
 import (
@@ -106,6 +111,11 @@ type Provider interface {
 	// meaning into it. This is how the in-cluster gate discovers work: no
 	// webhook to expose, no CI event to subscribe to, just the same polling
 	// the agent already does for check states.
+	//
+	// The values carry the same fields GetPullRequest returns. Body used to be
+	// the exception, left empty here and populated there, with nothing saying
+	// so -- a difference between two sources of the same type is the kind a
+	// caller finds by reading an empty string at runtime.
 	ListOpenPullRequests(ctx context.Context) ([]PullRequest, error)
 
 	// ListComments returns the pull request's comments, oldest last.

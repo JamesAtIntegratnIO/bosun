@@ -20,7 +20,7 @@ type Config struct {
 	Addr string
 
 	// Git host.
-	GitProvider string // github | gitea
+	GitProvider GitProviderName
 	// GitAPIBase means different things per host, because the hosts do:
 	// on GitHub it is the API root (.../api/v3 for Enterprise), on Gitea it
 	// is the INSTANCE root and the client appends /api/v1 itself, because it
@@ -37,7 +37,7 @@ type Config struct {
 	GitInsecureSkipTLSVerify bool
 
 	// Model.
-	LLMProvider        string // openai | anthropic
+	LLMProvider        LLMProviderName
 	LLMBaseURL         string
 	LLMModel           string
 	LLMKey             string
@@ -62,7 +62,7 @@ type Config struct {
 	//     the check and reads the report out of a comment. The fallback for
 	//     public repositories taking fork pull requests, and for clusters
 	//     whose RBAC will not grant the ArgoCD Secret read.
-	GateMode string
+	GateMode GateMode
 	// GateForkPRs lets cluster mode render fork pull requests. Off by
 	// default: rendering runs helm over the pull request's content, inside
 	// the cluster, and whose content that is should be an operator's call.
@@ -135,8 +135,8 @@ func LoadConfig() (*Config, error) {
 	c := &Config{
 		Addr:                     env("AGENT_ADDR", ":8080"),
 		Brand:                    env("AGENT_BRAND", "Bosun"),
-		GitProvider:              env("GIT_PROVIDER", "github"),
-		GitInsecureSkipTLSVerify: os.Getenv("GIT_INSECURE_SKIP_TLS_VERIFY") == "true",
+		GitProvider:              GitProviderName(env("GIT_PROVIDER", "github")),
+		GitInsecureSkipTLSVerify: envBool("GIT_INSECURE_SKIP_TLS_VERIFY", false),
 		GitAPIBase:               os.Getenv("GIT_API_BASE"),
 		GitOwner:                 os.Getenv("GIT_OWNER"),
 		GitRepo:                  os.Getenv("GIT_REPO"),
@@ -150,17 +150,17 @@ func LoadConfig() (*Config, error) {
 		AuthorName:  os.Getenv("GIT_AUTHOR_NAME"),
 		AuthorEmail: os.Getenv("GIT_AUTHOR_EMAIL"),
 
-		LLMProvider:        os.Getenv("LLM_PROVIDER"),
+		LLMProvider:        LLMProviderName(os.Getenv("LLM_PROVIDER")),
 		LLMBaseURL:         os.Getenv("LLM_BASE_URL"),
 		LLMModel:           os.Getenv("LLM_MODEL"),
 		LLMKey:             os.Getenv("LLM_API_KEY"),
 		LLMReasoningEffort: os.Getenv("LLM_REASONING_EFFORT"),
 
 		CheckName: env("GATE_CHECK_NAME", "addons-gate"),
-		GateMode:  env("GATE_MODE", "cluster"),
+		GateMode:  GateMode(env("GATE_MODE", "cluster")),
 		CloneRoot: env("CLONE_ROOT", ""),
 	}
-	c.GateForkPRs = os.Getenv("GATE_FORK_PRS") == "true"
+	c.GateForkPRs = envBool("GATE_FORK_PRS", false)
 
 	// Defaulted per host rather than globally, because the answer is a fact
 	// about the host and not a preference. A gate running in GitHub Actions
@@ -171,7 +171,7 @@ func LoadConfig() (*Config, error) {
 	// know. Defaulting that to a GitHub name would break every Gitea install
 	// on upgrade in the name of a check it could not perform.
 	c.GateReportAuthor = os.Getenv("GATE_REPORT_AUTHOR")
-	if c.GateReportAuthor == "" && c.GitProvider == "github" {
+	if c.GateReportAuthor == "" && c.GitProvider == GitGitHub {
 		c.GateReportAuthor = "github-actions[bot]"
 	}
 
@@ -182,20 +182,20 @@ func LoadConfig() (*Config, error) {
 	if c.GateWait, err = envDur("GATE_WAIT", 10*time.Minute); err != nil {
 		return nil, err
 	}
-	// Default ON. The agent's whole complaint about itself was that it only
-	// spoke when something was wrong, and a green gate on a chart bump still
-	// changed something worth reading.
 	c.AppID = os.Getenv("GITHUB_APP_ID")
 	c.AppPrivateKey = os.Getenv("GITHUB_APP_PRIVATE_KEY")
 	c.AppInstallID = os.Getenv("GITHUB_APP_INSTALLATION_ID")
-	c.Explain = os.Getenv("EXPLAIN_GREEN") != "false"
+	// Default ON. The agent's whole complaint about itself was that it only
+	// spoke when something was wrong, and a green gate on a chart bump still
+	// changed something worth reading.
+	c.Explain = envBool("EXPLAIN_GREEN", true)
 	// Default ON. The repair is deterministic, answers to the same deny-list
 	// and allowlist as every other write, and the re-run gate re-counts what
 	// it did -- the reasons to switch it off are operational, not safety.
-	c.Migrate = os.Getenv("MIGRATE_DROPPED_VERSIONS") != "false"
+	c.Migrate = envBool("MIGRATE_DROPPED_VERSIONS", true)
 	// Default ON, and soft: everything it needs can fail without consequence
 	// beyond a less-informed explanation that says it is less informed.
-	c.Upstream = os.Getenv("UPSTREAM_NOTES") != "false"
+	c.Upstream = envBool("UPSTREAM_NOTES", true)
 	if c.UpstreamMaxReleases, err = envInt("UPSTREAM_MAX_RELEASES", 5); err != nil {
 		return nil, err
 	}
@@ -219,11 +219,11 @@ func LoadConfig() (*Config, error) {
 	// authority, over files policy already permitted, and the checks in front
 	// of it are stricter than anywhere else in this service -- so the reasons
 	// to switch it off are operational rather than about safety.
-	c.Structural = os.Getenv("STRUCTURAL_MIGRATION") != "false"
+	c.Structural = envBool("STRUCTURAL_MIGRATION", true)
 	if c.MaxRestructured, err = envInt("MIGRATE_MAX_DOCS", 5); err != nil {
 		return nil, err
 	}
-	c.LiveReads = os.Getenv("LIVE_READS") == "true"
+	c.LiveReads = envBool("LIVE_READS", false)
 	c.LiveReadsArgoCDNamespace = env("LIVE_READS_ARGOCD_NS", "argocd")
 	c.EgressDeny = envList("EGRESS_DENY")
 	c.AllowPaths = envList("ALLOW_PATHS")
@@ -237,7 +237,7 @@ func (c *Config) validate() error {
 	need := map[string]string{
 		"GIT_OWNER": c.GitOwner, "GIT_REPO": c.GitRepo,
 		"GIT_REPO_URL": c.GitRepoURL,
-		"LLM_PROVIDER": c.LLMProvider, "LLM_MODEL": c.LLMModel,
+		"LLM_PROVIDER": string(c.LLMProvider), "LLM_MODEL": c.LLMModel,
 	}
 	// A credential is required; WHICH one depends on how the agent
 	// authenticates. App auth sets no GIT_TOKEN at all -- installation tokens
@@ -267,25 +267,36 @@ func (c *Config) validate() error {
 	}
 
 	switch c.LLMProvider {
-	case "openai":
+	case LLMOpenAI:
 		if c.LLMBaseURL == "" {
 			return fmt.Errorf("LLM_BASE_URL is required for the openai provider (it is what makes a self-hosted model work)")
 		}
-	case "anthropic":
+	case LLMAnthropic:
 	default:
 		return fmt.Errorf("unknown LLM_PROVIDER %q (openai or anthropic)", c.LLMProvider)
 	}
 
 	switch c.GitProvider {
-	case "github", "gitea":
+	case GitGitHub, GitGitea:
 	default:
 		return fmt.Errorf("GIT_PROVIDER %q is not implemented yet -- see docs/git-providers.md", c.GitProvider)
 	}
 
 	switch c.GateMode {
-	case "cluster", "ci":
+	case GateInCluster, GateInCI:
 	default:
 		return fmt.Errorf("GATE_MODE %q is not a mode (cluster or ci)", c.GateMode)
+	}
+
+	// Supervision needs the cluster reader, which is only built for live reads
+	// or cluster-mode gating. This defaults ON, so a GATE_MODE=ci deployment
+	// that never asked for supervision used to start healthy with /pipeline
+	// and /metrics answering 404 forever, behind one log line at boot. Every
+	// other cross-field rule here is a hard failure; this one was not, and it
+	// was the one nobody would notice.
+	if c.Supervise && !c.LiveReads && c.GateMode != "cluster" {
+		return fmt.Errorf("SUPERVISE_PIPELINE needs apiserver access: " +
+			"set LIVE_READS=true or GATE_MODE=cluster, or set SUPERVISE_PIPELINE=false")
 	}
 
 	// An empty allowlist means the agent can write nothing. That is the safe
@@ -297,7 +308,7 @@ func (c *Config) validate() error {
 	return nil
 }
 
-// NormalizeLegacyAuthor clears the author identity this project shipped as
+// NormaliseLegacyAuthor clears the author identity this project shipped as
 // its chart default for its whole early life -- `bosun
 // <bosun@users.noreply.github.com>` -- which by now sits copied into
 // consumers' values files as though somebody chose it. Nobody did, and it is
@@ -309,7 +320,7 @@ func (c *Config) validate() error {
 //
 // Returns whether it cleared anything, so the caller can say so in the log --
 // silently rewriting configuration is its own bug.
-func (c *Config) NormalizeLegacyAuthor() bool {
+func (c *Config) NormaliseLegacyAuthor() bool {
 	if c.AuthorEmail != "bosun@users.noreply.github.com" {
 		return false
 	}
@@ -324,9 +335,15 @@ func env(k, def string) string {
 	return def
 }
 
-// envBool reads a boolean with a default, which `os.Getenv(k) == "true"`
-// cannot express: that idiom always defaults to false, so a setting that
-// should be ON unless someone turns it off has no way to say so.
+// envBool reads a boolean with a default, and is the only way this file reads
+// one.
+//
+// `os.Getenv(k) == "true"` cannot express a default: that idiom is always
+// off-unless-set, so a setting that should be ON unless somebody turns it off
+// has no way to say so -- which is why seven reads here had drifted into two
+// idioms, `== "true"` and `!= "false"`. They disagreed about everything except
+// the exact strings "true" and "false": `LIVE_READS=1` was off, and
+// `EXPLAIN_GREEN=no` was on.
 func envBool(k string, def bool) bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(k))) {
 	case "":
@@ -376,3 +393,34 @@ func envList(k string) []string {
 	}
 	return out
 }
+
+// GitProviderName, LLMProviderName and GateMode are the three settings whose
+// value selects a code path.
+//
+// Named types with const blocks rather than bare strings with a trailing
+// comment. Each is validated in one switch and dispatched in another, in a
+// different file, and a bare string lets those two drift silently -- a value
+// the validator accepts and the dispatcher does not is a pod that starts
+// healthy and then does nothing.
+type GitProviderName string
+
+const (
+	GitGitHub GitProviderName = "github"
+	GitGitea  GitProviderName = "gitea"
+)
+
+type LLMProviderName string
+
+const (
+	LLMOpenAI    LLMProviderName = "openai"
+	LLMAnthropic LLMProviderName = "anthropic"
+)
+
+// GateMode is where the gate runs: in this process against the live cluster,
+// or in CI with the agent reading the report from a comment.
+type GateMode string
+
+const (
+	GateInCluster GateMode = "cluster"
+	GateInCI      GateMode = "ci"
+)

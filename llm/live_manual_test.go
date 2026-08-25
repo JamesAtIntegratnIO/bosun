@@ -5,6 +5,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/JamesAtIntegratnIO/bosun/prompt"
 )
 
 // TestLiveOpenAI exercises a real endpoint. Skipped unless DELIVERY_AGENT_LIVE
@@ -26,10 +28,9 @@ func TestLiveOpenAI(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 
-	system := os.Getenv("DELIVERY_AGENT_PROMPT")
-	if system == "" {
-		t.Fatal("DELIVERY_AGENT_PROMPT is required: the point of this test is the real prompt")
-	}
+	// The shipped constant, imported. The point of this test is the real
+	// prompt, and a copy handed in through the environment is not one.
+	system := prompt.System
 
 	user := `PR: bump metallb chart 0.15.2 -> 0.16.0. The pre-merge gate is RED.
 
@@ -65,7 +66,7 @@ Propose the fix.`
 	if v.EscalationReason != "" {
 		t.Logf("escalation=%s", v.EscalationReason)
 	}
-	if err := v.Valid(); err != nil {
+	if err := v.Validate(); err != nil {
 		t.Fatalf("verdict invalid: %v", err)
 	}
 }

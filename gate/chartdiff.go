@@ -21,13 +21,17 @@ import (
 // It costs a chart pull and two renders per changed Application, so it runs
 // only for rows whose version actually moved, which on a typical bump pull
 // request is one.
-// ChartDiff renders every moved chart at both versions.
 //
-// The third return is findings that are NOT object diffs: settings this
+// valuesDropped is findings that are NOT object diffs: settings this
 // repository makes that the new chart version no longer declares. They come
 // from here because this is the only place that has both chart versions and
 // the Application's own value files in hand.
-func ChartDiff(repoRoot string, cfg *Config, base, head *Table) ([]Object, []Object, []ObjectChange, []string) {
+//
+// The results are named because two of them are adjacent same-typed slices --
+// "the third return" only tells a reader which one to count to, and swapping
+// before and after at a call site would compile and silently invert the diff.
+func ChartDiff(repoRoot string, cfg *Config, base, head *Table) (
+	before, after []Object, valuesDropped []ObjectChange, warnings []string) {
 	type pair struct{ before, after Row }
 
 	baseByKey := map[string]Row{}
@@ -38,7 +42,7 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) ([]Object, []Obj
 	var pairs []pair
 	for _, h := range head.Rows {
 		b, ok := baseByKey[h.Key()]
-		if !ok || h.SourceType != "helm" || b.SourceType != "helm" {
+		if !ok || h.SourceType != RowHelm || b.SourceType != RowHelm {
 			continue
 		}
 		if b.Version == h.Version || b.Chart != h.Chart || b.ChartRepo != h.ChartRepo {
@@ -50,28 +54,54 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) ([]Object, []Obj
 		return nil, nil, nil, nil
 	}
 
-	var (
-		mu       sync.Mutex
-		beforeOb []Object
-		afterOb  []Object
-		drops    []ObjectChange
-		warnings []string
-		wg       sync.WaitGroup
-	)
-	sem := make(chan struct{}, cfg.Concurrency)
+	// Results are written into a slot per pair rather than appended under a
+	// mutex. Appending publishes them in goroutine-completion order, which is
+	// a different order on every run -- and the drops and warnings go straight
+	// into the pull request comment, so the gate would report a difference
+	// between two runs that is not a difference in the manifests. Slotting by
+	// index keeps the report in `pairs` order, which is head.Rows order.
+	type result struct {
+		before, after []Object
+		drop          *ObjectChange
+		warnings      []string
+	}
+	results := make([]result, len(pairs))
 
-	for _, p := range pairs {
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, cfg.workers())
+
+	for i, p := range pairs {
 		wg.Add(1)
-		go func(p pair) {
+		go func(i int, p pair) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
+			res := &results[i]
+
+			// helm is a subprocess: the egress transport cannot see inside it,
+			// so the destination is checked and recorded here or it is neither.
+			// Both versions are pulled, and they can differ in repository.
+			for _, r := range []Row{p.before, p.after} {
+				if reason := cfg.egressCheck(chartRef(r), releaseNameFor(r), r.Version); reason != "" {
+					res.warnings = append(res.warnings, fmt.Sprintf(
+						"%s: %s, so %s's resource changes are NOT covered",
+						p.after.App, reason, p.after.Chart))
+					return
+				}
+				if r.ChartRepo != "" && !strings.HasPrefix(r.ChartRepo, "oci://") {
+					if reason := cfg.egressCheck(r.ChartRepo, releaseNameFor(r), r.Version); reason != "" {
+						res.warnings = append(res.warnings, fmt.Sprintf(
+							"%s: %s, so %s's resource changes are NOT covered",
+							p.after.App, reason, p.after.Chart))
+						return
+					}
+				}
+			}
+
 			b, errB := renderChartVersion(repoRoot, p.before)
 			a, errA := renderChartVersion(repoRoot, p.after)
 
-			mu.Lock()
-			defer mu.Unlock()
 			// A chart that cannot be pulled is reported, never silently
 			// skipped: "no resource changes" and "we could not look" must not
 			// read identically.
@@ -80,13 +110,12 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) ([]Object, []Obj
 				if err == nil {
 					err = errA
 				}
-				warnings = append(warnings, fmt.Sprintf(
+				res.warnings = append(res.warnings, fmt.Sprintf(
 					"%s: could not render %s at both versions, so its resource changes are NOT covered: %v",
 					p.after.App, p.after.Chart, err))
 				return
 			}
-			beforeOb = append(beforeOb, b...)
-			afterOb = append(afterOb, a...)
+			res.before, res.after = b, a
 
 			// A settings drop is reported even though the render succeeded --
 			// it is invisible in the render BY DEFINITION, because helm
@@ -94,32 +123,43 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) ([]Object, []Obj
 			gone, err := droppedValues(repoRoot, p.before, p.after)
 			switch {
 			case err != nil:
-				warnings = append(warnings, fmt.Sprintf(
+				res.warnings = append(res.warnings, fmt.Sprintf(
 					"%s: could not compare %s's values surface across versions, so settings it stops reading are NOT covered: %v",
 					p.after.App, p.after.Chart, err))
 			case len(gone) > 0:
-				drops = append(drops, ObjectChange{
-					Kind:    "valuesKeyDropped",
+				res.drop = &ObjectChange{
+					Kind:    ObjectValuesKeyDropped,
 					Object:  p.after.App,
 					Cluster: p.after.Cluster,
 					From:    p.before.Version,
 					To:      p.after.Version,
 					Keys:    gone,
-				})
+				}
 			}
-		}(p)
+		}(i, p)
 	}
 	wg.Wait()
-	return beforeOb, afterOb, drops, warnings
+
+	for _, res := range results {
+		before = append(before, res.before...)
+		after = append(after, res.after...)
+		if res.drop != nil {
+			valuesDropped = append(valuesDropped, *res.drop)
+		}
+		warnings = append(warnings, res.warnings...)
+	}
+	return before, after, valuesDropped, warnings
 }
 
 // renderChartVersion renders one Application's chart at its pinned version,
 // with the value files and inline values that Application actually uses.
 func renderChartVersion(repoRoot string, r Row) ([]Object, error) {
-	args := []string{"template", releaseNameFor(r), chartRef(r), "--version", r.Version}
-	if !strings.HasPrefix(r.ChartRepo, "oci://") && r.ChartRepo != "" {
-		args = append(args, "--repo", r.ChartRepo)
+	chartArgs, err := HelmChartArgs(r.ChartRepo, r.Chart)
+	if err != nil {
+		return nil, err
 	}
+	args := append([]string{"template", releaseNameFor(r)}, chartArgs...)
+	args = append(args, "--version", r.Version)
 
 	for _, vf := range r.ValueFiles {
 		// `$values/x` refers to the multi-source values ref, which is this
@@ -140,12 +180,17 @@ func renderChartVersion(repoRoot string, r Row) ([]Object, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer os.Remove(f.Name())
+		defer func() { _ = os.Remove(f.Name()) }()
 		if _, err := f.WriteString(r.ValuesInline); err != nil {
-			f.Close()
+			_ = f.Close()
 			return nil, err
 		}
-		f.Close()
+		// Checked: helm is about to read this file, and a short write here
+		// renders a chart with half the Application's inline values -- a diff
+		// that looks like the bump removed settings it did not touch.
+		if err := f.Close(); err != nil {
+			return nil, fmt.Errorf("writing inline values for %s: %w", r.App, err)
+		}
 		args = append(args, "-f", f.Name())
 	}
 
@@ -191,15 +236,13 @@ func renderChartVersion(repoRoot string, r Row) ([]Object, error) {
 // invisible in the worst way: chart-diff is skipped for that addon and the
 // report says only "NOT covered", so every OCI-repo addon quietly lost its
 // resource-level diff while the gate stayed green.
+// chartRef is the reference a row resolves to, for the egress host check --
+// which needs the destination, not the whole argument list.
 func chartRef(r Row) string {
 	if !strings.HasPrefix(r.ChartRepo, "oci://") {
 		return r.Chart
 	}
-	repo := strings.TrimRight(r.ChartRepo, "/")
-	if r.Chart == "" || strings.HasSuffix(repo, "/"+r.Chart) {
-		return repo
-	}
-	return repo + "/" + r.Chart
+	return ociChartRef(r.ChartRepo, r.Chart)
 }
 
 func releaseNameFor(r Row) string {

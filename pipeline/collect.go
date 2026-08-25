@@ -16,6 +16,21 @@ type KargoSource interface {
 	Promotions(ctx context.Context) ([]cluster.KargoPromotion, error)
 }
 
+// kargoPresence is the optional capability of answering whether the cluster
+// serves Kargo at all.
+//
+// Type-asserted rather than required, matching the other capability seams
+// here: a source that cannot answer is read as it always was.
+//
+// Worth asking because without it a cluster with no Kargo installed produces
+// three separate read failures -- "Stages could not be read", "Warehouses
+// could not be read", "promotions could not be read" -- which reads as three
+// things going wrong rather than one thing being absent, and sends the reader
+// looking for a permissions problem that is not there.
+type kargoPresence interface {
+	KargoAvailable(ctx context.Context) bool
+}
+
 // PRSource is the git half. Optional: without it the orphan and superseded
 // detectors stay quiet rather than guessing.
 type PRSource interface {
@@ -33,9 +48,6 @@ type PRSource interface {
 type Collector struct {
 	Kargo KargoSource
 	PRs   PRSource
-	// RepoRoot is a checkout to resolve tracked pins against. Empty disables
-	// the pin check, and the report says so.
-	RepoRoot string
 	// Now is injected so a sweep is reproducible in a test.
 	Now func() time.Time
 }
@@ -48,11 +60,22 @@ func (c *Collector) now() time.Time {
 }
 
 // Collect reads everything available and returns a Snapshot.
-func (c *Collector) Collect(ctx context.Context) *Snapshot {
+//
+// repoRoot is a checkout to resolve tracked pins against, and is empty when
+// there is none -- which disables the pin check and puts a note on the report
+// saying so. A PARAMETER, not a field: it is a property of one sweep, and the
+// caller used to hand it over by writing to the Collector between calls, so two
+// overlapping sweeps would have raced over which checkout the second one read.
+func (c *Collector) Collect(ctx context.Context, repoRoot string) *Snapshot {
 	s := &Snapshot{Now: c.now()}
 
 	if c.Kargo == nil {
 		s.Notes = append(s.Notes, "no cluster reader: nothing about Kargo could be checked")
+		return s
+	}
+	if p, ok := c.Kargo.(kargoPresence); ok && !p.KargoAvailable(ctx) {
+		s.Notes = append(s.Notes,
+			"this cluster does not serve the Kargo API, so there is no pipeline here to supervise")
 		return s
 	}
 	if stages, err := c.Kargo.Stages(ctx); err != nil {
@@ -103,14 +126,14 @@ func (c *Collector) Collect(ctx context.Context) *Snapshot {
 		}
 	}
 
-	if c.RepoRoot != "" {
-		s.RepoRoot = c.RepoRoot
-		s.FileHas = NewFileKeys(c.RepoRoot).Has
+	if repoRoot != "" {
+		s.RepoRoot = repoRoot
+		s.FileHas = NewFileKeys(repoRoot).Has
 	}
 	return s
 }
 
 // Sweep collects and detects in one call.
-func (c *Collector) Sweep(ctx context.Context) *Report {
-	return Detect(c.Collect(ctx))
+func (c *Collector) Sweep(ctx context.Context, repoRoot string) *Report {
+	return Detect(c.Collect(ctx, repoRoot))
 }

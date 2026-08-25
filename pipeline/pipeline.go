@@ -89,6 +89,7 @@ const (
 	KindOrphanedPR   Kind = "promotion_without_pr"
 	KindSupersededPR Kind = "superseded_pr"
 	KindVerifyStuck  Kind = "verification_stuck"
+	KindPendingStuck Kind = "pending_promotion"
 )
 
 // Finding is one thing wrong with the pipeline.

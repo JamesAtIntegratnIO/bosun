@@ -18,9 +18,16 @@ Nothing in `charts/` or the service may assume:
 
 ## Rule 1a — the contracts between the halves are the fragile part
 
-There are no code dependencies between the gate, the agent and the charts.
-They are joined by **wire contracts**, and every one of them has broken
-silently at least once:
+The gate, the agent and the charts are joined by **wire contracts**, and every
+one of them has broken silently at least once.
+
+The Go dependency runs one way only: `package main` (the agent) and `cluster`
+import `gate`, and `gate` imports `migrate` for the report format both sides
+read. Nothing points back — the gate cannot import the agent, and neither
+touches the charts. That single direction is what ADR 0008 bought when it moved
+the gate in-cluster, and it is why the shared report vocabulary lives in `gate`
+and `migrate` rather than being spelled out twice. What follows are the
+contracts that still cross a process boundary, where no compiler is watching:
 
 | Contract | How it broke |
 |---|---|
@@ -38,7 +45,7 @@ both**, and adding one is worth more than almost any feature.
 The model returns a verdict and an edit set. It does not edit files, and it
 does not choose what it is allowed to touch.
 
-Any change that moves an invariant from `edits/` or `triage.go` into the prompt
+Any change that moves an invariant from `edits/` or `agent/` into the prompt
 is a regression, however well the prompt performs. A prompt is a request; the
 allowlist is a guarantee. See
 [`adr/0001-structured-edits-not-agentic-loop.md`](adr/0001-structured-edits-not-agentic-loop.md)
@@ -54,6 +61,36 @@ and [`docs/safety-model.md`](docs/safety-model.md).
 
 A change that alters behaviour and does not touch the relevant documentation is
 incomplete.
+
+## Where things live
+
+One package per decision, each with a doc comment saying what it owns and what
+it deliberately does not:
+
+| Package | Owns |
+|---|---|
+| `agent/` | judging one pull request, and what to say about it |
+| `gate/` | rendering the repository and diffing it — no git host, no model |
+| `gateservice/` | running the gate in-process, per open pull request, on a timer |
+| `supervisor/` | the pipeline sweep: the promotions that never happened |
+| `prompt/` | what the model is told, and what the eval suite scores |
+| `edits/`, `migrate/`, `structural/` | the three ways a file gets written, each behind its own refusals |
+| `cluster/`, `gitprovider/`, `llm/`, `upstream/`, `egress/` | the outside world, one seam each, every one with a fake |
+| root | the composition root: read the environment, build one of each, wire, serve |
+
+There are three `main` packages, in three shapes, and the shapes mean
+different things:
+
+- **root** is the module's primary binary. Idiomatic Go for a module that
+  ships one thing; `cmd/bosun/` would say there are several.
+- **`gate/cmd/gitops-gate/`** is a second shipped binary inside a
+  self-contained sub-product with its own README, CHANGELOG and Dockerfile.
+  The `cmd/` is what keeps `gate/` importable as a library, which the agent
+  depends on.
+- **`evals/export/`** is a development tool, beside the thing it exports
+  rather than in a top-level `cmd/`, because it is useless without it.
+
+A new binary belongs in whichever of those three it actually is.
 
 ## The toolchain
 
@@ -115,7 +152,7 @@ say so in the changelog with the model it was measured against.
 - **A merge publishes only the images it changed.** `image.yaml` diffs the
   push: `gate/**` (plus `go.mod`/`go.sum`) rebuilds `gitops-gate`, anything
   else in the module rebuilds `bosun`, a release or a manual run builds both.
-  Rule 1a cuts both ways -- with no code dependencies between the halves, a
+  Rule 1a cuts both ways -- the gate imports nothing from the agent, so a
   triage fix is not a reason to republish the gate.
 
   It used to publish both from one matrix, and that was not merely wasteful.

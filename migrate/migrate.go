@@ -21,6 +21,17 @@
 // live together because they are one format, and two files that each believe
 // they know it is how a change to the report becomes a silent no-op somewhere
 // else.
+//
+// # Why gopkg.in/yaml.v3 here and sigs.k8s.io/yaml everywhere else
+//
+// The rest of the module decodes YAML into structs, which sigs.k8s.io/yaml
+// does by round-tripping through JSON -- so it honours `json:` tags and matches
+// what Kubernetes itself accepts. That round trip is exactly what the scanner
+// and rewriter here cannot use: they need yaml.Node, which carries source
+// positions, so a value can be rewritten ON ITS OWN LINE with the indentation,
+// quoting style and trailing comment intact. Re-serialising a whole document instead would
+// reformat the file, discard comments, and turn a one-line change into an
+// unreviewable diff.
 package migrate
 
 import (
@@ -59,11 +70,19 @@ const (
 	HeadingAPIVersion = "**API version changed**"
 )
 
-// OtherBlockers reports whether the gate's report contains a blocking finding
-// other than a dropped served version: a targeting change, a source change, or
-// an object whose own apiVersion moved. A repair that runs anyway would fix
-// the fixable half and leave a red gate implying it had not -- the agent
-// escalates those instead.
+// OtherBlockers is the PRE-MARKER FALLBACK for the same question
+// Blockers.OtherThanDropped answers, and should only be reached for a report
+// from a gate old enough not to emit the machine-readable breakdown.
+//
+// It scrapes three prose headings, so it answers a slightly different question
+// than the structured count and the two have already drifted: gate/diff.go
+// prints HeadingAPIVersion whenever any apiVersion object is present, while
+// Blockers.APIVersion excludes the ones marked PartOfMigration. After a partial
+// repair the deterministic path was therefore skipped on the retry the attempt
+// cap exists to allow.
+//
+// Callers should prefer ParseBlockers and fall back to this only when it
+// returns false.
 func OtherBlockers(report string) bool {
 	return strings.Contains(report, HeadingTargeting) ||
 		strings.Contains(report, HeadingSource) ||
@@ -106,9 +125,17 @@ var reportLine = regexp.MustCompile(
 		"no longer serves `([^`]+)` — `([A-Za-z][A-Za-z0-9]*)` manifests must move to `(v[0-9][A-Za-z0-9]*)`$")
 
 // ParseReport extracts every repairable dropped-version finding from a gate
-// report. Lines in the old, suffix-less format are deliberately not returned:
-// they name a problem without naming the destination, and a repair must not
-// guess.
+// report.
+//
+// The suffix-less line -- `X: no longer serves Y`, with no consumer kind and no
+// destination -- is deliberately not returned. It names a problem without
+// naming where the manifests must move, and a repair must not guess.
+//
+// NOT an old format, though this comment used to call it one. Line still emits
+// it today, from gate/diff.go, whenever the gate knows a version was dropped
+// but not what declares it or what survives -- a finding built from a bodiless
+// table. It is the unrepairable case, not a legacy one, and reading it as
+// legacy invites somebody to delete the branch that produces it.
 func ParseReport(report string) []Dropped {
 	var out []Dropped
 	for _, raw := range strings.Split(report, "\n") {
@@ -230,16 +257,94 @@ type Blockers struct {
 	// version no longer declares. Helm ignores an unknown value instead of
 	// failing on it, so these stop applying while everything stays green.
 	ValuesDropped int `json:"valuesDropped"`
+	// Schema is manifests the target cluster's schemas reject. Like
+	// APIVersion, it has no remedy the agent performs: the manifest is wrong
+	// in a way that needs an author, not a version swap.
+	Schema int `json:"schema"`
+}
+
+// OtherThanDropped reports whether anything blocks other than a dropped served
+// version: a targeting change, a source change, or an object whose own
+// apiVersion moved. A repair that runs anyway would fix the fixable half and
+// leave a red gate implying it had not.
+//
+// Counted from the structured breakdown, so an apiVersion object the repair is
+// already migrating does not read as an unrelated blocker.
+func (b Blockers) OtherThanDropped() bool {
+	return b.Targeting > 0 || b.Source > 0 || b.APIVersion > 0 || b.Schema > 0
 }
 
 func (b Blockers) Any() bool {
-	return b.Targeting+b.Source+b.APIVersion+b.Consumers+b.Unscanned+b.ValuesDropped > 0
+	return b.Targeting+b.Source+b.APIVersion+b.Consumers+b.Unscanned+b.ValuesDropped+b.Schema > 0
 }
 
 // RepoSideRemedy reports whether anything a person or an agent could change in
 // this repository would clear the gate.
 func (b Blockers) RepoSideRemedy() bool {
 	return b.Targeting > 0 || b.Source > 0 || b.Consumers > 0 || b.Unscanned > 0 || b.ValuesDropped > 0
+}
+
+// The rendered-object changes are grouped under one heading per class. The
+// labels and the heading format live here for the same reason ReportMarker
+// does: the gate writes them, this package reads them, and a reader that
+// re-derives the format from memory drifts from the writer silently.
+//
+// It drifted once already. A reader matching the bullets without tracking
+// which group it was in treated an ADDED CustomResourceDefinition as a removed
+// one -- all three groups render a bullet of exactly the same shape.
+const (
+	GroupAdded   = "Added"
+	GroupRemoved = "Removed"
+	GroupChanged = "Changed"
+)
+
+// ObjectGroupHeading is the heading above one class of object change.
+func ObjectGroupHeading(label string, n int) string {
+	return fmt.Sprintf("**%s (%d)**", label, n)
+}
+
+// objectGroup matches any of the three group headings, so a scanner knows when
+// it has left the one it cares about.
+var objectGroup = regexp.MustCompile(`^\*\*(Added|Removed|Changed) \(\d+\)\*\*$`)
+
+// crdBullet matches an object bullet naming a CustomResourceDefinition. The
+// optional " in <namespace>" is there for the same reason it is on reportLine:
+// chart-diff stamps every object with the Application's destination namespace,
+// cluster-scoped or not.
+var crdBullet = regexp.MustCompile(
+	"^- `CustomResourceDefinition/([a-z0-9][a-z0-9.-]*\\.[a-z0-9.-]+)(?: in [^`]+)?`$")
+
+// ParseRemovedCRDs returns the definitions the report lists as removed
+// outright -- gone entirely, not merely no longer serving a version.
+//
+// The two are different findings and only the second carries its own versions,
+// which is why this exists alongside ParseReport rather than inside it.
+//
+// Only bullets inside the Removed group are returned. A reader that matched
+// the bullet shape alone fired on added and changed definitions too, and every
+// hit costs a live apiserver lookup on a path a human is waiting on.
+func ParseRemovedCRDs(report string) []string {
+	var out []string
+	inRemoved := false
+	for _, raw := range strings.Split(report, "\n") {
+		line := strings.TrimSpace(strings.TrimRight(raw, "\r"))
+		if g := objectGroup.FindStringSubmatch(line); g != nil {
+			inRemoved = g[1] == GroupRemoved
+			continue
+		}
+		// Any new section ends the group, whether or not another one starts.
+		if strings.HasPrefix(line, "###") {
+			inRemoved = false
+			continue
+		}
+		if !inRemoved {
+			continue
+		}
+		if m := crdBullet.FindStringSubmatch(line); m != nil {
+			out = append(out, m[1])
+		}
+	}
+	return out
 }
 
 // BlockersMarker prefixes the machine-readable breakdown. Same argument as the
@@ -267,7 +372,7 @@ func ParseBlockers(report string) (Blockers, bool) {
 	into := map[string]*int{
 		"targeting": &b.Targeting, "source": &b.Source, "apiVersion": &b.APIVersion,
 		"consumers": &b.Consumers, "unscanned": &b.Unscanned,
-		"valuesDropped": &b.ValuesDropped,
+		"valuesDropped": &b.ValuesDropped, "schema": &b.Schema,
 	}
 	found := false
 	for _, field := range strings.Fields(rest) {

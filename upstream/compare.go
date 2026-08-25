@@ -189,7 +189,7 @@ func (g *GitHubReleases) Compare(ctx context.Context, artifact, from, to string,
 			break
 		}
 		c.Relevant = append(c.Relevant, Commit{
-			SHA: shortSHA(raw.SHA), Message: msg, URL: raw.HTMLURL, Author: raw.Commit.Author.Name,
+			SHA: shortSHA12(raw.SHA), Message: msg, URL: raw.HTMLURL, Author: raw.Commit.Author.Name,
 		})
 	}
 	for _, f := range payload.Files {
@@ -335,7 +335,9 @@ func firstLine(s string) string {
 	return strings.TrimSpace(s)
 }
 
-func shortSHA(s string) string {
+// shortSHA12 is the twelve-character form release notes quote commits in. See
+// the gate's shortSHA8: the two lengths are deliberate and the names say so.
+func shortSHA12(s string) string {
 	if len(s) > 12 {
 		return s[:12]
 	}

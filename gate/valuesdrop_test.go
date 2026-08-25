@@ -35,8 +35,8 @@ func TestCoveredUnderstandsWhatASurfaceImplies(t *testing.T) {
 		{"a shared string prefix is not containment", "image", surface("imagePullSecrets"), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := covered(tc.path, tc.surf); got != tc.want {
-				t.Fatalf("covered(%q) = %v, want %v", tc.path, got, tc.want)
+			if got := pathCovered(tc.path, tc.surf); got != tc.want {
+				t.Fatalf("pathCovered(%q) = %v, want %v", tc.path, got, tc.want)
 			}
 		})
 	}
@@ -123,7 +123,7 @@ func TestAnUnreadableChartSurfaceSaysNothing(t *testing.T) {
 	old := surface("a") // explains 10% of what we set
 	recognised := 0
 	for _, p := range set {
-		if covered(p, old) {
+		if pathCovered(p, old) {
 			recognised++
 		}
 	}

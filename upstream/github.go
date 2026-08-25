@@ -172,7 +172,7 @@ func (g *GitHubReleases) Notes(ctx context.Context, artifact, from, to string) (
 	}
 
 	if len(n.Releases) > 0 {
-		n.Origin = "releases"
+		n.Origin = OriginReleases
 	}
 
 	// No release objects in range is the COMMON case, not a failure: creating

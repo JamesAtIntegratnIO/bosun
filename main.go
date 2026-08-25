@@ -13,6 +13,22 @@
 // the gate", "never invent a version" and "never invent data" are properties of
 // the code, not requests in a prompt. See docs/safety-model.md,
 // docs/prompt-contract.md and adr/0007.
+//
+// # What lives here
+//
+// The composition root, and nothing else. This file reads the environment,
+// builds one of each collaborator, wires them together and serves; config.go
+// is the reading. Every decision lives in a package that can be imported and
+// tested without this one:
+//
+//	agent        judges a pull request and writes the comment
+//	gateservice  runs the gate in-process, on a timer, per open pull request
+//	supervisor   sweeps the pipeline for the promotions that never happened
+//	gate         renders the repository and diffs it
+//	prompt       what the model is told, and what the eval suite measures
+//
+// The HTTP surface is here for the same reason the wiring is: Kargo POSTs a
+// promotion, and turning that into a call is plumbing, not judgement.
 package main
 
 import (
@@ -26,12 +42,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/JamesAtIntegratnIO/bosun/agent"
 	"github.com/JamesAtIntegratnIO/bosun/cluster"
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/egress"
+	"github.com/JamesAtIntegratnIO/bosun/gateservice"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 	"github.com/JamesAtIntegratnIO/bosun/pipeline"
+	"github.com/JamesAtIntegratnIO/bosun/supervisor"
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
 
@@ -42,19 +61,19 @@ func main() {
 	if err != nil {
 		logger.Fatalf("configuration: %v", err)
 	}
-	if cfg.NormalizeLegacyAuthor() {
+	if cfg.NormaliseLegacyAuthor() {
 		logger.Print("ignoring the legacy author bosun <bosun@users.noreply.github.com>: " +
 			"that is the noreply address of an unrelated GitHub account; deriving the commit identity instead")
 	}
 
 	var model llm.Provider
 	switch cfg.LLMProvider {
-	case "openai":
+	case LLMOpenAI:
 		model = &llm.OpenAI{
 			BaseURL: cfg.LLMBaseURL, APIKey: cfg.LLMKey, Model: cfg.LLMModel,
 			ReasoningEffort: cfg.LLMReasoningEffort, Timeout: cfg.LLMTimeout,
 		}
-	case "anthropic":
+	case LLMAnthropic:
 		model = &llm.Anthropic{
 			BaseURL: cfg.LLMBaseURL, APIKey: cfg.LLMKey, Model: cfg.LLMModel,
 			Timeout: cfg.LLMTimeout,
@@ -70,7 +89,7 @@ func main() {
 	// static token is empty.
 	var upstreamToken func(context.Context) (string, error)
 	switch cfg.GitProvider {
-	case "gitea":
+	case GitGitea:
 		git = &gitprovider.Gitea{
 			BaseURL: cfg.GitAPIBase, Owner: cfg.GitOwner, Repo: cfg.GitRepo,
 			Token: cfg.GitToken, Username: cfg.GitOwner,
@@ -135,7 +154,7 @@ func main() {
 		Log:  func(f string, a ...any) { logger.Printf(f, a...) },
 	}
 
-	t := &Triage{
+	t := &agent.Triage{
 		Git: git, LLM: model,
 		Brand:            cfg.Brand,
 		Policy:           edits.Policy{Allow: cfg.AllowPaths, Deny: cfg.DenyPaths},
@@ -159,7 +178,7 @@ func main() {
 	// (facts for briefs) and the in-cluster gate (the inventory it renders
 	// against).
 	var reader *cluster.APIServer
-	if cfg.LiveReads || cfg.GateMode == "cluster" {
+	if cfg.LiveReads || cfg.GateMode == GateInCluster {
 		reader = &cluster.APIServer{ArgoCDNamespace: cfg.LiveReadsArgoCDNamespace}
 		// Fail at start-up, the same rule as the App's key -- and here it
 		// matters more, not less. Every failure inside this reader is
@@ -194,7 +213,7 @@ func main() {
 	runCtx, stopRun := context.WithCancel(context.Background())
 	defer stopRun()
 
-	if cfg.GateMode == "cluster" {
+	if cfg.GateMode == GateInCluster {
 		// Same fail-at-start-up rule as everything above: a ServiceAccount the
 		// RBAC does not let read the ArgoCD cluster Secrets would otherwise
 		// surface as an `error` status on every pull request -- a broken
@@ -208,7 +227,7 @@ func main() {
 				"Secrets in the ArgoCD namespace (the chart creates the Role when gate.mode is "+
 				"cluster). Set gate.mode to ci to keep running the gate in CI instead", err)
 		}
-		gs := &GateService{
+		gs := &gateservice.Service{
 			Git:       git,
 			Inventory: reader.ClusterInventory,
 			CheckName: cfg.CheckName,
@@ -217,6 +236,7 @@ func main() {
 			ForkPRs:   cfg.GateForkPRs,
 			Poll:      cfg.GatePoll,
 			Log:       func(f string, a ...any) { logger.Printf(f, a...) },
+			Egress:    egressPolicy,
 		}
 		t.Gate = gs
 		go gs.Run(runCtx)
@@ -254,25 +274,24 @@ func main() {
 	// asks: not "is this pull request safe" but "are the pull requests that
 	// should exist being opened at all". Nothing about a promotion that never
 	// happened produces an event, so a timer is the only way to see it.
+	//
+	// The reader is guaranteed here: Config.validate refuses a deployment that
+	// turns supervision on without the apiserver access it needs, so there is
+	// no nil case left to log about.
 	if cfg.Supervise {
-		if reader == nil {
-			logger.Print("pipeline supervision is on but no cluster reader was built; " +
-				"it needs the same apiserver access liveReads and cluster-mode gating use")
-		} else {
-			sup := &Supervisor{
-				Collector: &pipeline.Collector{Kargo: reader, PRs: git},
-				Every:     cfg.SuperviseEvery,
-				Log:       func(f string, a ...any) { logger.Printf(f, a...) },
-				// The default branch, because a pin that writes nowhere is a
-				// property of what is merged.
-				Checkout: shallowCheckout(cfg.GitRepoURL, "", cfg.CloneRoot),
-			}
-			mux.HandleFunc("GET /pipeline", sup.Handler("markdown"))
-			mux.HandleFunc("GET /metrics", sup.Handler("metrics"))
-			go sup.Run(runCtx)
-			logger.Printf("pipeline: supervising Kargo every %s; report on /pipeline, metrics on /metrics",
-				cfg.SuperviseEvery)
+		sup := &supervisor.Supervisor{
+			Collector: &pipeline.Collector{Kargo: reader, PRs: git},
+			Every:     cfg.SuperviseEvery,
+			Log:       func(f string, a ...any) { logger.Printf(f, a...) },
+			// The default branch, because a pin that writes nowhere is a
+			// property of what is merged.
+			Checkout: supervisor.ShallowCheckout(cfg.GitRepoURL, "", cfg.CloneRoot),
 		}
+		mux.HandleFunc("GET /pipeline", sup.Handler("markdown"))
+		mux.HandleFunc("GET /metrics", sup.Handler("metrics"))
+		go sup.Run(runCtx)
+		logger.Printf("pipeline: supervising Kargo every %s; report on /pipeline (?format=text for a terminal), metrics on /metrics",
+			cfg.SuperviseEvery)
 	}
 
 	httpSrv := &http.Server{
@@ -304,7 +323,7 @@ func main() {
 
 // Server accepts Kargo's call and gets out of the way.
 type Server struct {
-	Triage  *Triage
+	Triage  *agent.Triage
 	Log     *log.Logger
 	Timeout time.Duration
 
@@ -315,13 +334,13 @@ type Server struct {
 	mu       sync.Mutex
 	inFlight map[int]bool
 
-	// runFn is the work the handler dispatches. Defaults to Triage.Run; tests
+	// runFn is the work the handler dispatches. Defaults to agent.Triage.Run; tests
 	// substitute it so the handler's concurrency behaviour can be exercised
 	// without a git host or a model behind it.
-	runFn func(Promotion) error
+	runFn func(agent.Promotion) error
 }
 
-func (s *Server) run(ctx context.Context, p Promotion) error {
+func (s *Server) run(ctx context.Context, p agent.Promotion) error {
 	if s.runFn != nil {
 		return s.runFn(p)
 	}
@@ -334,7 +353,7 @@ func (s *Server) run(ctx context.Context, p Promotion) error {
 // so a handler that blocked would put a model round trip -- minutes, on a
 // local model -- inside the critical path of every promotion.
 func (s *Server) PromotionOpened(w http.ResponseWriter, r *http.Request) {
-	var p Promotion
+	var p agent.Promotion
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&p); err != nil {
 		http.Error(w, "invalid payload", http.StatusBadRequest)
 		return

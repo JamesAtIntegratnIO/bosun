@@ -9,14 +9,37 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
 )
 
+// ChangeKind is what happened to an Application's targeting or its source.
+//
+// A named type rather than a string with a comment listing the values, because
+// the comment named four of these while the code assigned all nine -- and the
+// three it omitted (project, namespace, source-type) are the ones a reader
+// would go looking for the meaning of.
+type ChangeKind string
+
+const (
+	// Targeting.
+	ChangeAdded      ChangeKind = "added"
+	ChangeRemoved    ChangeKind = "removed"
+	ChangeMoved      ChangeKind = "moved"
+	ChangeIntroduced ChangeKind = "introduced"
+	// The source itself.
+	ChangeSource     ChangeKind = "source"
+	ChangeSourceType ChangeKind = "source-type"
+	ChangeProject    ChangeKind = "project"
+	ChangeNamespace  ChangeKind = "namespace"
+	// Reported, never blocking.
+	ChangeVersion ChangeKind = "version"
+)
+
 type Change struct {
-	Kind    string `json:"kind"` // added | removed | version | moved
-	Cluster string `json:"cluster"`
-	App     string `json:"app"`
-	AppSet  string `json:"appset,omitempty"`
-	From    string `json:"from,omitempty"`
-	To      string `json:"to,omitempty"`
-	Detail  string `json:"detail,omitempty"`
+	Kind    ChangeKind `json:"kind"`
+	Cluster string     `json:"cluster"`
+	App     string     `json:"app"`
+	AppSet  string     `json:"appset,omitempty"`
+	From    string     `json:"from,omitempty"`
+	To      string     `json:"to,omitempty"`
+	Detail  string     `json:"detail,omitempty"`
 }
 
 type DiffResult struct {
@@ -44,10 +67,30 @@ type DiffResult struct {
 	// CRDs" says what will happen.
 	Objects  []ObjectChange `json:"objects,omitempty"`
 	Warnings []string       `json:"warnings,omitempty"`
+
+	// Suppressed is checks that did not run because the configuration told
+	// them not to, each with the reason.
+	//
+	// Separate from Warnings, which mean "the gate tried and could not". This
+	// means "the gate was told not to", and by a file read from the pull
+	// request's own head -- so a change can switch a check off, and the report
+	// that results has to say which one, or the project's own "cannot act
+	// without saying so" rule holds everywhere except where it matters most.
+	Suppressed []string `json:"suppressed,omitempty"`
+
+	// SchemaFailures is manifests the target cluster's schemas reject, set by
+	// the caller that ran validation.
+	//
+	// It lives on the result rather than beside it because the headline, the
+	// machine-readable marker and the commit status are all derived from this
+	// struct. Kept outside, a run blocked ONLY by schema validation published
+	// a report headlined "No blocking findings" next to a red cross -- the
+	// report and the status disagreeing about the same run.
+	SchemaFailures int `json:"schemaFailures,omitempty"`
 }
 
 func (d *DiffResult) Blocking() bool {
-	if len(d.Targeting) > 0 || len(d.Other) > 0 {
+	if len(d.Targeting) > 0 || len(d.Other) > 0 || d.SchemaFailures > 0 {
 		return true
 	}
 	// An API version moving under an existing resource is a migration, and
@@ -59,7 +102,7 @@ func (d *DiffResult) Blocking() bool {
 		// moved; the second is a CustomResourceDefinition that stopped serving
 		// one, which the first cannot see because the CRD object itself is
 		// apiextensions.k8s.io/v1 on both sides.
-		if o.Kind == "apiVersion" && !o.PartOfMigration {
+		if o.Kind == ObjectAPIVersionMoved && !o.PartOfMigration {
 			return true
 		}
 		// A dropped served version blocks exactly while manifests in this
@@ -69,13 +112,13 @@ func (d *DiffResult) Blocking() bool {
 		// turn this red green on the re-run. Not scanned means not counted:
 		// "we could not look" blocks, for the same reason a bodiless CRD is
 		// reported as changed rather than claimed safe.
-		if o.Kind == "crdVersionRemoved" && (!o.ConsumersKnown || len(o.ConsumerFiles) > 0) {
+		if o.Kind == ObjectCRDVersionRemoved && (!o.ConsumersKnown || len(o.ConsumerFiles) > 0) {
 			return true
 		}
 		// A setting the new chart no longer reads. It renders green by
 		// construction -- helm ignores an unknown value -- so if this does not
 		// block, nothing anywhere will ever mention it.
-		if o.Kind == "valuesKeyDropped" && len(o.Keys) > 0 {
+		if o.Kind == ObjectValuesKeyDropped && len(o.Keys) > 0 {
 			return true
 		}
 	}
@@ -127,8 +170,8 @@ func Diff(base, head *Table) *DiffResult {
 
 	for appset, removed := range removedByApp {
 		added := addedByApp[appset]
-		byCluster(removed)
-		byCluster(added)
+		sortRows(removed)
+		sortRows(added)
 
 		if len(removed) == 1 && len(added) == 1 {
 			r, a := removed[0], added[0]
@@ -138,7 +181,7 @@ func Diff(base, head *Table) *DiffResult {
 				// departure by something that did not exist before the change
 				// -- which reads as the gate being wrong about its own report.
 				// The ApplicationSet is the identity that survives the move.
-				Kind: "moved", AppSet: appset, App: appset,
+				Kind: ChangeMoved, AppSet: appset, App: appset,
 				From: r.Cluster, To: a.Cluster,
 				Detail: fmt.Sprintf("ApplicationSet no longer generates for %s; now generates for %s",
 					r.Cluster, a.Cluster),
@@ -152,7 +195,7 @@ func Diff(base, head *Table) *DiffResult {
 		// `added` is left for the loop below to report on its own terms.
 		for _, r := range removed {
 			res.Targeting = append(res.Targeting, Change{
-				Kind: "removed", AppSet: appset, App: r.App, Cluster: r.Cluster,
+				Kind: ChangeRemoved, AppSet: appset, App: r.App, Cluster: r.Cluster,
 				From: r.Describe(), Detail: "no longer generated for this cluster",
 			})
 		}
@@ -163,11 +206,11 @@ func Diff(base, head *Table) *DiffResult {
 				AppSet: appset, App: a.App, Cluster: a.Cluster, To: a.Describe(),
 			}
 			if baseAppSets[appset] {
-				c.Kind = "added"
+				c.Kind = ChangeAdded
 				c.Detail = "newly generated for this cluster -- this addon already existed and has gained a cluster"
 				res.Targeting = append(res.Targeting, c)
 			} else {
-				c.Kind = "introduced"
+				c.Kind = ChangeIntroduced
 				c.Detail = "new addon, first appearance"
 				res.Introduced = append(res.Introduced, c)
 			}
@@ -182,29 +225,29 @@ func Diff(base, head *Table) *DiffResult {
 		switch {
 		case b.SourceType != h.SourceType:
 			res.Other = append(res.Other, Change{
-				Kind: "source-type", Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
+				Kind: ChangeSourceType, Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
 				From: b.Describe(), To: h.Describe(),
 				Detail: "the kind of source changed",
 			})
 		case b.Chart != h.Chart || b.ChartRepo != h.ChartRepo || b.Path != h.Path:
 			res.Other = append(res.Other, Change{
-				Kind: "source", Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
+				Kind: ChangeSource, Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
 				From: b.Describe(), To: h.Describe(),
 				Detail: "the source itself changed, not just its version",
 			})
 		case b.Project != h.Project:
 			res.Other = append(res.Other, Change{
-				Kind: "project", Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
+				Kind: ChangeProject, Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
 				From: b.Project, To: h.Project, Detail: "ArgoCD project changed",
 			})
 		case b.Namespace != h.Namespace:
 			res.Other = append(res.Other, Change{
-				Kind: "namespace", Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
+				Kind: ChangeNamespace, Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
 				From: b.Namespace, To: h.Namespace, Detail: "destination namespace changed",
 			})
 		case b.Version != h.Version:
 			res.Versions = append(res.Versions, Change{
-				Kind: "version", Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
+				Kind: ChangeVersion, Cluster: h.Cluster, App: h.App, AppSet: h.AppSet,
 				From: b.Version, To: h.Version,
 			})
 		}
@@ -228,10 +271,13 @@ func Diff(base, head *Table) *DiffResult {
 	return res
 }
 
-// byCluster makes an order out of one that came from a Go map. Without it the
+// sortRows makes an order out of one that came from a Go map. Without it the
 // same two rows can be reported in either order, and a diff that describes
 // itself differently on identical input is a diff nobody can diff.
-func byCluster(rows []Row) {
+//
+// A verb, like sortChanges below: `byCluster` read as a grouping that returns
+// something, and it sorts its argument in place.
+func sortRows(rows []Row) {
 	sort.Slice(rows, func(i, j int) bool {
 		if rows[i].Cluster != rows[j].Cluster {
 			return rows[i].Cluster < rows[j].Cluster
@@ -275,6 +321,16 @@ func sortChanges(c []Change) {
 	})
 }
 
+// maxListed bounds any one list in the report.
+//
+// Twelve for the same reason maxDroppedListed is: the finding is "these
+// changed", and forty entries make that point no better than a dozen do, while
+// a comment nobody opens makes it not at all. Named because it appeared as a
+// bare 12 twice in this file, beside a maxDroppedListed the same size -- so a
+// reader had to check whether the three were the same decision or a
+// coincidence.
+const maxListed = maxDroppedListed
+
 // ReportMarker leads every report, and it is load-bearing rather than
 // decorative. A triage agent finds the gate's verdict by looking for this
 // string among the pull request's comments, and an adapter that publishes the
@@ -286,6 +342,46 @@ func sortChanges(c []Change) {
 // is correct by construction. It renders as nothing in every markdown surface,
 // including a CI job summary.
 const ReportMarker = "<!-- gitops-gate -->"
+
+// NothingChanged is the report's answer when the render is identical on both
+// sides -- not "nothing blocking", but nothing at all.
+//
+// Exported for the same reason ReportMarker is. The agent decides whether to
+// spend a model call explaining a change by looking for this sentence, and it
+// used to look for its own copy of it: a private literal in package main, one
+// wording change away from an agent that explains every unchanged render or
+// explains none of them, with nothing failing to say so.
+const NothingChanged = "No change to what gets deployed"
+
+// SaysNothingChanged reports whether a published gate report is the
+// nothing-changed one. The CI path only ever has the rendered text, so the
+// question has to be answerable from it.
+func SaysNothingChanged(report string) bool {
+	return strings.Contains(report, NothingChanged)
+}
+
+// Blockers counts the reasons this result is blocking. The type lives in the
+// migrate package with the rest of the report's format, so that the writer and
+// the reader cannot drift.
+func (d *DiffResult) Blockers() migrate.Blockers {
+	var b migrate.Blockers
+	b.Targeting = len(d.Targeting)
+	b.Source = len(d.Other)
+	for _, o := range d.Objects {
+		switch {
+		case o.Kind == ObjectAPIVersionMoved && !o.PartOfMigration:
+			b.APIVersion++
+		case o.Kind == ObjectCRDVersionRemoved && !o.ConsumersKnown:
+			b.Unscanned++
+		case o.Kind == ObjectCRDVersionRemoved && len(o.ConsumerFiles) > 0:
+			b.Consumers += len(o.ConsumerFiles)
+		case o.Kind == ObjectValuesKeyDropped:
+			b.ValuesDropped += len(o.Keys)
+		}
+	}
+	b.Schema = d.SchemaFailures
+	return b
+}
 
 // Verdict is the report's own answer, in one line, so a reader knows what they
 // are looking at before they read anything else.
@@ -300,28 +396,6 @@ const ReportMarker = "<!-- gitops-gate -->"
 // the migrate package and are matched with strings.Contains: a headline that
 // happened to contain "**API version changed**" would make the agent believe
 // there was an unrepairable blocker in every report that mentioned one.
-// Blockers counts the reasons this result is blocking. The type lives in the
-// migrate package with the rest of the report's format, so that the writer and
-// the reader cannot drift.
-func (d *DiffResult) Blockers() migrate.Blockers {
-	var b migrate.Blockers
-	b.Targeting = len(d.Targeting)
-	b.Source = len(d.Other)
-	for _, o := range d.Objects {
-		switch {
-		case o.Kind == "apiVersion" && !o.PartOfMigration:
-			b.APIVersion++
-		case o.Kind == "crdVersionRemoved" && !o.ConsumersKnown:
-			b.Unscanned++
-		case o.Kind == "crdVersionRemoved" && len(o.ConsumerFiles) > 0:
-			b.Consumers += len(o.ConsumerFiles)
-		case o.Kind == "valuesKeyDropped":
-			b.ValuesDropped += len(o.Keys)
-		}
-	}
-	return b
-}
-
 func (d *DiffResult) Verdict() (blocking bool, headline string) {
 	bl := d.Blockers()
 	var why []string
@@ -344,6 +418,9 @@ func (d *DiffResult) Verdict() (blocking bool, headline string) {
 	if n := bl.ValuesDropped; n > 0 {
 		why = append(why, fmt.Sprintf("%s this bump stops reading", plural(n, "setting")))
 	}
+	if n := bl.Schema; n > 0 {
+		why = append(why, fmt.Sprintf("%s the target schemas reject", plural(n, "manifest")))
+	}
 	if len(why) == 0 {
 		// Not blocking. Say what DID change, because "nothing blocking" and
 		// "nothing changed" are different answers and only one of them means
@@ -359,10 +436,10 @@ func (d *DiffResult) Verdict() (blocking bool, headline string) {
 			return false, fmt.Sprintf("No blocking findings — %s changed",
 				plural(len(d.Objects), "rendered object"))
 		default:
-			return false, "No change to what gets deployed"
+			return false, NothingChanged
 		}
 	}
-	return true, "Blocking — " + join(why)
+	return true, "Blocking — " + joinAnd(why)
 }
 
 // plural is "1 thing" / "3 things", because "1 manifest(s)" in a headline
@@ -374,8 +451,14 @@ func plural(n int, noun string) string {
 	return fmt.Sprintf("%d %ss", n, noun)
 }
 
-func join(parts []string) string {
+// joinAnd is an English list. Same name and shape as pipeline.joinAnd -- two
+// packages that never import each other, each rendering findings for a human,
+// and a shared helper package for one function would cost more than the
+// duplicate does.
+func joinAnd(parts []string) string {
 	switch len(parts) {
+	case 0:
+		return ""
 	case 1:
 		return parts[0]
 	case 2:
@@ -387,6 +470,14 @@ func join(parts []string) string {
 
 // Report writes a markdown summary suitable for a pull-request comment or a CI
 // job summary.
+//
+// Write errors are not checked here and it has no error to return, which is
+// deliberate: BOTH callers render into a strings.Builder, whose Write cannot
+// fail, and then perform one real write they do check -- gateservice into the
+// comment body, the CLI through writeReport. Checking forty individual writes
+// into a buffer would be forty branches that cannot be taken, in place of the
+// one that can. A third caller streaming this straight at a file would be
+// giving up that guarantee and should buffer like the other two.
 func (d *DiffResult) Report(w io.Writer) {
 	fmt.Fprintf(w, "%s\n", ReportMarker)
 	blocking, headline := d.Verdict()
@@ -396,8 +487,8 @@ func (d *DiffResult) Report(w io.Writer) {
 	// written for a person. Every adapter that posts the report verbatim
 	// carries it, so the CI path gets it for free.
 	b := d.Blockers()
-	fmt.Fprintf(w, "%stargeting=%d source=%d apiVersion=%d consumers=%d unscanned=%d valuesDropped=%d -->\n",
-		migrate.BlockersMarker, b.Targeting, b.Source, b.APIVersion, b.Consumers, b.Unscanned, b.ValuesDropped)
+	fmt.Fprintf(w, "%stargeting=%d source=%d apiVersion=%d consumers=%d unscanned=%d valuesDropped=%d schema=%d -->\n",
+		migrate.BlockersMarker, b.Targeting, b.Source, b.APIVersion, b.Consumers, b.Unscanned, b.ValuesDropped, b.Schema)
 	mark := "✅"
 	if blocking {
 		mark = "🔴"
@@ -509,8 +600,8 @@ func (d *DiffResult) Report(w io.Writer) {
 				case o.ConsumersKnown && len(o.ConsumerFiles) > 0:
 					fmt.Fprintf(w, "  - **%d manifest(s) in this repository still declare a dropped version** — %s:\n", len(o.ConsumerFiles), blocking)
 					for i, f := range o.ConsumerFiles {
-						if i == 12 {
-							fmt.Fprintf(w, "    - …and %d more\n", len(o.ConsumerFiles)-12)
+						if i == maxListed {
+							fmt.Fprintf(w, "    - …and %d more\n", len(o.ConsumerFiles)-maxListed)
 							break
 						}
 						fmt.Fprintf(w, "    - `%s`\n", f)
@@ -524,14 +615,18 @@ func (d *DiffResult) Report(w io.Writer) {
 		for _, g := range []struct {
 			label string
 			items []ObjectChange
-		}{{"Added", added}, {"Removed", removed}, {"Changed", changed}} {
+		}{{migrate.GroupAdded, added}, {migrate.GroupRemoved, removed}, {migrate.GroupChanged, changed}} {
 			if len(g.items) == 0 {
 				continue
 			}
-			fmt.Fprintf(w, "**%s (%d)**\n\n", g.label, len(g.items))
+			// Written through migrate so the group a bullet sits in stays
+			// readable: all three groups render an identical bullet, and the
+			// only thing separating "this definition was added" from "this
+			// definition is gone" is the heading above it.
+			fmt.Fprintf(w, "%s\n\n", migrate.ObjectGroupHeading(g.label, len(g.items)))
 			for i, o := range g.items {
-				if i == 12 {
-					fmt.Fprintf(w, "- …and %d more\n", len(g.items)-12)
+				if i == maxListed {
+					fmt.Fprintf(w, "- …and %d more\n", len(g.items)-maxListed)
 					break
 				}
 				fmt.Fprintf(w, "- `%s`\n", o.Object)
@@ -557,7 +652,16 @@ func (d *DiffResult) Report(w io.Writer) {
 	}
 	if len(d.Targeting) == 0 && len(d.Other) == 0 && len(d.Versions) == 0 &&
 		len(d.Introduced) == 0 && len(d.Objects) == 0 {
-		fmt.Fprintf(w, "No change to what gets deployed.\n\n")
+		fmt.Fprintf(w, "%s.\n\n", NothingChanged)
+	}
+	if len(d.Suppressed) > 0 {
+		fmt.Fprintf(w, "### Turned off by this pull request's configuration\n\n")
+		fmt.Fprintf(w, "The gate reads `.gitops-gate.yaml` from the head revision, so a change can "+
+			"switch a check off. These did not run:\n\n")
+		for _, sup := range d.Suppressed {
+			fmt.Fprintf(w, "- %s\n", strings.TrimSpace(sup))
+		}
+		fmt.Fprintln(w)
 	}
 	if len(d.Warnings) > 0 {
 		fmt.Fprintf(w, "### Not covered\n\n")

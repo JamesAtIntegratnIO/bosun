@@ -92,3 +92,97 @@ func TestARemovalLineIsNotRepairable(t *testing.T) {
 		t.Fatalf("a removal has no destination and must parse as nothing, got %+v", got)
 	}
 }
+
+// All three object groups render an identical bullet. A reader that matched
+// the bullet without tracking its group treated an ADDED definition as a
+// removed one -- and every false hit is a live apiserver lookup on a path a
+// human is waiting on.
+func TestParseRemovedCRDsOnlyReadsTheRemovedGroup(t *testing.T) {
+	report := strings.Join([]string{
+		"### Rendered objects",
+		"",
+		ObjectGroupHeading(GroupAdded, 1),
+		"",
+		"- `CustomResourceDefinition/widgets.example.io`",
+		"",
+		ObjectGroupHeading(GroupRemoved, 2),
+		"",
+		"- `CustomResourceDefinition/gadgets.example.io`",
+		"- `CustomResourceDefinition/sprockets.example.io in tools`",
+		"  - a note about the removal",
+		"",
+		ObjectGroupHeading(GroupChanged, 1),
+		"",
+		"- `CustomResourceDefinition/doodads.example.io`",
+		"",
+		"### Versions",
+		"",
+		"- `CustomResourceDefinition/decoys.example.io`",
+	}, "\n")
+
+	got := ParseRemovedCRDs(report)
+	want := []string{"gadgets.example.io", "sprockets.example.io"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
+
+func TestParseRemovedCRDsFindsNothingWhenNothingWasRemoved(t *testing.T) {
+	report := ObjectGroupHeading(GroupAdded, 1) + "\n\n- `CustomResourceDefinition/widgets.example.io`\n"
+	if got := ParseRemovedCRDs(report); len(got) != 0 {
+		t.Errorf("added definitions must not read as removed: %v", got)
+	}
+}
+
+// The prose scrape and the structured count answer slightly different
+// questions, and the difference bites exactly on a retry: gate/diff.go prints
+// the apiVersion heading whenever any such object exists, while Blockers
+// excludes the ones the repair is itself performing. Scraping won there, so
+// after a partial repair the deterministic path was skipped on attempt 2 --
+// the attempt the cap exists to allow.
+func TestStructuredCountBeatsTheProseScrapeOnAMigrationRetry(t *testing.T) {
+	report := strings.Join([]string{
+		BlockersMarker + "targeting=0 source=0 apiVersion=0 consumers=2 unscanned=0 valuesDropped=0 schema=0 -->",
+		"",
+		HeadingAPIVersion,
+		"",
+		"- `CustomResourceDefinition/widgets.example.io`: no longer serves `v1alpha1` — `Widget` manifests must move to `v1`",
+	}, "\n")
+
+	if !OtherBlockers(report) {
+		t.Fatal("the prose scrape should see the heading -- that is the drift being tested")
+	}
+	b, ok := ParseBlockers(report)
+	if !ok {
+		t.Fatal("the marker should parse")
+	}
+	if b.OtherThanDropped() {
+		t.Error("a migration this repair is performing is not an unrelated blocker")
+	}
+}
+
+func TestOtherThanDroppedCountsEveryUnrelatedReason(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		b    Blockers
+		want bool
+	}{
+		{"nothing", Blockers{}, false},
+		{"only dropped versions", Blockers{Consumers: 3}, false},
+		{"unscanned only", Blockers{Unscanned: 1}, false},
+		{"values dropped only", Blockers{ValuesDropped: 2}, false},
+		{"targeting", Blockers{Targeting: 1}, true},
+		{"source", Blockers{Source: 1}, true},
+		{"apiVersion", Blockers{APIVersion: 1}, true},
+		{"schema", Blockers{Schema: 1}, true},
+	} {
+		if got := tc.b.OtherThanDropped(); got != tc.want {
+			t.Errorf("%s: OtherThanDropped() = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

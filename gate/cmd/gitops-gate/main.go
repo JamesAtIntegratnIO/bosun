@@ -20,8 +20,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"sigs.k8s.io/yaml"
 
@@ -121,7 +123,7 @@ func cmdDiff(args []string) (bool, error) {
 	headPath := fs.String("head", "", "target table for the head revision (required)")
 	repo := fs.String("repo", "", "repository worktree; enables chart-diff -- renders every chart whose version moved, at BOTH versions, and diffs the resources")
 	cfgPath := fs.String("config", "", "path to .gitops-gate.yaml (default: <repo>/.gitops-gate.yaml)")
-	report := fs.String("report", "", "write a markdown report here (default: stdout)")
+	reportPath := fs.String("report", "", "write a markdown report here (default: stdout)")
 	jsonOut := fs.String("json", "", "write the machine-readable diff here")
 	if err := fs.Parse(args); err != nil {
 		return false, err
@@ -141,40 +143,28 @@ func cmdDiff(args []string) (bool, error) {
 
 	// Chart-diff turns "the version moved" into "here is what the version
 	// moving does". It needs the repository for the value files, so it is
-	// opt-in via -repo rather than assumed.
-	var valueDrops []gate.ObjectChange
+	// opt-in via -repo rather than assumed -- gate.Assemble skips the two
+	// worktree-dependent steps when the root is empty.
+	var cfg *gate.Config
 	if *repo != "" {
-		cfg, _, err := load(*repo, *cfgPath)
+		var err error
+		cfg, _, err = load(*repo, *cfgPath)
 		if err != nil {
 			return false, err
 		}
-		beforeOb, afterOb, drops, warns := gate.ChartDiff(*repo, cfg, base, head)
-		base.Objects = append(base.Objects, beforeOb...)
-		head.Objects = append(head.Objects, afterOb...)
-		base.Warnings = append(base.Warnings, warns...)
-		valueDrops = drops
 	}
+	res := gate.Assemble(*repo, cfg, base, head)
 
-	res := gate.Diff(base, head)
-	res.Objects = append(res.Objects, valueDrops...)
-
-	// With a worktree, a dropped served version can be traced to the manifests
-	// that still declare it -- which is what decides whether it blocks, and
-	// what a repair needs to know it moved.
-	if *repo != "" {
-		gate.AnnotateConsumers(res, *repo)
+	// Rendered whole, then written once. A report streamed straight at a file
+	// discards every write error on the way and then discards the Close, which
+	// is where a full disk actually surfaces -- so a truncated report was
+	// presented as a complete one, from the tool whose entire job is not doing
+	// that.
+	var report strings.Builder
+	res.Report(&report)
+	if err := writeReport(*reportPath, report.String()); err != nil {
+		return false, err
 	}
-
-	w := os.Stdout
-	if *report != "" {
-		f, err := os.Create(*report)
-		if err != nil {
-			return false, err
-		}
-		defer f.Close()
-		w = f
-	}
-	res.Report(w)
 
 	if *jsonOut != "" {
 		if err := writeJSONFile(*jsonOut, res); err != nil {
@@ -182,13 +172,15 @@ func cmdDiff(args []string) (bool, error) {
 		}
 	}
 
-	if res.Blocking() {
-		fmt.Fprintf(os.Stderr, "\ngitops-gate: %d targeting change(s), %d other source change(s) -- blocking\n",
-			len(res.Targeting), len(res.Other))
-		return true, nil
-	}
-	fmt.Fprintf(os.Stderr, "\ngitops-gate: no targeting change; %d version change(s)\n", len(res.Versions))
-	return false, nil
+	// The same headline the report leads with and the in-cluster service puts
+	// on its commit status. Counting targeting and source changes here was
+	// wrong in the way that matters: a run blocked only by a dropped API
+	// version or a dropped setting printed "0 targeting change(s), 0 other
+	// source change(s) -- blocking", which reads as the gate contradicting
+	// itself.
+	blocking, headline := res.Verdict()
+	fmt.Fprintf(os.Stderr, "\ngitops-gate: %s\n", headline)
+	return blocking, nil
 }
 
 // cmdValidate schema-validates every rendered manifest with kubeconform.
@@ -201,7 +193,7 @@ func cmdValidate(args []string) (bool, error) {
 	fs := flag.NewFlagSet("validate", flag.ExitOnError)
 	root := fs.String("repo", ".", "path to the repository worktree")
 	cfgPath := fs.String("config", "", "path to .gitops-gate.yaml (default: <repo>/.gitops-gate.yaml)")
-	report := fs.String("report", "", "write a markdown report here (default: stdout)")
+	reportPath := fs.String("report", "", "write a markdown report here (default: stdout)")
 	if err := fs.Parse(args); err != nil {
 		return false, err
 	}
@@ -215,18 +207,12 @@ func cmdValidate(args []string) (bool, error) {
 		return false, nil
 	}
 
-	w := os.Stdout
-	if *report != "" {
-		f, err := os.Create(*report)
-		if err != nil {
-			return false, err
-		}
-		defer f.Close()
-		w = f
-	}
-
-	failures, err := gate.ValidateManifests(*root, cfg, inv, w)
+	var report strings.Builder
+	failures, err := gate.ValidateManifests(*root, cfg, inv, &report)
 	if err != nil {
+		return false, err
+	}
+	if err := writeReport(*reportPath, report.String()); err != nil {
 		return false, err
 	}
 	if failures > 0 {
@@ -258,9 +244,9 @@ func cmdClusters(args []string) error {
 
 	// Pick up site-specific ignore keys if a config is reachable. Export is
 	// deliberately usable without one, so a missing config is not an error.
-	filter := gate.NewExportFilter(nil, "")
+	filter := gate.NewExportFilter("", nil)
 	if cfg, err := gate.LoadConfig(*configPath); err == nil {
-		filter = gate.NewExportFilter(cfg, filepath.Dir(*configPath))
+		filter = gate.NewExportFilter(filepath.Dir(*configPath), cfg)
 	}
 
 	inv, err := gate.ExportClusters(*kubeContext, *namespace, filter)
@@ -281,7 +267,7 @@ func cmdClusters(args []string) error {
 		if err != nil {
 			return fmt.Errorf("reading %s to compare: %w", *out, err)
 		}
-		if gate.NormalizeInventory(existing) != gate.NormalizeInventory(rendered) {
+		if gate.NormaliseInventory(existing) != gate.NormaliseInventory(rendered) {
 			fmt.Fprintf(os.Stderr, "cluster inventory has drifted from the live cluster.\n"+
 				"The gate's targeting check is only as good as this file.\n"+
 				"Refresh it with: gitops-gate clusters export -out %s\n", *out)
@@ -325,8 +311,44 @@ func writeJSONFile(path string, v any) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
-	return enc.Encode(v)
+	if err := enc.Encode(v); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+	// Checked, not deferred: this is where a short write reports itself, and
+	// render-diff.json is read by whatever consumes the gate's verdict.
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("closing %s: %w", path, err)
+	}
+	return nil
+}
+
+// writeReport puts a rendered report where the caller asked for it: a file when
+// one was named, stdout otherwise.
+//
+// Rendered whole and written once, on purpose. Streaming into a file discards
+// every write error on the way there and then discards the Close -- which is
+// where a full disk actually surfaces -- so a truncated report was handed back
+// as a complete one by the tool whose entire job is not doing that.
+func writeReport(path, body string) error {
+	if path == "" {
+		_, err := io.WriteString(os.Stdout, body)
+		return err
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	if _, err := io.WriteString(f, body); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+	// Checked, not deferred: on a written file this is where a short write
+	// finally reports itself.
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("closing %s: %w", path, err)
+	}
+	return nil
 }

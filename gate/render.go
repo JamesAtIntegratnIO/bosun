@@ -31,7 +31,7 @@ func Render(repoRoot string, cfg *Config, inv *Inventory) (*Table, error) {
 		batch []docs
 		err   error
 	}
-	sem := make(chan struct{}, cfg.Concurrency)
+	sem := make(chan struct{}, cfg.workers())
 	results := make(chan result, len(cfg.Sources))
 	var wg sync.WaitGroup
 
@@ -86,18 +86,6 @@ func Render(repoRoot string, cfg *Config, inv *Inventory) (*Table, error) {
 					table.Warnings = append(table.Warnings, warns...)
 					table.Rows = append(table.Rows, rows...)
 
-				default:
-					// Anything that is not an Application or ApplicationSet
-					// is a resource the cluster will end up with. Recording
-					// these is what makes an object-level diff possible.
-					cluster := ""
-					if d.cluster != nil {
-						cluster = d.cluster.Name
-					}
-					if o, ok := objectFrom(d.source, cluster, "", obj); ok {
-						table.Objects = append(table.Objects, o)
-					}
-
 				case "Application":
 					// A plain Application needs no expansion: it targets one
 					// destination and is already the thing ArgoCD will create.
@@ -111,6 +99,18 @@ func Render(repoRoot string, cfg *Config, inv *Inventory) (*Table, error) {
 						continue
 					}
 					table.Rows = append(table.Rows, row)
+
+				default:
+					// Anything that is not an Application or ApplicationSet
+					// is a resource the cluster will end up with. Recording
+					// these is what makes an object-level diff possible.
+					cluster := ""
+					if d.cluster != nil {
+						cluster = d.cluster.Name
+					}
+					if o, ok := objectFrom(d.source, cluster, "", obj); ok {
+						table.Objects = append(table.Objects, o)
+					}
 				}
 			}
 		}
@@ -125,7 +125,7 @@ func Render(repoRoot string, cfg *Config, inv *Inventory) (*Table, error) {
 	}
 
 	table.Rows = dedupeRows(table.Rows)
-	table.Warnings = dedupeStrings(table.Warnings)
+	table.Warnings = dedupeOrdered(table.Warnings)
 	table.Sort()
 	return table, nil
 }
@@ -155,7 +155,7 @@ func rowFromPlainApplication(source string, obj map[string]any, inv *Inventory) 
 			}
 		}
 	default:
-		return Row{}, fmt.Errorf("Application %q has no destination", row.App)
+		return Row{}, fmt.Errorf("application %q has no destination", row.App)
 	}
 	return row, nil
 }
@@ -272,38 +272,6 @@ func helmTemplateRaw(repoRoot, chartPath string, valueFiles []string) ([]byte, e
 	return stdout.Bytes(), nil
 }
 
-func unmarshalMap(raw []byte) (map[string]any, error) {
-	var m map[string]any
-	if err := yaml.Unmarshal(raw, &m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// helmTemplate renders the factory chart and returns every ApplicationSet in
-// the output.
-func helmTemplate(repoRoot, chartPath string, valueFiles []string) ([]map[string]any, error) {
-	stream, err := helmTemplateRaw(repoRoot, chartPath, valueFiles)
-	if err != nil {
-		return nil, err
-	}
-
-	var out []map[string]any
-	for _, doc := range splitYAML(stream) {
-		var obj map[string]any
-		if err := yaml.Unmarshal(doc, &obj); err != nil {
-			return nil, fmt.Errorf("parsing helm output: %w", err)
-		}
-		if obj == nil {
-			continue
-		}
-		if kind, _ := obj["kind"].(string); kind == "ApplicationSet" {
-			out = append(out, obj)
-		}
-	}
-	return out, nil
-}
-
 func splitYAML(b []byte) [][]byte {
 	parts := bytes.Split(b, []byte("\n---"))
 	var out [][]byte
@@ -330,7 +298,10 @@ func dedupeRows(rows []Row) []Row {
 	return out
 }
 
-func dedupeStrings(in []string) []string {
+// dedupeOrdered keeps first-seen order and does NOT trim or drop blanks. Named
+// for both, because package main has a dedupeSorted that does the opposite on
+// each count.
+func dedupeOrdered(in []string) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, s := range in {
@@ -365,7 +336,7 @@ func bootstrapRow(bs map[string]any, p Param, appsetName, chartPath string) (Row
 		AppSet:     appsetName,
 		Cluster:    p.Cluster.Name,
 		App:        name,
-		SourceType: "path",
+		SourceType: RowPath,
 		Path:       chartPath,
 	}
 	tspec, _ := tmpl["spec"].(map[string]any)
@@ -400,8 +371,8 @@ func collectBootstrap(repoRoot string, cfg *Config, inv *Inventory, s Source) ([
 	if err != nil {
 		return nil, fmt.Errorf("source %q: reading %s: %w", s.Name, s.Path, err)
 	}
-	bs, err := unmarshalMap(raw)
-	if err != nil {
+	var bs map[string]any
+	if err := yaml.Unmarshal(raw, &bs); err != nil {
 		return nil, fmt.Errorf("source %q: parsing %s: %w", s.Name, s.Path, err)
 	}
 
@@ -480,11 +451,16 @@ func renderBootstrapPath(repoRoot, path string, valueFiles []string) ([]map[stri
 
 // readDirRecursive reads every YAML manifest under a directory, matching
 // ArgoCD's `directory.recurse: true`.
+//
+// Walk and read failures are FATAL, like the parse failure below them. What
+// this returns is the render, so a manifest that quietly does not arrive is
+// not a smaller answer -- it is the same answer with objects missing from it,
+// which the diff then attributes to the pull request.
 func readDirRecursive(dir string) ([]map[string]any, error) {
 	var out []map[string]any
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return fmt.Errorf("%s: %w", p, err)
 		}
 		if d.IsDir() {
 			if d.Name() == ".git" {
@@ -499,7 +475,7 @@ func readDirRecursive(dir string) ([]map[string]any, error) {
 		}
 		raw, readErr := os.ReadFile(p)
 		if readErr != nil {
-			return nil
+			return fmt.Errorf("%s: %w", p, readErr)
 		}
 		objs, parseErr := parseStream(raw)
 		if parseErr != nil {

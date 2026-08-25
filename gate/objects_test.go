@@ -24,7 +24,7 @@ func TestObjectDiffReportsAddedRemovedAndChanged(t *testing.T) {
 		obj("DaemonSet", "metallb-system", "frr-k8s", "apps/v1", "ccc"),
 	}
 
-	got := map[string]string{}
+	got := map[string]ObjectChangeKind{}
 	for _, c := range diffObjects(base, head) {
 		got[c.Object] = c.Kind
 	}
@@ -151,7 +151,7 @@ spec: {revisionHistoryLimit: 10}
 		t.Fatalf("want 2 objects each side, got %d and %d", len(b.Objects), len(h.Objects))
 	}
 
-	kinds := map[string]string{}
+	kinds := map[string]ObjectChangeKind{}
 	for _, c := range Diff(b, h).Objects {
 		kinds[c.Object] = c.Kind
 	}

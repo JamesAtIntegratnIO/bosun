@@ -32,7 +32,7 @@ func Render(n *Notes) string {
 		}
 	} else {
 		where := "in their releases"
-		if n.Origin != "" && n.Origin != "releases" {
+		if n.Origin != "" && n.Origin != OriginReleases {
 			where = "in " + n.Origin
 		}
 		fmt.Fprintf(&b, "%s What the maintainers wrote %s, newest first. This is what\n"+

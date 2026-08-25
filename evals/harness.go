@@ -15,6 +15,7 @@ import (
 
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
+	"github.com/JamesAtIntegratnIO/bosun/prompt"
 	"github.com/JamesAtIntegratnIO/bosun/structural"
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
@@ -59,55 +60,57 @@ type Result struct {
 
 func (r Result) Pass() bool { return r.ClassOK && r.EditsOK && r.Grounded }
 
-// BuildPrompt renders the user-side prompt for a case.
+// BuildPrompt renders the user-side prompt for a case, through the same
+// builder the shipped agent uses.
 //
-// The scalar inventory is the important part. Handed one, a model chooses a
-// key from a list; without one it invents a key path and paraphrases a value,
-// and the applier -- correctly -- throws the result away.
+// It used to assemble the prompt itself, and the two had already diverged --
+// the shipped one grew an artifact line this did not have, so the suite
+// reported a score for a prompt nobody is given. The Header is still built
+// here, because that is the one part a fixture genuinely cannot supply: a Case
+// has a Subject, not a project, a stage and an artifact.
 func BuildPrompt(c Case, withInventory bool) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "PULL REQUEST: %s\n\n%s\n\n", c.Subject, c.GateReport)
-
 	// The files THIS promotion touched, not everything the repository holds.
 	// The live agent lists exactly this (the promotion's own file list), so a
 	// prompt built from every fixture file would measure a prompt nobody gets.
-	paths := append([]string{}, c.ChangedFiles()...)
-	sort.Strings(paths)
-
-	if withInventory {
-		b.WriteString("Repository files this pull request may change.\n")
-		b.WriteString("Use these keys and values EXACTLY as written.\n\n")
-		for _, p := range paths {
-			inv, err := edits.Inventory([]byte(c.Files[p]), "")
-			if err != nil {
-				continue
-			}
-			b.WriteString(edits.Render(p, inv))
-			b.WriteString("\n")
-		}
-	} else {
-		b.WriteString("Repository files this pull request may change:\n\n")
-		for _, p := range paths {
-			fmt.Fprintf(&b, "--- %s ---\n%s\n", p, c.Files[p])
-		}
+	var files []prompt.File
+	for _, p := range c.ChangedFiles() {
+		files = append(files, prompt.File{Path: p, Data: []byte(c.Files[p])})
 	}
-	b.WriteString("Classify this pull request and, if mechanical, give the edits.")
-	return b.String()
+	return prompt.User(prompt.UserInput{
+		Header:    "PULL REQUEST: " + c.Subject,
+		Report:    c.GateReport,
+		Files:     files,
+		Inventory: withInventory,
+	})
 }
 
 // Run executes one case against whichever prompt it names.
 //
-// The two paths are scored by different things because they fail at different
+// The paths are scored by different things because they fail at different
 // places. Triage is scored on what the applier would have WRITTEN -- a perfect
 // fix in the wrong shape has fixed nothing. Explain writes nothing at all, so
 // it is scored on whether the answer stayed inside the evidence it was given.
+// Restructure is scored twice, by the harness's own validators and against a
+// hand-verified document, because a proposal they accept and that is still
+// wrong is the only outcome on that path which reaches disk.
+//
+// withInventory applies to the triage and explain paths only. A restructure
+// case builds its prompt from the two schemas via structural.Prompt and never
+// sees the file inventory, so the argument is ignored there.
 func Run(ctx context.Context, p llm.Provider, system string, c Case, withInventory bool) Result {
 	switch c.Path {
 	case PathExplain:
 		return runExplain(ctx, p, system, c, withInventory)
 	case PathRestructure:
 		return runRestructure(ctx, p, system, c)
+	default:
+		return runTriage(ctx, p, system, c, withInventory)
 	}
+}
+
+// runTriage scores the red-gate classifier on what the applier would actually
+// have written -- a perfect fix in the wrong shape has fixed nothing.
+func runTriage(ctx context.Context, p llm.Provider, system string, c Case, withInventory bool) Result {
 	res := Result{Case: c.Name, WantClass: c.WantClass, Grounded: true}
 
 	start := time.Now()
@@ -126,11 +129,21 @@ func Run(ctx context.Context, p llm.Provider, system string, c Case, withInvento
 		res.Notes = append(res.Notes, err.Error())
 		return res
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 	for path, content := range c.Files {
 		full := filepath.Join(root, path)
-		_ = os.MkdirAll(filepath.Dir(full), 0o755)
-		_ = os.WriteFile(full, []byte(content), 0o644)
+		// The only two failures in this file that were not turned into a Note.
+		// A case whose fixture is not on disk measures nothing, and scores
+		// whatever the applier does with a repository that is not there -- so
+		// it stops rather than reporting a number about it.
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			res.Notes = append(res.Notes, "fixture: "+err.Error())
+			return res
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			res.Notes = append(res.Notes, "fixture: "+err.Error())
+			return res
+		}
 	}
 
 	in := make([]edits.Edit, 0, len(v.Edits))
@@ -177,8 +190,8 @@ func Run(ctx context.Context, p llm.Provider, system string, c Case, withInvento
 	for _, a := range applied.Applied {
 		got[a.Key] = a.To
 	}
-	res.EditsOK = len(got) == len(c.WantEdits)
-	for k, want := range c.WantEdits {
+	res.EditsOK = len(got) == len(c.Triage.WantEdits)
+	for k, want := range c.Triage.WantEdits {
 		if got[k] != want {
 			res.EditsOK = false
 			res.Notes = append(res.Notes, fmt.Sprintf("expected %s=%s, got %q", k, want, got[k]))
@@ -204,7 +217,7 @@ func runExplain(ctx context.Context, p llm.Provider, system string, c Case, with
 	// the triage path builds, through the same function. Rendering it here
 	// through upstream.Render rather than pasting a copy is what stops the
 	// suite measuring a prompt nobody is given.
-	prompt := BuildPrompt(c, withInventory) + upstream.Render(c.Notes)
+	prompt := BuildPrompt(c, withInventory) + upstream.Render(c.Explain.Notes)
 
 	start := time.Now()
 	v, err := p.Classify(ctx, system, prompt)
@@ -231,13 +244,13 @@ func runExplain(ctx context.Context, p llm.Provider, system string, c Case, with
 	// The answer as a reader receives it: both fields, because a claim moved
 	// from the summary into the reasoning is the same claim.
 	answer := v.Summary + "\n" + v.Reasoning
-	for _, want := range c.MustMention {
+	for _, want := range c.Explain.MustMention {
 		if !strings.Contains(strings.ToLower(answer), strings.ToLower(want)) {
 			res.Grounded = false
 			res.Notes = append(res.Notes, fmt.Sprintf("never cited %q, which the evidence gave it", want))
 		}
 	}
-	for _, never := range c.MustNotMention {
+	for _, never := range c.Explain.MustNotMention {
 		if containsWord(answer, never) {
 			res.Grounded = false
 			res.Unsafe = true
@@ -281,7 +294,7 @@ func boundary(s string, i int) bool {
 		return true
 	}
 	c := s[i]
-	return !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9')
+	return (c < 'a' || c > 'z') && (c < '0' || c > '9')
 }
 
 // runRestructure measures the document migration.
@@ -299,18 +312,18 @@ func boundary(s string, i int) bool {
 func runRestructure(ctx context.Context, p llm.Provider, system string, c Case) Result {
 	res := Result{Case: c.Name, WantClass: PathRestructure, EditsOK: true, Grounded: true}
 
-	oldSchema, err := decodeSchema(c.OldSchema)
+	oldSchema, err := decodeSchema(c.Restructure.OldSchema)
 	if err != nil {
 		res.Notes = append(res.Notes, "old schema: "+err.Error())
 		return res
 	}
-	newSchema, err := decodeSchema(c.NewSchema)
+	newSchema, err := decodeSchema(c.Restructure.NewSchema)
 	if err != nil {
 		res.Notes = append(res.Notes, "new schema: "+err.Error())
 		return res
 	}
 	var doc map[string]any
-	if err := yaml.Unmarshal([]byte(c.Document), &doc); err != nil {
+	if err := yaml.Unmarshal([]byte(c.Restructure.Document), &doc); err != nil {
 		res.Notes = append(res.Notes, "document: "+err.Error())
 		return res
 	}
@@ -325,7 +338,7 @@ func runRestructure(ctx context.Context, p llm.Provider, system string, c Case) 
 	// and mean opposite things: no expected document is "nothing should have
 	// been asked", and WantRefused is "something was asked and nothing should
 	// be written".
-	if c.WantDocument == "" && !c.WantRefused {
+	if c.Restructure.WantDocument == "" && !c.Restructure.WantRefused {
 		res.Class = "not-called"
 		res.ClassOK = len(findings) == 0
 		if !res.ClassOK {
@@ -348,7 +361,7 @@ func runRestructure(ctx context.Context, p llm.Provider, system string, c Case) 
 
 	start := time.Now()
 	m, err := rs.Restructure(ctx, system,
-		structural.Prompt("fixture.yaml", c.Document, c.FromVersion, c.TargetAPIVersion, oldSchema, newSchema, findings))
+		structural.Prompt("fixture.yaml", c.Restructure.Document, c.Restructure.FromVersion, c.Restructure.TargetAPIVersion, oldSchema, newSchema, findings))
 	res.Elapsed = time.Since(start)
 	if err != nil || m == nil {
 		res.Notes = append(res.Notes, fmt.Sprintf("provider error: %v", err))
@@ -362,10 +375,10 @@ func runRestructure(ctx context.Context, p llm.Provider, system string, c Case) 
 		return res
 	}
 
-	verdict := structural.Validate(doc, proposed, c.TargetAPIVersion, newSchema)
+	verdict := structural.Validate(doc, proposed, c.Restructure.TargetAPIVersion, newSchema)
 	res.Rejected = append(res.Rejected, verdict.Refusals...)
 
-	if c.WantRefused {
+	if c.Restructure.WantRefused {
 		// Some migrations have no honest answer -- a newly required field with
 		// nothing in the document to fill it. The measurement is that whatever
 		// came back was stopped, and accepting it is the unsafe outcome.
@@ -391,7 +404,7 @@ func runRestructure(ctx context.Context, p llm.Provider, system string, c Case) 
 	res.ClassOK = true
 
 	var want map[string]any
-	if err := yaml.Unmarshal([]byte(c.WantDocument), &want); err != nil {
+	if err := yaml.Unmarshal([]byte(c.Restructure.WantDocument), &want); err != nil {
 		res.Notes = append(res.Notes, "expected document: "+err.Error())
 		return res
 	}

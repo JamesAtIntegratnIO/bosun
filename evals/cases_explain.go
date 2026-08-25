@@ -10,7 +10,6 @@ import "github.com/JamesAtIntegratnIO/bosun/upstream"
 // list. The live scenario demo reads that list; a second export it did not know
 // about is how the thing the suite measures and the thing anyone watches start
 // to drift.
-func init() { Cases = append(Cases, explainCases...) }
 
 // What this path can get wrong, and why nothing downstream catches it.
 //
@@ -54,14 +53,16 @@ Rendered diff, external-secrets 0.9.20 -> 0.11.0:
 
 No manifest in this repository declares a version that stopped being served.`,
 		WantClass: "escalate",
-		// The distance is the finding, and it is written in the report. An
-		// answer that does not name where the chart came from and where it is
-		// going has not made the point it is escalating on.
-		MustMention: []string{"0.9.20", "0.11.0"},
-		// Nothing in front of it says anything about data loss, a migration
-		// job, or a controller rewrite. Those are the sentences a model
-		// produces from memory of the project.
-		MustNotMention: []string{"backup", "irreversible", "downtime"},
+		Explain: explainWant{
+			// The distance is the finding, and it is written in the report. An
+			// answer that does not name where the chart came from and where it is
+			// going has not made the point it is escalating on.
+			MustMention: []string{"0.9.20", "0.11.0"},
+			// Nothing in front of it says anything about data loss, a migration
+			// job, or a controller rewrite. Those are the sentences a model
+			// produces from memory of the project.
+			MustNotMention: []string{"backup", "irreversible", "downtime"},
+		},
 	},
 	{
 		// A resource disappearing is the finding a render can prove and cannot
@@ -86,20 +87,22 @@ Rendered diff, trivy-operator-explorer 0.5.8 -> 1.0.0:
   added    RoleBinding/trivy-operator-explorer
   changed  Deployment/trivy-operator-explorer   (image tag, 1 env var)`,
 		WantClass: "escalate",
-		Notes: &upstream.Notes{
-			SourceRepo: "example-org/trivy-operator-explorer",
-			Releases: []upstream.Release{{
-				Tag:  "v1.0.0",
-				Name: "1.0.0",
-				Body: "### Breaking\n\n" +
-					"The explorer no longer reads reports cluster-wide. It watches the " +
-					"namespaces listed in the new `targetNamespaces` value and ships a " +
-					"namespaced Role instead of a ClusterRole. Deployments that relied on " +
-					"cluster-wide discovery must list their namespaces explicitly.\n",
-			}},
+		Explain: explainWant{
+			Notes: &upstream.Notes{
+				SourceRepo: "example-org/trivy-operator-explorer",
+				Releases: []upstream.Release{{
+					Tag:  "v1.0.0",
+					Name: "1.0.0",
+					Body: "### Breaking\n\n" +
+						"The explorer no longer reads reports cluster-wide. It watches the " +
+						"namespaces listed in the new `targetNamespaces` value and ships a " +
+						"namespaced Role instead of a ClusterRole. Deployments that relied on " +
+						"cluster-wide discovery must list their namespaces explicitly.\n",
+				}},
+			},
+			// The reason was handed to it. Citing it is the job.
+			MustMention: []string{"targetNamespaces"},
 		},
-		// The reason was handed to it. Citing it is the job.
-		MustMention: []string{"targetNamespaces"},
 	},
 	{
 		// The same finding with the notes taken away. This is where invention
@@ -128,23 +131,25 @@ Rendered diff, trivy-operator-explorer 0.5.8 -> 1.0.0:
   added    RoleBinding/trivy-operator-explorer
   changed  Deployment/trivy-operator-explorer   (image tag, 1 env var)`,
 		WantClass: "escalate",
-		Notes: &upstream.Notes{
-			Note: "No upstream release notes: the artifact carries no source label.",
+		Explain: explainWant{
+			Notes: &upstream.Notes{
+				Note: "No upstream release notes: the artifact carries no source label.",
+			},
+			// Say what the render did. That much is fact and it is the finding.
+			MustMention: []string{"ClusterRole"},
+			// Say WHY, and it came from somewhere that is not the evidence.
+			//
+			// `namespaced` was a probe here on the first run and was wrong.
+			// qwen3.8-27b answered "swaps the cluster-scoped ClusterRole and
+			// ClusterRoleBinding for namespaced Role and RoleBinding" -- which is
+			// the render, restated. A Role IS namespaced; the word is a property
+			// of the kind the report names, not a claim about the project. A probe
+			// that fires on a fact rephrased measures vocabulary, and the guard
+			// test cannot catch that because the word genuinely is absent from the
+			// evidence as a string. It has to be a term whose only source is
+			// memory of the upstream, which is what `targetNamespaces` is.
+			MustNotMention: []string{"targetNamespaces"},
 		},
-		// Say what the render did. That much is fact and it is the finding.
-		MustMention: []string{"ClusterRole"},
-		// Say WHY, and it came from somewhere that is not the evidence.
-		//
-		// `namespaced` was a probe here on the first run and was wrong.
-		// qwen3.8-27b answered "swaps the cluster-scoped ClusterRole and
-		// ClusterRoleBinding for namespaced Role and RoleBinding" -- which is
-		// the render, restated. A Role IS namespaced; the word is a property
-		// of the kind the report names, not a claim about the project. A probe
-		// that fires on a fact rephrased measures vocabulary, and the guard
-		// test cannot catch that because the word genuinely is absent from the
-		// evidence as a string. It has to be a term whose only source is
-		// memory of the upstream, which is what `targetNamespaces` is.
-		MustNotMention: []string{"targetNamespaces"},
 	},
 	{
 		// The over-flagging guard, and the reason it is here: an escalation
@@ -168,18 +173,20 @@ Rendered diff, authentik 2026.6.3 -> 2026.6.4:
   changed  Deployment/authentik-worker    (image tag)
   changed  StatefulSet/authentik-redis    (one label: app.kubernetes.io/version)`,
 		WantClass: "no_action",
-		Notes: &upstream.Notes{
-			SourceRepo: "goauthentik/authentik",
-			Releases: []upstream.Release{{
-				Tag: "version/2026.6.4", Name: "2026.6.4",
-				Body: "Patch release. Fixes a flow-inspector rendering error and updates " +
-					"the bundled frontend dependencies.\n",
-			}},
+		Explain: explainWant{
+			Notes: &upstream.Notes{
+				SourceRepo: "goauthentik/authentik",
+				Releases: []upstream.Release{{
+					Tag: "version/2026.6.4", Name: "2026.6.4",
+					Body: "Patch release. Fixes a flow-inspector rendering error and updates " +
+						"the bundled frontend dependencies.\n",
+				}},
+			},
+			// Nothing in either source mentions a vulnerability, and "there might
+			// be a security fix in here" is the most reliable way this path turns
+			// into noise.
+			MustNotMention: []string{"CVE", "vulnerability", "exploit"},
 		},
-		// Nothing in either source mentions a vulnerability, and "there might
-		// be a security fix in here" is the most reliable way this path turns
-		// into noise.
-		MustNotMention: []string{"CVE", "vulnerability", "exploit"},
 	},
 	{
 		// A chart that stops shipping a CRD renders green when nothing in the
@@ -207,15 +214,17 @@ Rendered diff, kyverno 3.5.2 -> 3.6.0:
 
 Consumers of the removed CustomResourceDefinitions in this repository: 0.`,
 		WantClass: "escalate",
-		Notes: &upstream.Notes{
-			Note: "No upstream release notes: no release in this range carried a body.",
+		Explain: explainWant{
+			Notes: &upstream.Notes{
+				Note: "No upstream release notes: no release in this range carried a body.",
+			},
+			// The removal is the finding, and it has a name in the report.
+			MustMention: []string{"policyexceptions"},
+			// Zero consumers is what the report counted. Reading that as "nothing
+			// anywhere uses these" is a claim about the cluster, which this path
+			// has no evidence about at all.
+			MustNotMention: []string{"unused", "harmless"},
 		},
-		// The removal is the finding, and it has a name in the report.
-		MustMention: []string{"policyexceptions"},
-		// Zero consumers is what the report counted. Reading that as "nothing
-		// anywhere uses these" is a claim about the cluster, which this path
-		// has no evidence about at all.
-		MustNotMention: []string{"unused", "harmless"},
 	},
 	{
 		// The case the commit range was built for. The render proves a
@@ -244,26 +253,28 @@ Rendered diff, trivy-operator-explorer 0.5.8 -> 1.0.0:
   added    Role/trivy-operator-explorer
   changed  Deployment/trivy-operator-explorer   (image tag)`,
 		WantClass: "escalate",
-		Notes: &upstream.Notes{
-			SourceRepo: "example-org/trivy-operator-explorer",
-			Note:       "No upstream release notes: none tagged in this range.",
-			Compare: &upstream.Compare{
-				Range: "v0.5.8...v1.0.0", URL: "https://example.invalid/compare",
-				Total: 42,
-				Relevant: []upstream.Commit{{
-					SHA:     "9f2c1a8b4d10",
-					Message: "fix(rbac): stop listing reports cluster-wide; watch one namespace",
-					URL:     "https://example.invalid/commit/9f2c1a8b4d10",
-				}},
-				Files: []string{"charts/trivy-operator-explorer/templates/clusterrole.yaml"},
-				Note:  "Upstream commits from example-org/trivy-operator-explorer, v0.5.8...v1.0.0.",
+		Explain: explainWant{
+			Notes: &upstream.Notes{
+				SourceRepo: "example-org/trivy-operator-explorer",
+				Note:       "No upstream release notes: none tagged in this range.",
+				Compare: &upstream.Compare{
+					Range: "v0.5.8...v1.0.0", URL: "https://example.invalid/compare",
+					Total: 42,
+					Relevant: []upstream.Commit{{
+						SHA:     "9f2c1a8b4d10",
+						Message: "fix(rbac): stop listing reports cluster-wide; watch one namespace",
+						URL:     "https://example.invalid/commit/9f2c1a8b4d10",
+					}},
+					Files: []string{"charts/trivy-operator-explorer/templates/clusterrole.yaml"},
+					Note:  "Upstream commits from example-org/trivy-operator-explorer, v0.5.8...v1.0.0.",
+				},
 			},
+			// The reason it was finally given, in the words it was given in.
+			MustMention: []string{"cluster-wide"},
+			// And not the reason it was not given. `targetNamespaces` is a real
+			// value name in this project and is nowhere in this case's evidence.
+			MustNotMention: []string{"targetNamespaces"},
 		},
-		// The reason it was finally given, in the words it was given in.
-		MustMention: []string{"cluster-wide"},
-		// And not the reason it was not given. `targetNamespaces` is a real
-		// value name in this project and is nowhere in this case's evidence.
-		MustNotMention: []string{"targetNamespaces"},
 	},
 	{
 		// The interesting negative, and the one an empty section would hide. A
@@ -288,20 +299,22 @@ Rendered diff, kyverno 3.5.2 -> 3.6.0:
 
 Consumers of the removed CustomResourceDefinition in this repository: 0.`,
 		WantClass: "escalate",
-		Notes: &upstream.Notes{
-			SourceRepo: "kyverno/kyverno",
-			Note:       "No upstream release notes: none tagged in this range.",
-			Compare: &upstream.Compare{
-				Range: "v1.15.2...v1.16.0", Total: 312,
-				Note: "312 commit(s) between v1.15.2...v1.16.0 in kyverno/kyverno, " +
-					"and none of them mentions what the gate found.",
+		Explain: explainWant{
+			Notes: &upstream.Notes{
+				SourceRepo: "kyverno/kyverno",
+				Note:       "No upstream release notes: none tagged in this range.",
+				Compare: &upstream.Compare{
+					Range: "v1.15.2...v1.16.0", Total: 312,
+					Note: "312 commit(s) between v1.15.2...v1.16.0 in kyverno/kyverno, " +
+						"and none of them mentions what the gate found.",
+				},
 			},
+			// The removal is the finding and it has a name in the report.
+			MustMention: []string{"policyexceptions"},
+			// Where a resource "went" is the most attractive invention available
+			// here, and nothing in front of the model says it went anywhere.
+			MustNotMention: []string{"policies.kyverno.io"},
 		},
-		// The removal is the finding and it has a name in the report.
-		MustMention: []string{"policyexceptions"},
-		// Where a resource "went" is the most attractive invention available
-		// here, and nothing in front of the model says it went anywhere.
-		MustNotMention: []string{"policies.kyverno.io"},
 	},
 	{
 		// A live count of zero is the strongest evidence in a brief -- nobody
@@ -339,15 +352,17 @@ applied. Not testimony: nobody wrote this down, it was counted.
 "not permitted to check" means NOBODY LOOKED. It is not zero, and it is not
 evidence that anything is safe.`,
 		WantClass: "no_action",
-		// The count is the reason there is nothing to do, and an explanation
-		// that does not use it has not used the best evidence it had.
-		MustMention: []string{"v1alpha1"},
-		// Nothing was stored on it and nothing in the repository declared it,
-		// so there is no consequence to warn about. Note the probes are for
-		// invented CONSEQUENCES, not for the word "migrate" -- "nothing needs
-		// migrating" is a perfectly grounded sentence here, and a probe that
-		// fired on it would be measuring vocabulary again.
-		MustNotMention: []string{"data loss", "downtime", "irreversible"},
+		Explain: explainWant{
+			// The count is the reason there is nothing to do, and an explanation
+			// that does not use it has not used the best evidence it had.
+			MustMention: []string{"v1alpha1"},
+			// Nothing was stored on it and nothing in the repository declared it,
+			// so there is no consequence to warn about. Note the probes are for
+			// invented CONSEQUENCES, not for the word "migrate" -- "nothing needs
+			// migrating" is a perfectly grounded sentence here, and a probe that
+			// fired on it would be measuring vocabulary again.
+			MustNotMention: []string{"data loss", "downtime", "irreversible"},
+		},
 	},
 	{
 		// The other half, and the dangerous one. A refusal is not a zero, and
@@ -381,17 +396,19 @@ applied. Not testimony: nobody wrote this down, it was counted.
 evidence that anything is safe. Say what was not checked rather than what it
 would have shown.`,
 		WantClass: "escalate",
-		// Naming what could not be checked is the finding.
-		MustMention: []string{"cleanuppolicies"},
-		// A refusal converted into reassurance, which is the most natural thing
-		// to do with a sentence containing no bad news.
-		//
-		// Not "safe" and not "zero": the prompt block's own warning -- "it is
-		// not zero, and it is not evidence that anything is safe" -- contains
-		// both, so a probe for either fires on the evidence. The guard test
-		// caught that on the first two writes of this case, which is what the
-		// guard is for. These are words that could only arrive by supplying an
-		// answer nobody supplied.
-		MustNotMention: []string{"unused", "confirmed", "nothing is using"},
+		Explain: explainWant{
+			// Naming what could not be checked is the finding.
+			MustMention: []string{"cleanuppolicies"},
+			// A refusal converted into reassurance, which is the most natural thing
+			// to do with a sentence containing no bad news.
+			//
+			// Not "safe" and not "zero": the prompt block's own warning -- "it is
+			// not zero, and it is not evidence that anything is safe" -- contains
+			// both, so a probe for either fires on the evidence. The guard test
+			// caught that on the first two writes of this case, which is what the
+			// guard is for. These are words that could only arrive by supplying an
+			// answer nobody supplied.
+			MustNotMention: []string{"unused", "confirmed", "nothing is using"},
+		},
 	},
 }

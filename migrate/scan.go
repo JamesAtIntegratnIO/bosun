@@ -48,7 +48,7 @@ type Hit struct {
 func Scan(root string, d Dropped) ([]Hit, error) {
 	var hits []Hit
 	err := walkYAML(root, func(rel string, data []byte) {
-		found := covered(declarations(data, []Dropped{d}))
+		found := onlyCovered(declarations(data, []Dropped{d}))
 		if len(found) == 0 {
 			return
 		}
@@ -117,6 +117,19 @@ type declaration struct {
 	covered bool
 }
 
+// onlyCovered filters declarations to the ones some migration actually names.
+// A verb, not an adjective: it returns the subset, not a yes or no -- which is
+// what `covered` read as beside every other adjective-named predicate here.
+func onlyCovered(in []declaration) []declaration {
+	var out []declaration
+	for _, f := range in {
+		if f.covered {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 // declarations finds every manifest in data declaring one of the dropped
 // versions: top-level documents, mappings nested at any depth (an
 // `extraObjects:` list), and manifests embedded in block-scalar strings.
@@ -131,17 +144,6 @@ type declaration struct {
 // never counted as consumers and never edited: that CRD still serves the
 // version, and rewriting its manifests would break what the migration exists
 // to protect.
-
-// covered filters declarations to the ones some migration actually names.
-func covered(in []declaration) []declaration {
-	var out []declaration
-	for _, f := range in {
-		if f.covered {
-			out = append(out, f)
-		}
-	}
-	return out
-}
 func declarations(data []byte, drops []Dropped) []declaration {
 	oldToNew := map[string]string{} // dropped group/version -> group/target
 	oldKinds := map[string]map[string]bool{}
@@ -275,7 +277,7 @@ func Migrate(root string, drops []Dropped, check func(path string) string) (*Res
 	res := &Result{}
 	err := walkYAML(root, func(rel string, data []byte) {
 		found := declarations(data, drops)
-		mine := covered(found)
+		mine := onlyCovered(found)
 		if len(mine) == 0 {
 			return
 		}
@@ -288,7 +290,7 @@ func Migrate(root string, drops []Dropped, check func(path string) string) (*Res
 			res.Refused = append(res.Refused, Refused{rel, err.Error()})
 			return
 		}
-		if left := covered(declarations(updated, drops)); len(left) > 0 {
+		if left := onlyCovered(declarations(updated, drops)); len(left) > 0 {
 			res.Refused = append(res.Refused, Refused{rel,
 				fmt.Sprintf("%d declaration(s) would survive the rewrite -- leaving the file untouched", len(left))})
 			return

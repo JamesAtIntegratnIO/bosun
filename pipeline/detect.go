@@ -35,6 +35,12 @@ const (
 	// pendingStuck is how long a promotion may sit Pending. Pending means
 	// queued behind something -- usually a verification -- and a queue that
 	// never drains is the pipeline stopped.
+	//
+	// Two hours because a promotion queued behind a normal verification clears
+	// in minutes, and one queued behind a long AnalysisRun in tens of minutes.
+	// Past two hours nothing is draining, and the Stage is reporting no error
+	// while it happens -- which is precisely the class of failure that produces
+	// no event and so needs a timer to find.
 	pendingStuck = 2 * time.Hour
 )
 
@@ -65,6 +71,7 @@ func Detect(s *Snapshot) *Report {
 	r.Findings = append(r.Findings, detectOrphanedPromotions(s)...)
 	r.Findings = append(r.Findings, detectSupersededPRs(s)...)
 	r.Findings = append(r.Findings, detectVerificationStuck(s)...)
+	r.Findings = append(r.Findings, detectPendingStuck(s)...)
 
 	pins, scanned := detectDeadPins(s)
 	r.Findings = append(r.Findings, pins...)
@@ -402,7 +409,7 @@ func detectVerificationStuck(s *Snapshot) []Finding {
 
 func isTerminalVerification(phase string) bool {
 	switch phase {
-	case "Failed", "Error", "Aborted", "Inconclusive":
+	case VerifyFailed, VerifyError, VerifyAborted, VerifyInconclusive:
 		return true
 	}
 	return false
@@ -530,4 +537,61 @@ func trimDir(p string) string {
 		return p[i+1:]
 	}
 	return p
+}
+
+// detectPendingStuck finds a promotion that has sat Pending long enough that
+// the queue is not draining.
+//
+// Pending is the phase with no symptom. The Stage reports no error, every
+// Application it manages stays Synced and Healthy on the version it already
+// had, and the promotion that would move it never starts -- so nothing about
+// this produces an event, which is the whole reason the supervisor is a timer.
+//
+// One finding per Stage, on the OLDEST pending promotion. A wedged queue backs
+// up behind a single blocker, and reporting each promotion in the queue
+// separately would turn one problem into a page of them.
+func detectPendingStuck(s *Snapshot) []Finding {
+	var out []Finding
+	for _, st := range s.Stages {
+		ps := s.promotionsByStage()[st.Name]
+
+		// Newest first, so the last pending one is the oldest.
+		var oldest *Promotion
+		queued := 0
+		for i := range ps {
+			if ps[i].Phase != PhasePending {
+				continue
+			}
+			queued++
+			oldest = &ps[i]
+		}
+		if oldest == nil {
+			continue
+		}
+		age := oldest.Age(s.Now)
+		if age < pendingStuck {
+			continue
+		}
+
+		detail := strings.TrimSpace(oldest.Message)
+		if detail == "" {
+			detail = "Kargo recorded no message, which is normal for Pending -- it is a queue position, not a failure."
+		}
+		if queued > 1 {
+			detail += fmt.Sprintf("\n\n%d promotions are queued on this Stage; this is the oldest.", queued)
+		}
+		out = append(out, Finding{
+			Kind:     KindPendingStuck,
+			Severity: Blocking,
+			Subject:  st.Name,
+			Since:    age,
+			Summary: fmt.Sprintf("%s has had a promotion Pending for %s, so nothing is reaching this Stage",
+				st.Name, human(age)),
+			Detail: detail,
+			Remedy: fmt.Sprintf("kubectl -n %s get promotions --sort-by=.metadata.creationTimestamp | tail -5\n"+
+				"kubectl -n %s describe promotion %s",
+				orNS(oldest.Namespace), orNS(oldest.Namespace), oldest.Name),
+		})
+	}
+	return out
 }

@@ -192,7 +192,7 @@ func (a *AppAuth) call(ctx context.Context, method, url, jwt string, out any) er
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("%s: %s", url, resp.Status)
 	}
@@ -253,11 +253,11 @@ func parseKey(pemBytes []byte) (*rsa.PrivateKey, error) {
 	if k, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
 		return k, nil
 	}
-	any, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
 		return nil, fmt.Errorf("parsing the app private key: %w", err)
 	}
-	k, ok := any.(*rsa.PrivateKey)
+	k, ok := parsed.(*rsa.PrivateKey)
 	if !ok {
 		return nil, fmt.Errorf("the app private key is not RSA")
 	}

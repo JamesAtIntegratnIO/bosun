@@ -21,6 +21,31 @@ import (
 // so the dialect is read from the ApplicationSet's own `goTemplate` field
 // rather than inferred from the string.
 
+// nonHermeticFuncs are the sprig functions that read the process environment or
+// the network. Argo CD's own ApplicationSet controller deletes exactly these
+// three before rendering, and the gate has a sharper reason to: the template it
+// renders comes from the pull request under review, while the process holds the
+// git token, the LLM key and the App private key, and the rendered output is
+// published into a comment. Left in, `{{ env "GIT_TOKEN" }}` in a proposed
+// ApplicationSet is a credential read with a publishing side-channel, and
+// getHostByName is a resolver the author of the pull request aims.
+//
+// Deleting only these three keeps the gate's dialect identical to Argo's, so
+// nothing Argo renders fails here. The remaining non-repeatable helpers (now,
+// uuidv4, the rand* family) stay for that reason -- they can produce a spurious
+// base-vs-head difference, but the gate reports a difference it cannot explain
+// rather than swallowing it, which is the safer of the two failure modes.
+var nonHermeticFuncs = []string{"env", "expandenv", "getHostByName"}
+
+// templateFuncs is sprig with the environment and network functions removed.
+func templateFuncs() template.FuncMap {
+	fm := sprig.TxtFuncMap()
+	for _, name := range nonHermeticFuncs {
+		delete(fm, name)
+	}
+	return fm
+}
+
 // renderGoTemplate renders an ApplicationSet template in goTemplate mode.
 func renderGoTemplate(node any, data map[string]any) (any, error) {
 	raw, err := yaml.Marshal(node)
@@ -31,7 +56,7 @@ func renderGoTemplate(node any, data map[string]any) (any, error) {
 	// so a typo'd key fails here rather than rendering "<no value>" into a
 	// resource name.
 	tpl, err := template.New("t").
-		Funcs(sprig.TxtFuncMap()).
+		Funcs(templateFuncs()).
 		Option("missingkey=error").
 		Parse(string(raw))
 	if err != nil {
