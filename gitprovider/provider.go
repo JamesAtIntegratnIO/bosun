@@ -111,6 +111,11 @@ type Provider interface {
 	// meaning into it. This is how the in-cluster gate discovers work: no
 	// webhook to expose, no CI event to subscribe to, just the same polling
 	// the agent already does for check states.
+	//
+	// The values carry the same fields GetPullRequest returns. Body used to be
+	// the exception, left empty here and populated there, with nothing saying
+	// so -- a difference between two sources of the same type is the kind a
+	// caller finds by reading an empty string at runtime.
 	ListOpenPullRequests(ctx context.Context) ([]PullRequest, error)
 
 	// ListComments returns the pull request's comments, oldest last.

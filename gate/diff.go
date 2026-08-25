@@ -68,6 +68,16 @@ type DiffResult struct {
 	Objects  []ObjectChange `json:"objects,omitempty"`
 	Warnings []string       `json:"warnings,omitempty"`
 
+	// Suppressed is checks that did not run because the configuration told
+	// them not to, each with the reason.
+	//
+	// Separate from Warnings, which mean "the gate tried and could not". This
+	// means "the gate was told not to", and by a file read from the pull
+	// request's own head -- so a change can switch a check off, and the report
+	// that results has to say which one, or the project's own "cannot act
+	// without saying so" rule holds everywhere except where it matters most.
+	Suppressed []string `json:"suppressed,omitempty"`
+
 	// SchemaFailures is manifests the target cluster's schemas reject, set by
 	// the caller that ran validation.
 	//
@@ -625,6 +635,15 @@ func (d *DiffResult) Report(w io.Writer) {
 	if len(d.Targeting) == 0 && len(d.Other) == 0 && len(d.Versions) == 0 &&
 		len(d.Introduced) == 0 && len(d.Objects) == 0 {
 		fmt.Fprintf(w, "%s.\n\n", NothingChanged)
+	}
+	if len(d.Suppressed) > 0 {
+		fmt.Fprintf(w, "### Turned off by this pull request's configuration\n\n")
+		fmt.Fprintf(w, "The gate reads `.gitops-gate.yaml` from the head revision, so a change can "+
+			"switch a check off. These did not run:\n\n")
+		for _, sup := range d.Suppressed {
+			fmt.Fprintf(w, "- %s\n", strings.TrimSpace(sup))
+		}
+		fmt.Fprintln(w)
 	}
 	if len(d.Warnings) > 0 {
 		fmt.Fprintf(w, "### Not covered\n\n")

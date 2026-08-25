@@ -513,3 +513,54 @@ func TestAFailingStatusSaysWhyItFailed(t *testing.T) {
 		})
 	}
 }
+
+// The gate reads .gitops-gate.yaml from the head, which is the right rule --
+// but it means a pull request can switch a check off in a file the agent is
+// forbidden to edit, and the report used to say nothing about it.
+func TestTheReportNamesChecksThisPullRequestTurnedOff(t *testing.T) {
+	const src = "sources:\n  - type: manifests\n    paths: [apps]\n"
+	cfgOff := src + "validate:\n  enabled: false\n"
+	cfgOn := src + "validate:\n  enabled: true\n"
+
+	write := func(t *testing.T, body string) string {
+		t.Helper()
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, ".gitops-gate.yaml"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+
+	t.Run("validation switched off is named", func(t *testing.T) {
+		head := write(t, cfgOff)
+		cfg, err := gate.ParseConfig([]byte(cfgOff), ".gitops-gate.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := suppressedChecks(write(t, cfgOff), head, cfg)
+		if len(got) != 1 || !strings.Contains(got[0], "Schema validation") {
+			t.Fatalf("want the disabled check named, got %v", got)
+		}
+	})
+
+	t.Run("a config change in this pull request is named", func(t *testing.T) {
+		cfg, err := gate.ParseConfig([]byte(cfgOn), ".gitops-gate.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := suppressedChecks(write(t, cfgOff), write(t, cfgOn), cfg)
+		if len(got) != 1 || !strings.Contains(got[0], "changed in this pull request") {
+			t.Fatalf("want the config change named, got %v", got)
+		}
+	})
+
+	t.Run("an unchanged config with everything on says nothing", func(t *testing.T) {
+		cfg, err := gate.ParseConfig([]byte(cfgOn), ".gitops-gate.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := suppressedChecks(write(t, cfgOn), write(t, cfgOn), cfg); len(got) != 0 {
+			t.Fatalf("nothing was suppressed, but the report says %v", got)
+		}
+	})
+}

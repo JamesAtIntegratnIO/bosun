@@ -80,7 +80,7 @@ func TestCredentialRequirementFollowsTheAuthMode(t *testing.T) {
 // defaults, and the explicit value was the old default, fossilised.
 func TestTheLegacyAuthorIsIgnoredNotHonored(t *testing.T) {
 	c := &Config{AuthorName: "bosun", AuthorEmail: "bosun@users.noreply.github.com"}
-	if !c.NormalizeLegacyAuthor() {
+	if !c.NormaliseLegacyAuthor() {
 		t.Fatal("the legacy author must be cleared")
 	}
 	if c.AuthorName != "" || c.AuthorEmail != "" {
@@ -88,7 +88,7 @@ func TestTheLegacyAuthorIsIgnoredNotHonored(t *testing.T) {
 	}
 
 	chosen := &Config{AuthorName: "release-bot", AuthorEmail: "1234+release-bot@users.noreply.github.com"}
-	if chosen.NormalizeLegacyAuthor() {
+	if chosen.NormaliseLegacyAuthor() {
 		t.Fatal("an identity somebody actually chose must be honored")
 	}
 }

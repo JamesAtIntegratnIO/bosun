@@ -41,11 +41,11 @@ func TestSourceTypeListNamesEveryAcceptedType(t *testing.T) {
 		}
 	}
 
-	// And every type it offers must actually be accepted -- normalise's
+	// And every type it offers must actually be accepted -- validate's
 	// default branch rejects anything the const block does not declare.
 	for _, tc := range sourceTypes {
 		s := &Source{Name: "s", Type: tc, Path: "p", Chart: "c", Paths: []string{"p"}}
-		if err := s.normalise("cfg.yaml", 0); err != nil {
+		if err := s.validate("cfg.yaml", 0); err != nil {
 			t.Errorf("%q is offered but rejected: %v", tc, err)
 		}
 	}

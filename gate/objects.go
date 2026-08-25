@@ -109,7 +109,7 @@ func objectFrom(source, cluster, defaultNS string, obj map[string]any) (Object, 
 		ns = defaultNS
 	}
 
-	raw, err := yaml.Marshal(normalise(obj))
+	raw, err := yaml.Marshal(stripVersionStamps(obj))
 	if err != nil {
 		return Object{}, false
 	}
@@ -119,7 +119,7 @@ func objectFrom(source, cluster, defaultNS string, obj map[string]any) (Object, 
 		Source: source, Cluster: cluster,
 		APIVersion: apiVersion, Kind: kind, Namespace: ns, Name: name,
 		Hash: hex.EncodeToString(sum[:8]),
-		Body: normalise(obj),
+		Body: stripVersionStamps(obj),
 	}, true
 }
 
@@ -581,8 +581,15 @@ var versionStamps = []string{
 	"chart",
 }
 
-// normalise returns a copy of an object with version stamps removed.
-func normalise(obj map[string]any) map[string]any {
+// stripVersionStamps returns a copy of an object with the labels and
+// annotations that carry a chart version removed, so a bump does not report
+// every object it touches as changed.
+//
+// Named for what it strips rather than `normalise`: the same package already
+// has a Source.normalise that validates and defaults a config source, and one
+// word meaning two unrelated things in one package is a word a reader has to
+// look up every time.
+func stripVersionStamps(obj map[string]any) map[string]any {
 	out := make(map[string]any, len(obj))
 	for k, v := range obj {
 		out[k] = v

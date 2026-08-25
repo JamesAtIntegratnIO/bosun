@@ -271,7 +271,7 @@ func cmdClusters(args []string) error {
 		if err != nil {
 			return fmt.Errorf("reading %s to compare: %w", *out, err)
 		}
-		if gate.NormalizeInventory(existing) != gate.NormalizeInventory(rendered) {
+		if gate.NormaliseInventory(existing) != gate.NormaliseInventory(rendered) {
 			fmt.Fprintf(os.Stderr, "cluster inventory has drifted from the live cluster.\n"+
 				"The gate's targeting check is only as good as this file.\n"+
 				"Refresh it with: gitops-gate clusters export -out %s\n", *out)

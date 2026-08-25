@@ -308,7 +308,7 @@ func (c *Config) validate() error {
 	return nil
 }
 
-// NormalizeLegacyAuthor clears the author identity this project shipped as
+// NormaliseLegacyAuthor clears the author identity this project shipped as
 // its chart default for its whole early life -- `bosun
 // <bosun@users.noreply.github.com>` -- which by now sits copied into
 // consumers' values files as though somebody chose it. Nobody did, and it is
@@ -320,7 +320,7 @@ func (c *Config) validate() error {
 //
 // Returns whether it cleared anything, so the caller can say so in the log --
 // silently rewriting configuration is its own bug.
-func (c *Config) NormalizeLegacyAuthor() bool {
+func (c *Config) NormaliseLegacyAuthor() bool {
 	if c.AuthorEmail != "bosun@users.noreply.github.com" {
 		return false
 	}

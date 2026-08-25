@@ -221,14 +221,21 @@ func ParseConfig(raw []byte, path string) (*Config, error) {
 		return nil, fmt.Errorf("%s: at least one entry under `sources` is required", path)
 	}
 	for i := range c.Sources {
-		if err := c.Sources[i].normalise(path, i); err != nil {
+		if err := c.Sources[i].validate(path, i); err != nil {
 			return nil, err
 		}
 	}
 	return &c, nil
 }
 
-func (s *Source) normalise(cfgPath string, i int) error {
+// validate defaults a source's name and checks that its type has the fields
+// that type needs.
+//
+// Named for what it does rather than `normalise`: the same package used that
+// word for stripping version stamps off a rendered object, and one word
+// meaning two unrelated things in one package is a word a reader has to look
+// up every time.
+func (s *Source) validate(cfgPath string, i int) error {
 	if s.Name == "" {
 		switch {
 		case s.Path != "":

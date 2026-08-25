@@ -160,6 +160,7 @@ func (g *GitHub) ListOpenPullRequests(ctx context.Context) ([]PullRequest, error
 		var raw []struct {
 			Number int    `json:"number"`
 			Title  string `json:"title"`
+			Body   string `json:"body"`
 			HTML   string `json:"html_url"`
 			Head   struct {
 				Ref  string `json:"ref"`
@@ -181,7 +182,7 @@ func (g *GitHub) ListOpenPullRequests(ctx context.Context) ([]PullRequest, error
 		}
 		for _, pr := range raw {
 			p := PullRequest{
-				Number: pr.Number, Title: pr.Title,
+				Number: pr.Number, Title: pr.Title, Body: pr.Body,
 				Branch: pr.Head.Ref, BaseBranch: pr.Base.Ref, HeadSHA: pr.Head.SHA, BaseSHA: pr.Base.SHA,
 				Author: pr.User.Login, URL: pr.HTML,
 				FromFork: g.fromFork(pr.Head.Repo.FullName),

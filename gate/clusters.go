@@ -125,9 +125,9 @@ func InventoryFromSecrets(items []ClusterSecret, filter ExportFilter) *Inventory
 	return inv
 }
 
-// NormalizeInventory drops the generatedAt stamp so a re-export does not
+// NormaliseInventory drops the generatedAt stamp so a re-export does not
 // report drift purely because time passed.
-func NormalizeInventory(raw []byte) string {
+func NormaliseInventory(raw []byte) string {
 	var inv Inventory
 	if err := yaml.Unmarshal(raw, &inv); err != nil {
 		return string(raw)

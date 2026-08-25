@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -323,6 +324,7 @@ func (g *GateService) run(ctx context.Context, pr *gitprovider.PullRequest) *gat
 	// so this surface and the CLI cannot reach different verdicts on one
 	// commit -- which they had already started to do.
 	res := gate.Assemble(head, cfg, baseTable, headTable)
+	res.Suppressed = suppressedChecks(base, head, cfg)
 
 	// Validation runs BEFORE the report is written, and its count goes onto
 	// the result rather than beside it. Written after, the headline and the
@@ -666,4 +668,52 @@ func shortSHA8(s string) string {
 		return s[:8]
 	}
 	return s
+}
+
+// suppressedChecks names the checks this pull request's own configuration
+// turned off.
+//
+// The gate reads .gitops-gate.yaml from the HEAD, which is the right rule --
+// the config describes how to render, not what to render, and the base may
+// predate it entirely, notably on the pull request that introduces the gate.
+// It also means a change can switch a check off, in a file the agent is
+// forbidden to edit and about which the report previously said nothing.
+//
+// So the rule stays and the suppression becomes visible, which is what the
+// project's own "cannot act without saying so" line requires.
+func suppressedChecks(base, head string, cfg *gate.Config) []string {
+	var out []string
+	if !cfg.Validate.Enabled {
+		out = append(out, "**Schema validation** — `validate.enabled` is false, so no rendered manifest "+
+			"was checked against the target cluster's schemas.")
+	}
+	if n := len(cfg.Validate.SkipKinds); n > 0 {
+		out = append(out, fmt.Sprintf("**Schema validation** skipped %s entirely (`validate.skipKinds`): `%s`.",
+			plural(n, "kind"), strings.Join(cfg.Validate.SkipKinds, "`, `")))
+	}
+
+	// Whether the config itself moved in this pull request. Read as bytes
+	// rather than compared field by field: any difference is worth one line,
+	// and a reader with the line can go and look.
+	headRaw, headErr := os.ReadFile(filepath.Join(head, ".gitops-gate.yaml"))
+	baseRaw, baseErr := os.ReadFile(filepath.Join(base, ".gitops-gate.yaml"))
+	switch {
+	case headErr != nil:
+		// The gate would not have got this far without it.
+	case baseErr != nil:
+		out = append(out, "**This pull request introduces `.gitops-gate.yaml`.** Everything above was "+
+			"checked under a configuration that did not exist on the base branch.")
+	case !bytes.Equal(headRaw, baseRaw):
+		out = append(out, "**`.gitops-gate.yaml` changed in this pull request**, and the gate read the "+
+			"head revision's copy. Everything above was checked under the new configuration.")
+	}
+	return out
+}
+
+// plural is "1 kind" / "3 kinds".
+func plural(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }
