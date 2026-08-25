@@ -15,6 +15,7 @@ import (
 
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
+	"github.com/JamesAtIntegratnIO/bosun/prompt"
 	"github.com/JamesAtIntegratnIO/bosun/structural"
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
@@ -59,40 +60,28 @@ type Result struct {
 
 func (r Result) Pass() bool { return r.ClassOK && r.EditsOK && r.Grounded }
 
-// BuildPrompt renders the user-side prompt for a case.
+// BuildPrompt renders the user-side prompt for a case, through the same
+// builder the shipped agent uses.
 //
-// The scalar inventory is the important part. Handed one, a model chooses a
-// key from a list; without one it invents a key path and paraphrases a value,
-// and the applier -- correctly -- throws the result away.
+// It used to assemble the prompt itself, and the two had already diverged --
+// the shipped one grew an artifact line this did not have, so the suite
+// reported a score for a prompt nobody is given. The Header is still built
+// here, because that is the one part a fixture genuinely cannot supply: a Case
+// has a Subject, not a project, a stage and an artifact.
 func BuildPrompt(c Case, withInventory bool) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "PULL REQUEST: %s\n\n%s\n\n", c.Subject, c.GateReport)
-
 	// The files THIS promotion touched, not everything the repository holds.
 	// The live agent lists exactly this (the promotion's own file list), so a
 	// prompt built from every fixture file would measure a prompt nobody gets.
-	paths := append([]string{}, c.ChangedFiles()...)
-	sort.Strings(paths)
-
-	if withInventory {
-		b.WriteString("Repository files this pull request may change.\n")
-		b.WriteString("Use these keys and values EXACTLY as written.\n\n")
-		for _, p := range paths {
-			inv, err := edits.Inventory([]byte(c.Files[p]), "")
-			if err != nil {
-				continue
-			}
-			b.WriteString(edits.Render(p, inv))
-			b.WriteString("\n")
-		}
-	} else {
-		b.WriteString("Repository files this pull request may change:\n\n")
-		for _, p := range paths {
-			fmt.Fprintf(&b, "--- %s ---\n%s\n", p, c.Files[p])
-		}
+	var files []prompt.File
+	for _, p := range c.ChangedFiles() {
+		files = append(files, prompt.File{Path: p, Data: []byte(c.Files[p])})
 	}
-	b.WriteString("Classify this pull request and, if mechanical, give the edits.")
-	return b.String()
+	return prompt.User(prompt.UserInput{
+		Header:    "PULL REQUEST: " + c.Subject,
+		Report:    c.GateReport,
+		Files:     files,
+		Inventory: withInventory,
+	})
 }
 
 // Run executes one case against whichever prompt it names.

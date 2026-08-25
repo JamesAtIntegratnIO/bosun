@@ -148,22 +148,21 @@ dangerous is impossible.
 
 ## Re-running the measurements
 
-The eval cases are real incidents, not invented ones. Two prompts ship and both
-are measured; each case names the path it belongs to. Run them against any
+The eval cases are real incidents, not invented ones. Three prompts ship and all
+three are measured; each case names the path it belongs to. Run them against any
 OpenAI-compatible endpoint:
 
 ```bash
-DELIVERY_AGENT_LIVE=http://localhost:1234/v1 \
-DELIVERY_AGENT_MODELS=your-model \
-DELIVERY_AGENT_PROMPT="$(scripts/extract-prompt.sh)" \
-DELIVERY_AGENT_EXPLAIN_PROMPT="$(scripts/extract-prompt.sh explainPrompt)" \
-DELIVERY_AGENT_RESTRUCTURE_PROMPT="$(scripts/extract-prompt.sh restructurePrompt)" \
-go test ./evals -run Eval -v -timeout 60m
+DELIVERY_AGENT_LIVE=http://localhost:1234/v1 DELIVERY_AGENT_MODELS=your-model go test ./evals -run Eval -v -timeout 60m
 ```
 
-Omit a path's prompt and its cases are skipped with a
-line saying how many — never scored against the classifier's prompt, which
-would produce a number for a prompt nobody is given.
+The prompts are **imported** from `prompt/`, not passed in. They used to arrive
+through three environment variables filled by a shell script that regex-scraped
+the Go source, because they lived in `package main` and the eval suite could not
+import them. That bridge supplied an empty string when a constant was renamed,
+so a shipped prompt went unmeasured while the suite reported a confident number
+for the two it still found. Now the thing scored and the thing shipped are the
+same constant, and the compiler says so.
 
 Add `DELIVERY_AGENT_NO_INVENTORY=1` to reproduce the lever-1 ablation.
 

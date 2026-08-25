@@ -10,6 +10,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/JamesAtIntegratnIO/bosun/llm"
+	"github.com/JamesAtIntegratnIO/bosun/prompt"
 	"github.com/JamesAtIntegratnIO/bosun/structural"
 )
 
@@ -83,7 +84,7 @@ spec:
 	defer cancel()
 
 	start := time.Now()
-	m, err := p.Restructure(ctx, restructurePrompt,
+	m, err := p.Restructure(ctx, prompt.Restructure,
 		structural.Prompt("observability/grafana-admin.yaml", doc, "v1alpha1", "v1beta1", oldS, newS, findings))
 	if err != nil {
 		t.Fatalf("model: %v", err)

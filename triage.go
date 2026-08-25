@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"sort"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,6 +17,7 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
+	"github.com/JamesAtIntegratnIO/bosun/prompt"
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
 
@@ -345,16 +346,16 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 		return t.escalateInformed(ctx, pr, noRemedyReason(b), nil, nil, t.upstreamFor(ctx, p, report), live)
 	}
 
-	prompt := buildUserPrompt(p, pr, report, root)
+	userPrompt := buildUserPrompt(p, pr, report, root)
 	// Live facts are FACT and go in on every path, unlike upstream testimony.
 	// They widen the evidence string the applier corroborates against, which
 	// is safe here for a reason worth stating: nothing in this block is
 	// version-shaped by `edits.versionish` -- API versions are `v1beta1`, not
 	// `1.2.3`, and counts are bare integers -- so it adds no new value an edit
 	// could claim as corroborated.
-	prompt += promptLive(live)
+	userPrompt += promptLive(live)
 
-	verdict, err := t.LLM.Classify(ctx, systemPrompt, prompt)
+	verdict, err := t.LLM.Classify(ctx, prompt.System, userPrompt)
 	if err != nil {
 		// A model that is down, slow, or misconfigured must not look like a
 		// verdict. Say so on the pull request rather than silently doing
@@ -387,7 +388,7 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	// t.Policy is a value, so this copy is per-request and two concurrent
 	// triages cannot see each other's scope.
 	policy := t.Policy
-	policy.Evidence = prompt
+	policy.Evidence = userPrompt
 	// The promotion already reports which files it rewrote, and the prompt
 	// above already tells the model those are the files it may change. This is
 	// what makes that true rather than merely stated: an edit to anything else
@@ -771,52 +772,18 @@ func (t *Triage) clone(ctx context.Context, pr *gitprovider.PullRequest) (string
 // that matters: handed one, a model selects a key from a list instead of
 // inventing a path and paraphrasing a value.
 func buildUserPrompt(p Promotion, pr *gitprovider.PullRequest, report, root string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "PULL REQUEST #%d: %s\n\n", pr.Number, pr.Title)
-	fmt.Fprintf(&b, "Artifact %s moving %s -> %s (project %s, stage %s).\n\n",
-		p.Artifact, p.From, p.To, p.Project, p.Stage)
-	fmt.Fprintf(&b, "%s\n\n", report)
-
-	files := append([]string{}, p.Files...)
-	sort.Strings(files)
-	b.WriteString("Repository files this pull request may change.\n")
-	b.WriteString("Use these keys and values EXACTLY as written.\n\n")
-	var skipped []string
-	for _, f := range files {
-		data, err := os.ReadFile(root + "/" + f)
-		if err != nil {
-			skipped = append(skipped, f)
-			continue
-		}
-		inv, err := edits.Inventory(data, "")
-		if err != nil {
-			skipped = append(skipped, f)
-			continue
-		}
-		b.WriteString(edits.Render(f, inv))
-		b.WriteString("\n")
+	files := make([]prompt.File, 0, len(p.Files))
+	for _, f := range p.Files {
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f)))
+		files = append(files, prompt.File{Path: f, Data: data, Err: err})
 	}
-	// A file that could not be read is a hole in the evidence, and this string
-	// is also what edits.Policy.corroborated checks proposed versions against
-	// -- so a silent skip narrows what the applier will accept, invisibly, at
-	// the moment the model most needs the value it dropped. Naming them is
-	// cheap and it is the difference between "these are the files" and "these
-	// are the files I could read".
-	if len(skipped) > 0 {
-		fmt.Fprintf(&b, "(%s could not be read and %s NOT described above: %s)\n\n",
-			countOf(len(skipped), "file"), isAre(len(skipped)), strings.Join(skipped, ", "))
-	}
-	b.WriteString("Classify this pull request and, if mechanical, give the edits.")
-	return b.String()
-}
-
-// isAre agrees the verb with a count, so a one-file message does not read as
-// though a machine assembled it.
-func isAre(n int) string {
-	if n == 1 {
-		return "is"
-	}
-	return "are"
+	return prompt.User(prompt.UserInput{
+		Header: fmt.Sprintf("PULL REQUEST #%d: %s\n\nArtifact %s moving %s -> %s (project %s, stage %s).",
+			pr.Number, pr.Title, p.Artifact, p.From, p.To, p.Project, p.Stage),
+		Report:    report,
+		Files:     files,
+		Inventory: true,
+	})
 }
 
 func has(items []string, want string) bool {
@@ -901,18 +868,18 @@ func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, 
 	}
 	defer cleanup()
 
-	prompt := buildUserPrompt(p, pr, report, root)
+	userPrompt := buildUserPrompt(p, pr, report, root)
 
 	// What the maintainers said, if it can be found. Never fatal, and never
 	// silent about its absence: an explanation with no upstream context has to
 	// say so, or a reader credits it with evidence it does not have.
 	live := t.liveFor(ctx, p, report)
-	prompt += promptLive(live)
+	userPrompt += promptLive(live)
 
 	notes := t.upstreamFor(ctx, p, report)
-	prompt += upstream.Render(notes)
+	userPrompt += upstream.Render(notes)
 
-	v, err := t.LLM.Classify(ctx, explainPrompt, prompt)
+	v, err := t.LLM.Classify(ctx, prompt.Explain, userPrompt)
 	if err != nil {
 		// Explaining is a courtesy. A model that is down must not be the reason
 		// a green pull request looks unattended.

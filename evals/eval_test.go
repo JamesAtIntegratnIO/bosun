@@ -8,22 +8,22 @@ import (
 	"time"
 
 	"github.com/JamesAtIntegratnIO/bosun/llm"
+	"github.com/JamesAtIntegratnIO/bosun/prompt"
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
 
 // TestEval measures the shipped prompts against a real endpoint. Skipped unless
 // DELIVERY_AGENT_LIVE is set, so `go test ./...` stays hermetic and offline.
 //
-// BOTH prompts, and each case says which one it is for. Passing only
-// DELIVERY_AGENT_PROMPT measures triage and skips the explain cases with a
-// line saying so -- which is better than quietly scoring the explanation
-// against the classifier's prompt and reporting a number for it.
+// The prompts are IMPORTED, not supplied. They used to arrive through three
+// environment variables filled by a shell script that regex-scraped the Go
+// source, and that bridge silently supplied nothing when a constant was
+// renamed -- so a shipped prompt went unmeasured while the suite reported a
+// number for the two it still found. Importing them means the thing scored and
+// the thing shipped are the same constant, checked by the compiler.
 //
 //	DELIVERY_AGENT_LIVE=http://localhost:1234/v1 \
 //	DELIVERY_AGENT_MODELS=qwen/qwen3.8-27b \
-//	DELIVERY_AGENT_PROMPT="$(scripts/extract-prompt.sh)" \
-//	DELIVERY_AGENT_EXPLAIN_PROMPT="$(scripts/extract-prompt.sh explainPrompt)" \
-//	DELIVERY_AGENT_RESTRUCTURE_PROMPT="$(scripts/extract-prompt.sh restructurePrompt)" \
 //	go test ./evals -run Eval -v -timeout 60m
 func TestEval(t *testing.T) {
 	base := os.Getenv("DELIVERY_AGENT_LIVE")
@@ -34,35 +34,17 @@ func TestEval(t *testing.T) {
 	if len(models) == 0 || models[0] == "" {
 		t.Fatal("DELIVERY_AGENT_MODELS is required")
 	}
-	system := os.Getenv("DELIVERY_AGENT_PROMPT")
-	if system == "" {
-		t.Fatal("DELIVERY_AGENT_PROMPT is required")
-	}
-	explain := os.Getenv("DELIVERY_AGENT_EXPLAIN_PROMPT")
 	withInventory := os.Getenv("DELIVERY_AGENT_NO_INVENTORY") == ""
 	// A substring filter, because the loop worth running most often is one
 	// case against a prompt you just edited -- and without this that costs the
 	// whole suite every time.
 	only := os.Getenv("DELIVERY_AGENT_CASES")
 
-	restructure := os.Getenv("DELIVERY_AGENT_RESTRUCTURE_PROMPT")
-
 	// A prompt per path, so a case can never be scored against the wrong one.
 	prompts := map[string]string{
-		PathTriage:      system,
-		PathExplain:     explain,
-		PathRestructure: restructure,
-	}
-
-	skipped := 0
-	for _, c := range Cases {
-		if prompts[c.Path] == "" && (only == "" || strings.Contains(c.Name, only)) {
-			skipped++
-		}
-	}
-	if skipped > 0 {
-		t.Logf("skipping %d case(s): no prompt supplied for their path "+
-			"(DELIVERY_AGENT_EXPLAIN_PROMPT, DELIVERY_AGENT_RESTRUCTURE_PROMPT)", skipped)
+		PathTriage:      prompt.System,
+		PathExplain:     prompt.Explain,
+		PathRestructure: prompt.Restructure,
 	}
 
 	for _, model := range models {

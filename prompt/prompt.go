@@ -1,6 +1,17 @@
-package main
+// Package prompt holds the three instructions the agent gives a model.
+//
+// Its own package because it is MEASURED as well as used. The eval suite
+// scores each of these against real incidents, and the only way that score
+// describes the prompt that ships is for both to read the same constant.
+//
+// They used to live in package main, which evals could not import, so a shell
+// script regex-scraped them out of the Go source into environment variables --
+// a bridge that silently supplied nothing when a constant was renamed, and let
+// one shipped prompt go unmeasured for a while. Deleting that script was the
+// point of this package.
+package prompt
 
-// systemPrompt is the whole of the agent's instruction to the model.
+// System is the whole of the agent's instruction to the model.
 //
 // Two things it must get right, and the second is the one that fails in
 // practice. The classification is easy -- models are good at "is this a
@@ -19,7 +30,7 @@ package main
 // the pull request self-consistent" was a reasonable reading of the job. It now
 // says which reds a version cannot cause, and that accommodating one is the
 // wrong answer even when it is the tidy one.
-const systemPrompt = `You triage automated dependency-bump pull requests in a GitOps repository.
+const System = `You triage automated dependency-bump pull requests in a GitOps repository.
 
 A bot opens these. Each moves one pinned version, and that version is the ONLY
 thing it was asked to change. A pre-merge gate renders what the change actually
@@ -198,7 +209,7 @@ are printed together, so a repeated thought is printed twice:
                      shown in the comment; do not spend detail on it, and do
                      not repeat it elsewhere.`
 
-// explainPrompt is used when the gate is GREEN but the render still changed --
+// Explain is used when the gate is GREEN but the render still changed --
 // a chart bump that adds resources, moves a port, or flips a default the gate
 // reports without blocking on.
 //
@@ -228,7 +239,7 @@ are printed together, so a repeated thought is printed twice:
 // error as an invented version number -- except an invented version gets
 // refused by the applier, and an invented explanation goes straight into a
 // human's head, where nothing checks it.
-const explainPrompt = `You explain what a dependency bump actually changes, to
+const Explain = `You explain what a dependency bump actually changes, to
 someone about to merge it.
 
 The gate is GREEN: nothing here is broken and nothing needs fixing. But the
@@ -375,7 +386,7 @@ Set "classification" to "no_action" unless the section above applies, in
 which case set it to "escalate". Propose no edits either way: this path never
 changes anything.`
 
-// restructurePrompt asks for one document, migrated between two schemas it is
+// Restructure asks for one document, migrated between two schemas it is
 // shown.
 //
 // The narrowest job this agent gives a model, and deliberately so. It is not
@@ -389,7 +400,7 @@ changes anything.`
 // and every value present in the original or dictated by the schema itself. The
 // prompt exists to make a passing answer likely, not to make a failing one
 // safe.
-const restructurePrompt = `You migrate one Kubernetes manifest between two versions of its schema.
+const Restructure = `You migrate one Kubernetes manifest between two versions of its schema.
 
 You are shown the OLD schema, the NEW schema, one document, and the specific
 ways that document does not fit the new schema. Return the same object, shaped

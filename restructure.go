@@ -12,6 +12,7 @@ import (
 
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
+	"github.com/JamesAtIntegratnIO/bosun/prompt"
 	"github.com/JamesAtIntegratnIO/bosun/structural"
 )
 
@@ -186,9 +187,9 @@ func (t *Triage) restructureAll(ctx context.Context, root string, drops []migrat
 			}
 
 			res.ModelCalls++
-			prompt := structural.Prompt(rel, chunk.body,
+			userPrompt := structural.Prompt(rel, chunk.body,
 				tgt.pair.From, tgt.pair.To, tgt.pair.Old, tgt.pair.New, findings)
-			m, err := rs.Restructure(ctx, restructurePrompt, prompt)
+			m, err := rs.Restructure(ctx, prompt.Restructure, userPrompt)
 			if err != nil || m == nil {
 				res.Refused = append(res.Refused, refused{rel, head.Kind, head.Metadata.Name,
 					[]string{fmt.Sprintf("the model could not be reached (%v)", err)}, findings})

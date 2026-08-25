@@ -10,6 +10,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/JamesAtIntegratnIO/bosun/llm"
+	"github.com/JamesAtIntegratnIO/bosun/prompt"
 	"github.com/JamesAtIntegratnIO/bosun/structural"
 )
 
@@ -98,7 +99,7 @@ spec:
 	defer cancel()
 
 	start := time.Now()
-	m, err := p.Restructure(ctx, restructurePrompt,
+	m, err := p.Restructure(ctx, prompt.Restructure,
 		structural.Prompt("gateway/platform-tls.yaml", doc, "v1alpha2", "v1", oldS, newS, findings))
 	if err != nil {
 		t.Fatalf("model: %v", err)
