@@ -6,3 +6,6 @@
 
 # desloppify local state
 .desloppify/
+
+# desloppify scorecard, regenerated on every scan
+scorecard.png
