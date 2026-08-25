@@ -3,6 +3,18 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.17.1] - 2026-08-25
+
+### Fixed
+
+- **A failing `addons-gate` status now says why it failed.** It counted only
+  targeting and source changes, so a pull request blocked for any other reason
+  — an apiVersion that moved, settings the bump stops reading — got
+  `0 targeting change(s), 0 other source change(s)` beside a red cross. The
+  most-read surface on the pull request reported nothing changed, on the one
+  occasion it most needed to say what did. It now carries the same verdict the
+  report leads with. Found immediately, on the first live red after 0.17.0.
+
 ## [0.17.0] - 2026-08-25
 
 ### Added

@@ -337,15 +337,23 @@ func (g *GateService) run(ctx context.Context, pr *gitprovider.PullRequest) *gat
 
 	if blocking {
 		out.State = gitprovider.CheckFailure
+		// The status says what the report says. It used to count only
+		// targeting and source changes, so a pull request blocked for any
+		// OTHER reason -- an apiVersion that moved, settings the bump stops
+		// reading -- got "0 targeting change(s), 0 other source change(s)"
+		// beside a red cross. That is the most-read surface on the pull
+		// request telling the reader nothing changed, on the one occasion it
+		// most needed to say what did.
+		_, headline := res.Verdict()
+		reason := strings.TrimPrefix(headline, "Blocking — ")
 		switch {
 		case schemaFailures > 0 && res.Blocking():
-			g.status(ctx, pr, gitprovider.StateFailure, "%d targeting change(s), %d manifest(s) failed schema validation",
-				len(res.Targeting)+len(res.Other), schemaFailures)
+			g.status(ctx, pr, gitprovider.StateFailure, "%s; %d manifest(s) failed schema validation",
+				reason, schemaFailures)
 		case schemaFailures > 0:
 			g.status(ctx, pr, gitprovider.StateFailure, "%d manifest(s) failed schema validation", schemaFailures)
 		default:
-			g.status(ctx, pr, gitprovider.StateFailure, "%d targeting change(s), %d other source change(s)",
-				len(res.Targeting), len(res.Other))
+			g.status(ctx, pr, gitprovider.StateFailure, "%s", reason)
 		}
 		return out
 	}

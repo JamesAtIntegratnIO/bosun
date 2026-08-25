@@ -473,3 +473,43 @@ func TestTriageSurfacesABrokenInProcessGate(t *testing.T) {
 		t.Fatalf("a broken gate must resolve the advisory status with the reason: %s %q", s.State, s.Description)
 	}
 }
+
+// A pull request blocked for a reason that is neither targeting nor source
+// used to get "0 targeting change(s), 0 other source change(s)" beside a red
+// cross -- the most-read surface saying nothing changed, exactly when it most
+// needed to say what did.
+func TestAFailingStatusSaysWhyItFailed(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		res  *gate.DiffResult
+		want string
+	}{
+		{
+			name: "an apiVersion that moved",
+			res:  &gate.DiffResult{Objects: []gate.ObjectChange{{Kind: "apiVersion", Object: "PodDisruptionBudget/x"}}},
+			want: "1 object whose own apiVersion moved",
+		},
+		{
+			name: "settings the bump stops reading",
+			res: &gate.DiffResult{Objects: []gate.ObjectChange{
+				{Kind: "valuesKeyDropped", Object: "kyverno", Keys: []string{"a", "b", "c"}},
+			}},
+			want: "3 settings this bump stops reading",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, headline := tc.res.Verdict()
+			got := strings.TrimPrefix(headline, "Blocking — ")
+			if !strings.Contains(got, tc.want) {
+				t.Fatalf("status reason %q does not contain %q", got, tc.want)
+			}
+			if strings.Contains(got, "0 targeting change(s)") {
+				t.Fatalf("the status must not report a count of zero as its reason: %q", got)
+			}
+			// GitHub rejects descriptions past 140 characters.
+			if len(got) > 140 {
+				t.Fatalf("status reason is %d chars, over the host limit: %q", len(got), got)
+			}
+		})
+	}
+}
