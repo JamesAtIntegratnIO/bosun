@@ -489,7 +489,45 @@ networkPolicy:
     # name", so that is the nearest equivalent and it excludes RFC1918.
     allowInternet: false
 
+# Watch the promotion pipeline itself.
+#
+# The gate answers a pull request that exists. This answers the question
+# nobody asks: whether the pull requests that SHOULD exist are being opened at
+# all. Nothing about a promotion that never happened produces an event, so the
+# only way to see it is to look on a timer.
+#
+# What it finds, all of it observed on a real cluster: a Stage whose promotion
+# hit a transient error and will never retry, because a terminal promotion is
+# final and auto-promotion does not re-run one; a Warehouse that stopped
+# discovering; a verification that errored and is holding a Stage's queue
+# indefinitely; a tracked pin writing to a key the file does not have, which
+# succeeds and changes nothing; duplicate promotion pull requests where only
+# the newest can merge.
+#
+# READ-ONLY. It only ever LISTs, and it uses the Kargo read the ClusterRole
+# already grants. Every finding carries the exact command to fix it, because
+# none of them are guessable -- `kargo.akuity.io/abort=true` is silently
+# ignored where the request object works, and a Warehouse refresh will never
+# re-run a promotion that already reached a terminal phase.
+supervise:
+  enabled: true
+  # How often to sweep. Cheap: three LISTs and a read of the checked-out
+  # repository. Every situation it reports is still true ten minutes later.
+  interval: 10m
+
 metrics:
   serviceMonitor:
+    # Scrapes /metrics, which carries the supervisor's findings by kind and
+    # severity, how long each has held, and -- the one that matters -- a sweep
+    # timestamp.
+    #
+    # ALERT ON THE TIMESTAMP'S ABSENCE, not only on the findings:
+    #
+    #   absent(bosun_pipeline_sweep_timestamp_seconds)
+    #     or time() - bosun_pipeline_sweep_timestamp_seconds > 3600
+    #
+    # A supervisor whose entire subject is silent failure has to be able to
+    # fail loudly itself. Without that rule, one that stopped sweeping looks
+    # exactly like a pipeline with nothing wrong.
     enabled: false
     interval: 30s

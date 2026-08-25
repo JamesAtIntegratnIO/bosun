@@ -1,0 +1,115 @@
+package pipeline
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/JamesAtIntegratnIO/bosun/cluster"
+	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
+)
+
+// KargoSource is the cluster half of a sweep.
+type KargoSource interface {
+	Stages(ctx context.Context) ([]cluster.KargoStage, error)
+	Warehouses(ctx context.Context) ([]cluster.KargoWarehouse, error)
+	Promotions(ctx context.Context) ([]cluster.KargoPromotion, error)
+}
+
+// PRSource is the git half. Optional: without it the orphan and superseded
+// detectors stay quiet rather than guessing.
+type PRSource interface {
+	ListOpenPullRequests(ctx context.Context) ([]gitprovider.PullRequest, error)
+}
+
+// Collector assembles a Snapshot.
+//
+// EVERY SOURCE IS OPTIONAL AND EVERY FAILURE IS A NOTE, never an error. That
+// is not politeness -- it is the package's subject applied to itself. A sweep
+// that gave up because it could not list pull requests would report nothing,
+// and reporting nothing is indistinguishable from finding nothing, which is
+// the exact confusion this package exists to end. So a sweep does what it can,
+// says what it could not do, and the report carries both.
+type Collector struct {
+	Kargo KargoSource
+	PRs   PRSource
+	// RepoRoot is a checkout to resolve tracked pins against. Empty disables
+	// the pin check, and the report says so.
+	RepoRoot string
+	// Now is injected so a sweep is reproducible in a test.
+	Now func() time.Time
+}
+
+func (c *Collector) now() time.Time {
+	if c.Now != nil {
+		return c.Now()
+	}
+	return time.Now()
+}
+
+// Collect reads everything available and returns a Snapshot.
+func (c *Collector) Collect(ctx context.Context) *Snapshot {
+	s := &Snapshot{Now: c.now()}
+
+	if c.Kargo == nil {
+		s.Notes = append(s.Notes, "no cluster reader: nothing about Kargo could be checked")
+		return s
+	}
+	if stages, err := c.Kargo.Stages(ctx); err != nil {
+		s.Notes = append(s.Notes, fmt.Sprintf("Stages could not be read (%v), so nothing is claimed about them", err))
+	} else {
+		for _, st := range stages {
+			p := Stage{
+				Name: st.Name, Namespace: st.Namespace, CurrentFreight: st.CurrentFreight,
+				Ready: st.Ready, ReadyReason: st.ReadyReason, ReadyMessage: st.ReadyMessage,
+				ReadySince: st.ReadySince,
+			}
+			for _, u := range st.Updates {
+				p.Updates = append(p.Updates, Update{Path: u.Path, Keys: u.Keys})
+			}
+			s.Stages = append(s.Stages, p)
+		}
+	}
+	if whs, err := c.Kargo.Warehouses(ctx); err != nil {
+		s.Notes = append(s.Notes, fmt.Sprintf("Warehouses could not be read (%v), so a stalled one would not have been found", err))
+	} else {
+		for _, w := range whs {
+			s.Warehouses = append(s.Warehouses, Warehouse{
+				Name: w.Name, Namespace: w.Namespace, Interval: w.Interval,
+				DiscoveredAt: w.DiscoveredAt, Ready: w.Ready,
+				ReadyReason: w.ReadyReason, ReadyMessage: w.ReadyMessage, Latest: w.Latest,
+			})
+		}
+	}
+	if ps, err := c.Kargo.Promotions(ctx); err != nil {
+		s.Notes = append(s.Notes, fmt.Sprintf("promotions could not be read (%v), so a wedged Stage would not have been found", err))
+	} else {
+		for _, p := range ps {
+			s.Promotions = append(s.Promotions, Promotion{
+				Name: p.Name, Namespace: p.Namespace, Stage: p.Stage, Freight: p.Freight,
+				Phase: p.Phase, StartedAt: p.StartedAt, CreatedAt: p.CreatedAt, Message: p.Message,
+			})
+		}
+	}
+
+	if c.PRs != nil {
+		if prs, err := c.PRs.ListOpenPullRequests(ctx); err != nil {
+			s.Notes = append(s.Notes, fmt.Sprintf("open pull requests could not be listed (%v), so superseded and orphaned ones were not checked", err))
+		} else {
+			for _, pr := range prs {
+				s.OpenPRs = append(s.OpenPRs, PullRequest{Number: pr.Number, Branch: pr.Branch})
+			}
+		}
+	}
+
+	if c.RepoRoot != "" {
+		s.RepoRoot = c.RepoRoot
+		s.FileHas = NewFileKeys(c.RepoRoot).Has
+	}
+	return s
+}
+
+// Sweep collects and detects in one call.
+func (c *Collector) Sweep(ctx context.Context) *Report {
+	return Detect(c.Collect(ctx))
+}

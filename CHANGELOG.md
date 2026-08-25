@@ -3,6 +3,59 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.18.0] - 2026-08-25
+
+### Added
+
+- **A supervisor for the promotion pipeline.** The gate answers a pull request
+  that exists; this answers whether the pull requests that *should* exist are
+  being opened at all. Nothing about a promotion that never happened produces
+  an event, so it looks on a timer.
+
+  It finds: a Stage whose promotion ended without delivering and **will never
+  retry** (a terminal promotion is final, and auto-promotion does not re-run
+  one); a Warehouse that stopped discovering or has missed two of its own
+  intervals; a verification holding a Stage's queue; a tracked `yaml-update`
+  key the target file does not have, which writes nothing and reports success;
+  a promotion running against a closed pull request; and duplicate promotion
+  pull requests where only the newest can merge.
+
+  **On its first live sweep against a real cluster it found three Stages that
+  had been promoting nothing for three days** — two of them because
+  `allow-controller-egress` permits `0.0.0.0/0:443` minus RFC1918 and
+  Prometheus is a ClusterIP, so every `verify.apps` query had been dropped
+  since the rule was written. A failed AnalysisRun does not fail a promotion:
+  the Stage goes `Ready=False` and quietly stops, and every Application stays
+  Synced and Healthy on the version it already had.
+
+  **Every finding carries the exact command**, because none of them are
+  guessable: `kargo.akuity.io/abort=true` is silently ignored where the request
+  object works; a Warehouse refresh will never re-run a promotion that reached
+  a terminal phase; a hand-written Promotion needs `generateName` *without* a
+  trailing dot or the webhook rejects it on RFC1123.
+
+  Read-only — three LISTs and a shallow clone, using the Kargo read the
+  ClusterRole already grants. No new permission, and no write verb.
+
+- **`/metrics` now serves something.** `metrics.serviceMonitor` has existed as
+  a values knob scraping a 404. It now carries findings by kind and severity,
+  how long each has held, what the sweep actually read, and a sweep timestamp.
+  Alert on the timestamp's *absence* as well as on findings: a supervisor whose
+  subject is silent failure has to be able to fail loudly itself. Rules in
+  [`docs/supervisor.md`](docs/supervisor.md).
+
+- **`/pipeline`** serves the report as markdown. Both endpoints answer `503`
+  before the first sweep, deliberately — a scraper reading zeroes from a
+  supervisor that has not looked would record "nothing is wrong" as a
+  measurement.
+
+### Fixed
+
+- **`firstDocument` treated a leading separator as a terminator.** A file
+  opening with a comment block and `---` parsed as "document one is five
+  comments", which made every key in it look absent. Caught by the first live
+  sweep, which reported ten Deployments as missing a key they all had.
+
 ## [0.17.2] - 2026-08-25
 
 ### Fixed

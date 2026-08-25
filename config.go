@@ -80,8 +80,14 @@ type Config struct {
 	MaxAttempts      int
 	GateWait         time.Duration
 	GatePoll         time.Duration
-	Explain          bool
-	Migrate          bool
+
+	// Supervise turns on the pipeline sweep: a periodic read of Kargo that
+	// reports what has silently stopped. Independent of the gate, and
+	// deliberately cheap -- it only ever LISTs.
+	Supervise      bool
+	SuperviseEvery time.Duration
+	Explain        bool
+	Migrate        bool
 	// App authentication. When AppID is set the agent acts as a GitHub App
 	// installation instead of as the owner of a token -- see gitprovider.AppAuth
 	// for why that is about identity rather than access.
@@ -199,6 +205,10 @@ func LoadConfig() (*Config, error) {
 	if c.UpstreamMaxCommits, err = envInt("UPSTREAM_MAX_COMMITS", upstream.MaxCompareCommits); err != nil {
 		return nil, err
 	}
+	c.Supervise = envBool("SUPERVISE_PIPELINE", true)
+	if c.SuperviseEvery, err = envDur("SUPERVISE_INTERVAL", 10*time.Minute); err != nil {
+		return nil, err
+	}
 	if c.GatePoll, err = envDur("GATE_POLL", 30*time.Second); err != nil {
 		return nil, err
 	}
@@ -312,6 +322,20 @@ func env(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// envBool reads a boolean with a default, which `os.Getenv(k) == "true"`
+// cannot express: that idiom always defaults to false, so a setting that
+// should be ON unless someone turns it off has no way to say so.
+func envBool(k string, def bool) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(k))) {
+	case "":
+		return def
+	case "1", "t", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func envInt(k string, def int) (int, error) {
