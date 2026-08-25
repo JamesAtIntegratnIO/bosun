@@ -126,9 +126,15 @@ func Apply(root string, policy Policy, in []Edit) (*Result, error) {
 			continue
 		}
 
-		full := filepath.Join(root, filepath.Clean("/"+e.Path))
+		// Join, not Join(root, Clean("/"+path)). Rooting the path at "/" first
+		// resolved every ".." before Join ever saw it, so the containment test
+		// below could not fail -- a guard that read as the traversal defence
+		// and was in fact dead code, with the confinement happening silently
+		// one line earlier. Now Rel is the real test and rejects what it says
+		// it rejects.
+		full := filepath.Join(root, e.Path)
 		rel, err := filepath.Rel(root, full)
-		if err != nil || strings.HasPrefix(rel, "..") {
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			res.Rejected = append(res.Rejected, Rejected{e.Path, e.Key, "path escapes the repository"})
 			continue
 		}

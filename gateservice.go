@@ -164,10 +164,16 @@ func (g *GateService) sweep(ctx context.Context) {
 		// or from a CI adapter still running during a migration -- is not
 		// re-litigated. The triage re-renders on demand if it needs the
 		// report; the sweep's job is only that every head commit gets one.
-		if state, err := g.Git.CheckStatus(ctx, pr.HeadSHA, g.CheckName); err == nil {
-			if state == gitprovider.CheckSuccess || state == gitprovider.CheckFailure {
-				continue
-			}
+		state, err := g.Git.CheckStatus(ctx, pr.HeadSHA, g.CheckName)
+		switch {
+		case err != nil:
+			// Re-gating is the safe answer -- a verdict we could not read is
+			// not a verdict we may assume -- but it is not free, so say why.
+			// Silently, a revoked Checks:read read as "nothing has run yet"
+			// on every sweep, for every pull request, forever.
+			g.logf("gate: PR %d: could not read the %q status, re-gating: %v", pr.Number, g.CheckName, err)
+		case state == gitprovider.CheckSuccess || state == gitprovider.CheckFailure:
+			continue
 		}
 		g.Ensure(ctx, pr)
 	}
@@ -427,22 +433,30 @@ func (g *GateService) comment(ctx context.Context, pr *gitprovider.PullRequest, 
 	// two must not be collapsed into one loop however similar they look.
 	var existing *gitprovider.Comment
 	var history []verdictRow
-	if comments, err := g.Git.ListComments(ctx, pr.Number); err == nil {
-		for i := range comments {
-			if strings.Contains(comments[i].Body, stampHead+pr.HeadSHA+" -->") {
-				return
-			}
+	comments, err := g.Git.ListComments(ctx, pr.Number)
+	if err != nil {
+		// Both scans below are how "never comment twice for one commit" and
+		// "edit our own comment rather than adding another" are enforced, and
+		// an empty list defeats both. Posting a second report is the lesser
+		// harm -- the alternative is a commit with no verdict on it at all --
+		// but it is a real one, and it used to happen with nothing said.
+		g.logf("gate: PR %d: could not read the existing comments, so this report may duplicate one and will not carry the verdict history: %v",
+			pr.Number, err)
+	}
+	for i := range comments {
+		if strings.Contains(comments[i].Body, stampHead+pr.HeadSHA+" -->") {
+			return
 		}
-		// Ours is the one carrying the verdict stamp, which only this code
-		// path writes. NOT the one whose author matches -- Name() is the
-		// PROVIDER's name ("github"), never the account, and a report posted
-		// by a CI adapter is not ours to rewrite anyway. Matching on the stamp
-		// is the same question asked of the artefact instead of the identity,
-		// and it is the question that has an answer here.
-		for i := range comments {
-			if strings.Contains(comments[i].Body, stampVerdict) {
-				existing = &comments[i]
-			}
+	}
+	// Ours is the one carrying the verdict stamp, which only this code path
+	// writes. NOT the one whose author matches -- Name() is the PROVIDER's
+	// name ("github"), never the account, and a report posted by a CI adapter
+	// is not ours to rewrite anyway. Matching on the stamp is the same
+	// question asked of the artefact instead of the identity, and it is the
+	// question that has an answer here.
+	for i := range comments {
+		if strings.Contains(comments[i].Body, stampVerdict) {
+			existing = &comments[i]
 		}
 	}
 	if existing != nil {

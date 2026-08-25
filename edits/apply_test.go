@@ -149,10 +149,36 @@ func TestRejectsPathOutsideTheAllowlist(t *testing.T) {
 
 func TestRejectsTraversalOutOfTheRepository(t *testing.T) {
 	root := repo(t, map[string]string{"addons/values.yaml": sample})
-	res, _ := Apply(root, Policy{Allow: []string{"**/*"}},
-		[]Edit{{Path: "../../../etc/passwd", Key: "key", From: "", To: "x"}})
-	if len(res.Applied) != 0 {
-		t.Fatal("traversal escaped the repository")
+	// The reason matters, not just the refusal. This used to pass through the
+	// allowlist while the containment guard below it was unreachable, so the
+	// test proved a policy decision and not the defence it is named for.
+	for _, path := range []string{
+		"../../../etc/passwd",
+		"addons/../../escape.yaml",
+		"./../outside.yaml",
+	} {
+		res, _ := Apply(root, Policy{Allow: []string{"**/*", "*", "../**"}},
+			[]Edit{{Path: path, Key: "key", From: "", To: "x"}})
+		if len(res.Applied) != 0 {
+			t.Fatalf("%s escaped the repository", path)
+		}
+		if len(res.Rejected) != 1 || res.Rejected[0].Reason != "path escapes the repository" {
+			t.Errorf("%s: want the containment refusal, got %+v", path, res.Rejected)
+		}
+	}
+}
+
+// The guard must not reject ordinary paths that merely contain a ".." segment
+// resolving back inside the repository.
+func TestAllowsATraversalThatStaysInside(t *testing.T) {
+	root := repo(t, map[string]string{"addons/values.yaml": sample})
+	res, err := Apply(root, Policy{Allow: []string{"addons/**"}},
+		[]Edit{{Path: "addons/nested/../values.yaml", Key: "metallb.defaultVersion", From: "0.16.0", To: "0.16.1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Applied) != 1 {
+		t.Fatalf("a path that stays inside must be applied, got %+v", res)
 	}
 }
 

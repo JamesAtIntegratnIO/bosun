@@ -253,6 +253,13 @@ func (g *GitHub) ListComments(ctx context.Context, number int) ([]Comment, error
 // Both surfaces are consulted: check runs (GitHub Actions) and legacy commit
 // statuses, because a repository can use either and a gate reported through
 // the one you did not look at is indistinguishable from no gate at all.
+//
+// A check-runs failure is not fatal on its own -- the statuses surface is the
+// whole reason there are two -- but it is carried, and returned if the second
+// surface finds nothing either. Discarded, a token without Checks:read looked
+// exactly like a check that had not started: waitForGate polled for the full
+// GateWait and then reported an absent gate, once per pull request, with the
+// actual cause never written down anywhere.
 func (g *GitHub) CheckStatus(ctx context.Context, sha, checkName string) (CheckState, error) {
 	var runs struct {
 		CheckRuns []struct {
@@ -261,8 +268,9 @@ func (g *GitHub) CheckStatus(ctx context.Context, sha, checkName string) (CheckS
 			Conclusion string `json:"conclusion"`
 		} `json:"check_runs"`
 	}
-	if err := g.do(ctx, http.MethodGet,
-		g.repoPath(fmt.Sprintf("/commits/%s/check-runs?per_page=100", sha)), nil, &runs); err == nil {
+	runsErr := g.do(ctx, http.MethodGet,
+		g.repoPath(fmt.Sprintf("/commits/%s/check-runs?per_page=100", sha)), nil, &runs)
+	if runsErr == nil {
 		for _, r := range runs.CheckRuns {
 			if r.Name != checkName {
 				continue
@@ -299,6 +307,12 @@ func (g *GitHub) CheckStatus(ctx context.Context, sha, checkName string) (CheckS
 		default:
 			return CheckFailure, nil
 		}
+	}
+	// Neither surface named the check. If one of them could not be read, that
+	// is why -- and "we could not look" must not be returned as "it is not
+	// there".
+	if runsErr != nil {
+		return CheckMissing, fmt.Errorf("reading check runs for %s: %w", sha, runsErr)
 	}
 	return CheckMissing, nil
 }

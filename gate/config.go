@@ -241,7 +241,7 @@ func (s *Source) normalise(cfgPath string, i int) error {
 			return fmt.Errorf("%s: source %q is type %s and needs `path`", cfgPath, s.Name, s.Type)
 		}
 	case "":
-		return fmt.Errorf("%s: source %q has no `type` (manifests, helm, kustomize or argocd-bootstrap)", cfgPath, s.Name)
+		return fmt.Errorf("%s: source %q has no `type` (%s)", cfgPath, s.Name, sourceTypeList())
 	default:
 		return fmt.Errorf("%s: source %q has unknown type %q", cfgPath, s.Name, s.Type)
 	}
@@ -287,4 +287,24 @@ func (c *Config) workers() int {
 		return defaultConcurrency
 	}
 	return c.Concurrency
+}
+
+// sourceTypes is every value a source's `type` may take, in the order the const
+// block declares them.
+var sourceTypes = []SourceType{
+	SourceManifests, SourceRendered, SourceHelm, SourceKustomize, SourceArgoCDBootstrap,
+}
+
+// sourceTypeList renders them for the "you did not set one" error.
+//
+// Built from the constants rather than spelled out, because a hand-written list
+// falls behind the const block silently and did: `rendered` was added and the
+// message kept offering four of the five, so the one type an operator could not
+// discover was the one the error was there to teach them.
+func sourceTypeList() string {
+	names := make([]string, len(sourceTypes))
+	for i, t := range sourceTypes {
+		names[i] = string(t)
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
 }
