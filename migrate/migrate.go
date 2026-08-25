@@ -125,9 +125,17 @@ var reportLine = regexp.MustCompile(
 		"no longer serves `([^`]+)` — `([A-Za-z][A-Za-z0-9]*)` manifests must move to `(v[0-9][A-Za-z0-9]*)`$")
 
 // ParseReport extracts every repairable dropped-version finding from a gate
-// report. Lines in the old, suffix-less format are deliberately not returned:
-// they name a problem without naming the destination, and a repair must not
-// guess.
+// report.
+//
+// The suffix-less line -- `X: no longer serves Y`, with no consumer kind and no
+// destination -- is deliberately not returned. It names a problem without
+// naming where the manifests must move, and a repair must not guess.
+//
+// NOT an old format, though this comment used to call it one. Line still emits
+// it today, from gate/diff.go, whenever the gate knows a version was dropped
+// but not what declares it or what survives -- a finding built from a bodiless
+// table. It is the unrepairable case, not a legacy one, and reading it as
+// legacy invites somebody to delete the branch that produces it.
 func ParseReport(report string) []Dropped {
 	var out []Dropped
 	for _, raw := range strings.Split(report, "\n") {

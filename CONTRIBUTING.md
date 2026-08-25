@@ -62,6 +62,36 @@ and [`docs/safety-model.md`](docs/safety-model.md).
 A change that alters behaviour and does not touch the relevant documentation is
 incomplete.
 
+## Where things live
+
+One package per decision, each with a doc comment saying what it owns and what
+it deliberately does not:
+
+| Package | Owns |
+|---|---|
+| `agent/` | judging one pull request, and what to say about it |
+| `gate/` | rendering the repository and diffing it — no git host, no model |
+| `gateservice/` | running the gate in-process, per open pull request, on a timer |
+| `supervisor/` | the pipeline sweep: the promotions that never happened |
+| `prompt/` | what the model is told, and what the eval suite scores |
+| `edits/`, `migrate/`, `structural/` | the three ways a file gets written, each behind its own refusals |
+| `cluster/`, `gitprovider/`, `llm/`, `upstream/`, `egress/` | the outside world, one seam each, every one with a fake |
+| root | the composition root: read the environment, build one of each, wire, serve |
+
+There are three `main` packages, in three shapes, and the shapes mean
+different things:
+
+- **root** is the module's primary binary. Idiomatic Go for a module that
+  ships one thing; `cmd/bosun/` would say there are several.
+- **`gate/cmd/gitops-gate/`** is a second shipped binary inside a
+  self-contained sub-product with its own README, CHANGELOG and Dockerfile.
+  The `cmd/` is what keeps `gate/` importable as a library, which the agent
+  depends on.
+- **`evals/export/`** is a development tool, beside the thing it exports
+  rather than in a top-level `cmd/`, because it is useless without it.
+
+A new binary belongs in whichever of those three it actually is.
+
 ## The toolchain
 
 ```bash
