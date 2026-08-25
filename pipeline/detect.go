@@ -18,6 +18,20 @@ const (
 	// worth a look. Kargo runs these as AnalysisRuns with their own timeouts;
 	// this catches the ones with none.
 	verifyStuck = 45 * time.Minute
+	// orphanGrace is how long a promotion may run against a pull request that
+	// is not open before it counts as stranded.
+	//
+	// It exists because "not open" covers MERGED as well as closed, and the
+	// seconds between a merge and Kargo noticing it are exactly when a
+	// promotion is doing the right thing. Reporting that window as a problem
+	// is a false alarm on every successful promotion this repository makes,
+	// which would be the fastest possible way to teach someone to ignore this.
+	//
+	// Caught by running it: the first live sweep flagged bosun's own promotion
+	// three minutes after its pull request merged. A genuinely stranded one
+	// waits indefinitely -- the ones observed had been running for hours -- so
+	// the grace costs nothing real.
+	orphanGrace = 15 * time.Minute
 	// pendingStuck is how long a promotion may sit Pending. Pending means
 	// queued behind something -- usually a verification -- and a queue that
 	// never drains is the pipeline stopped.
@@ -235,6 +249,11 @@ func detectOrphanedPromotions(s *Snapshot) []Finding {
 			continue
 		}
 		age := p.Age(s.Now)
+		// A pull request that merged moments ago is also "not open". See
+		// orphanGrace.
+		if age < orphanGrace {
+			continue
+		}
 		out = append(out, Finding{
 			Kind:     KindOrphanedPR,
 			Severity: Blocking,

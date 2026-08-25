@@ -397,3 +397,32 @@ func TestAMissingVerificationIdStillYieldsRunnableSteps(t *testing.T) {
 		t.Fatalf("it must say where the id lives:\n%s", f.Remedy)
 	}
 }
+
+// "Not open" covers MERGED as well as closed, and the seconds between a merge
+// and Kargo noticing it are exactly when a promotion is doing the right thing.
+// Reporting that window would be a false alarm on every successful promotion.
+//
+// Caught by running it: the first live sweep flagged bosun's own promotion
+// three minutes after its pull request merged.
+func TestAPromotionIsNotStrandedTheMomentItsPullRequestMerges(t *testing.T) {
+	snap := func(age time.Duration) *Snapshot {
+		return &Snapshot{
+			Now:    now,
+			Stages: []Stage{{Name: "bosun", Ready: true}},
+			Promotions: []Promotion{{
+				Name: "bosun.01xyz.8e21911", Namespace: "addons", Stage: "bosun",
+				Phase: PhaseRunning, StartedAt: ago(age),
+			}},
+			// Some other Stage's pull request is open, so the list is real.
+			OpenPRs: []PullRequest{{Number: 9, Branch: "kargo/promotion/other.01a.1"}},
+		}
+	}
+	none(t, Detect(snap(3*time.Minute)), KindOrphanedPR)
+
+	// A genuinely stranded one waits indefinitely; the ones observed live had
+	// been running for hours.
+	f := findingOf(t, Detect(snap(6*time.Hour)), KindOrphanedPR)
+	if f.Severity != Blocking {
+		t.Errorf("a promotion holding a queue against a dead pull request is blocking, got %s", f.Severity)
+	}
+}
