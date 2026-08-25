@@ -94,7 +94,7 @@ func (r *Report) Metrics(w io.Writer) {
 
 var allKinds = []Kind{
 	KindWedged, KindStalled, KindDeadPin, KindOrphanedPR,
-	KindSupersededPR, KindNeverPromoted, KindVerifyStuck,
+	KindSupersededPR, KindVerifyStuck,
 }
 
 func writeHeader(w io.Writer, name, typ, help string) {
