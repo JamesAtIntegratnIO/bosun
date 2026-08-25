@@ -43,7 +43,6 @@ type Promotion struct {
 type Triage struct {
 	// Brand is what the agent calls itself in comments and commits.
 	Brand     string
-	BrandMark string
 	Git       gitprovider.Provider
 	LLM       llm.Provider
 	Policy    edits.Policy
@@ -525,11 +524,10 @@ func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider
 	if err := t.Git.AddLabel(ctx, pr.Number, fmt.Sprintf("%s%d", t.attemptPrefix(), attempt)); err != nil {
 		t.logf("PR %d: could not label attempt %d: %v", pr.Number, attempt, err)
 	}
-	t.say(ctx, pr, "migrated %d manifest(s) off dropped API version(s) (attempt %d of %d)",
-		files, attempt, t.MaxAttempts)
+	t.say(ctx, pr, "migrated %d manifest(s) off dropped API version(s)%s", files, t.attemptSuffix(attempt))
 	return t.Git.Comment(ctx, pr.Number, t.renderMigration(drops, total, rr, fmt.Sprintf(
-		"Pushed a migration to `%s` (attempt %d of %d). The gate will re-run and re-count.",
-		pr.Branch, attempt, t.MaxAttempts), live))
+		"Pushed a migration to `%s`%s. The gate will re-run and re-count.",
+		pr.Branch, t.attemptSuffix(attempt)), live))
 }
 
 // renderMigration is the comment for the deterministic path. Its footer names
@@ -538,13 +536,6 @@ func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider
 func (t *Triage) renderMigration(drops []migrate.Dropped, res *migrate.Result, rr *restructureResult,
 	headline string, live *liveFacts) string {
 	var b strings.Builder
-	if t.Brand != "" {
-		mark := t.BrandMark
-		if mark != "" {
-			mark += " "
-		}
-		fmt.Fprintf(&b, "%s**%s**\n\n", mark, t.Brand)
-	}
 	fmt.Fprintf(&b, "%s\n\n", headline)
 	b.WriteString("**The chart stopped serving API versions this repository still declares.** " +
 		"The gate named the versions and the one that survives; every declaring manifest moves there.\n\n")
@@ -553,10 +544,20 @@ func (t *Triage) renderMigration(drops []migrate.Dropped, res *migrate.Result, r
 			d.Kind, d.Group, strings.Join(d.Versions, ", "), d.Group, d.Target)
 	}
 	if len(res.Applied) > 0 {
-		b.WriteString("\n**Migrated**\n\n| File | Kind | To |\n|---|---|---|\n")
+		// Collapsed, because it is the commit's file list written out a second
+		// time. Twenty-seven rows of it pushed the live-cluster facts -- the
+		// part only this agent can supply -- off the bottom of the comment.
+		files := map[string]bool{}
+		for _, a := range res.Applied {
+			files[a.Path] = true
+		}
+		fmt.Fprintf(&b, "\n<details><summary><b>Migrated</b> — %s, listed</summary>\n\n",
+			countOf(len(files), "file"))
+		b.WriteString("\n| File | Kind | To |\n|---|---|---|\n")
 		for _, a := range res.Applied {
 			fmt.Fprintf(&b, "| `%s` | `%s` | `%s` |\n", a.Path, a.Kind, a.To)
 		}
+		b.WriteString("\n</details>\n")
 	}
 	if len(res.Refused) > 0 {
 		b.WriteString("\n**Refused**\n\n")
@@ -674,6 +675,32 @@ func renderRestructured(rr *restructureResult) string {
 // render builds the pull-request comment. It always states which model
 // produced the verdict, and always lists what was refused -- a silent refusal
 // would let a reader believe a fix was applied when it was not.
+// countOf is "1 file" / "27 files".
+func countOf(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
+}
+
+// attemptSuffix names the attempt only when there has been more than one.
+//
+// Every comment used to carry "(attempt 1 of 2)". On the overwhelmingly common
+// path there is exactly one attempt, so the counter described a sequence that
+// never happened and invited the reader to look for a second pass that does
+// not exist. It earns its place only when it is telling you something: that
+// this is a RE-try, and how many are left.
+//
+// The mechanism stays either way -- the label is the cap's only memory across
+// restarts, and without it a repair that does not turn the gate green would be
+// retried forever.
+func (t *Triage) attemptSuffix(attempt int) string {
+	if attempt <= 1 {
+		return ""
+	}
+	return fmt.Sprintf(" (attempt %d of %d)", attempt, t.MaxAttempts)
+}
+
 // attemptPrefix is the label prefix the attempt cap counts. It follows the
 // brand: a renamed agent must not keep writing labels under its old name, or
 // the cap silently resets on the rename.
@@ -686,16 +713,13 @@ func (t *Triage) attemptPrefix() string {
 
 func (t *Triage) render(v *llm.Verdict, res *edits.Result, headline string) string {
 	var b strings.Builder
-	// Lead with the identity. A comment that opens with a verdict reads like
-	// a colleague's review until you reach the footer, and the difference
-	// matters most in the seconds before someone acts on it.
-	if t.Brand != "" {
-		mark := t.BrandMark
-		if mark != "" {
-			mark += " "
-		}
-		fmt.Fprintf(&b, "%s**%s**\n\n", mark, t.Brand)
-	}
+	// No identity header. It was here because the agent used to comment as
+	// whoever owned its token -- a person -- so a comment opening with a
+	// verdict read like a colleague's review. Authenticating as a GitHub App
+	// moved identity into the avatar and the name the host renders above every
+	// comment, which says it earlier and more reliably than a bold line could.
+	// The footer still records the provenance, which is the half a reader
+	// actually needs and the host cannot supply.
 	fmt.Fprintf(&b, "%s\n\n", headline)
 	fmt.Fprintf(&b, "**%s**\n\n%s\n", v.Summary, v.Reasoning)
 
@@ -1052,13 +1076,6 @@ const explanationMarker = "<!-- bosun:explanation -->"
 func (t *Triage) renderExplanation(v *llm.Verdict, notes *upstream.Notes) string {
 	var b strings.Builder
 	b.WriteString(explanationMarker + "\n")
-	if t.Brand != "" {
-		mark := t.BrandMark
-		if mark != "" {
-			mark += " "
-		}
-		fmt.Fprintf(&b, "%s**%s**\n\n", mark, t.Brand)
-	}
 	if v.Classification == llm.ClassEscalate {
 		// The marker alone, before the summary: a reader who stops at the
 		// first bold line must still learn this one wants their eyes. The

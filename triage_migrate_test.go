@@ -97,13 +97,28 @@ func TestARedGateWithDroppedVersionsIsRepairedWithoutTheModel(t *testing.T) {
 	}
 	comment := h.git.Posted[0]
 	for _, want := range []string{
-		"Pushed a migration to `kargo/metallb` (attempt 1 of 2)",
+		"Pushed a migration to `kargo/metallb`.",
 		"`addons/external-secrets/externalsecret.yaml`",
 		"deterministic repair, no model",
 	} {
 		if !strings.Contains(comment, want) {
 			t.Errorf("comment missing %q:\n%s", want, comment)
 		}
+	}
+	// A counter on the only attempt there will ever be describes a sequence
+	// that did not happen; it belongs in the comment only when it is a RE-try.
+	if strings.Contains(comment, "attempt") {
+		t.Errorf("the first and only attempt should not be numbered:\n%s", comment)
+	}
+	// The identity header went with the GitHub App: the host renders the name
+	// and avatar above every comment already.
+	if strings.Contains(comment, "**Bosun**") || strings.Contains(comment, "⚓") {
+		t.Errorf("comment should carry no identity header:\n%s", comment)
+	}
+	// The file list is the commit's, written out again. Present, but not at
+	// the cost of pushing the live-cluster facts off the bottom.
+	if !strings.Contains(comment, "<details><summary><b>Migrated</b>") {
+		t.Errorf("the migrated-file table should be collapsed:\n%s", comment)
 	}
 	last := h.git.Statuses[len(h.git.Statuses)-1]
 	if last.State != gitprovider.StateSuccess || !strings.Contains(last.Description, "migrated 1 manifest(s)") {
@@ -193,5 +208,17 @@ func TestTheMigrationPathCanBeSwitchedOff(t *testing.T) {
 	}
 	if len(h.git.Pushes) != 0 {
 		t.Errorf("nothing may be pushed: %+v", h.git.Pushes)
+	}
+}
+
+// The counter is suppressed on the first attempt and stated on a re-try,
+// because only then is it telling the reader something.
+func TestTheAttemptCounterAppearsOnlyOnARetry(t *testing.T) {
+	tr := &Triage{MaxAttempts: 2}
+	if got := tr.attemptSuffix(1); got != "" {
+		t.Errorf("first attempt should be unnumbered, got %q", got)
+	}
+	if got := tr.attemptSuffix(2); got != " (attempt 2 of 2)" {
+		t.Errorf("a retry should say so, got %q", got)
 	}
 }

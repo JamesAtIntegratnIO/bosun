@@ -49,7 +49,6 @@ type Config struct {
 	// a reviewer should be able to tell a bot's comment from a colleague's at
 	// a glance, and the token's owner is whoever minted it.
 	Brand     string
-	BrandMark string
 
 	// Behaviour.
 	CheckName string
@@ -130,7 +129,6 @@ func LoadConfig() (*Config, error) {
 	c := &Config{
 		Addr:                     env("AGENT_ADDR", ":8080"),
 		Brand:                    env("AGENT_BRAND", "Bosun"),
-		BrandMark:                os.Getenv("AGENT_BRAND_MARK"),
 		GitProvider:              env("GIT_PROVIDER", "github"),
 		GitInsecureSkipTLSVerify: os.Getenv("GIT_INSECURE_SKIP_TLS_VERIFY") == "true",
 		GitAPIBase:               os.Getenv("GIT_API_BASE"),
