@@ -31,7 +31,7 @@ func Render(repoRoot string, cfg *Config, inv *Inventory) (*Table, error) {
 		batch []docs
 		err   error
 	}
-	sem := make(chan struct{}, cfg.Concurrency)
+	sem := make(chan struct{}, cfg.workers())
 	results := make(chan result, len(cfg.Sources))
 	var wg sync.WaitGroup
 

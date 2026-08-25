@@ -123,3 +123,50 @@ func TestTheVerdictHeadlineCannotBeMistakenForAParsedHeading(t *testing.T) {
 		}
 	}
 }
+
+// A run blocked only by schema validation used to publish a report headlined
+// "No blocking findings" and an all-zero blockers marker beside a FAILURE
+// status, because the report was written before validation ran. The report,
+// the marker and the status have to be three renderings of one answer.
+func TestSchemaFailuresBlockAndReachTheHeadlineAndTheMarker(t *testing.T) {
+	res := &DiffResult{SchemaFailures: 3}
+
+	if !res.Blocking() {
+		t.Error("three rejected manifests must block")
+	}
+	blocking, headline := res.Verdict()
+	if !blocking {
+		t.Errorf("Verdict disagrees with Blocking: %q", headline)
+	}
+	if !strings.Contains(headline, "3 manifests the target schemas reject") {
+		t.Errorf("headline does not name the reason: %q", headline)
+	}
+	if b := res.Blockers(); b.Schema != 3 || !b.Any() {
+		t.Errorf("blockers do not carry the schema count: %+v", b)
+	}
+
+	var sb strings.Builder
+	res.Report(&sb)
+	got, ok := migrate.ParseBlockers(sb.String())
+	if !ok {
+		t.Fatal("report carries no blockers marker")
+	}
+	if got.Schema != 3 {
+		t.Errorf("marker lost the schema count: %+v", got)
+	}
+
+	// The remedy is an author's, not the agent's -- same class as an
+	// apiVersion that moved under a chart-rendered object.
+	if got.RepoSideRemedy() {
+		t.Error("a schema failure has no repair the agent performs")
+	}
+}
+
+// Zero must stay invisible: an older reader of the marker sees the same
+// six fields it always did.
+func TestNoSchemaFailuresLeavesTheVerdictAlone(t *testing.T) {
+	res := &DiffResult{Versions: []Change{{App: "a"}}}
+	if blocking, headline := res.Verdict(); blocking || !strings.Contains(headline, "No blocking findings") {
+		t.Errorf("got blocking=%v %q", blocking, headline)
+	}
+}

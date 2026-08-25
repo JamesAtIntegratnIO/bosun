@@ -64,7 +64,7 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) ([]Object, []Obj
 	results := make([]result, len(pairs))
 
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, cfg.Concurrency)
+	sem := make(chan struct{}, cfg.workers())
 
 	for i, p := range pairs {
 		wg.Add(1)

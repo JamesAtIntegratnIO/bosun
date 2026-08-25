@@ -44,10 +44,20 @@ type DiffResult struct {
 	// CRDs" says what will happen.
 	Objects  []ObjectChange `json:"objects,omitempty"`
 	Warnings []string       `json:"warnings,omitempty"`
+
+	// SchemaFailures is manifests the target cluster's schemas reject, set by
+	// the caller that ran validation.
+	//
+	// It lives on the result rather than beside it because the headline, the
+	// machine-readable marker and the commit status are all derived from this
+	// struct. Kept outside, a run blocked ONLY by schema validation published
+	// a report headlined "No blocking findings" next to a red cross -- the
+	// report and the status disagreeing about the same run.
+	SchemaFailures int `json:"schemaFailures,omitempty"`
 }
 
 func (d *DiffResult) Blocking() bool {
-	if len(d.Targeting) > 0 || len(d.Other) > 0 {
+	if len(d.Targeting) > 0 || len(d.Other) > 0 || d.SchemaFailures > 0 {
 		return true
 	}
 	// An API version moving under an existing resource is a migration, and
@@ -319,6 +329,7 @@ func (d *DiffResult) Blockers() migrate.Blockers {
 			b.ValuesDropped += len(o.Keys)
 		}
 	}
+	b.Schema = d.SchemaFailures
 	return b
 }
 
@@ -343,6 +354,9 @@ func (d *DiffResult) Verdict() (blocking bool, headline string) {
 	}
 	if n := bl.ValuesDropped; n > 0 {
 		why = append(why, fmt.Sprintf("%s this bump stops reading", plural(n, "setting")))
+	}
+	if n := bl.Schema; n > 0 {
+		why = append(why, fmt.Sprintf("%s the target schemas reject", plural(n, "manifest")))
 	}
 	if len(why) == 0 {
 		// Not blocking. Say what DID change, because "nothing blocking" and
@@ -396,8 +410,8 @@ func (d *DiffResult) Report(w io.Writer) {
 	// written for a person. Every adapter that posts the report verbatim
 	// carries it, so the CI path gets it for free.
 	b := d.Blockers()
-	fmt.Fprintf(w, "%stargeting=%d source=%d apiVersion=%d consumers=%d unscanned=%d valuesDropped=%d -->\n",
-		migrate.BlockersMarker, b.Targeting, b.Source, b.APIVersion, b.Consumers, b.Unscanned, b.ValuesDropped)
+	fmt.Fprintf(w, "%stargeting=%d source=%d apiVersion=%d consumers=%d unscanned=%d valuesDropped=%d schema=%d -->\n",
+		migrate.BlockersMarker, b.Targeting, b.Source, b.APIVersion, b.Consumers, b.Unscanned, b.ValuesDropped, b.Schema)
 	mark := "✅"
 	if blocking {
 		mark = "🔴"

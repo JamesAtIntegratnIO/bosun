@@ -230,10 +230,14 @@ type Blockers struct {
 	// version no longer declares. Helm ignores an unknown value instead of
 	// failing on it, so these stop applying while everything stays green.
 	ValuesDropped int `json:"valuesDropped"`
+	// Schema is manifests the target cluster's schemas reject. Like
+	// APIVersion, it has no remedy the agent performs: the manifest is wrong
+	// in a way that needs an author, not a version swap.
+	Schema int `json:"schema"`
 }
 
 func (b Blockers) Any() bool {
-	return b.Targeting+b.Source+b.APIVersion+b.Consumers+b.Unscanned+b.ValuesDropped > 0
+	return b.Targeting+b.Source+b.APIVersion+b.Consumers+b.Unscanned+b.ValuesDropped+b.Schema > 0
 }
 
 // RepoSideRemedy reports whether anything a person or an agent could change in
@@ -267,7 +271,7 @@ func ParseBlockers(report string) (Blockers, bool) {
 	into := map[string]*int{
 		"targeting": &b.Targeting, "source": &b.Source, "apiVersion": &b.APIVersion,
 		"consumers": &b.Consumers, "unscanned": &b.Unscanned,
-		"valuesDropped": &b.ValuesDropped,
+		"valuesDropped": &b.ValuesDropped, "schema": &b.Schema,
 	}
 	found := false
 	for _, field := range strings.Fields(rest) {

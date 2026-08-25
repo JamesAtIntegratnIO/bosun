@@ -302,23 +302,28 @@ func (g *GateService) run(ctx context.Context, pr *gitprovider.PullRequest) *gat
 	// commit -- which they had already started to do.
 	res := gate.Assemble(head, cfg, baseTable, headTable)
 
-	var report strings.Builder
-	res.Report(&report)
-
-	schemaFailures := 0
+	// Validation runs BEFORE the report is written, and its count goes onto
+	// the result rather than beside it. Written after, the headline and the
+	// machine-readable marker were already on the page by the time the failure
+	// was known: a run blocked only by schema validation published "✅ No
+	// blocking findings" and an all-zero blockers marker next to a FAILURE
+	// status, and the triage agent read the marker.
+	var schemaDetail strings.Builder
 	if cfg.Validate.Enabled {
-		var sb strings.Builder
-		schemaFailures, err = gate.ValidateManifests(head, cfg, inv, &sb)
+		res.SchemaFailures, err = gate.ValidateManifests(head, cfg, inv, &schemaDetail)
 		if err != nil {
 			return g.broke(ctx, pr, fmt.Errorf("schema validation: %w", err))
 		}
-		if schemaFailures > 0 {
-			fmt.Fprintf(&report, "### Schema validation\n\n%s\n", sb.String())
-		}
+	}
+
+	var report strings.Builder
+	res.Report(&report)
+	if res.SchemaFailures > 0 {
+		fmt.Fprintf(&report, "### Schema validation\n\n%s\n", schemaDetail.String())
 	}
 
 	out := &gateOutcome{Report: report.String()}
-	blocking := res.Blocking() || schemaFailures > 0
+	blocking := res.Blocking()
 
 	// The comment is for humans and for the audit trail; the verdict no
 	// longer travels through it. Posted when there is something to read --
@@ -337,17 +342,11 @@ func (g *GateService) run(ctx context.Context, pr *gitprovider.PullRequest) *gat
 		// beside a red cross. That is the most-read surface on the pull
 		// request telling the reader nothing changed, on the one occasion it
 		// most needed to say what did.
+		// Verdict now counts schema failures itself, so the status, the
+		// report headline and the blockers marker are three renderings of one
+		// answer rather than three places to keep in step.
 		_, headline := res.Verdict()
-		reason := strings.TrimPrefix(headline, "Blocking — ")
-		switch {
-		case schemaFailures > 0 && res.Blocking():
-			g.status(ctx, pr, gitprovider.StateFailure, "%s; %d manifest(s) failed schema validation",
-				reason, schemaFailures)
-		case schemaFailures > 0:
-			g.status(ctx, pr, gitprovider.StateFailure, "%d manifest(s) failed schema validation", schemaFailures)
-		default:
-			g.status(ctx, pr, gitprovider.StateFailure, "%s", reason)
-		}
+		g.status(ctx, pr, gitprovider.StateFailure, "%s", strings.TrimPrefix(headline, "Blocking — "))
 		return out
 	}
 

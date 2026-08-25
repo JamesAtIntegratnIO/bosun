@@ -33,6 +33,11 @@ type Config struct {
 	// Concurrency caps parallel renders. Fleets are the reason this exists: a
 	// fifty-cluster inventory is fifty chart renders per revision, and serial
 	// execution turns a ninety-second gate into a coffee break.
+	//
+	// ParseConfig defaults this to 8. Read it through workers() rather than
+	// directly -- a Config built as a literal rather than parsed leaves it
+	// zero, and a zero-capacity semaphore is not "no limit", it is a channel
+	// nobody can send on.
 	Concurrency int `json:"concurrency"`
 
 	// Validate controls schema validation.
@@ -181,7 +186,7 @@ func ParseConfig(raw []byte, path string) (*Config, error) {
 		c.ValuesRef = "values"
 	}
 	if c.Concurrency <= 0 {
-		c.Concurrency = 8
+		c.Concurrency = defaultConcurrency
 	}
 
 	// `bootstraps` is the older form. Fold it into sources so the rest of the
@@ -262,4 +267,24 @@ func (s *Source) matches(c Cluster) bool {
 		}
 	}
 	return true
+}
+
+// defaultConcurrency is the parallel-render cap when the config does not set
+// one. Eight keeps a fifty-cluster fleet inside a gate's time budget without
+// asking the host for fifty concurrent helm subprocesses.
+const defaultConcurrency = 8
+
+// workers is the render parallelism to actually use.
+//
+// Render and ChartDiff are exported and size their semaphore from this. Taking
+// Concurrency straight off the struct made a zero value -- any Config built as
+// a literal instead of through ParseConfig -- a permanent hang rather than an
+// error: `make(chan struct{}, 0)` is unbuffered, so the first worker blocks on
+// a send nobody will ever receive. A caller that got the config right is
+// unaffected; a caller that did not gets the default instead of a deadlock.
+func (c *Config) workers() int {
+	if c == nil || c.Concurrency < 1 {
+		return defaultConcurrency
+	}
+	return c.Concurrency
 }
