@@ -53,14 +53,30 @@ func collect(repoRoot string, cfg *Config, inv *Inventory, s Source) ([]docs, er
 		return []docs{{source: s.Name, objects: objs}}, nil
 
 	case SourceKustomize:
-		out, err := run(repoRoot, "kustomize", "build", s.Path)
-		if err != nil {
+		// NEITHER binary ships in the gate's image, which carries helm and
+		// kubeconform only. A kustomize source therefore works on a
+		// workstation and on a CI runner that installs one, and fails
+		// in-cluster -- so say which of the two happened rather than letting
+		// "kustomize build failed" cover both. A broken kustomization and a
+		// missing builder want completely different next actions.
+		if !haveEither("kustomize", "kubectl") {
+			return nil, fmt.Errorf("source %q is type kustomize, but neither `kustomize` nor "+
+				"`kubectl` is on PATH -- the gate's image ships neither, so this source can only "+
+				"be rendered where one is installed", s.Name)
+		}
+		out, kErr := run(repoRoot, "kustomize", "build", s.Path)
+		if kErr != nil {
 			// `kubectl kustomize` is the same builder and is far more often
 			// present; falling back costs nothing and removes a dependency
 			// most clusters' operators already have another copy of.
-			out, err = run(repoRoot, "kubectl", "kustomize", s.Path)
-			if err != nil {
-				return nil, fmt.Errorf("source %q: kustomize build %s: %w", s.Name, s.Path, err)
+			var fallbackErr error
+			out, fallbackErr = run(repoRoot, "kubectl", "kustomize", s.Path)
+			if fallbackErr != nil {
+				// BOTH failures, because with only the second a kustomization
+				// that `kustomize` explained clearly is reported through
+				// whatever `kubectl kustomize` happened to say instead.
+				return nil, fmt.Errorf("source %q: kustomize build %s: %w (kubectl kustomize also failed: %v)",
+					s.Name, s.Path, kErr, fallbackErr)
 			}
 		}
 		objs, err := parseStream(out)
@@ -195,4 +211,14 @@ func run(dir, name string, args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.Bytes(), nil
+}
+
+// haveEither reports whether at least one of the named binaries is on PATH.
+func haveEither(names ...string) bool {
+	for _, n := range names {
+		if _, err := exec.LookPath(n); err == nil {
+			return true
+		}
+	}
+	return false
 }

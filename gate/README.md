@@ -28,7 +28,17 @@ snapshot, which is what `clusters export` maintains.
 | `render` | Renders every bootstrap ApplicationSet declared in `.gitops-gate.yaml`, for every cluster in the inventory, expanding the generators. Emits a normalized target table. |
 | `diff` | Compares two target tables. With `-repo`, also renders every chart whose version moved — at both versions — and diffs the resources, down to the fields that changed. Emits the report and `render-diff.json`. |
 | `validate` | Schema-validates every rendered stream. |
-| `clusters export` | Regenerates the cluster inventory from live ArgoCD cluster Secrets. |
+| `clusters export` | Regenerates the cluster inventory from live ArgoCD cluster Secrets. **Workstation only** — shells out to `kubectl` against a kubeconfig, and `kubectl` is not in the gate's image. |
+
+### What the image carries
+
+`helm` and `kubeconform`, both pinned. Nothing else. Two paths therefore need a
+binary the image does not have, and both say so rather than failing obscurely:
+
+| Path | Needs | Where it runs |
+|---|---|---|
+| `clusters export` | `kubectl` | a workstation, against a kubeconfig. The in-cluster gate reads the same Secrets through the apiserver instead. |
+| a `kustomize` source in `.gitops-gate.yaml` | `kustomize` **or** `kubectl` | a workstation, or a CI runner that installs one. Not in-cluster. |
 
 ## What blocks, and why
 

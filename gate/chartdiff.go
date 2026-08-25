@@ -154,10 +154,12 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) (
 // renderChartVersion renders one Application's chart at its pinned version,
 // with the value files and inline values that Application actually uses.
 func renderChartVersion(repoRoot string, r Row) ([]Object, error) {
-	args := []string{"template", releaseNameFor(r), chartRef(r), "--version", r.Version}
-	if !strings.HasPrefix(r.ChartRepo, "oci://") && r.ChartRepo != "" {
-		args = append(args, "--repo", r.ChartRepo)
+	chartArgs, err := HelmChartArgs(r.ChartRepo, r.Chart)
+	if err != nil {
+		return nil, err
 	}
+	args := append([]string{"template", releaseNameFor(r)}, chartArgs...)
+	args = append(args, "--version", r.Version)
 
 	for _, vf := range r.ValueFiles {
 		// `$values/x` refers to the multi-source values ref, which is this
@@ -229,15 +231,13 @@ func renderChartVersion(repoRoot string, r Row) ([]Object, error) {
 // invisible in the worst way: chart-diff is skipped for that addon and the
 // report says only "NOT covered", so every OCI-repo addon quietly lost its
 // resource-level diff while the gate stayed green.
+// chartRef is the reference a row resolves to, for the egress host check --
+// which needs the destination, not the whole argument list.
 func chartRef(r Row) string {
 	if !strings.HasPrefix(r.ChartRepo, "oci://") {
 		return r.Chart
 	}
-	repo := strings.TrimRight(r.ChartRepo, "/")
-	if r.Chart == "" || strings.HasSuffix(repo, "/"+r.Chart) {
-		return repo
-	}
-	return repo + "/" + r.Chart
+	return ociChartRef(r.ChartRepo, r.Chart)
 }
 
 func releaseNameFor(r Row) string {

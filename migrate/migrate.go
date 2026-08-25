@@ -21,6 +21,17 @@
 // live together because they are one format, and two files that each believe
 // they know it is how a change to the report becomes a silent no-op somewhere
 // else.
+//
+// # Why gopkg.in/yaml.v3 here and sigs.k8s.io/yaml everywhere else
+//
+// The rest of the module decodes YAML into structs, which sigs.k8s.io/yaml
+// does by round-tripping through JSON -- so it honours `json:` tags and matches
+// what Kubernetes itself accepts. That round trip is exactly what the scanner
+// and rewriter here cannot use: they need yaml.Node, which carries source
+// positions, so a value can be rewritten ON ITS OWN LINE with the indentation,
+// quoting style and trailing comment intact. Re-serialising a whole document instead would
+// reformat the file, discard comments, and turn a one-line change into an
+// unreviewable diff.
 package migrate
 
 import (

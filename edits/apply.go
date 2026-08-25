@@ -12,6 +12,17 @@
 //     rather than changing the wrong line;
 //   - the value is rewritten in place, preserving indentation, quoting style
 //     and any trailing comment, so a one-line change stays a one-line change.
+//
+// # Why gopkg.in/yaml.v3 here and sigs.k8s.io/yaml everywhere else
+//
+// The rest of the module decodes YAML into structs, which sigs.k8s.io/yaml
+// does by round-tripping through JSON -- so it honours `json:` tags and matches
+// what Kubernetes itself accepts. That round trip is exactly what this package
+// cannot use: it needs yaml.Node, which carries source positions, so a value
+// can be rewritten ON ITS OWN LINE with the indentation, quoting style and
+// trailing comment intact. Re-serialising a whole document instead would
+// reformat the file, discard comments, and turn a one-line change into an
+// unreviewable diff.
 package edits
 
 import (
