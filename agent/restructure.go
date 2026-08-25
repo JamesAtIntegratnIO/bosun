@@ -169,20 +169,26 @@ func (t *Triage) restructureAll(ctx context.Context, root string, drops []migrat
 				continue
 			}
 			findings := structural.Check(doc, tgt.pair.New)
+			// Every refusal below names the same document and carries the same
+			// findings; only the reason differs. Written out six times as a
+			// positional literal, one of them had already lost its Findings.
+			refuse := func(why string, a ...any) {
+				res.Refused = append(res.Refused, refused{
+					Path: rel, Kind: head.Kind, Name: head.Metadata.Name,
+					Why: []string{fmt.Sprintf(why, a...)}, Findings: findings,
+				})
+			}
 			if len(findings) == 0 {
 				// The swap was the whole job. No model call, which is the
 				// common case and the one that must stay free.
 				continue
 			}
 			if !ok {
-				res.Refused = append(res.Refused, refused{rel, head.Kind, head.Metadata.Name,
-					[]string{"no model available to propose a migration"}, findings})
+				refuse("no model available to propose a migration")
 				continue
 			}
 			if res.ModelCalls >= maxDocs {
-				res.Refused = append(res.Refused, refused{rel, head.Kind, head.Metadata.Name,
-					[]string{fmt.Sprintf("the per-pull-request limit of %d document migrations was reached", maxDocs)},
-					findings})
+				refuse("the per-pull-request limit of %d document migrations was reached", maxDocs)
 				continue
 			}
 
@@ -191,21 +197,23 @@ func (t *Triage) restructureAll(ctx context.Context, root string, drops []migrat
 				tgt.pair.From, tgt.pair.To, tgt.pair.Old, tgt.pair.New, findings)
 			m, err := rs.Restructure(ctx, prompt.Restructure, userPrompt)
 			if err != nil || m == nil {
-				res.Refused = append(res.Refused, refused{rel, head.Kind, head.Metadata.Name,
-					[]string{fmt.Sprintf("the model could not be reached (%v)", err)}, findings})
+				refuse("the model could not be reached (%v)", err)
 				continue
 			}
 
 			var proposed map[string]any
 			if err := yaml.Unmarshal([]byte(m.Document), &proposed); err != nil {
-				res.Refused = append(res.Refused, refused{rel, head.Kind, head.Metadata.Name,
-					[]string{fmt.Sprintf("the proposal is not a YAML document (%v)", err)}, findings})
+				refuse("the proposal is not a YAML document (%v)", err)
 				continue
 			}
 			verdict := structural.Validate(doc, proposed, tgt.apiVersion, tgt.pair.New)
 			if !verdict.OK() {
-				res.Refused = append(res.Refused, refused{rel, head.Kind, head.Metadata.Name,
-					verdict.Refusals, findings})
+				// The only one with several reasons: the validator reports
+				// every way the proposal failed, not the first.
+				res.Refused = append(res.Refused, refused{
+					Path: rel, Kind: head.Kind, Name: head.Metadata.Name,
+					Why: verdict.Refusals, Findings: findings,
+				})
 				continue
 			}
 
@@ -214,8 +222,7 @@ func (t *Triage) restructureAll(ctx context.Context, root string, drops []migrat
 			// a structure the harness checked, not of a string it was handed.
 			out, err := yaml.Marshal(proposed)
 			if err != nil {
-				res.Refused = append(res.Refused, refused{rel, head.Kind, head.Metadata.Name,
-					[]string{fmt.Sprintf("could not serialise the validated document (%v)", err)}, findings})
+				refuse("could not serialise the validated document (%v)", err)
 				continue
 			}
 			chunks[i].body = string(out)

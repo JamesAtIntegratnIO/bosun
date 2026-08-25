@@ -7,6 +7,7 @@
 package evals
 
 import (
+	"slices"
 	"sort"
 
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
@@ -171,8 +172,17 @@ const addonsPath = "addons/environments/production/addons/addons.yaml"
 // the promotion it claims to.
 const cpAddonsPath = "addons/cluster-roles/control-plane/addons/addons.yaml"
 
-// Cases are ordered roughly by how much judgement they need.
-var Cases = []Case{
+// Cases is every case the suite runs, in one place.
+//
+// Assembled by declaration rather than by two init() functions appending to an
+// exported global. The ordering below is part of the fixture -- roughly by how
+// much judgement a case needs -- and an init() in another file extended it
+// invisibly, from a function nothing calls and nothing can be read in order
+// with.
+var Cases = slices.Concat(triageCases, explainCases, restructureCases)
+
+// triageCases are ordered roughly by how much judgement they need.
+var triageCases = []Case{
 	{
 		Name:    "metallb-frr-defaults-flip",
 		Subject: "bump metallb chart 0.15.2 -> 0.16.0",

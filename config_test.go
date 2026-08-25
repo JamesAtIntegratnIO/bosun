@@ -138,3 +138,38 @@ func TestSuperviseNeedsApiserverAccess(t *testing.T) {
 		t.Errorf("supervision off should satisfy it: %v", err)
 	}
 }
+
+// Seven boolean settings had drifted into two idioms -- `== "true"` and
+// `!= "false"` -- which agree on nothing except the exact strings "true" and
+// "false". LIVE_READS=1 was off; EXPLAIN_GREEN=no was on.
+func TestEveryBooleanSettingAcceptsTheSameWords(t *testing.T) {
+	onWords := []string{"1", "t", "true", "TRUE", "yes", "on"}
+	offWords := []string{"0", "f", "false", "FALSE", "no", "off"}
+
+	// Off by default: absent means off, and every on-word turns it on.
+	for _, k := range []string{"GIT_INSECURE_SKIP_TLS_VERIFY", "GATE_FORK_PRS", "LIVE_READS"} {
+		if envBool(k, false) {
+			t.Errorf("%s: unset must stay off", k)
+		}
+		for _, w := range onWords {
+			t.Setenv(k, w)
+			if !envBool(k, false) {
+				t.Errorf("%s=%s must be on", k, w)
+			}
+		}
+	}
+
+	// On by default: absent means on, and every off-word turns it off.
+	for _, k := range []string{"EXPLAIN_GREEN", "MIGRATE_DROPPED_VERSIONS", "UPSTREAM_NOTES",
+		"STRUCTURAL_MIGRATION", "SUPERVISE_PIPELINE"} {
+		if !envBool(k, true) {
+			t.Errorf("%s: unset must stay on", k)
+		}
+		for _, w := range offWords {
+			t.Setenv(k, w)
+			if envBool(k, true) {
+				t.Errorf("%s=%s must be off", k, w)
+			}
+		}
+	}
+}

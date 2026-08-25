@@ -421,12 +421,8 @@ func (g *Service) status(ctx context.Context, pr *gitprovider.PullRequest, state
 // the body carries a compact history, which is the part a reviewer actually
 // wants -- what was wrong, and that it is not wrong any more.
 func (g *Service) comment(ctx context.Context, pr *gitprovider.PullRequest, report string) {
-	blocking, headline := "0", ""
-	if b, h := g.lastVerdict(report); b {
-		blocking, headline = "1", h
-	} else {
-		headline = h
-	}
+	isBlocking, headline := g.lastVerdict(report)
+	blocking := boolDigit(isBlocking)
 
 	// Two different questions, deliberately answered by two different scans.
 	//

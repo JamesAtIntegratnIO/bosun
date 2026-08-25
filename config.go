@@ -136,7 +136,7 @@ func LoadConfig() (*Config, error) {
 		Addr:                     env("AGENT_ADDR", ":8080"),
 		Brand:                    env("AGENT_BRAND", "Bosun"),
 		GitProvider:              env("GIT_PROVIDER", "github"),
-		GitInsecureSkipTLSVerify: os.Getenv("GIT_INSECURE_SKIP_TLS_VERIFY") == "true",
+		GitInsecureSkipTLSVerify: envBool("GIT_INSECURE_SKIP_TLS_VERIFY", false),
 		GitAPIBase:               os.Getenv("GIT_API_BASE"),
 		GitOwner:                 os.Getenv("GIT_OWNER"),
 		GitRepo:                  os.Getenv("GIT_REPO"),
@@ -160,7 +160,7 @@ func LoadConfig() (*Config, error) {
 		GateMode:  env("GATE_MODE", "cluster"),
 		CloneRoot: env("CLONE_ROOT", ""),
 	}
-	c.GateForkPRs = os.Getenv("GATE_FORK_PRS") == "true"
+	c.GateForkPRs = envBool("GATE_FORK_PRS", false)
 
 	// Defaulted per host rather than globally, because the answer is a fact
 	// about the host and not a preference. A gate running in GitHub Actions
@@ -188,14 +188,14 @@ func LoadConfig() (*Config, error) {
 	// Default ON. The agent's whole complaint about itself was that it only
 	// spoke when something was wrong, and a green gate on a chart bump still
 	// changed something worth reading.
-	c.Explain = os.Getenv("EXPLAIN_GREEN") != "false"
+	c.Explain = envBool("EXPLAIN_GREEN", true)
 	// Default ON. The repair is deterministic, answers to the same deny-list
 	// and allowlist as every other write, and the re-run gate re-counts what
 	// it did -- the reasons to switch it off are operational, not safety.
-	c.Migrate = os.Getenv("MIGRATE_DROPPED_VERSIONS") != "false"
+	c.Migrate = envBool("MIGRATE_DROPPED_VERSIONS", true)
 	// Default ON, and soft: everything it needs can fail without consequence
 	// beyond a less-informed explanation that says it is less informed.
-	c.Upstream = os.Getenv("UPSTREAM_NOTES") != "false"
+	c.Upstream = envBool("UPSTREAM_NOTES", true)
 	if c.UpstreamMaxReleases, err = envInt("UPSTREAM_MAX_RELEASES", 5); err != nil {
 		return nil, err
 	}
@@ -219,11 +219,11 @@ func LoadConfig() (*Config, error) {
 	// authority, over files policy already permitted, and the checks in front
 	// of it are stricter than anywhere else in this service -- so the reasons
 	// to switch it off are operational rather than about safety.
-	c.Structural = os.Getenv("STRUCTURAL_MIGRATION") != "false"
+	c.Structural = envBool("STRUCTURAL_MIGRATION", true)
 	if c.MaxRestructured, err = envInt("MIGRATE_MAX_DOCS", 5); err != nil {
 		return nil, err
 	}
-	c.LiveReads = os.Getenv("LIVE_READS") == "true"
+	c.LiveReads = envBool("LIVE_READS", false)
 	c.LiveReadsArgoCDNamespace = env("LIVE_READS_ARGOCD_NS", "argocd")
 	c.EgressDeny = envList("EGRESS_DENY")
 	c.AllowPaths = envList("ALLOW_PATHS")
@@ -335,9 +335,15 @@ func env(k, def string) string {
 	return def
 }
 
-// envBool reads a boolean with a default, which `os.Getenv(k) == "true"`
-// cannot express: that idiom always defaults to false, so a setting that
-// should be ON unless someone turns it off has no way to say so.
+// envBool reads a boolean with a default, and is the only way this file reads
+// one.
+//
+// `os.Getenv(k) == "true"` cannot express a default: that idiom is always
+// off-unless-set, so a setting that should be ON unless somebody turns it off
+// has no way to say so -- which is why seven reads here had drifted into two
+// idioms, `== "true"` and `!= "false"`. They disagreed about everything except
+// the exact strings "true" and "false": `LIVE_READS=1` was off, and
+// `EXPLAIN_GREEN=no` was on.
 func envBool(k string, def bool) bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(k))) {
 	case "":

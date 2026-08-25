@@ -91,7 +91,14 @@ func parseStampedRow(line, stamp string, withSHA bool) (verdictRow, bool) {
 	if !ok {
 		return verdictRow{}, false
 	}
-	fields := strings.SplitN(strings.TrimSpace(rest), " ", map[bool]int{true: 3, false: 2}[withSHA])
+	// A row is "<blocking> <headline>", or "<sha> <blocking> <headline>" for a
+	// historical one. The headline contains spaces, so the split has to stop
+	// counting at the last structured field.
+	parts := 2
+	if withSHA {
+		parts = 3
+	}
+	fields := strings.SplitN(strings.TrimSpace(rest), " ", parts)
 	if len(fields) < 2 {
 		return verdictRow{}, false
 	}

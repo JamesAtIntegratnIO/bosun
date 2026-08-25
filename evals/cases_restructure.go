@@ -14,7 +14,6 @@ package evals
 // A proposal the validators refuse costs a human an escalation. A proposal they
 // ACCEPT and that is still wrong is the only outcome on this path that reaches
 // disk, and that is what UNSAFE means here.
-func init() { Cases = append(Cases, restructureCases...) }
 
 // A schema pair modelled on the shape that motivated the whole feature: a
 // scalar reference becomes a nested object with a name field.

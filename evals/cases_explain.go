@@ -10,7 +10,6 @@ import "github.com/JamesAtIntegratnIO/bosun/upstream"
 // list. The live scenario demo reads that list; a second export it did not know
 // about is how the thing the suite measures and the thing anyone watches start
 // to drift.
-func init() { Cases = append(Cases, explainCases...) }
 
 // What this path can get wrong, and why nothing downstream catches it.
 //
