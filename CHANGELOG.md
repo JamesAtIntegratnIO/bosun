@@ -3,6 +3,44 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.18.4] - 2026-08-25
+
+### Fixed
+
+- **A chart repository written without a scheme skipped the egress deny-list.**
+  The rule that turns a chart reference into the host it will actually reach
+  lived privately in two packages, and they disagreed on exactly the reference
+  this cluster uses: `ghcr.io/akuity/kargo-charts`. One copy returned nothing
+  for a reference with no `://`, so both the deny check and the outbound
+  request log were skipped — and helm was handed it as `oci://ghcr.io/...`
+  moments later. The other copy would hand a bare chart name to the deny check
+  as though it were a hostname.
+
+  There is one owner now, `egress.HostOf`, using the rule a registry uses: the
+  first element is a host if it contains a dot or is `localhost`. A bare chart
+  name reaches nothing on its own and is no longer checked as if it did.
+
+- **A fork pull request was gated on one path and refused on the other.** The
+  sweep refused them, but the sweep is not the only way in — the triage calls
+  `Ensure` directly on a network-triggered promotion, so a fork pull request
+  the sweep had not reached yet was rendered with helm, in-cluster, over
+  content controlled from outside the repository. The refusal moved onto the
+  path that does the work, so both ways in answer the same.
+
+- **The prompt read files without checking they were in the checkout.** The
+  file list arrives in the request body, and this process holds the git token,
+  the LLM key and the App private key. What it reads goes into a prompt, and a
+  prompt is published. The write path has made this check since it was
+  written; the read path now makes it too.
+
+### Changed
+
+- The agent's root package is split into `agent/`, `gateservice/`, `prompt/`
+  and `supervisor/`. The three shipped model prompts were unreachable from the
+  eval suite, which had been reaching them through a regex scrape of the Go
+  source — and had already let one shipped prompt go unmeasured. No
+  configuration key or environment variable changed.
+
 ## [0.18.3] - 2026-08-25
 
 ### Fixed
