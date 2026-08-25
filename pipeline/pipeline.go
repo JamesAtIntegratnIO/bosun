@@ -77,14 +77,18 @@ func (s Severity) rank() int {
 // strings: an alert rule names one.
 type Kind string
 
+// Every kind here has a detector that can produce it. A kind with none would
+// export a permanent zero: a series no alert rule could ever trip and no graph
+// could ever explain, which is a monitor telling you it is watching something
+// it is not. `freight_never_promoted` was declared here and never implemented,
+// and is gone rather than left exporting a reassuring nothing.
 const (
-	KindWedged        Kind = "wedged_promotion"
-	KindStalled       Kind = "stalled_warehouse"
-	KindDeadPin       Kind = "dead_pin"
-	KindOrphanedPR    Kind = "promotion_without_pr"
-	KindSupersededPR  Kind = "superseded_pr"
-	KindNeverPromoted Kind = "freight_never_promoted"
-	KindVerifyStuck   Kind = "verification_stuck"
+	KindWedged       Kind = "wedged_promotion"
+	KindStalled      Kind = "stalled_warehouse"
+	KindDeadPin      Kind = "dead_pin"
+	KindOrphanedPR   Kind = "promotion_without_pr"
+	KindSupersededPR Kind = "superseded_pr"
+	KindVerifyStuck  Kind = "verification_stuck"
 )
 
 // Finding is one thing wrong with the pipeline.

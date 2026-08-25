@@ -3,6 +3,16 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.18.2] - 2026-08-25
+
+### Fixed
+
+- **Removed a metric that could never fire.** `freight_never_promoted` was
+  declared as a finding kind and never implemented, so it exported a permanent
+  zero — a series no alert rule could trip and no graph could explain, which is
+  a monitor claiming to watch something it does not. A test now asserts that
+  every exported kind has a detector that can actually produce it.
+
 ## [0.18.1] - 2026-08-25
 
 ### Fixed

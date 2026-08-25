@@ -58,3 +58,35 @@ func TestLabelValuesAreEscaped(t *testing.T) {
 		t.Fatalf("escape produced %q", got)
 	}
 }
+
+// A kind with no detector exports a permanent zero: a series no rule could
+// trip and no graph could explain, which is a monitor claiming to watch
+// something it does not.
+func TestEveryExportedKindCanActuallyBeProduced(t *testing.T) {
+	produced := map[Kind]bool{}
+	for _, s := range []*Snapshot{
+		{Now: now, Stages: []Stage{{Name: "a", Ready: true}}, Promotions: []Promotion{
+			{Stage: "a", Freight: "f", Phase: PhaseErrored, CreatedAt: ago(time.Hour)}}},
+		{Now: now, Stages: []Stage{{Name: "a", Ready: true}}, Warehouses: []Warehouse{
+			{Name: "w", Ready: false, ReadyReason: "Failed"}}},
+		{Now: now, Stages: []Stage{{Name: "a", Namespace: "n", Ready: true, Updates: []Update{
+			{Path: "./repo/v.yaml", Keys: []string{"gone.key"}}}}},
+			FileHas: fileHasFrom(map[string]map[string]bool{"v.yaml": {"other": true}})},
+		{Now: now, Stages: []Stage{{Name: "a", Ready: true}}, Promotions: []Promotion{
+			{Name: "a.01x.1", Stage: "a", Phase: PhaseRunning, StartedAt: ago(time.Hour)}},
+			OpenPRs: []PullRequest{{Number: 1, Branch: "kargo/promotion/b.01y.2"}}},
+		{Now: now, Stages: []Stage{{Name: "a", Ready: true}}, OpenPRs: []PullRequest{
+			{Number: 1, Branch: "kargo/promotion/a.01x.1"}, {Number: 2, Branch: "kargo/promotion/a.01y.2"}}},
+		{Now: now, Stages: []Stage{{Name: "a", Ready: false, ReadyReason: "VerificationFailed",
+			ReadySince: 3 * time.Hour, VerificationPhase: "Failed"}}},
+	} {
+		for _, f := range Detect(s).Findings {
+			produced[f.Kind] = true
+		}
+	}
+	for _, k := range allKinds {
+		if !produced[k] {
+			t.Errorf("kind %q is exported but no detector produces it; it would be a permanent zero", k)
+		}
+	}
+}
