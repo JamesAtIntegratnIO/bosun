@@ -217,6 +217,7 @@ func main() {
 			ForkPRs:   cfg.GateForkPRs,
 			Poll:      cfg.GatePoll,
 			Log:       func(f string, a ...any) { logger.Printf(f, a...) },
+			Egress:    egressPolicy,
 		}
 		t.Gate = gs
 		go gs.Run(runCtx)
@@ -254,25 +255,24 @@ func main() {
 	// asks: not "is this pull request safe" but "are the pull requests that
 	// should exist being opened at all". Nothing about a promotion that never
 	// happened produces an event, so a timer is the only way to see it.
+	//
+	// The reader is guaranteed here: Config.validate refuses a deployment that
+	// turns supervision on without the apiserver access it needs, so there is
+	// no nil case left to log about.
 	if cfg.Supervise {
-		if reader == nil {
-			logger.Print("pipeline supervision is on but no cluster reader was built; " +
-				"it needs the same apiserver access liveReads and cluster-mode gating use")
-		} else {
-			sup := &Supervisor{
-				Collector: &pipeline.Collector{Kargo: reader, PRs: git},
-				Every:     cfg.SuperviseEvery,
-				Log:       func(f string, a ...any) { logger.Printf(f, a...) },
-				// The default branch, because a pin that writes nowhere is a
-				// property of what is merged.
-				Checkout: shallowCheckout(cfg.GitRepoURL, "", cfg.CloneRoot),
-			}
-			mux.HandleFunc("GET /pipeline", sup.Handler("markdown"))
-			mux.HandleFunc("GET /metrics", sup.Handler("metrics"))
-			go sup.Run(runCtx)
-			logger.Printf("pipeline: supervising Kargo every %s; report on /pipeline, metrics on /metrics",
-				cfg.SuperviseEvery)
+		sup := &Supervisor{
+			Collector: &pipeline.Collector{Kargo: reader, PRs: git},
+			Every:     cfg.SuperviseEvery,
+			Log:       func(f string, a ...any) { logger.Printf(f, a...) },
+			// The default branch, because a pin that writes nowhere is a
+			// property of what is merged.
+			Checkout: shallowCheckout(cfg.GitRepoURL, "", cfg.CloneRoot),
 		}
+		mux.HandleFunc("GET /pipeline", sup.Handler("markdown"))
+		mux.HandleFunc("GET /metrics", sup.Handler("metrics"))
+		go sup.Run(runCtx)
+		logger.Printf("pipeline: supervising Kargo every %s; report on /pipeline, metrics on /metrics",
+			cfg.SuperviseEvery)
 	}
 
 	httpSrv := &http.Server{

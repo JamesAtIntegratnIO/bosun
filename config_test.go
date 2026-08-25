@@ -92,3 +92,49 @@ func TestTheLegacyAuthorIsIgnoredNotHonored(t *testing.T) {
 		t.Fatal("an identity somebody actually chose must be honored")
 	}
 }
+
+// SUPERVISE_PIPELINE defaults ON while the cluster reader is only built for
+// live reads or cluster-mode gating. Left unchecked, a GATE_MODE=ci deployment
+// started healthy with /pipeline and /metrics answering 404 forever, behind one
+// log line at boot -- the only cross-field rule here that was not a hard
+// failure, and the one nobody would notice.
+func TestSuperviseNeedsApiserverAccess(t *testing.T) {
+	base := func() *Config {
+		return &Config{
+			GitOwner: "o", GitRepo: "r", GitRepoURL: "u", GitToken: "t",
+			GitProvider: "github",
+			LLMProvider: "anthropic", LLMModel: "m",
+			AllowPaths: []string{"addons/**"},
+			GateMode:   "ci",
+		}
+	}
+
+	c := base()
+	c.Supervise = true
+	err := c.validate()
+	if err == nil {
+		t.Fatal("supervision without apiserver access must not start")
+	}
+	if !strings.Contains(err.Error(), "SUPERVISE_PIPELINE") {
+		t.Errorf("the error must name the setting: %v", err)
+	}
+
+	// The three ways to make it valid.
+	c = base()
+	c.Supervise, c.LiveReads = true, true
+	if err := c.validate(); err != nil {
+		t.Errorf("LIVE_READS=true should satisfy it: %v", err)
+	}
+
+	c = base()
+	c.Supervise, c.GateMode = true, "cluster"
+	if err := c.validate(); err != nil {
+		t.Errorf("GATE_MODE=cluster should satisfy it: %v", err)
+	}
+
+	c = base()
+	c.Supervise = false
+	if err := c.validate(); err != nil {
+		t.Errorf("supervision off should satisfy it: %v", err)
+	}
+}

@@ -6,6 +6,14 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Both jobs only read the checkout. Stated rather than inherited: without a
+# block the pull_request token takes whatever the repository default is, which
+# is a setting an operator can widen without touching this file -- and this is
+# the one workflow that runs on every pull request, including the ones the gate
+# exists to be suspicious of.
+permissions:
+  contents: read
+
 jobs:
   go:
     runs-on: ubuntu-latest

@@ -75,6 +75,26 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) ([]Object, []Obj
 
 			res := &results[i]
 
+			// helm is a subprocess: the egress transport cannot see inside it,
+			// so the destination is checked and recorded here or it is neither.
+			// Both versions are pulled, and they can differ in repository.
+			for _, r := range []Row{p.before, p.after} {
+				if reason := cfg.egressCheck(chartRef(r), releaseNameFor(r), r.Version); reason != "" {
+					res.warnings = append(res.warnings, fmt.Sprintf(
+						"%s: %s, so %s's resource changes are NOT covered",
+						p.after.App, reason, p.after.Chart))
+					return
+				}
+				if r.ChartRepo != "" && !strings.HasPrefix(r.ChartRepo, "oci://") {
+					if reason := cfg.egressCheck(r.ChartRepo, releaseNameFor(r), r.Version); reason != "" {
+						res.warnings = append(res.warnings, fmt.Sprintf(
+							"%s: %s, so %s's resource changes are NOT covered",
+							p.after.App, reason, p.after.Chart))
+						return
+					}
+				}
+			}
+
 			b, errB := renderChartVersion(repoRoot, p.before)
 			a, errA := renderChartVersion(repoRoot, p.after)
 

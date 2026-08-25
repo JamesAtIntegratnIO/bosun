@@ -60,6 +60,13 @@ type GateService struct {
 	Timeout time.Duration
 	Log     func(string, ...any)
 
+	// Egress is the operator's outbound deny-list. The gate pulls remote
+	// charts to render them, and helm is a subprocess the egress transport
+	// cannot see inside -- so the policy has to reach the gate explicitly or
+	// the default deployment is outside a control the start-up banner says
+	// covers every outbound request.
+	Egress gate.EgressPolicy
+
 	// Checkout produces working copies at the base and head revisions and a
 	// function that discards both. Defaults to a shallow clone plus a
 	// worktree; tests substitute directories on disk.
@@ -289,6 +296,15 @@ func (g *GateService) run(ctx context.Context, pr *gitprovider.PullRequest) *gat
 		return g.broke(ctx, pr, fmt.Errorf("no .gitops-gate.yaml at the head revision: %w", err))
 	}
 	cfg, err := gate.ParseConfig(cfgRaw, ".gitops-gate.yaml")
+	if err == nil {
+		// The HOST's egress policy, attached after parsing so a pull request
+		// cannot widen its own. helm is a subprocess and the egress transport
+		// cannot see inside it, so without this the in-cluster gate -- the
+		// DEFAULT deployment -- pulled remote charts with no policy check and
+		// no log line, while the start-up banner promised otherwise.
+		cfg.Egress = g.Egress
+		cfg.Log = g.Log
+	}
 	if err != nil {
 		return g.broke(ctx, pr, err)
 	}

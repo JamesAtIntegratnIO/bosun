@@ -43,6 +43,18 @@ type Config struct {
 	// Validate controls schema validation.
 	Validate ValidateConfig `json:"validate"`
 
+	// Egress is the operator's outbound deny-list, applied before helm pulls a
+	// remote chart. Nil is open, which is what the standalone CLI wants.
+	//
+	// Not from the config file -- it is the HOST's policy, not the reviewed
+	// repository's, and a pull request that could widen its own egress rules
+	// would be the deny-list configuring itself.
+	Egress EgressPolicy `json:"-"`
+
+	// Log records outbound destinations. Nil keeps no record, which an
+	// operator should have to choose rather than get by omission.
+	Log func(string, ...any) `json:"-"`
+
 	// ClustersExport tunes `clusters export`.
 	ClustersExport ClustersExportConfig `json:"clustersExport"`
 }

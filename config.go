@@ -288,6 +288,17 @@ func (c *Config) validate() error {
 		return fmt.Errorf("GATE_MODE %q is not a mode (cluster or ci)", c.GateMode)
 	}
 
+	// Supervision needs the cluster reader, which is only built for live reads
+	// or cluster-mode gating. This defaults ON, so a GATE_MODE=ci deployment
+	// that never asked for supervision used to start healthy with /pipeline
+	// and /metrics answering 404 forever, behind one log line at boot. Every
+	// other cross-field rule here is a hard failure; this one was not, and it
+	// was the one nobody would notice.
+	if c.Supervise && !c.LiveReads && c.GateMode != "cluster" {
+		return fmt.Errorf("SUPERVISE_PIPELINE needs apiserver access: " +
+			"set LIVE_READS=true or GATE_MODE=cluster, or set SUPERVISE_PIPELINE=false")
+	}
+
 	// An empty allowlist means the agent can write nothing. That is the safe
 	// default, but running with it is almost certainly a misconfiguration, so
 	// say so at startup rather than silently refusing every fix later.
