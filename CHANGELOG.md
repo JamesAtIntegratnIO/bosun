@@ -3,6 +3,53 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.20.0] - 2026-08-28
+
+### Added
+
+- **`gate.inventorySource: argocd`** — cluster mode can read the live
+  inventory from `GET /api/v1/clusters` on the ArgoCD API instead of from the
+  ArgoCD cluster Secrets, and **when it does, the chart no longer creates the
+  namespaced Role on the ArgoCD namespace.** `secrets` remains the default and
+  is unchanged.
+
+  The grant it removes is the one this project has been honest about being
+  unable to shrink. The gate reads four fields — name, server, labels,
+  annotations — and Kubernetes RBAC has no predicate for "the labels but not
+  the data": there are no deny rules, `resourceNames` does not apply to
+  `list`, and the label selector the gate sends is a filter the apiserver
+  applies *after* authorising. A token holding that Role can drop the selector
+  and read `argocd-secret` and every repository credential beside it. ArgoCD's
+  own API draws the line RBAC cannot.
+
+  It is a trade rather than a win, and `values.yaml` states both halves: an
+  ArgoCD account token to mint and rotate (`clusters, get` and nothing else, or
+  it is a bigger credential than the read it replaced), a component that can be
+  down on its own, and a second TLS story — argocd-server serves its own
+  certificate rather than the one the kubelet mounts into every pod. Hence a
+  value an operator sets rather than a new default.
+
+### Fixed
+
+- **The same cluster produced two different inventories.** Reading the ArgoCD
+  API and the cluster Secrets side by side against a real ArgoCD found that
+  the API strips ArgoCD's own `managed-by` annotation while the Secrets carry
+  it — so the gate's targeting verdict would have depended on which source an
+  operator configured. It is now dropped from both, at the single
+  normalisation point the two sources share.
+
+  Dropped rather than synthesised back on the ArgoCD side, deliberately:
+  re-adding it would assert a fact the API did not report, for clusters that
+  may never have carried it. The cost is stated where it is paid —
+  ApplicationSet's cluster generator templates against the Secret's
+  annotations verbatim, so a template naming that annotation would see it in
+  production and will not see it here.
+
+  Found by `cluster/argocd_live_manual_test.go`, which exists because the
+  fixture-based test could not have found it: both sides of a fixture are
+  written by the same person on the same afternoon, and a field ArgoCD
+  populates differently appears in neither.
+
 ## [0.19.0] - 2026-08-28
 
 Documentation only. No behaviour of the agent, the gate or the charts changed

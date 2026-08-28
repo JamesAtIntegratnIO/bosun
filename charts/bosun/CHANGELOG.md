@@ -3,7 +3,7 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
-## [Unreleased]
+## [0.20.0]
 
 ### Added
 
