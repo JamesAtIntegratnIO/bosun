@@ -230,9 +230,19 @@ func main() {
 				InsecureSkipTLSVerify: cfg.ArgoCDInsecureSkipTLSVerify,
 			}
 			inventory = argo.ClusterInventory
+			// A timeout here is nearly always the NetworkPolicy, and the
+			// value it is nearly always wrong on is the port -- a ClusterIP
+			// is DNAT'd before policy is evaluated, so the rule has to name
+			// argocd-server's pod port and not the one in the URL above.
+			// Saying so here is the difference between this message and a
+			// message that only repeats what the operator already knows.
 			remedy = "the gate reads the inventory from the ArgoCD API, which needs a reachable " +
-				"argocd-server, a certificate this can verify (gate.argocd.caFile or " +
+				"argocd-server, a certificate this can verify (gate.argocd.caSecret or " +
 				"gate.argocd.insecureSkipTLSVerify), and an account token with `clusters, get`. " +
+				"If it timed out rather than being refused, check the NetworkPolicy ports at BOTH " +
+				"ends: gate.argocd.podPort is argocd-server's POD port (8080), not the port in " +
+				"gate.argocd.baseURL, and argocd-server's own ingress policy must admit this " +
+				"namespace on that same port. " +
 				"Set gate.inventorySource to secrets to read the cluster Secrets instead"
 		}
 

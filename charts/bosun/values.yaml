@@ -180,11 +180,38 @@ gate:
 
   # `inventorySource: argocd` only. Ignored otherwise.
   argocd:
-    # The ArgoCD API server. In-cluster, so it CANNOT be reached through an
-    # ipBlock in the NetworkPolicy -- when the source is `argocd` the chart
-    # adds the namespace egress rule itself, on `port` below.
+    # The ArgoCD API server, as the agent dials it. In-cluster, so it CANNOT
+    # be reached through an ipBlock in the NetworkPolicy -- when the source is
+    # `argocd` the chart adds the namespace egress rule itself, on `podPort`.
     baseURL: https://argocd-server.argocd.svc
-    port: 443
+
+    # The port argocd-server's POD listens on. Nothing but the NetworkPolicy
+    # rule reads this: it is not part of `baseURL`, and it is normally NOT the
+    # port that appears there.
+    #
+    # A NetworkPolicy matches the destination port of the packet, and a
+    # ClusterIP is DNAT'd to the backend pod's port before policy is
+    # evaluated. Whatever port the Service published, by the time the rule is
+    # matched the packet is addressed to the pod, on 8080.
+    #
+    # So setting this to the Service port from `baseURL` -- 80, or 443 --
+    # renders clean, passes `helm lint`, passes this chart's schema, and then
+    # drops every packet. There is no error at either end: the connection
+    # hangs for the full HTTP timeout and the pod dies at start-up saying
+    # argocd-server is unreachable, which is true and points nowhere near
+    # this line.
+    #
+    # 8080 is argocd-server's container port in the upstream argo-cd chart,
+    # and it does not move with `server.insecure`: the Service publishes both
+    # 80 and 443 against the same container port, and argocd-server decides
+    # per connection whether to speak TLS on it. Confirm yours:
+    #
+    #   kubectl -n argocd get svc argocd-server \
+    #     -o jsonpath='{.spec.ports[*].targetPort}{"\n"}'
+    #
+    # Named `podPort` and not `port` because `port` is the question this value
+    # does not answer.
+    podPort: 8080
     # An ArgoCD account token:
     #
     #   argocd account generate-token --account bosun

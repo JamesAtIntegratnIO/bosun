@@ -3,6 +3,66 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.21.0]
+
+### Changed
+
+- **BREAKING: `gate.argocd.port` is now `gate.argocd.podPort`, and the default
+  moves from `443` to `8080`.**
+
+  Migration, if you set the old key:
+
+  ```diff
+  -    port: 443
+  +    podPort: 8080
+  ```
+
+  The value is written into this chart's NetworkPolicy egress rule to the
+  ArgoCD namespace, and it has to be **argocd-server's container port**, not
+  the Service port that appears in `gate.argocd.baseURL`. A NetworkPolicy
+  matches the destination port of the packet, and a ClusterIP is DNAT'd to
+  the backend pod's port *before* policy is evaluated — so by the time the
+  rule is matched the packet is addressed to the pod, on 8080, whatever port
+  the Service published.
+
+  Both halves of this were wrong. `443` is not argocd-server's container port
+  in any standard install, and the comment above it read as though `port`
+  belonged to `baseURL` — so setting the two consistently, at 80 or at 443,
+  was the natural thing to do, and it renders clean, passes `helm lint`,
+  passes the schema and then drops every packet. There is no error at either
+  end: the connection hangs for the full HTTP timeout and the pod dies at
+  start-up saying argocd-server is unreachable, which is true and points
+  nowhere near the values file.
+
+  **Renamed rather than just re-defaulted**, deliberately, and the rename is
+  the safer of the two. `gate.argocd` is `additionalProperties: false` in
+  `values.schema.json`, so an existing values file carrying `port:` now fails
+  at install time with `additional properties 'port' not allowed` — an error
+  in front of whoever is running the upgrade. Keeping the name and changing
+  the default would have silently overridden a deliberate `443` for anyone who
+  had one, and silently left a wrong `80` in place for everyone who had that;
+  either way the operator learns nothing. `podPort` also says what the value
+  is, which `port` never did: it was added in 0.20.0, has had one release to
+  acquire consumers, and this is the last cheap moment to fix the name.
+
+  `8080` is argocd-server's container port in the upstream argo-cd chart and
+  does not move with `server.insecure` — the Service publishes both 80 and 443
+  against the same container port.
+
+### Added
+
+- **The chart README documents the half this chart cannot write.** It emits
+  bosun's *egress* to the ArgoCD namespace; argocd-server's *ingress* policy
+  lives in your ArgoCD release, and until both exist the connection is dropped
+  with nothing logged at either end — the same argument the README already
+  makes for the Kargo controller's egress, and now made in the same place,
+  with a copy-pasteable rule that names the pod port for the same reason.
+
+- **A worked example for each of the two common installs** —
+  `server.insecure: true` behind a gateway, and argocd-server terminating its
+  own TLS. They differ only in `baseURL`; both want `podPort: 8080`, which is
+  the confusion this release exists to remove.
+
 ## [0.20.1]
 
 ### Changed

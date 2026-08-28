@@ -60,6 +60,16 @@ Role that exists only in this mode). And the render runs over pull-request
 content in-cluster, so **fork pull requests are refused** with an `error`
 status unless `gate.forkPRs` says otherwise.
 
+`gate.mode: ci` is the original shape — the gate runs in CI
+([`ci/`](../../ci)), the agent waits on the check and reads the report from a
+comment. The fallback for public repositories taking fork pull requests, and
+for a gate that must keep answering while the cluster is down — the Secret
+grant on its own is answered by `gate.inventorySource: argocd` below, without
+leaving cluster mode. Everything under
+[Whose report the agent believes](#whose-report-the-agent-believes-ci-mode)
+applies to this mode; in cluster mode the verdict never travels through a
+comment, so there is nothing to authenticate.
+
 ### Where the inventory comes from
 
 `gate.inventorySource: secrets` (the default) is the grant above: the
@@ -89,6 +99,7 @@ gate:
   inventorySource: argocd
   argocd:
     baseURL: https://argocd-server.argocd.svc
+    podPort: 8080                  # the POD's port, not the URL's — see below
     existingSecret: bosun-argocd   # key `token`
     caSecret: bosun-argocd-ca      # or insecureSkipTLSVerify: true
 ```
@@ -105,20 +116,48 @@ bigger credential than the Secret read it replaced. A second component that
 can be down: the Secrets are readable whenever the apiserver is; argocd-server
 is not. And a second TLS story, because argocd-server serves its own
 certificate rather than the one the kubelet mounts into every pod — hence
-`caSecret`, or `insecureSkipTLSVerify` if nobody can produce that CA. The
-chart adds the NetworkPolicy egress rule for the ArgoCD namespace itself,
-because argocd-server is a ClusterIP and forgetting it hangs with zero bytes.
+`caSecret`, or `insecureSkipTLSVerify` if nobody can produce that CA. And a
+network path with two ends and a port that catches people — the next section,
+and the last one on this page.
 
 A trade, not a free win — which is why it is a value and not the default.
 
-`gate.mode: ci` is the original shape — the gate runs in CI
-([`ci/`](../../ci)), the agent waits on the check and reads the report from a
-comment. The fallback for public repositories taking fork pull requests, and
-for a gate that must keep answering while the cluster is down — the Secret
-grant on its own is answered by `inventorySource: argocd` above, without
-leaving cluster mode. Everything below about
-`gate.reportAuthor` applies to this mode; in cluster mode the verdict never
-travels through a comment, so there is nothing to authenticate.
+### `gate.argocd.podPort` is the pod's port, not the URL's
+
+The chart writes the NetworkPolicy egress rule to the ArgoCD namespace itself,
+because argocd-server is a ClusterIP and forgetting it hangs with zero bytes.
+The port that rule opens is `gate.argocd.podPort`, and **it is normally not the
+port in `baseURL`.**
+
+A NetworkPolicy matches the destination port of the packet, and a ClusterIP is
+DNAT'd to the backend pod's port *before* policy is evaluated. Whatever port
+the Service published — 80, 443 — the packet reaching the rule is addressed to
+the pod, on `8080`.
+
+So a values file setting `podPort` to the port in `baseURL` renders clean,
+passes `helm lint`, passes the chart's schema, and then drops every packet.
+There is no error at either end: the connection hangs for the full HTTP
+timeout, and the pod dies at start-up saying argocd-server is unreachable —
+true, and pointing nowhere near the values file.
+
+`8080` is argocd-server's container port in the upstream argo-cd chart and it
+does not move with `server.insecure`: the Service publishes both 80 and 443
+against the same container port, and argocd-server decides per connection
+whether to speak TLS on it. Confirm yours:
+
+```bash
+kubectl -n argocd get svc argocd-server -o jsonpath='{.spec.ports[*].targetPort}{"\n"}'
+```
+
+Which is why the two common installs differ only in the URL:
+
+| | `baseURL` | `podPort` | TLS |
+|---|---|---|---|
+| `server.insecure: true`, behind a gateway | `http://argocd-server.argocd.svc` | `8080` | none to verify — leave `caSecret` empty |
+| argocd-server terminating its own TLS | `https://argocd-server.argocd.svc` | `8080` | `caSecret`, or `insecureSkipTLSVerify: true` |
+
+The insecure row is the one worth reading twice: nothing in `baseURL` mentions
+a port, the Service answers on 80, and the policy still has to say 8080.
 
 ## Whose report the agent believes (ci mode)
 
@@ -255,17 +294,49 @@ hang.
 
 See [`adr/0006-live-reads-are-scoped-by-group.md`](../../adr/0006-live-reads-are-scoped-by-group.md).
 
-## The other half of the network path
+## The halves of the network path this chart cannot write
 
-This chart writes the policy governing what reaches the agent. It cannot write
-the **Kargo controller's** egress policy, which is the half most often
-missed.
+This chart writes the policy governing what reaches the agent and what the
+agent may reach. Every path it takes part in has a far end whose policy lives
+in somebody else's release, and a missing rule at that end presents the same
+way each time: a hang with zero bytes, not an error, so it reads as a slow
+agent rather than a blocked one.
 
-A controller allowed `0.0.0.0/0` with RFC1918 excepted — a common shape, since
-it usually only needs to reach registries — cannot reach a ClusterIP at all.
-The symptom is a hang with zero bytes, not an error, so it reads as a slow
-agent rather than a blocked one. Add an explicit rule for this service's
-namespace and port.
+**The Kargo controller's egress**, which is the half most often missed. A
+controller allowed `0.0.0.0/0` with RFC1918 excepted — a common shape, since it
+usually only needs to reach registries — cannot reach a ClusterIP at all. Add
+an explicit rule for this service's namespace and port.
+
+**argocd-server's ingress**, with `gate.inventorySource: argocd`. The chart
+emits the agent's *egress* to the ArgoCD namespace; argocd-server's own
+ingress policy belongs to your ArgoCD release, and until both exist the
+connection is dropped with nothing logged at either end. If your ArgoCD
+namespace has no ingress policy at all there is nothing to do here; if it has
+one, it needs this:
+
+```yaml
+# In your ArgoCD release, not this chart.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: bosun-to-argocd-server
+  namespace: argocd
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-server
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: <the namespace bosun runs in>
+      ports:
+        - protocol: TCP
+          # The pod port, for the reason given under `gate.argocd.podPort`:
+          # this rule is matched after the ClusterIP has been DNAT'd away.
+          port: 8080
+```
 
 ## Shape
 
@@ -276,9 +347,11 @@ namespace and port.
 - **Not exposed.** No Ingress or HTTPRoute. Only Kargo calls it, in-cluster.
   Publishing it would be gratuitous exposure of something that can spend money
   and write to your repository.
-- **Two halves of the network path.** The agent's namespace must admit Kargo's
-  controller, *and* the controller's own egress policy must permit the agent.
-  Missing the second half presents as a hang with zero bytes, not an error.
+- **Every network path has a far end this chart cannot write.** The agent's
+  namespace must admit Kargo's controller *and* the controller's own egress
+  policy must permit the agent; with `gate.inventorySource: argocd`, the same
+  is true of argocd-server's ingress. A missing far end presents as a hang
+  with zero bytes, not an error.
 - **Secrets by reference.** The chart takes the name of an existing Secret. How
   it gets there — ExternalSecret, Vault Agent, SOPS, `kubectl create` — belongs
   to whoever installs this.
