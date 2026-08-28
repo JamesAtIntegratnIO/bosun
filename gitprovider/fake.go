@@ -70,6 +70,8 @@ type Push struct {
 	Branch  string
 	Message string
 	Tree    map[string]string
+	// SHA is the commit this push created and left as the branch head.
+	SHA string
 }
 
 func (f *Fake) Name() string { return "fake" }
@@ -146,11 +148,11 @@ func (f *Fake) UpdateComment(_ context.Context, id int64, body string) error {
 
 // Statuses records every commit status set, in order, so a test can assert
 // both the final verdict and that a pending one preceded it.
-func (f *Fake) SetCommitStatus(_ context.Context, _, name string, state CommitState, description string) error {
+func (f *Fake) SetCommitStatus(_ context.Context, sha, name string, state CommitState, description string) error {
 	if f.StatusErr != nil {
 		return f.StatusErr
 	}
-	f.Statuses = append(f.Statuses, Status{Name: name, State: state, Description: description})
+	f.Statuses = append(f.Statuses, Status{SHA: sha, Name: name, State: state, Description: description})
 	return nil
 }
 
@@ -194,12 +196,22 @@ func (f *Fake) PushFix(_ context.Context, pr *PullRequest, root, message string)
 	if err != nil {
 		return err
 	}
-	f.Pushes = append(f.Pushes, Push{Branch: pr.Branch, Message: message, Tree: tree})
+	// The real providers advance this to the commit they just pushed; a fake
+	// that does not lets a test pass while production writes its verdict to a
+	// superseded commit. Deterministic so assertions can name it.
+	sha := fmt.Sprintf("fakepush%d", len(f.Pushes)+1)
+	f.Pushes = append(f.Pushes, Push{Branch: pr.Branch, Message: message, Tree: tree, SHA: sha})
+	pr.HeadSHA = sha
 	return nil
 }
 
 // Status is one commit status the fake recorded.
 type Status struct {
+	// SHA is the commit the status was written to. Recorded because it was
+	// not: a verdict landing on a superseded commit is invisible to a test
+	// that only asserts on state and description, and that is exactly how the
+	// migration path shipped a status the head never carried.
+	SHA         string
 	Name        string
 	State       CommitState
 	Description string
