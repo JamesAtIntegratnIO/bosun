@@ -1,0 +1,23 @@
+{
+  "name": "bosun-docs",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "sync": "node scripts/sync-docs.mjs",
+    "og": "node scripts/og.mjs",
+    "dev": "npm run sync && astro dev",
+    "build": "npm run sync && astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "check:links": "node scripts/check-links.mjs"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.36.0",
+    "@fontsource-variable/inter": "^5.2.6",
+    "@fontsource-variable/space-grotesk": "^5.2.6",
+    "@fontsource-variable/jetbrains-mono": "^5.2.6",
+    "astro": "^5.14.0",
+    "sharp": "^0.34.4"
+  }
+}

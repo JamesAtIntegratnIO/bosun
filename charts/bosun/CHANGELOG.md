@@ -3,6 +3,15 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.19.0]
+
+### Changed
+
+- **`home` points at [bosun.integratn.io](https://bosun.integratn.io)**, the
+  documentation site, rather than at the source repository — which is what
+  `sources` already says. No template, value or default changed; the chart
+  version moves with `appVersion`.
+
 ## [0.16.0]
 
 ### Added

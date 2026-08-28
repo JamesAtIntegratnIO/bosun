@@ -4,6 +4,13 @@
   <img src="docs/avatar/bosun.png" alt="Bosun — an octopus in a sailor cap, wrench raised, inside a life ring" width="220"/>
 </p>
 
+<p align="center">
+  <strong><a href="https://bosun.integratn.io">Documentation</a></strong> ·
+  <a href="https://bosun.integratn.io/start/quickstart/">Quickstart</a> ·
+  <a href="https://bosun.integratn.io/start/the-loop/">The loop</a> ·
+  <a href="https://bosun.integratn.io/reference/configuration/">Configuration</a>
+</p>
+
 ⚓ **The crew for Argo and Kargo.**
 
 Kargo is very good at producing change. Left alone it opens more pull requests
@@ -39,6 +46,7 @@ piece doing its one job.
 | [`prompt/`](prompt) | What the model is told, and the constant the eval suite scores. |
 | [`charts/kargo-pipelines`](charts/kargo-pipelines) | Warehouses and Stages from one target list, with multi-stage promotion chains, verification gating and the triage hook that calls the agent. |
 | [`charts/bosun`](charts/bosun) | Runs the agent in-cluster, triggered by Kargo rather than polled. |
+| [`site/`](site) | The documentation site. Builds **from the markdown in this repository** — `docs/`, `adr/`, the chart and CI READMEs stay where they are and stay readable on GitHub. |
 
 **Status: running in production.** Measured **10/10 classification, 10/10
 full pass, 0 unsafe actions** on the eval cases against `qwen/qwen3.8-27b` —
@@ -144,6 +152,10 @@ Nothing here hardcodes a cluster, domain, namespace, CNI, secret manager, git
 host or model provider. Those are values.
 
 ## Reference
+
+Everything below is also published, cross-linked and searchable at
+**[bosun.integratn.io](https://bosun.integratn.io)** — same files, built by
+[`site/`](site).
 
 | | |
 |---|---|

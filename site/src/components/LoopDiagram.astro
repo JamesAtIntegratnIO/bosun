@@ -1,0 +1,72 @@
+---
+/**
+ * The loop, as a picture: Kargo opens a pull request, the gate renders it at
+ * base and head, Bosun reads the verdict, and the three things that can follow.
+ *
+ * This lives in an .astro file rather than inline in index.mdx because MDX
+ * re-parses JSX children as markdown across blank lines, which silently ate
+ * every <rect> and <text> in this diagram the first time round. Astro
+ * components have no such ambiguity.
+ *
+ * The dashed coral arrow is the point of the whole drawing: a deterministic
+ * repair goes back through the same gate that demanded it, and that gate
+ * re-counts the consumers itself. Nothing else in the system verifies the
+ * repair.
+ */
+---
+
+<div class="bo-diagram-scroll">
+  <svg class="bo-diagram" viewBox="0 0 920 250" role="img" aria-labelledby="loop-title loop-desc">
+    <title id="loop-title">The bosun loop</title>
+    <desc id="loop-desc">
+      Kargo opens a pull request. The gate renders it at base and head and publishes a verdict.
+      Bosun reads that verdict and either repairs the change deterministically — which sends it back
+      through the same gate — explains a green one, or escalates it to a human. Only a green gate
+      reaches the merge, ArgoCD and the verification.
+    </desc>
+    <defs>
+      <marker id="bo-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="currentColor"></path>
+      </marker>
+    </defs>
+    <g class="bo-d-box">
+      <rect x="16" y="97" width="150" height="56" rx="8"></rect>
+      <rect x="206" y="97" width="150" height="56" rx="8"></rect>
+      <rect x="396" y="97" width="150" height="56" rx="8"></rect>
+      <rect x="570" y="30" width="156" height="48" rx="8"></rect>
+      <rect x="570" y="101" width="156" height="48" rx="8"></rect>
+      <rect x="570" y="172" width="156" height="48" rx="8"></rect>
+      <rect x="756" y="97" width="148" height="56" rx="8"></rect>
+    </g>
+    <g class="bo-d-line" stroke-width="1.5" marker-end="url(#bo-arrow)" color="#57aebb">
+      <path d="M166,125 H196"></path>
+      <path d="M356,125 H386"></path>
+      <path d="M546,125 H560"></path>
+      <path d="M500,97 V54 H560"></path>
+      <path d="M500,153 V196 H560"></path>
+      <path d="M726,125 H746"></path>
+    </g>
+    <g class="bo-d-line bo-d-accent" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#bo-arrow)" color="#e0705a">
+      <path d="M648,30 V12 H281 V89"></path>
+    </g>
+    <text x="464" y="8" class="bo-d-sub bo-d-accent-text" text-anchor="middle">the gate re-counts the consumers itself</text>
+    <g text-anchor="middle" class="bo-d-label">
+      <text x="91" y="121">Kargo</text>
+      <text x="281" y="121">The gate</text>
+      <text x="471" y="121">Bosun</text>
+      <text x="648" y="52">Repair</text>
+      <text x="648" y="123">Explain</text>
+      <text x="648" y="194">Escalate</text>
+      <text x="830" y="121">Merge</text>
+    </g>
+    <g text-anchor="middle" class="bo-d-sub">
+      <text x="91" y="140">opens the pull request</text>
+      <text x="281" y="140">renders base and head</text>
+      <text x="471" y="140">reads the verdict</text>
+      <text x="648" y="68">no model involved</text>
+      <text x="648" y="140">what the bump really changed</text>
+      <text x="648" y="211">needs-human, and it stops</text>
+      <text x="830" y="140">ArgoCD, then verification</text>
+    </g>
+  </svg>
+</div>

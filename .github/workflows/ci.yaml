@@ -101,3 +101,29 @@ jobs:
             fi
           done
           exit $fail
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+        working-directory: site
+
+      # The site is generated FROM the markdown in this repository, so a doc
+      # that renames a heading or moves a file breaks the site rather than the
+      # doc -- and only at deploy time, on main, after review. Building here
+      # moves that failure to the pull request.
+      - run: npm run build
+        working-directory: site
+
+      # Every internal link resolved against the pages that actually exist, and
+      # every link sync-docs.mjs rewrote to a GitHub URL resolved against the
+      # working tree. hack/check_links.py deliberately skips site/ because the
+      # rules there are the opposite ones; this is its counterpart.
+      - run: npm run check:links
+        working-directory: site

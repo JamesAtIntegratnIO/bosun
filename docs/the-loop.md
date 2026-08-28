@@ -17,7 +17,7 @@ chart stops serving.
 | Piece | Job | Never does |
 |---|---|---|
 | **Kargo** | notices new versions, opens the pull request, merges it when policy allows | judge what the change does |
-| **the gate** (`gate/`, in CI) | renders what the repository actually deploys, at base and head, and diffs it; publishes the report and the `addons-gate` check | fix anything, call a model |
+| **the gate** (`gate/`) | renders what the repository actually deploys, at base and head, and diffs it; publishes the report and the `addons-gate` check | fix anything, call a model |
 | **Bosun** (the agent, in-cluster) | reads the gate's verdict; repairs what is provable, explains what is not, escalates what needs a decision | close a PR, merge a PR, fail a check, touch the cluster |
 | **branch protection** | requires `addons-gate`, so a blocking finding is an unmergeable pull request | — |
 | **ArgoCD** | reconciles main into the cluster after the merge | anything before the merge |
@@ -37,9 +37,15 @@ promotion also POSTs to Bosun.
 
 ## 2. The gate renders the truth
 
-CI runs the gate twice — once at the base revision, once at the head — and
-each run expands every bootstrap ApplicationSet for every cluster in the
-inventory into the full set of Applications the repository generates. The
+Where it runs is a value, not part of the story: by default the agent runs the
+gate itself, in-cluster, against the live ArgoCD inventory ([ADR
+0008](../adr/0008-the-gate-moves-in-cluster.md)); `gate.mode: ci` runs the same
+engine as a container in CI. Nothing below this line changes between the two —
+same renders, same report, same check name.
+
+The gate runs twice — once at the base revision, once at the head — and each
+run expands every bootstrap ApplicationSet for every cluster in the inventory
+into the full set of Applications the repository generates. The
 diff of those two renders is what the pull request *actually does*, which a
 one-line text diff cannot show. Because the version moved, the gate also
 pulls the chart at both versions and diffs the rendered resources, down to

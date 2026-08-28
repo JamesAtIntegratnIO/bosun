@@ -8,6 +8,10 @@ adr/
 hack/
 scripts/
 .github/
+# The documentation site. ~40MB of node_modules and a static build, none of
+# which any image runs -- and all of which would otherwise be uploaded as build
+# context on every image build.
+site/
 *.md
 LICENSE
 .git

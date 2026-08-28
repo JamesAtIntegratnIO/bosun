@@ -1,0 +1,107 @@
+---
+/**
+ * Replaces Starlight's stock Hero on any page carrying `hero:` frontmatter,
+ * which today is the landing page and nothing else.
+ *
+ * The right-hand card is a real gate report -- the external-secrets 0.10.3 ->
+ * 2.9.0 finding from docs/the-loop.md, which is the promotion that taught this
+ * system its most important lesson. A screenshot of the product doing its job
+ * argues better than a paragraph claiming it does.
+ */
+import { Image } from 'astro:assets'
+import mark from '../assets/bosun.svg'
+
+const { hero } = Astro.locals.starlightRoute.entry.data
+const title = hero?.title ?? Astro.locals.starlightRoute.entry.data.title
+const tagline = hero?.tagline
+const actions = hero?.actions ?? []
+---
+
+<div class="bo-hero not-content">
+  <div class="bo-hero__glow" aria-hidden="true"></div>
+
+  <div class="bo-hero__inner">
+    <div class="bo-hero__copy">
+      <p class="bo-eyebrow">
+        <span class="bo-dot" aria-hidden="true"></span>
+        Running in production · Argo &amp; Kargo
+      </p>
+
+      <h1 class="bo-hero__title" set:html={title} />
+      {tagline && <p class="bo-hero__tagline" set:html={tagline} />}
+
+      <div class="bo-hero__actions">
+        {
+          actions.map((action: any) => (
+            <a
+              href={action.link}
+              class={`bo-btn ${action.variant === 'primary' ? 'bo-btn--primary' : 'bo-btn--ghost'}`}
+            >
+              {action.text}
+            </a>
+          ))
+        }
+      </div>
+
+      <dl class="bo-scoreboard">
+        <div>
+          <dt>Classification</dt>
+          <dd>10<span>/10</span></dd>
+        </div>
+        <div>
+          <dt>Full pass</dt>
+          <dd>10<span>/10</span></dd>
+        </div>
+        <div class="bo-scoreboard__key">
+          <dt>Unsafe actions</dt>
+          <dd>0</dd>
+        </div>
+      </dl>
+      <p class="bo-scoreboard__note">
+        Ten recorded incidents, replayed against a 27B model on one workstation.
+        Every case really happened.
+      </p>
+    </div>
+
+    <div class="bo-hero__art">
+      <Image src={mark} alt="" width={96} height={96} class="bo-hero__mark" loading="eager" />
+
+      <figure class="bo-report">
+        <figcaption class="bo-report__bar">
+          <span class="bo-report__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="bo-report__where">pull request #412 · addons-gate</span>
+        </figcaption>
+
+        <div class="bo-report__body">
+          <p class="bo-report__diff">
+            <span class="bo-del">- externalSecrets.defaultVersion: 0.10.3</span><br />
+            <span class="bo-add">+ externalSecrets.defaultVersion: 2.9.0</span>
+          </p>
+
+          <p class="bo-report__verdict">
+            <span class="bo-chip bo-chip--red">blocking</span>
+            A CustomResourceDefinition stopped serving a version
+          </p>
+
+          <ul class="bo-report__findings">
+            <li>
+              <code>externalsecrets.external-secrets.io</code> no longer serves
+              <code>v1alpha1</code>, <code>v1beta1</code>
+            </li>
+            <li><strong>39 manifests</strong> in this repository still declare a dropped version</li>
+            <li>11 CRDs added · 25 resources changed</li>
+          </ul>
+
+          <p class="bo-report__repair">
+            <span class="bo-chip bo-chip--green">repaired</span>
+            39 manifests migrated to <code>v1</code>, pushed to the branch. No model involved.
+          </p>
+        </div>
+      </figure>
+
+      <p class="bo-report__caption">
+        The text diff was one line. This is what it actually deployed.
+      </p>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,274 @@
+---
+title: Configuration
+description: Every chart value, the environment variable it becomes, and its default — plus the values that are load-bearing enough to be worth a paragraph.
+---
+
+The chart is the supported surface; the environment variables are what the
+binary actually reads. Both are listed because you will meet both — the chart
+when you install, and the env vars when you read a pod spec at three in the
+morning.
+
+The machine-checkable version of this page is
+[`charts/bosun/values.schema.json`](https://github.com/JamesAtIntegratnIO/bosun/blob/main/charts/bosun/values.schema.json),
+which `helm install` validates against before it renders anything.
+
+:::note
+**REQUIRED** below means the chart refuses to render without it, or the process
+refuses to start. Both failures are deliberately loud.
+:::
+
+## Git host
+
+| Value | Env | Default | |
+|---|---|---|---|
+| `git.provider` | `GIT_PROVIDER` | `github` | `github`, `gitea` implemented; `gitlab`, `bitbucket` are extension points |
+| `git.owner` | `GIT_OWNER` | — | **REQUIRED** |
+| `git.repo` | `GIT_REPO` | — | **REQUIRED** |
+| `git.repoURL` | `GIT_REPO_URL` | — | **REQUIRED**. Clone URL, reachable from the cluster |
+| `git.existingSecret` | — | — | **REQUIRED**. Existing Secret holding the credential; the chart creates none |
+| `git.tokenKey` | — | `token` | Key within that Secret |
+| `git.apiBase` | `GIT_API_BASE` | *(unset)* | See below — it means different things per host |
+| `git.insecureSkipTLSVerify` | `GIT_INSECURE_SKIP_TLS_VERIFY` | `false` | Scoped to the agent's git client and its push clone, never global |
+| `git.author.name` | `GIT_AUTHOR_NAME` | *(derived)* | See below — leave empty unless you have a reason |
+| `git.author.email` | `GIT_AUTHOR_EMAIL` | *(derived)* | " |
+| `git.app.appId` | `GITHUB_APP_ID` | *(unset)* | Set to authenticate as a GitHub App instead of a token |
+| `git.app.installationId` | `GITHUB_APP_INSTALLATION_ID` | *(discovered)* | Optional; discovered from the repository when unset |
+| `git.app.existingSecret` | — | `git.existingSecret` | Secret holding the App private key |
+| `git.app.privateKeyKey` | — | `private-key` | Key within it |
+
+When `git.app.appId` is set, `GIT_TOKEN` is **not set at all** — installation
+tokens are minted from the key at runtime and live about an hour, so there is
+nothing static to hold.
+
+### `git.apiBase` is host-specific
+
+The hosts differ, so the value does:
+
+- **github** — the API *root*: `https://ghe.example.com/api/v3`
+- **gitea** — the **instance** root: `https://gitea.example.com`. The client
+  appends `/api/v1` itself, and also needs that root to build a push remote.
+
+### Leave `git.author` empty
+
+Empty means the agent derives it. As a GitHub App that is its own bot identity
+(`<slug>[bot] <id+slug[bot]@users.noreply.github.com>`), which is what makes the
+pushed commits attribute to the App's avatar rather than to a stranger.
+
+The old default was `bosun@users.noreply.github.com`, and that namespace
+**belongs to GitHub accounts**: every commit the first live repair pushed was
+attributed, avatar and all, to an unrelated account named `bosun`. If you do set
+an email, never use a `users.noreply.github.com` address that is not your bot's
+own.
+
+## Model
+
+| Value | Env | Default | |
+|---|---|---|---|
+| `llm.provider` | `LLM_PROVIDER` | — | **REQUIRED**. `openai` or `anthropic` |
+| `llm.model` | `LLM_MODEL` | — | **REQUIRED** |
+| `llm.baseURL` | `LLM_BASE_URL` | *(unset)* | Required for `openai`; optional for `anthropic` |
+| `llm.reasoningEffort` | `LLM_REASONING_EFFORT` | *(unset)* | Passed through where supported; leave unset otherwise |
+| `llm.timeout` | `LLM_TIMEOUT` | `10m` | |
+| `llm.existingSecret` | — | *(unset)* | Omit entirely for an unauthenticated local endpoint |
+| `llm.apiKeyKey` | — | `api-key` | |
+
+There is **no default provider**. `openai` reaches OpenAI, Azure OpenAI, LM
+Studio, Ollama, vLLM, llama.cpp and LiteLLM; `anthropic` reaches Anthropic and
+gateways presenting the Messages API. See
+[Model providers](/reference/llm-providers/) for how to choose a model, and why
+the score to optimise is *unsafe actions = 0* rather than accuracy.
+
+## The gate
+
+| Value | Env | Default | |
+|---|---|---|---|
+| `gate.mode` | `GATE_MODE` | `cluster` | `cluster` — the agent is the gate. `ci` — the gate runs in CI and the agent waits on the check |
+| `gate.checkName` | `GATE_CHECK_NAME` | `addons-gate` | Must match your branch protection rule |
+| `gate.forkPRs` | `GATE_FORK_PRS` | `false` | Render pull requests whose head is in another repository |
+| `gate.wait` | `GATE_WAIT` | `10m` | How long to wait for a verdict. CI mode only |
+| `gate.poll` | `GATE_POLL` | `30s` | Paces the cluster-mode sweep for new pull requests |
+| `gate.reportAuthor` | `GATE_REPORT_AUTHOR` | *(per-host)* | Whose gate report the agent will believe — see below |
+
+### `gate.forkPRs` is off for a reason
+
+In cluster mode the render runs `helm` over the pull request's content, **inside
+your cluster**. Whose content that is should be an operator's decision. Off, a
+fork pull request gets an `error` status naming this value — a refusal you can
+see, rather than a required check that never reports.
+
+### `gate.reportAuthor` is an authenticity check
+
+The gate publishes its verdict as a pull-request comment carrying a marker.
+Anyone who can comment can write that marker — and the report under it is what
+the agent reads to decide which manifests to rewrite and which version strings
+it will accept as corroborated. **A forged report is not a wrong opinion; it is
+an instruction wearing the gate's authority.**
+
+Empty means the per-host default, because the answer is a fact about the host:
+
+- **github** — `github-actions[bot]`. A gate running in GitHub Actions comments
+  through `github.token` and therefore as that account, every time.
+- **gitea** — unchecked. Gitea Actions has no equivalent fixed identity; set
+  this to whichever user minted the CI token.
+
+Set it to `"*"` to read the report whoever wrote it. That is the pre-existing
+behaviour and there are deployments where it is the only expressible answer —
+but it should be a decision in your values file rather than an absence.
+
+If your gate comments as a bot user or a PAT's owner rather than through
+Actions, name that account here. The symptom of getting it wrong is the agent
+saying it ignored a report and naming the author it saw.
+
+## Triage
+
+| Value | Env | Default | |
+|---|---|---|---|
+| `triage.allowPaths` | `ALLOW_PATHS` | `[]` | **Where the agent may ever write.** Empty refuses everything, and the process refuses to start with it |
+| `triage.denyPaths` | `DENY_PATHS` | `[]` | *Added to* the built-in deny-list; cannot subtract from it |
+| `triage.maxAttempts` | `MAX_ATTEMPTS` | `2` | Attempt cap, tracked by pull-request label |
+| `triage.explainGreen` | `EXPLAIN_GREEN` | `true` | Explain green gates on held pull requests |
+| `triage.migrateDroppedVersions` | `MIGRATE_DROPPED_VERSIONS` | `true` | The deterministic apiVersion repair. **No model involved** |
+| `triage.structuralMigration` | `STRUCTURAL_MIGRATION` | `true` | The document-reshape path, for bumps where swapping the version is not the whole job |
+| `triage.migrateMaxDocs` | `MIGRATE_MAX_DOCS` | `5` | Cap on documents reshaped in one pass |
+| `triage.egressDeny` | `EGRESS_DENY` | `[]` | Hosts the upstream lookup must never reach |
+| `triage.upstreamNotes.enabled` | `UPSTREAM_NOTES` | `true` | Fetch publisher release notes for the explain and escalate paths |
+| `triage.upstreamNotes.maxReleases` | `UPSTREAM_MAX_RELEASES` | `5` | |
+| `triage.upstreamNotes.maxCommits` | `UPSTREAM_MAX_COMMITS` | `10` | |
+| `triage.upstreamNotes.maxBodyChars` | `UPSTREAM_MAX_BODY_CHARS` | `4000` | |
+
+### `triage.allowPaths` is the whole write surface
+
+An empty allowlist refuses everything and the process **refuses to start** with
+one — a service that can write nowhere and does not say so is a service that
+looks broken later, for a reason nobody will find.
+
+Set it to the tree the agent may repair, typically `[addons/**]`. It is a
+standing grant and deliberately coarse; the per-request bound is `Scope`, set
+from the promotion's own file list, and both must pass.
+
+### The deny-list cannot be shrunk
+
+`triage.denyPaths` **adds** to a built-in list that configuration cannot remove
+from. Every entry is a way to make a red gate green without fixing anything:
+
+```
+.github/**            the workflows that run the gate
+.gitops-gate.yaml     what the gate renders, and how
+.gitops-gate/**       the cluster inventory it compares against
+delivery/**           the kit itself, including this agent and its prompt
+.gitlab-ci.yml        the GitLab and Bitbucket equivalents
+bitbucket-pipelines.yml
+**/kargo-projects/**  the merge policy and version constraints
+**/kargo-pipelines/** the promotion pipelines themselves
+```
+
+The matcher understands `**` at the start of a pattern, at the end, or at both —
+**not in the middle**. A wildcard inside a directory name (`**/kargo-*/**`) is
+not something the deny-list can express.
+
+### `triage.upstreamNotes` never feeds the write path
+
+Release notes and upstream commits are fetched **only** on the paths that
+produce prose — the green-gate explanation and an escalation. The mechanical
+path, the one that writes files, does not fetch them, so they are not in the
+evidence string the applier corroborates against.
+
+Without that rule, a commit message containing `v1.5.0` would make `v1.5.0` a
+corroborated value to write. See
+[ADR 0005](/decisions/0005-testimony-is-not-evidence/).
+
+## Live cluster reads
+
+| Value | Env | Default | |
+|---|---|---|---|
+| `liveReads.enabled` | `LIVE_READS` | `false` | Off by default: everything else the agent reads is public or already in the pull request |
+| `liveReads.scope` | *(RBAC only)* | `groups` | `groups` or `wide` |
+| `liveReads.apiGroups` | *(RBAC only)* | `[]` | The groups granted under `groups` scope |
+| `liveReads.argocdNamespace` | `LIVE_READS_ARGOCD_NS` | `argocd` | Also the cluster-mode gate's inventory namespace |
+
+Live reads are `get` and `list` only. The chart's ClusterRole has no `create`,
+`update`, `patch` or `delete` verb anywhere.
+
+:::danger[`scope: wide` can read Secrets]
+With `groups`, the core API group is never granted beyond `pods, events`, so
+Secrets are unreadable **by construction**. With `wide` the chart grants
+`apiGroups: ["*"]`, which **includes Secrets** — RBAC has no deny rules and no
+way to subtract the core group, which is exactly why "everything except Secrets"
+is not a setting this chart can offer.
+:::
+
+## The supervisor
+
+| Value | Env | Default | |
+|---|---|---|---|
+| `supervise.enabled` | `SUPERVISE_PIPELINE` | `true` | |
+| `supervise.interval` | `SUPERVISE_INTERVAL` | `10m` | |
+| `metrics.serviceMonitor.enabled` | — | `false` | Scrape `/metrics` |
+
+Read-only: three LISTs and a shallow clone, using the Kargo read the ClusterRole
+already grants. Both `/pipeline` and `/metrics` answer `503` before the first
+sweep completes, deliberately — a scraper reading zeroes from a supervisor that
+has not looked yet would record "nothing is wrong" as a measurement.
+
+See [The pipeline supervisor](/concepts/supervisor/) for what it looks for and
+the two alert rules worth having, including the one that fires when the
+supervisor *itself* goes quiet.
+
+## Network policy
+
+| Value | Default | |
+|---|---|---|
+| `networkPolicy.enabled` | `true` | |
+| `networkPolicy.flavor` | `standard` | |
+| `networkPolicy.kargoNamespace` | `kargo` | Which namespace may call the triage hook |
+| `networkPolicy.egress.dnsNamespace` | `kube-system` | |
+| `networkPolicy.egress.namespaces` | `[]` | |
+| `networkPolicy.egress.ipBlocks` | `[]` | Your model endpoint goes here |
+| `networkPolicy.egress.apiServer.ipBlocks` | `[]` | The apiserver's **real** endpoints |
+| `networkPolicy.egress.fqdns` | `[]` | Registries the upstream lookup may reach |
+| `networkPolicy.egress.fqdnPatterns` | `[]` | |
+| `networkPolicy.egress.allowPublicHTTPS` | `false` | Your git host |
+| `networkPolicy.egress.allowInternet` | `false` | |
+
+:::caution[Two halves, and the chart writes one]
+For `flavor: standard` the egress policy needs the apiserver's **real
+endpoints** — `kubectl get endpoints kubernetes -n default`. A ClusterIP in an
+`ipBlock` matches nothing, because DNAT happens before policy evaluation.
+
+The other half is the **Kargo controller's** egress policy, which must permit
+this namespace and port. The chart cannot write it. The symptom of missing it is
+a hang with zero bytes, not an error.
+:::
+
+## Deployment shape
+
+| Value | Env | Default |
+|---|---|---|
+| `image.repository` | — | **REQUIRED** |
+| `image.tag` / `image.digest` | — | *(appVersion)* — prefer a digest |
+| `image.pullPolicy` | — | `IfNotPresent` |
+| `replicaCount` | — | `1` |
+| `service.port` | `AGENT_ADDR` | `8080` |
+| `branding.name` | `AGENT_BRAND` | `Bosun` |
+| `serviceAccount.create` / `.name` | — | `true` / *(fullname)* |
+| `rbac.create` | — | `true` |
+| `resources` | — | `25m` CPU / `64Mi` requested, `512Mi` memory limit |
+| `nodeSelector`, `tolerations`, `affinity`, `podAnnotations`, `priorityClassName` | — | standard |
+
+`branding.mark` is **deprecated and ignored** since 0.17.0. Comments no longer
+carry an identity header at all — authenticating as a GitHub App puts the name
+and avatar above every comment already, and a bold header under that was the
+agent introducing itself twice. Still accepted so setting it does not fail an
+upgrade.
+
+:::note[There is no Ingress, and that is deliberate]
+Kargo calls this in-cluster. Nothing else needs to reach it, and publishing
+something that can spend money and write to your repository would be gratuitous
+exposure — so the chart renders no Ingress or HTTPRoute at all.
+:::
+
+## The gate's own config file
+
+`.gitops-gate.yaml` lives in the **repository being gated**, not in this chart.
+It is documented separately in the
+[`.gitops-gate.yaml` reference](/gate/config-reference/).

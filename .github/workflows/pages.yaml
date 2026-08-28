@@ -1,0 +1,83 @@
+name: Pages
+
+# Publishes the documentation site at https://bosun.integratn.io.
+#
+# WHAT IS ACTUALLY THE SOURCE HERE: the markdown in this repository -- docs/,
+# adr/, gate/docs/, the chart and CI READMEs. `site/scripts/sync-docs.mjs`
+# copies those into the Starlight tree at build time and rewrites their
+# relative links; `site/src/content/docs/` is generated and is not in git.
+#
+# That is why the paths filter below is long, and why it has to stay in step
+# with the page map in sync-docs.mjs. A doc that is published but not listed
+# here is a doc whose fix reaches GitHub and never reaches the site -- which is
+# the quiet kind of wrong this repository is generally about avoiding. The
+# `docs` job in ci.yaml builds the same site on every pull request, so a broken
+# link or a bad frontmatter change fails before it is merged rather than after.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs/**'
+      - 'adr/**'
+      - 'gate/README.md'
+      - 'gate/docs/**'
+      - 'ci/README.md'
+      - 'charts/*/README.md'
+      - 'charts/*/docs/**'
+      - 'local/README.md'
+      - 'CONTRIBUTING.md'
+      - '.github/workflows/pages.yaml'
+  workflow_dispatch:
+
+# Read the checkout, mint the OIDC token the deploy step exchanges, and write
+# to Pages. Stated rather than inherited: this is the only workflow in the
+# repository that publishes anything world-readable.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and never cancel one in flight -- a cancelled
+# deployment can leave the Pages site on a half-published build.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      # `npm ci` rather than `npm install`: the lockfile is the pin, and a docs
+      # build that silently resolves a different Starlight is a docs build that
+      # renders differently from the one that was reviewed.
+      - run: npm ci
+        working-directory: site
+
+      - run: npm run build
+        working-directory: site
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
