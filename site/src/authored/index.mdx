@@ -1,0 +1,224 @@
+---
+title: Bosun
+description: The crew for Argo and Kargo. A gate that renders what a pull request actually deploys and blocks what breaks, and an agent that repairs what is provable and escalates the rest.
+template: splash
+editUrl: false
+head:
+  - tag: title
+    content: "Bosun — the crew for Argo and Kargo"
+hero:
+  title: The pull request renders green.<br/>It still <em>breaks the cluster</em>.
+  tagline: Kargo opens more pull requests than anyone can read and merges a good share of them on a version-shaped policy that cannot see what is in the diff. Bosun renders what the change actually deploys, blocks what breaks, repairs what is provable, and hands a human the rest — with the file, the key and the choice named.
+  actions:
+    - text: Quickstart
+      link: /start/quickstart/
+      variant: primary
+    - text: How the loop works
+      link: /start/the-loop/
+      variant: minimal
+---
+
+import LoopDiagram from '../../components/LoopDiagram.astro';
+
+{/* ---------------------------------------------------------------- problem */}
+
+<section class="bo-section not-content">
+  <div class="bo-section__head">
+    <p class="bo-kicker">The gap</p>
+    <h2>The dangerous ones look exactly like the boring ones</h2>
+    <p>
+      A one-line version bump renders perfectly and stops serving an API every
+      manifest in your repository still declares. A values-layer edit adds a
+      whole cluster to an addon's scope without the selector changing — the
+      labels it matches did. Nothing in the text diff shows either. A merge
+      policy that reads version numbers cannot see them, and a human reading
+      their fortieth bump of the week will not either.
+    </p>
+  </div>
+
+  <div class="bo-split">
+    <section class="bo-split--muted">
+      <h3>What a version-shaped policy sees</h3>
+      <ul>
+        <li>A patch bump of a trusted chart.</li>
+        <li>One line changed. Auto-merge.</li>
+      </ul>
+    </section>
+    <section class="bo-split--esc">
+      <h3>What the render actually shows</h3>
+      <ul>
+        <li>Eleven CRDs added, twenty-five resources changed.</li>
+        <li>Four CRDs stop serving <code>v1alpha1</code> and <code>v1beta1</code>.</li>
+        <li>Thirty-nine manifests in the repository still declare them.</li>
+      </ul>
+    </section>
+  </div>
+</section>
+
+{/* ------------------------------------------------------------------- loop */}
+
+<section class="bo-section not-content">
+  <div class="bo-section__head">
+    <p class="bo-kicker">The shape</p>
+    <h2>Inspection, then repair — and the repair is checked by the inspection</h2>
+    <p>
+      A boatswain's job is not repair, it is <em>inspection and repair</em>:
+      daily rounds of the hull and rigging, fixing what they find on their own
+      authority and reporting to the captain what they cannot. The inspection
+      is the larger half, and it is what makes the repair authority safe to
+      grant.
+    </p>
+  </div>
+
+  <LoopDiagram />
+</section>
+
+{/* --------------------------------------------------------------- capability */}
+
+<section class="bo-section not-content">
+  <div class="bo-section__head">
+    <p class="bo-kicker">What it does</p>
+    <h2>Four jobs, and the boundary between them is code</h2>
+  </div>
+
+  <div class="bo-grid">
+    <article class="bo-tile">
+      <h3>Renders the truth, twice</h3>
+      <p>
+        Every bootstrap ApplicationSet expanded for every cluster, at the base
+        revision and at the head. The diff of those two renders is what the
+        pull request actually does. Charts whose version moved are pulled at
+        both versions and diffed down to the field.
+      </p>
+    </article>
+    <article class="bo-tile">
+      <h3>Blocks the four that break things</h3>
+      <p>
+        A cluster-targeting change, a moved source, project or namespace, an
+        object's apiVersion moving, and a CRD dropping a served version your
+        manifests still declare. Everything else is reported, not blocked —
+        that is what a version bump legitimately does.
+      </p>
+    </article>
+    <article class="bo-tile">
+      <h3>Repairs without a model</h3>
+      <p>
+        When the only blocking finding is dropped served versions, no judgement
+        is needed. The report names the kind, the dropped versions and the
+        survivor; the same package that wrote that line parses it back and
+        migrates every declaring manifest. The re-run gate re-counts them.
+      </p>
+    </article>
+    <article class="bo-tile">
+      <h3>Escalates as a handoff</h3>
+      <p>
+        Not an announcement. Which file and key to open, what the choice is,
+        and the one fact that stopped a mechanical fix. Then the
+        <code>needs-human</code> label goes on and it stops. It never closes a
+        pull request and its own status is never a failure.
+      </p>
+    </article>
+  </div>
+</section>
+
+{/* ----------------------------------------------------------------- safety */}
+
+<section class="bo-section not-content">
+  <div class="bo-strip">
+    <p class="bo-kicker">The safety model</p>
+    <h2 style="margin-bottom:1rem">The model does not edit files</h2>
+    <p style="max-width:52em;color:var(--sl-color-gray-2);line-height:1.65">
+      It returns a structured verdict and a proposed edit set. The service
+      applies those edits deterministically behind a path allowlist and a
+      deny-list its own configuration cannot remove from. So
+      <em>“never edit the gate, never weaken a policy to go green”</em> is an
+      invariant the service enforces, not an instruction the model is asked to
+      respect — a model that ignores the prompt entirely still cannot touch CI
+      configuration.
+    </p>
+    <p style="max-width:52em;color:var(--sl-color-gray-2);line-height:1.65">
+      A model with file-edit tools can make a red gate green by deleting the
+      check, and that failure is indistinguishable from success. That is the
+      whole design.
+    </p>
+    <p style="margin-top:1.4rem">
+      <a class="bo-btn bo-btn--ghost" href="/concepts/safety-model/">Read what is enforced, and where</a>
+    </p>
+  </div>
+</section>
+
+{/* ---------------------------------------------------------------- install */}
+
+<section class="bo-section not-content">
+  <div class="bo-section__head">
+    <p class="bo-kicker">Install</p>
+    <h2>One chart, two Secrets, one config file</h2>
+    <p>
+      The chart consumes existing Secrets by name and creates none — bring your
+      own secret manager. Nothing here hardcodes a cluster, domain, namespace,
+      CNI, git host or model provider.
+    </p>
+  </div>
+
+```bash
+helm install bosun oci://ghcr.io/jamesatintegratnio/charts/bosun \
+  --namespace bosun --create-namespace \
+  -f my-values.yaml
+```
+
+  <p style="margin-top:1.5rem">
+    <a class="bo-btn bo-btn--primary" href="/start/quickstart/">Quickstart — 15 minutes</a>
+    &nbsp;
+    <a class="bo-btn bo-btn--ghost" href="/start/onboarding/">The full onboarding path</a>
+  </p>
+</section>
+
+{/* ------------------------------------------------------------------- next */}
+
+<section class="bo-section not-content">
+  <div class="bo-section__head">
+    <p class="bo-kicker">Where to go next</p>
+    <h2>Read it in the order it was built</h2>
+  </div>
+
+  <div class="bo-grid">
+    <a class="bo-tile" href="/start/the-loop/" style="text-decoration:none">
+      <h3>The loop, end to end →</h3>
+      <p>One pull request, from a version appearing to the change verified running. Start here if you want the story rather than the reference.</p>
+    </a>
+    <a class="bo-tile" href="/concepts/classification/" style="text-decoration:none">
+      <h3>Mechanical or escalate →</h3>
+      <p>The judgement, with worked examples — including the two that were reclassified after they went wrong on a live pull request.</p>
+    </a>
+    <a class="bo-tile" href="/gate/" style="text-decoration:none">
+      <h3>What the gate checks →</h3>
+      <p>The blocking rules, the exit codes, and what it deliberately does not check.</p>
+    </a>
+    <a class="bo-tile" href="/concepts/prompt-contract/" style="text-decoration:none">
+      <h3>The prompt contract →</h3>
+      <p>Why a 9B model is viable here, the five levers that made it so, and the measurement behind each one.</p>
+    </a>
+    <a class="bo-tile" href="/concepts/supervisor/" style="text-decoration:none">
+      <h3>The pipeline supervisor →</h3>
+      <p>Watching for the promotions that never happened, because absence of an event is not observed by default.</p>
+    </a>
+    <a class="bo-tile" href="/decisions/0001-structured-edits-not-agentic-loop/" style="text-decoration:none">
+      <h3>Decisions →</h3>
+      <p>Eight ADRs on why it is built this way, and what each decision cost.</p>
+    </a>
+  </div>
+</section>
+
+<section class="bo-section not-content">
+  <div class="bo-strip">
+    <p class="bo-kicker">Licence</p>
+    <p style="color:var(--sl-color-gray-2);line-height:1.65;max-width:52em">
+      <strong style="color:var(--sl-color-white)">PolyForm Internal Use 1.0.0.</strong>
+      Run it for your own business, commercially, in production, without asking
+      anyone. You may not distribute it — not sold, not bundled, not offered as
+      a hosted service. Installing the chart and image from the registry is
+      <em>use</em>, not distribution.
+      <a href="/project/licence/">What that means in practice →</a>
+    </p>
+  </div>
+</section>

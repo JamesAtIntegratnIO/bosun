@@ -27,9 +27,15 @@ echo "==> nothing assumes one particular environment"
 # Literals from the environment this was built in. Every one of these must be
 # a value, or the first adopter inherits someone else's cluster.
 LEAKS='the-cluster|vcluster-media|integratn\.tech|10\.0\.4\.|onepassword-store'
+# The excluded directories are dependencies and build output, not shipped code:
+# site/node_modules alone is ~40MB of other people's JSON, and a syntax theme in
+# there matching one of these patterns is not this project inheriting anyone's
+# cluster. Scanning it also turned a one-second check into a minute of grep.
 leaks() {
   grep -rniE "$LEAKS" --include='*.yaml' --include='*.yml' --include='*.go' \
-    --include='*.json' --include='Dockerfile' . 2>/dev/null \
+    --include='*.json' --include='Dockerfile' \
+    --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=.astro \
+    --exclude-dir=.git . 2>/dev/null \
     | grep -v '^\./hack/portability-test\.sh'
 }
 if [ -n "$(leaks)" ]; then

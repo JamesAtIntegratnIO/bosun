@@ -16,6 +16,25 @@ import urllib.parse
 LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 SKIP_SCHEME = ("http://", "https://", "mailto:", "#", "data:")
 
+# Directories whose markdown is not this package's documentation.
+#
+# `site/` is the documentation WEBSITE, and its links follow the opposite rule:
+# they are absolute site routes (`/start/quickstart/`), which this checker is
+# specifically here to reject. Those are verified instead by
+# site/scripts/check-links.mjs, which resolves every link against the built
+# output -- a stricter check than this one, because it knows which pages exist.
+#
+# The rest are vendored or generated trees that happen to contain READMEs.
+PRUNE = {"node_modules", "dist", ".astro", ".git", ".desloppify"}
+PRUNE_PATHS = {("site",)}
+
+
+def _pruned(rel: pathlib.PurePath) -> bool:
+    parts = rel.parts
+    if any(part in PRUNE for part in parts):
+        return True
+    return any(parts[: len(prefix)] == prefix for prefix in PRUNE_PATHS)
+
 
 def main(root_arg: str) -> int:
     root = pathlib.Path(root_arg).resolve()
@@ -23,6 +42,8 @@ def main(root_arg: str) -> int:
 
     for md in sorted(root.rglob("*.md")):
         rel_md = md.relative_to(root)
+        if _pruned(rel_md):
+            continue
         for lineno, line in enumerate(md.read_text(encoding="utf-8").splitlines(), 1):
             for target in LINK.findall(line):
                 target = target.strip()

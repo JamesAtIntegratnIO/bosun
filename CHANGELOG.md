@@ -3,6 +3,81 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.19.0] - 2026-08-28
+
+Documentation only. No behaviour of the agent, the gate or the charts changed
+in this release — the version moves because the chart's `appVersion` is what
+cuts a tag, and the site should ship as something you can point at.
+
+### Added
+
+- **A documentation site at [bosun.integratn.io](https://bosun.integratn.io).**
+  Astro and Starlight, built by [`site/`](site) and deployed to GitHub Pages.
+  Searchable, cross-linked, and themed from `docs/avatar/bosun.svg` — the site
+  and the mark are the same palette because they were the same decision.
+
+  **The markdown in this repository is still the source of truth.** `docs/`,
+  `adr/`, `gate/docs/`, the chart and CI READMEs stay exactly where they are and
+  stay readable on GitHub; `site/scripts/sync-docs.mjs` copies them in at build
+  time and `site/src/content/docs/` is generated and gitignored. The alternative
+  — moving the docs into a website tree — breaks every relative link in the
+  README and in code comments, and makes browsing them on GitHub worse for the
+  people most likely to be reading them.
+
+  The interesting half is the link rewriting. A doc linking to
+  `../adr/0008-the-gate-moves-in-cluster.md` has to work on GitHub *and*
+  resolve to `/decisions/0008-the-gate-moves-in-cluster/` on the site, so every
+  relative link is resolved against its own source directory and rewritten — to
+  a site route if that file is published, to a GitHub URL if it is not. Both
+  halves of that decision fail silently when wrong, so
+  `site/scripts/check-links.mjs` resolves every internal link against the pages
+  that actually built and every rewritten GitHub link against the working tree.
+  It runs on every pull request.
+
+- **Four pages that did not exist.** [Quickstart](https://bosun.integratn.io/start/quickstart/)
+  (two tracks: watch the whole loop run on a disposable cluster, or gate a real
+  repository), [Configuration](https://bosun.integratn.io/reference/configuration/)
+  (every chart value, the environment variable it becomes, and its default),
+  [Troubleshooting](https://bosun.integratn.io/reference/troubleshooting/)
+  (organised by what you observe, including the several failures whose symptom
+  is that nothing happens at all), and an
+  [FAQ](https://bosun.integratn.io/reference/faq/) answering the questions that
+  come up before installing rather than after.
+
+- **A `docs` job in CI.** The site builds from this repository's markdown, so a
+  doc that renames a heading or moves a file breaks the *site* — previously only
+  at deploy time, on main, after review. It now fails on the pull request.
+
+### Fixed
+
+- **`docs/the-loop.md` still said the gate runs in CI.** It had said so since
+  before [ADR 0008](adr/0008-the-gate-moves-in-cluster.md) moved the gate
+  in-cluster and made that the default. The cast table called it
+  "(`gate/`, in CI)" and section 2 opened "CI runs the gate twice", so the one
+  document most likely to be read first described a shape onboarding had
+  stopped recommending. Where the gate runs is now stated once, as the value it
+  is, and the walkthrough no longer claims either answer.
+
+- **`docs/llm-providers.md` cited "the nine-case eval".** That set is ten cases
+  now. The 9B measurement it reports is still accurate for the set as it stood
+  when it was taken, which is what it says, with a pointer to the current
+  numbers.
+
+### Changed
+
+- **`hack/check_links.py` skips `site/`.** The rule there is the opposite one:
+  authored site pages link by absolute route (`/start/quickstart/`), which that
+  checker exists to reject. They are covered by `site/scripts/check-links.mjs`
+  instead, which is stricter — it knows which pages exist.
+
+- **`hack/portability-test.sh` no longer greps `node_modules`.** The
+  host-environment leak scan reads every `*.json` in the tree, and `site/`
+  brought ~40MB of other people's syntax themes with it. One of them matched,
+  which is not this project inheriting anyone's cluster.
+
+- **The chart's `home` is the documentation site** rather than the source
+  repository, which is what `sources` is for.
+
 ## [0.18.5] - 2026-08-25
 
 ### Fixed

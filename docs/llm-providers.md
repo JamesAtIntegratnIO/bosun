@@ -40,8 +40,10 @@ models that do not.
 ## Choosing a model
 
 The task is small and the output is checked, so this does not need a large
-model. Measured on the nine-case eval with a **9B**: 8/9 classification, 8/9
-full pass, **0 unsafe**.
+model. Measured with a **9B** on the mechanical eval set as it stood then, nine
+cases: 8/9 classification, 8/9 full pass, **0 unsafe**. (That set is ten cases
+now, and the current numbers against a 27B are in
+[prompt-contract.md](prompt-contract.md).)
 
 Score in this order:
 
