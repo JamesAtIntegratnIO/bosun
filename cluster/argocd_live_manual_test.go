@@ -29,7 +29,7 @@ import (
 //
 //	ARGOCD_BASE_URL=https://argocd.example \
 //	ARGOCD_TOKEN_FILE=/path/to/token \
-//	KUBE_CONTEXT=admin@the-cluster ARGOCD_NS=argocd \
+//	KUBE_CONTEXT=your-context ARGOCD_NS=argocd \
 //	  go test ./cluster -run LiveArgoCD -v
 //
 // The token needs `clusters, get` in ArgoCD's RBAC; the kube context needs
