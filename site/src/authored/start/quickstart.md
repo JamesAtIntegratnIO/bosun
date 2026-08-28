@@ -71,8 +71,7 @@ They need a green gate, and the scenario script seeds a red one. They are
 covered by `go test ./evals/...`.
 :::
 
-Three more targets exercise the paths that are easy to describe and hard to
-believe: `make demo-structural` (a chart that moves a field between API
+Three more targets exercise the harder paths: `make demo-structural` (a chart that moves a field between API
 versions), `make demo-forged` (a forged gate report, refused) and
 `make demo-egress` (the egress deny-list refusing a host).
 
@@ -176,7 +175,7 @@ helm install bosun oci://ghcr.io/jamesatintegratnio/charts/bosun \
   -f my-values.yaml
 ```
 
-:::caution[Two things bite here]
+:::caution[Two things to get right here]
 **Cluster mode reads the ArgoCD cluster Secrets.** They are the live inventory
 the gate renders against, and they also carry cluster credentials. The chart
 scopes the grant to a namespaced Role — get/list, ArgoCD namespace only, cluster
@@ -189,8 +188,8 @@ and port. The symptom of missing it is a hang with zero bytes, not an error.
 :::
 
 **Verify:** the pod starts — it refuses to start if it cannot reach the
-apiserver or read the inventory, because a crash loop with an explanation beats
-a quiet shrug — and the log says:
+apiserver or read the inventory, rather than running degraded — and the log
+says:
 
 ```
 gate: in-cluster, polling for open pull requests every 30s

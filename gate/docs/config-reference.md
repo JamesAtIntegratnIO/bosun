@@ -100,7 +100,11 @@ bootstraps:
 ```
 
 Exactly equivalent to one `type: argocd-bootstrap` source each, and still
-supported.
+supported. Each entry names an ApplicationSet that generates the Applications
+that render the ApplicationSets that generate everything else — two levels is
+the usual "app of apps of addons" shape, and the gate walks both.
+
+`name` is cosmetic, used in output. It defaults to the file's base name.
 
 ## `concurrency`
 
@@ -111,7 +115,8 @@ into something people route around.
 ## `clusters`
 
 Path to the cluster inventory, relative to the repository root. Generate it with
-`gitops-gate clusters export`.
+`gitops-gate clusters export`. Needed only in `gate.mode: ci` and for the CLI —
+in cluster mode the inventory is read live and this key is ignored.
 
 ## `valuesRef`
 
@@ -119,23 +124,15 @@ The `ref:` name your bootstrap ApplicationSet gives its values source. Multi-sou
 Applications refer to it as `$values/…` in `valueFiles`, and the gate has to strip
 that prefix to find the file on disk. Defaults to `values`.
 
-## `bootstraps`
-
-The ApplicationSets that generate the Applications that render the ApplicationSets
-that generate everything else. Two levels is the usual "app of apps of addons"
-shape; the gate walks both.
-
-`name` is cosmetic, used in output. It defaults to the file's base name.
-
 ## `clustersExport.ignoreKeys`
 
 Labels and annotations to drop from the exported inventory because they churn
 without affecting any selector or template — a resync timestamp, a content hash.
 A trailing `*` matches by prefix.
 
-This matters more than it looks. `clusters export -check` compares a fresh export
-against the checked-in file; if a timestamp annotation is included, that check
-fails every single time, and a check that always fails gets switched off.
+`clusters export -check` compares a fresh export against the checked-in file. A
+timestamp annotation left in makes that check fail every run, and a check that
+always fails gets switched off.
 
 ## `validate`
 
@@ -143,11 +140,11 @@ fails every single time, and a check that always fails gets switched off.
 outside the large projects appear in no published schema catalogue, and without
 this one unknown kind fails a run that had nothing wrong with it.
 
-Be clear-eyed about the cost: those kinds are then **not validated at all**. The
-gate reports how many kinds it skipped so the gap is visible rather than assumed
+The cost is that those kinds are then **not validated at all**. The gate
+reports how many kinds it skipped, so the gap is visible rather than assumed
 away.
 
-## The cluster inventory
+## The cluster inventory (CI mode and the CLI only)
 
 ```yaml
 generatedAt: "2026-08-22T12:00:00Z"
@@ -162,16 +159,21 @@ clusters:
       addons_repo_path: charts/application-sets
 ```
 
-This is the gate's weakest joint, and it is worth being blunt about why.
+**The `clusters:` key and this file apply only to `gate.mode: ci` and to the
+CLI.** In cluster mode — the default since
+[ADR 0008](../../adr/0008-the-gate-moves-in-cluster.md) — the agent reads the
+live ArgoCD cluster Secrets on every run, and there is no snapshot to keep
+current. The rest of this section is about the snapshot, which is the gate's
+weakest joint when it is in use.
 
 Generators resolve selectors against **live** cluster labels. CI has no cluster
 access, so the inventory is a checked-in snapshot. If a cluster's labels change,
-or a cluster is added, the gate keeps answering confidently and wrongly — it will
-report "no targeting change" for a change that does move targeting, because it is
-comparing against a world that no longer exists.
+or a cluster is added, the gate keeps answering confidently and wrongly: it
+reports "no targeting change" for a change that does move targeting, because it
+is comparing against a world that no longer exists.
 
-There is no way to detect that from CI. The mitigation has to run somewhere with
-cluster access:
+Nothing in CI can detect that. The mitigation has to run somewhere with cluster
+access:
 
 ```bash
 gitops-gate clusters export -out .gitops-gate/clusters.yaml -check

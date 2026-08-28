@@ -5,9 +5,9 @@ version is discovered, promoted, written onto a branch, opened as a pull
 request, gated, triaged by the agent, merged, reconciled, verified, and
 observed.
 
-It exists because everything in this package was previously only ever exercised
-in production, one merge at a time. The gate had never seen a real pull request.
-No promotion had traversed a chain. The agent had never triaged anything.
+It exists so the flow can be exercised outside production. Without it the
+gate, promotion chaining and agent triage are only ever tested one merge at a
+time, against a live repository.
 
 ## What it builds
 
@@ -25,21 +25,19 @@ install from the checkout. A proving ground that tests the last published
 version is testing the past, and this one exists precisely to prove the change
 you have not shipped yet.
 
-**The platform is reconciled, not installed.** It used to go in with a hundred
-and twenty lines of `helm upgrade --install`, on the argument that it is the
-equivalent of what idpbuilder itself installed and a reconcile loop only cost a
-minute per run. That was wrong twice: this project's pattern is app-of-apps,
-and a proving ground that installs its own platform by hand is not proving the
-pattern it exists to demonstrate. `helm list -A` should show exactly two
-releases, and both are there because they are built from your checkout and
-there is no git ref for ArgoCD to point at:
+**The platform is reconciled, not installed.** Installing it with
+`helm upgrade --install` would be shorter, but this project's pattern is
+app-of-apps, and a proving ground that installs its own platform by hand is not
+proving the pattern it exists to demonstrate. `helm list -A` should show exactly
+two releases, and both are there only because they are built from your checkout
+and there is no git ref for ArgoCD to point at:
 
 ```
 bosun            bosun   bosun-0.16.0
 kargo-pipelines  kargo   kargo-pipelines-0.1.2
 ```
 
-Two things that shape `platform/`, both learned by getting them wrong:
+Two things shape `platform/`:
 
 - **`platform/`, not `apps/`.** The gate's sources are `apps/*.yaml`, so a demo
   pull request renders podinfo and not a fifty-object monitoring chart at two
@@ -59,10 +57,10 @@ Two things that shape `platform/`, both learned by getting them wrong:
 
 ## What the agent is installed with
 
-Everything the chart ships, on. The kit used to install the agent roughly as it
-was before the four authorities landed — no live reads, no report-author trust,
-no egress past the git host and the model — which made this a proving ground for
-last month's agent.
+Everything the chart ships, on. Installing the agent with its cautious
+defaults — no live reads, no report-author trust, no egress past the git host
+and the model — would make this a proving ground for a configuration nobody
+runs.
 
 | Setting | Here | Why it is not a default |
 |---|---|---|
@@ -75,8 +73,8 @@ last month's agent.
 **The NetworkPolicy is enforced here.** kindnet in this cluster implements
 NetworkPolicy — measured, not assumed: a busybox pod reaches `1.1.1.1` with no
 policy and hangs under a `deny-all`. So these rules are load-bearing, and a
-wrong apiserver endpoint is a crash loop with an explanation rather than a
-silent shrug.
+wrong apiserver endpoint produces a crash loop that names its cause rather than
+a silent hang.
 
 ## Requirements
 
@@ -105,14 +103,14 @@ money against a vendor you did not choose is a bad default.
 7. **Reconcile** — ArgoCD syncs podinfo to the new version
 8. **Verify** — the AnalysisRun asks Prometheus whether the app is healthy
 
-There used to be a step 9, asserting that every `kargo_*` metric **returned
-rows** rather than merely parsing — an assertion a production incident earned,
-where every alert expression parsed against a live Prometheus and matched
-nothing for hours because kube-state-metrics prefixes custom-resource metrics
-unless told not to. It went with `kargo-observability`, which is not part of
-this repository: it shares no contract with the gate or the agent.
+A ninth step — asserting that every `kargo_*` metric **returns rows** rather
+than merely parsing — lives with `kargo-observability`, which is not part of
+this repository and shares no contract with the gate or the agent. The
+assertion is worth copying if you run that component: an alert expression can
+parse against a live Prometheus and match nothing for hours, because
+kube-state-metrics prefixes custom-resource metrics unless told not to.
 
-## The acts
+## The scenarios
 
 ```bash
 make demo              # a green gate, promoted and merged
@@ -208,7 +206,7 @@ Each of these is a real defect or a real gap, found by running the thing:
   message. `count(argocd_app_info)` went 0 -> 6 once one existed, and the
   verification query started returning 1.
 
-## Seeing it actually fix things
+## Replaying the recorded incidents
 
 `make scenarios` replays the **ten** recorded incidents from
 [`../evals`](../evals) as real pull requests against the live in-cluster

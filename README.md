@@ -88,19 +88,21 @@ It comments, labels, and stops. **It never closes a pull request.**
 
 ## The safety model is code, not prompt
 
-The model never **writes**. It returns a structured verdict and a proposal:
+The model never **applies**. It returns a structured verdict and a proposal:
 scalar edits for a mechanical fix, and — where swapping an apiVersion would
-leave a document the new schema silently prunes — a whole migrated document.
-The service applies what survives its own checks, behind a path allowlist and a
-deny-list its own configuration cannot remove from.
+leave a document the new schema silently prunes — the complete migrated
+document. The service applies what survives its own checks, behind a path
+allowlist and a deny-list its own configuration cannot remove from.
 
-A proposed document is a real widening, and it is bounded rather than trusted.
-It is refused *whole* unless it keeps the object's identity (`apiVersion` equal
-to the one the gate named; `kind`, `name` and `namespace` byte-identical), fits
-the target schema, and contains no value that is not either at that same path in
-the original, displaced by the schema change, or dictated by the schema itself.
-What lands is re-serialised from the structure the harness validated, never the
-model's own text. The model translates; it does not author.
+A proposed document is a real widening: the model is authoring file content,
+not naming a value to swap. It is bounded rather than trusted. It is refused
+*whole* unless it keeps the object's identity (`apiVersion` equal to the one
+the gate named; `kind`, `name` and `namespace` byte-identical), fits the target
+schema, and contains no value that is not either at that same path in the
+original, displaced by the schema change, or dictated by the schema itself.
+What lands is re-serialised from the structure the harness validated rather
+than written back as the model's text. Structure may come from the model; data
+may not.
 
 So *"never edit the gate, never weaken a policy to go green"* is an invariant
 the service enforces, not an instruction the model is asked to respect. A model

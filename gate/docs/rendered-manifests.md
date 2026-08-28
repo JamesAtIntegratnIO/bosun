@@ -31,9 +31,9 @@ hydrate → push to `environments/dev-next` → your tooling opens
 `dev-next → dev`. By the time a rendered diff exists, the code change is
 already in.
 
-Worth noting that Kargo does the thing the hydrator explicitly declines to do:
-`helm-template` / `kustomize-build` → `git-commit` → `git-open-pr`. If you want
-rendered YAML in a pull request *before* merge, that is the mechanism.
+Kargo does what the hydrator declines to do: `helm-template` /
+`kustomize-build` → `git-commit` → `git-open-pr`. If you want rendered YAML in
+a pull request *before* merge, that is the mechanism.
 
 ## What this gate does with it
 
@@ -60,26 +60,32 @@ produced it. Since ArgoCD v3.3 the last-hydrated SHA lives in a git note
 (`refs/notes/hydrator.metadata`) and the branch has *no commit* when the render
 did not change — so map hydrated to dry via the note, never the commit log.
 
-## What is still missing, and it matters
+## What the object diff does not cover
 
-If your repository does **not** render manifests into git, the object diff is
-empty. This gate then compares Application definitions — which Applications
-exist, on which clusters, at which chart versions — and that is strictly less
-information than "what will actually change in the cluster".
+If your repository does **not** render manifests into git, `type: rendered`
+sources contribute nothing. Two things fill most of that gap, and one hole
+remains.
 
-Concretely: a chart whose defaults flip, adding NetworkPolicies you did not
-ask for, is a one-line version change at Application level and an obvious
-addition at object level. The second is what a reviewer needs.
+**A chart whose version moved is covered.** `diff -repo <path>` pulls the chart
+at both versions, renders each with that Application's own value files, and
+diffs the resources down to the field ([`chartdiff.go`](../chartdiff.go)). A
+chart whose defaults flip — adding NetworkPolicies you did not ask for — is a
+one-line version change at Application level and an obvious addition at object
+level, and this is what surfaces the second.
 
-Closing that without rendered manifests means rendering each changed chart at
-both versions and diffing the output — the same work ArgoCD's repo-server does.
-Until that exists, be clear-eyed that a version-only report is a weaker signal
-than it looks, and that a triage agent reading it is reasoning from less than
-it appears to have.
+**A values-only change is not.** Chart-diff runs only for rows whose version
+actually moved, because it costs a chart pull and two renders per changed
+Application. Editing values under an unchanged chart version is compared at
+Application level only — which Applications exist, on which clusters, at which
+versions.
+
+For that residual case, a report is a weaker signal than it looks, and a triage
+agent reading it is reasoning from less than it appears to have. Rendering
+manifests into git closes it.
 
 ## Things ArgoCD does not give you
 
-Worth stating because they look like they should exist:
+These look like they should exist:
 
 - **Nothing offline expands ApplicationSets.** `argocd appset generate` looks
   like the offline tool and is an RPC to a live API server, as is

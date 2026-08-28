@@ -41,7 +41,7 @@ these field names.
 }
 ```
 
-## The three buckets, and why they are separate
+## The four buckets, and why they are separate
 
 **`targeting`** — an Application is generated for a different set of clusters
 than before. **Blocking.** This is the finding the gate exists for, because it

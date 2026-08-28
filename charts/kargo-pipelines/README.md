@@ -6,8 +6,7 @@ hand-written promotion pipeline per artifact.
 
 > **Status: shipped**, published as
 > `oci://ghcr.io/jamesatintegratnio/charts/kargo-pipelines` and running the
-> promotion pipelines on the platform this was generalized from. This README
-> opened as the contract; the chart caught up.
+> promotion pipelines on the platform this was generalized from.
 
 ## What it adds over hand-written Stages
 

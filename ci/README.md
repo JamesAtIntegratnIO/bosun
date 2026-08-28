@@ -20,22 +20,20 @@ The gate is a container. An adapter's whole job is:
 That is roughly fifteen lines. Everything opinionated lives in the image, on
 purpose — see [ADR 0002, *deterministic checks in CI, judgement in the cluster*](https://github.com/JamesAtIntegratnIO/bosun/blob/main/adr/0002-triage-in-cluster-not-ci.md).
 
-## Step 4 is not optional, and it used to say the wrong thing
+## Step 4 is not optional
 
-Until 2026-08-23 this list said *"publish `render-diff.json` where the agent
-can fetch it"*. Nothing fetches that file. A triage agent reads the gate's
-verdict by listing the pull request's **comments** and taking the most recent
-one that begins with the gate's marker:
+The comment is the verdict channel. A triage agent reads the gate's verdict by
+listing the pull request's **comments** and taking the most recent one that
+begins with the gate's marker:
 
 ```
 <!-- gitops-gate -->
 ```
 
-Every adapter here implemented the contract as written, so none of them posted
-a comment, so the verdict was reachable only by a human with the job summary
-open. The gate was green-and-doing-nothing for its most important consumer,
-and nothing failed — which is the failure mode this whole package exists to
-make visible.
+Publishing `render-diff.json` to an artifact store is not a substitute: nothing
+fetches that file. An adapter that skips the comment leaves the verdict
+reachable only by a human with the job summary open — the gate runs, the agent
+finds nothing to read, and no step fails.
 
 The marker is emitted by the **binary**, as the first line of `-report` output.
 An adapter posts the file verbatim and is correct by construction; it does not
@@ -88,8 +86,6 @@ gate.
 
 ## Never filter the required check by path
 
-The trap that costs the most to discover late.
-
 A required status check that has **never reported** blocks a pull request —
 that is the mechanism by which the gate protects anything. But a workflow
 skipped by a `paths:` filter never reports *at all*. It is not "passed" and it
@@ -131,7 +127,7 @@ that needs a new event. Two things follow:
   read from the merge commit, so a rebased branch picks up the gate from the
   base even though the branch predates it.
 
-## Two things that bite
+## Two things adapters get wrong
 
 **The gate must be fast.** Kargo polls a pull request it is waiting to merge on
 a fixed interval, so gate latency is added to every automated merge. Skip the

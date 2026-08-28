@@ -8,12 +8,14 @@ symptom — *nothing happened* — which is exactly why they are worth writing d
 
 ## The pod will not start
 
-The process refuses to start rather than running degraded, on purpose: a crash
-loop with an explanation beats a quiet shrug.
+The process refuses to start rather than running degraded, on purpose. A crash
+loop names its cause in the log; a degraded process does not.
 
 | Log says | Cause | Fix |
 |---|---|---|
 | `missing required configuration: …` | A **REQUIRED** value is unset | See [Configuration](/reference/configuration/) — `git.owner`, `git.repo`, `git.repoURL`, `git.existingSecret`, `llm.provider`, `llm.model` |
+| `missing required configuration: GIT_TOKEN` | The Secret exists but the **key** does not | `git.tokenKey` must name a key in `git.existingSecret`. The error names the environment variable, not the chart value |
+| `missing required configuration: GITHUB_APP_PRIVATE_KEY (required with GITHUB_APP_ID)` | `git.app.appId` is set without a readable key | Check `git.app.privateKeyKey` against the Secret in `git.app.existingSecret` (defaulting to `git.existingSecret`) |
 | `ALLOW_PATHS is empty: the agent could never apply any fix` | `triage.allowPaths: []` | Set it to the tree the agent may write in, e.g. `[addons/**]` |
 | `LLM_BASE_URL is required for the openai provider` | `llm.provider: openai` with no `baseURL` | Set `llm.baseURL`. This is what makes a self-hosted model work |
 | `unknown LLM_PROVIDER "…" (openai or anthropic)` | Typo, or a provider that does not exist | Only `openai` and `anthropic` are implemented |
@@ -49,8 +51,8 @@ Treating them the same is how a broken gate gets ignored for a week.
 
 ## Triage never fires
 
-The gate answers, the pull request is red, and the agent does nothing. This is
-the classic day-one trap and it has one common cause.
+The gate answers, the pull request is red, and the agent does nothing. This
+has one common cause.
 
 `triage.enabled: false` is the **`kargo-pipelines` chart's default**, so the
 hook that POSTs promotion context to the agent is not rendered into your Stages:
@@ -166,9 +168,9 @@ person's name and avatar.
 - **Leave `git.author.name` and `git.author.email` empty.** Empty means derived,
   which as an App is its own bot identity.
 - **Never set an `@users.noreply.github.com` address that is not your bot's
-  own.** That namespace belongs to GitHub accounts: every commit the first live
-  repair pushed was attributed, avatar and all, to an unrelated account named
-  `bosun`.
+  own.** That namespace belongs to GitHub accounts. An earlier default of
+  `bosun@users.noreply.github.com` attributed the first live repair's commits —
+  avatar and all — to an unrelated account named `bosun`.
 
 ## Pushes do not re-trigger the gate
 

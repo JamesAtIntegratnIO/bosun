@@ -1,18 +1,15 @@
 # The loop, end to end
 
-One pull request, walked from the moment a new chart version exists to the
-moment the change is verified running. Every piece of this repository appears
-exactly once, doing the one thing it does. Component references and
-configuration live in their own documents; this one is the story they belong
-to.
+One pull request, from a new chart version appearing to the change verified
+running. Every component appears once, doing the one thing it does; component
+reference and configuration live in their own documents.
 
-The worked example is real, generalised: `external-secrets` moving
-`0.10.3 → 2.9.0`, the promotion that taught this system its most important
-lesson. A one-line diff. Green everywhere, at first. It would have broken
-every manifest in the repository still declaring the API versions the new
-chart stops serving.
+The worked example is a real promotion, generalised: `external-secrets` moving
+`0.10.3 → 2.9.0`. The visible diff is one line and every check is initially
+green, and it would have broken every manifest in the repository still
+declaring the API versions the new chart stops serving.
 
-## The cast
+## The components
 
 | Piece | Job | Never does |
 |---|---|---|
@@ -37,10 +34,10 @@ promotion also POSTs to Bosun.
 
 ## 2. The gate renders the truth
 
-Where it runs is a value, not part of the story: by default the agent runs the
-gate itself, in-cluster, against the live ArgoCD inventory ([ADR
+Where the gate runs is a configuration value. By default the agent runs it
+in-cluster against the live ArgoCD inventory ([ADR
 0008](../adr/0008-the-gate-moves-in-cluster.md)); `gate.mode: ci` runs the same
-engine as a container in CI. Nothing below this line changes between the two —
+engine as a container in CI. Nothing below this point differs between the two —
 same renders, same report, same check name.
 
 The gate runs twice — once at the base revision, once at the head — and each
@@ -76,7 +73,7 @@ opened, so the agent is already waiting for `addons-gate` to settle. Its own
 commit status says so — `pending`, "reading addons-gate" — because a reader
 must be able to tell *working* from *done with nothing to say*.
 
-The gate is red. Four things can happen, in strict order of preference.
+The gate is red. Five things can happen, in strict order of preference.
 
 **The deterministic repair.** If the only blocking finding is dropped served
 versions, no judgement is needed: the report names the consumer kind, the
@@ -85,42 +82,50 @@ manifests. Bosun rewrites every one of them — apiVersion values only,
 preserving quoting and comments, deny-list and allowlist consulted for every
 file — and pushes the migration to the pull request's branch. **No model is
 involved.** The gate re-runs on the new commit, counts the consumers again,
-finds none, and goes green. The red healed, and the thing that verified the
-repair is the same scanner that demanded it.
+finds none, and goes green — so the check that verifies the repair is the same
+scanner that demanded it.
 
-**The reshape.** Sometimes swapping the version is not the whole job: the new
-schema would silently prune a field the old one carried, so a document that
-parses and applies quietly loses a value, and the render, the gate and the
-repository all look fine. Enumerating every upstream's structural changes is
-not possible, so here — and only here — a model is asked for the migrated
-document itself, one document at a time and capped per pull request. It is
-still not the thing that writes. The proposal is refused *whole* unless it
-keeps the object's identity, fits the target schema, and contains no value that
-is not either at that same path in the original, displaced by the schema change,
-or dictated by the schema itself; what lands is re-serialised from the structure
-the harness validated, never the model's own text. A refusal escalates, and
-values dropped along the way are listed in the comment even when dropping them
-was right. See [ADR 0007](../adr/0007-structure-from-the-schema-data-from-the-document.md).
+**The reshape.** Where swapping the version is not the whole job — the target
+schema prunes a field the old one carried, so the document parses, applies and
+quietly loses a value while the render, the gate and the repository all look
+fine — a model is asked for the migrated document itself, one document at a
+time and capped per pull request. This is the only path on which a model
+authors file content, and it still does not apply it. The proposal is refused
+*whole* unless it keeps the object's identity, fits the target schema, and
+contains no value that is not either at that same path in the original,
+displaced by the schema change, or dictated by the schema itself. What lands is
+re-serialised from the structure the harness validated rather than written back
+as the model's text. A refusal escalates, and values dropped along the way are
+listed in the comment even when dropping them was right. See
+[ADR 0007](../adr/0007-structure-from-the-schema-data-from-the-document.md).
+
+**The deterministic escalation.** Some reds have nothing in this repository to
+change: the *chart* renders an object whose apiVersion moved, and no manifest
+here declares it. The gate blocks — somebody should look — but there is no edit
+to propose. The gate's own blocker counts are enough to say so, so this
+escalates without calling a model at all, and the comment says in one line that
+there are no values to change. Asking a model to explain an absence produced a
+paragraph restating the report with the one sentence that mattered buried in it.
 
 **The mechanical fix.** For a red the render *proves* — a chart default this
 repository needs pinned back, a coupled pin the new version requires — the
-model is asked to classify and to propose scalar edits. It never touches a
-file: it selects from an inventory of editable keys, and the applier enforces
-what the prompt merely describes — deny-list, promotion scope, `from`-value
-equality, and the rule that a version-shaped value must appear verbatim in
-the gate's report. What survives that gauntlet is committed to the branch;
-the gate re-runs and judges the result. An attempt cap, tracked by label,
-bounds the loop.
+model is asked to classify and to propose scalar edits. It selects from an
+inventory of editable keys rather than writing a patch, and the applier
+enforces what the prompt only describes — deny-list, promotion scope,
+`from`-value equality, and the rule that a version-shaped value must appear
+verbatim in the gate's report. What survives those checks is committed to the
+branch; the gate re-runs and judges the result. An attempt cap, tracked by
+label, bounds the loop.
 
 **The handoff.** Everything else — a targeting change, a moved namespace, a
 migration the evidence does not fully specify — is a human's decision, and
 the comment is written as a handoff rather than an announcement: which file
 and key to open, what the choice is, and the one fact that stopped a
 mechanical fix. The `needs-human` label goes on, and Bosun stops. It never
-closes the pull request, and its status is never a failure — the gate is the
-gate; the agent is crew.
+closes the pull request, and its status is never a failure: branch protection
+requires the gate, and a second red check would make the agent a second gate.
 
-## 4. And when the gate is green
+## 4. When the gate is green
 
 A green gate is a verdict on the render, not on the bump — the most dangerous
 promotions render perfectly. So on held pull requests Bosun also explains
@@ -130,11 +135,11 @@ own release notes. A green render that still warrants eyes — a major boundary
 crossed, RBAC that vanished, notes describing a manual step — gets **Worth a
 look before merging** and the label, and blocks nothing.
 
-This is also where the loop improves itself. The example on this page was
-first caught *here*, by the model flagging a version distance no render
-reveals — and within hours that judgement was code: the gate's deterministic
-served-version rule, then the deterministic repair. Escalations become gate
-rules. The model is the scout; the gate is where knowledge hardens.
+Escalations on this path are where gate rules come from. The example on this
+page was first caught here, by the model flagging a version distance no render
+reveals; that judgement then became code — the gate's deterministic
+served-version rule, and then the deterministic repair. A finding the model
+makes once should become a check the gate makes every time.
 
 ## 5. Merge, reconcile, verify
 

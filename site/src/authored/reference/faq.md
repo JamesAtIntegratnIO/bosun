@@ -17,8 +17,9 @@ from the agent would make it a second gate. It is `pending` while triage runs
 and `success` once there is a verdict; the description carries the meaning
 rather than the colour.
 
-So the model's influence is bounded to: proposing edits that a deterministic
-applier may refuse, and writing prose in a comment.
+So the model's influence is bounded to three things: proposing scalar edits a
+deterministic applier may refuse, proposing a migrated document three
+deterministic checks may refuse, and writing prose in a comment.
 
 ## What can the agent actually write?
 
@@ -26,6 +27,12 @@ A branch. Specifically the pull request's own branch, never the default branch,
 and only files that pass **both** `triage.allowPaths` (a standing grant) and
 `Scope` (the promotion's own file list for this request), and that are not on a
 deny-list configuration cannot remove from.
+
+The model itself writes nothing. On the mechanical path it proposes scalar
+edits; on the structural path it authors a complete migrated document, which
+the harness parses, checks for identity, schema validity and value provenance,
+and re-serialises from the validated structure. Neither reaches a branch except
+through the applier.
 
 Everything it pushes still has to pass the gate and the merge policy to reach
 anywhere. See [Safety model](/concepts/safety-model/) for the full table of

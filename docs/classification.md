@@ -19,9 +19,8 @@ escalation, and the applier refuses the edit even if the model tries.
 
 ## Repaired before a model is asked anything
 
-Not a classification — this path runs *before* the model is called at all, and
-it is listed here because the case used to sit under **Escalate** and no longer
-does.
+Not a classification: this path runs before the model is called at all. It is
+listed here because it handles a case that otherwise reads like an escalation.
 
 **A CRD stopped serving a version manifests here still declare.**
 external-secrets 2.x stops serving `v1beta1` while 39 manifests still declare
@@ -31,13 +30,23 @@ declaring manifest gets its `apiVersion` value changed, and the re-run gate
 re-counts the consumers to confirm the repair.
 
 Where the swap alone is *not* the whole job — a field the target schema would
-silently prune — one document at a time is sent to a model for reshaping, and
-the proposal is refused whole unless it keeps the object's identity, fits the
-target schema, and contains no value that is not either at that same path in the
-original, displaced by the schema change, or dictated by the schema itself. A
-refusal escalates. It never half-applies. See
+silently prune — one document at a time is sent to a model, which returns the
+complete migrated document. The proposal is refused whole unless it keeps the
+object's identity, fits the target schema, and contains no value that is not
+either at that same path in the original, displaced by the schema change, or
+dictated by the schema itself. A refusal escalates; it never half-applies. See
 [safety-model.md](safety-model.md) and
 [ADR 0007](../adr/0007-structure-from-the-schema-data-from-the-document.md).
+
+## Escalated before a model is asked anything
+
+Also not a classification, and also decided from the gate's own counts.
+
+**A blocking finding with no repository-side remedy.** The chart renders an
+object whose apiVersion moved, and nothing in this repository declares it. The
+gate is right to block — the move is real and somebody should see it — but there
+is no manifest to migrate and no value to change, so there is nothing to
+classify. The escalation is written from the blocker counts, with no model call.
 
 ## Escalate
 
@@ -61,19 +70,18 @@ port, and scraping stops silently. The fix is one number — but it is in a file
 the bump never opened, and the promotion's own file list is what bounds the
 agent.
 
-This was classified mechanical until 2026-08-23. Two things argue against it,
-and neither is about the model:
+Two things make this an escalation rather than a mechanical fix, and neither
+is about the model:
 
-- The MetalLB target rewrites `metallb.defaultVersion` and nothing else, so
-  the NetworkPolicy is never in the promotion's file list. The old eval
-  fixture listed only the NetworkPolicy, which granted an authority the live
-  pipeline does not — it passed for a reason that could not reproduce.
+- The MetalLB target rewrites `metallb.defaultVersion` and nothing else, so the
+  NetworkPolicy is never in the promotion's file list. An eval fixture that
+  lists the NetworkPolicy grants an authority the live pipeline does not, and
+  passes for a reason that cannot reproduce.
 - The value is a **port**, and corroboration only covers version shapes. An
-  invented port would have been written. This is the one edit with neither
-  guardrail, and the quietest failure mode of any of them.
+  invented port would be written. This is the one edit with neither guardrail.
 
-So it escalates: named precisely, with the port in the comment, for a human to
-apply in one keystroke. Nothing is lost except the pretence that it was safe.
+So it escalates, named precisely and with the port in the comment, for a human
+to apply in one keystroke.
 
 **A change the bump cannot have caused.** external-secrets 0.11.0 arrives with
 the addon's destination namespace moved from `external-secrets` to
@@ -81,12 +89,12 @@ the addon's destination namespace moved from `external-secrets` to
 project, a source repository, or which clusters an Application targets. Nobody
 explained the move, so nobody can say it was meant.
 
-The trap here is that the accommodating answer is *available and tidy*: the
-repository still pins a OnePassword token SecretRef to the old namespace, and
-updating it makes everything agree. That is what the agent did on
-gitops_homelab_2_0 #122 — one scalar, in scope, correct `from`, every guard
+The accommodating answer is available and tidy, which is what makes it
+dangerous: the repository still pins a OnePassword token SecretRef to the old
+namespace, and updating it makes everything agree. The agent did exactly that
+on gitops_homelab_2_0 #122 — one scalar, in scope, correct `from`, every guard
 satisfied — and it was wrong. It entrenched an unexplained change and spent the
-attempt a human needed. The gate stayed red, because the namespace was still
+attempt a human needed, and the gate stayed red because the namespace was still
 moved.
 
 A mechanical fix restores what the repository already intended. It never

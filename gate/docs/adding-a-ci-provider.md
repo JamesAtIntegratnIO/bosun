@@ -32,9 +32,9 @@ gitops-gate diff -base targets-base.json -head targets-head.json \
   -repo . -report report.md -json render-diff.json
 ```
 
-`-repo` on the diff is load-bearing: it is what enables chart-diff, and
-without it the gate goes green on exactly the class of change it exists to
-catch. The reference adapter shipped without it once; see
+`-repo` on the diff is load-bearing: it enables chart-diff, and without it the
+gate goes green on exactly the class of change it exists to catch. The
+reference adapter omitted it once — see
 [`ci/github/README.md`](../../ci/github/README.md).
 
 **4. Turn the exit code into a commit status.**
@@ -61,14 +61,14 @@ silently drops your gate.
 Verbatim, and **before** the step that fails the build. The triage agent in
 CI mode reads the gate's verdict by listing the pull request's comments and
 taking the newest one that begins with the marker the report's first line
-carries — a comment is the one artifact surface every git host has. An
-earlier revision of this page said *"publish `render-diff.json` where the
-agent can fetch it"*; nothing fetches that file, and every adapter that
-implemented the instruction as written published a verdict no agent could
-find. The full contract, including the details that bite, is
-[`ci/README.md`](../../ci/README.md).
+carries — a comment is the one artifact surface every git host has.
 
-## Two things that will bite
+The comment is the only verdict channel. Publishing `render-diff.json` to an
+artifact store instead does not work: nothing fetches it, so an adapter that
+treats it as the handoff publishes a verdict no agent can find. The full
+contract is [`ci/README.md`](../../ci/README.md).
+
+## Two things adapters get wrong
 
 **A push made with the CI system's own token usually does not re-trigger CI.**
 Most hosts suppress it to prevent loops. If the agent pushes a fix with that

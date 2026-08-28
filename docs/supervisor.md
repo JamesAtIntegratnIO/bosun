@@ -1,7 +1,7 @@
 # The pipeline supervisor
 
-The gate answers a pull request that exists. The supervisor answers the
-question nobody asks: **whether the pull requests that should exist are being
+The gate answers a pull request that exists. The supervisor answers a
+different question: **whether the pull requests that should exist are being
 opened at all.**
 
 Kargo does a great deal of work unattended, and its failure mode is silence. A
@@ -43,10 +43,11 @@ one.
 | `promotion_without_pr` | Running against a pull request that is no longer open, holding the queue until it times out. |
 | `superseded_pr` | More than one open promotion pull request for a Stage. Only the newest can merge; the rest collect gate runs and crowd the list. |
 
-## The remedy is the point
+## Every finding carries its remedy
 
-Recovering from each of these took an hour of reading Kargo's source, and none
-of the answers are guessable. So every finding carries the exact command:
+None of these recoveries are guessable from Kargo's API, and each took an hour
+of reading its source to establish. So every finding carries the exact command,
+and the non-obvious behaviours behind them are:
 
 - `kargo.akuity.io/abort=true` is **silently ignored**. The value is parsed as
   a request object; a bare `true` is not one. No error, no event, no log line —
@@ -116,10 +117,9 @@ The obvious rule is worth having:
     description: "Nothing is reporting on promotion health. Absence of findings is not evidence."
 ```
 
-A supervisor whose entire subject is silent failure has to be able to fail
-loudly itself. Without that second rule, one that stopped sweeping looks
-exactly like a pipeline with nothing wrong — which is the joke this component
-would rather not be.
+A supervisor whose subject is silent failure has to fail loudly itself.
+Without that second rule, a supervisor that has stopped sweeping looks exactly
+like a pipeline with nothing wrong.
 
 `bosun_pipeline_checked{resource="stages"}` is the same guard one level down: a
 sweep that read zero Stages found no problems, and must never be read as having
@@ -129,10 +129,10 @@ compare and a graph can return to the axis.
 ## What it will not do
 
 It does not create, update, patch or delete anything. The chart's ClusterRole
-has no such verb and says that a feature which seems to need one is a signal to
-reconsider the feature — and supervising does not need one. Auto-retrying a
-wedged promotion would mean write access to Kargo, and an agent that can
-re-run promotions unattended is a different, larger trust decision than one
-that tells you which command to run.
+has no such verb, and a feature that seems to need one is a signal to
+reconsider the feature; supervising does not need one.
 
-The remedy in the finding is that decision, made the small way.
+Auto-retrying a wedged promotion would mean write access to Kargo. An agent
+that re-runs promotions unattended is a larger trust decision than one that
+reports which command to run, and the remedy in each finding is what makes the
+smaller decision sufficient.

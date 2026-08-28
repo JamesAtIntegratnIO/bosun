@@ -42,8 +42,9 @@ both**, and adding one is worth more than almost any feature.
 
 ## Rule 2 — the safety model lives in code
 
-The model returns a verdict and an edit set. It does not edit files, and it
-does not choose what it is allowed to touch.
+The model returns a verdict and a proposal — scalar edits, or a complete
+migrated document on the structural path. It applies neither, and it does not
+choose what it is allowed to touch.
 
 Any change that moves an invariant from `edits/` or `agent/` into the prompt
 is a regression, however well the prompt performs. A prompt is a request; the
@@ -126,12 +127,10 @@ hack/lint.sh               # helm lint + values.schema.json validation
 hack/portability-test.sh   # no environment assumptions; everything renders
 ```
 
-`hack/extraction-test.sh` is gone. It proved this package could be lifted out
-of the platform repository that hosted it, and enforced a one-way link rule to
-keep the lift cheap. The lift has happened — this repository *is* the package,
-so a rule about escaping a directory that no longer exists fails on its own
-fixtures. `hack/portability-test.sh` keeps the checks that were never about
-extraction.
+`hack/portability-test.sh` is the successor to an extraction test that
+enforced a one-way link rule while this package still lived inside the platform
+repository. It keeps the checks that were never about extraction: no
+environment assumptions, and everything renders.
 
 The eval suite is the thing to watch. It measures classification against
 recorded incidents; a prompt or model change that moves those numbers should
@@ -155,25 +154,23 @@ say so in the changelog with the model it was measured against.
   Rule 1a cuts both ways -- the gate imports nothing from the agent, so a
   triage fix is not a reason to republish the gate.
 
-  It used to publish both from one matrix, and that was not merely wasteful.
-  The consumer pins the gate by `main-<sha>` and will not auto-merge it,
-  because the gate judges every other promotion and a human has to read the
-  bump. Republishing an identical gate under a new sha -- and it is never
-  byte-identical, the revision label carries the commit -- spent that
-  attention on nothing.
+  Publishing both from one matrix is not merely wasteful. The consumer pins
+  the gate by `main-<sha>` and will not auto-merge it, because the gate judges
+  every other promotion and a human has to read the bump. Republishing an
+  identical gate under a new sha -- and it is never byte-identical, since the
+  revision label carries the commit -- spends that attention on nothing.
 
 - **CI refuses a pull request that changes a chart without bumping its
   version.** Publishing already refuses to overwrite, but silently and after
   the fact: the pull request merges, publishes nothing, and looks exactly like
   a release.
 
-That last one is not hypothetical. Releases used to be a pull request bumping a
-version, merged by a person, followed by someone remembering to push a tag.
-Nobody remembered: 0.2.0 merged and was never tagged, so nothing between 0.1.0
-and 0.3.0 was published and the cluster ran the first agent for a day while
-five fixes sat on main looking shipped.
+That last rule comes from an incident. When releases were a version bump
+merged by a person followed by someone remembering to push a tag, 0.2.0 merged
+untagged: nothing between 0.1.0 and 0.3.0 was published, and the cluster ran the
+first agent for a day while five fixes sat on main looking shipped.
 
-One trap if you change any of this: **a tag pushed with `GITHUB_TOKEN` does not
+One thing to know if you change any of this: **a tag pushed with `GITHUB_TOKEN` does not
 trigger workflows.** GitHub blocks it to prevent recursion, so `release.yaml`
 *calls* the image workflow rather than tagging and hoping something notices.
 

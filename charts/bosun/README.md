@@ -1,10 +1,9 @@
 # Bosun
 
 > **Bosun** was called `delivery-agent` until 2026-08-23. The name changed;
-> the job did not. A bosun is the crew member who makes routine repairs on
-> their own authority and reports serious damage to the captain, which is
-> exactly the split this component draws between a mechanical fix and an
-> escalation. It sits beside Argo (the ship) and Kargo (the cargo).
+> the job did not. The split a bosun draws — routine repairs on their own
+> authority, serious damage reported to the captain — is the split this
+> component draws between a mechanical fix and an escalation.
 
 
 Runs [`bosun`](../..) in-cluster: Deployment,
@@ -137,8 +136,7 @@ That message is the fix instruction.
 
 ## What upstream says
 
-`triage.upstreamNotes` reads two things from the artifact's source project, and
-the second is newer.
+`triage.upstreamNotes` reads two things from the artifact's source project.
 
 **Release notes** say what the maintainers meant to change. **Commits between
 the two tags** say what they did — and they answer the question release notes
@@ -249,15 +247,17 @@ networkPolicy:
 With `flavor: cilium` you need none of that — the policy names the apiserver as
 an entity, which survives a control-plane node being replaced.
 
-The pod **refuses to start** if it cannot read the API, so a missing rule is a
-crash loop with an explanation rather than a permanent quiet shrug.
+The pod **refuses to start** if it cannot read the API, so a missing rule
+produces a crash loop that names its cause rather than a permanent silent
+hang.
 
 See [`adr/0006-live-reads-are-scoped-by-group.md`](../../adr/0006-live-reads-are-scoped-by-group.md).
 
 ## The other half of the network path
 
 This chart writes the policy governing what reaches the agent. It cannot write
-the **Kargo controller's** egress policy, and that is the half people miss.
+the **Kargo controller's** egress policy, which is the half most often
+missed.
 
 A controller allowed `0.0.0.0/0` with RFC1918 excepted — a common shape, since
 it usually only needs to reach registries — cannot reach a ClusterIP at all.
