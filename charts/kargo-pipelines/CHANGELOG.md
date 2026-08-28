@@ -3,6 +3,14 @@
 All notable changes to `kargo-pipelines`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.1.3] - 2026-08-28
+
+### Changed
+
+- **Documentation only.** `docs/chaining.md` and `docs/targets.md` are edited
+  for the repository's documentation voice — headings name their subject, and
+  the rules keep their reasoning. No template, value or default changed.
+
 ## [0.1.2] - 2026-08-24
 
 ### Changed

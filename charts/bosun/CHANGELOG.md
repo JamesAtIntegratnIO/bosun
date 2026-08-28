@@ -3,6 +3,18 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.20.1]
+
+### Changed
+
+- **Documentation only.** The chart's README no longer offers `gate.mode: ci`
+  as the only escape from the ArgoCD Secret grant — `gate.inventorySource:
+  argocd`, added in 0.20.0, removes that grant without leaving cluster mode,
+  and the `gate.mode: ci` entry now describes what it is actually for.
+
+  No template, value or default changed; the chart version moves with
+  `appVersion`, as in 0.19.0.
+
 ## [0.20.0]
 
 ### Added
