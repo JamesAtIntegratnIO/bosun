@@ -73,23 +73,43 @@ that stopped serving a version: every manifest still declaring one is migrated
 to the version the gate says survives, and the re-run gate re-counts the
 consumers to confirm the repair.
 
-**Escalates** — an API version change, a removed CRD, a dropped subchart, an
-upstream note mentioning a schema or database migration, a version skip the
-chart itself refuses, or any fix needing a file outside the addon's own tree.
+**Reshapes, under a harness** — where that swap alone would leave a field the
+new schema silently prunes, a model is asked for the migrated document, one
+document at a time. The proposal is refused whole unless it keeps the object's
+identity, fits the target schema, and invents no value; a refusal escalates
+rather than half-applying.
+
+**Escalates** — an apiVersion change in the *rendered output*, a document
+migration the harness refused, a removed CRD, a dropped subchart, an upstream
+note mentioning a schema or database migration, a version skip the chart itself
+refuses, or any fix needing a file outside the addon's own tree.
 
 It comments, labels, and stops. **It never closes a pull request.**
 
 ## The safety model is code, not prompt
 
-The model does not edit files. It returns a structured verdict and a proposed
-edit set; the service applies those edits deterministically behind a path
-allowlist and a deny-list its own configuration cannot remove from.
+The model never **writes**. It returns a structured verdict and a proposal:
+scalar edits for a mechanical fix, and — where swapping an apiVersion would
+leave a document the new schema silently prunes — a whole migrated document.
+The service applies what survives its own checks, behind a path allowlist and a
+deny-list its own configuration cannot remove from.
+
+A proposed document is a real widening, and it is bounded rather than trusted.
+It is refused *whole* unless it keeps the object's identity (`apiVersion` equal
+to the one the gate named; `kind`, `name` and `namespace` byte-identical), fits
+the target schema, and contains no value that is not either at that same path in
+the original, displaced by the schema change, or dictated by the schema itself.
+What lands is re-serialised from the structure the harness validated, never the
+model's own text. The model translates; it does not author.
 
 So *"never edit the gate, never weaken a policy to go green"* is an invariant
 the service enforces, not an instruction the model is asked to respect. A model
 that ignores the prompt entirely still cannot touch CI configuration.
 
-See [`adr/0001-structured-edits-not-agentic-loop.md`](adr/0001-structured-edits-not-agentic-loop.md).
+See [`adr/0001-structured-edits-not-agentic-loop.md`](adr/0001-structured-edits-not-agentic-loop.md)
+for the original line, and
+[`adr/0007-structure-from-the-schema-data-from-the-document.md`](adr/0007-structure-from-the-schema-data-from-the-document.md)
+for where it moved.
 
 ## Install
 

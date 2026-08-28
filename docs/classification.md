@@ -17,10 +17,39 @@ target version appears in the evidence*. If it does not, this becomes an
 escalation, and the applier refuses the edit even if the model tries.
 
 
+## Repaired before a model is asked anything
+
+Not a classification — this path runs *before* the model is called at all, and
+it is listed here because the case used to sit under **Escalate** and no longer
+does.
+
+**A CRD stopped serving a version manifests here still declare.**
+external-secrets 2.x stops serving `v1beta1` while 39 manifests still declare
+it. The gate's report names the consumer kind, the dropped versions and the
+version that survives, so the rewrite is arithmetic rather than judgement: every
+declaring manifest gets its `apiVersion` value changed, and the re-run gate
+re-counts the consumers to confirm the repair.
+
+Where the swap alone is *not* the whole job — a field the target schema would
+silently prune — one document at a time is sent to a model for reshaping, and
+the proposal is refused whole unless it keeps the object's identity, fits the
+target schema, and contains no value that is not either at that same path in the
+original, displaced by the schema change, or dictated by the schema itself. A
+refusal escalates. It never half-applies. See
+[safety-model.md](safety-model.md) and
+[ADR 0007](../adr/0007-structure-from-the-schema-data-from-the-document.md).
+
 ## Escalate
 
-**Any apiVersion change.** external-secrets 2.x stops serving `v1beta1` while
-39 manifests still declare it. Rewriting those is a migration.
+**An apiVersion change in the rendered output.** The chart now emits an object
+under a different apiVersion — a migration wearing a version number, which
+renders perfectly and breaks at runtime. Distinct from the repaired case above:
+there, the repository's own manifests declare a version the CRD dropped and the
+gate names the destination. Here the change is in what the chart *produces*, and
+nothing names what it should become.
+
+**A document migration the harness refused.** The reshape was attempted and did
+not survive its checks. What was lost, and why, is in the comment.
 
 **Removed CRDs or dropped subcharts.** kyverno 3.9.0 drops the cleanup
 subcharts several values keys point at, with seven minors of generate-rule

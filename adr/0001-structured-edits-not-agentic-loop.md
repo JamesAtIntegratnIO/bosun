@@ -1,7 +1,18 @@
 # 1. The model proposes structured edits; it does not edit files
 
-- **Status:** accepted
+- **Status:** accepted — **scope widened by
+  [ADR 0007](0007-structure-from-the-schema-data-from-the-document.md)** on
+  2026-08-24
 - **Date:** 2026-08-22
+
+> **Read this with 0007.** The rule below still holds where it matters: the
+> model does not write, and the harness applies. What changed is the size of
+> what it may propose. This ADR assumed a proposal is always a *scalar* edit —
+> path, key, `from`, `to` — because a scalar is corroborable against the file.
+> 0007 widened the proposal to a whole migrated document for the case a version
+> swap cannot reach, and replaced `from`-matching with three deterministic
+> checks on the OUTPUT. The title's "does not edit files" is therefore accurate
+> only in the sense it was written in: the model does not *apply* anything.
 
 ## Context
 
