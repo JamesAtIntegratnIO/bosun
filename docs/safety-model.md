@@ -6,8 +6,10 @@ not by instructions to a model.
 ## The model never writes anything
 
 It is asked one question and returns one structured answer: a classification,
-an explanation, and — only for the mechanical case — a list of proposed scalar
-edits. This process decides what, if anything, happens next.
+an explanation, and — only for the mechanical case — a proposal. That proposal
+is a list of scalar edits, or, on the structural-migration path, one whole
+migrated document. Either way the harness is what applies it, and the section
+below is what it has to survive first.
 
 That is the whole design. A model with file-edit tools can make a red gate
 green by deleting the check, and that failure is indistinguishable from success.

@@ -70,7 +70,7 @@ opened, so the agent is already waiting for `addons-gate` to settle. Its own
 commit status says so — `pending`, "reading addons-gate" — because a reader
 must be able to tell *working* from *done with nothing to say*.
 
-The gate is red. Three things can happen, in strict order of preference.
+The gate is red. Four things can happen, in strict order of preference.
 
 **The deterministic repair.** If the only blocking finding is dropped served
 versions, no judgement is needed: the report names the consumer kind, the
@@ -81,6 +81,20 @@ file — and pushes the migration to the pull request's branch. **No model is
 involved.** The gate re-runs on the new commit, counts the consumers again,
 finds none, and goes green. The red healed, and the thing that verified the
 repair is the same scanner that demanded it.
+
+**The reshape.** Sometimes swapping the version is not the whole job: the new
+schema would silently prune a field the old one carried, so a document that
+parses and applies quietly loses a value, and the render, the gate and the
+repository all look fine. Enumerating every upstream's structural changes is
+not possible, so here — and only here — a model is asked for the migrated
+document itself, one document at a time and capped per pull request. It is
+still not the thing that writes. The proposal is refused *whole* unless it
+keeps the object's identity, fits the target schema, and contains no value that
+is not either at that same path in the original, displaced by the schema change,
+or dictated by the schema itself; what lands is re-serialised from the structure
+the harness validated, never the model's own text. A refusal escalates, and
+values dropped along the way are listed in the comment even when dropping them
+was right. See [ADR 0007](../adr/0007-structure-from-the-schema-data-from-the-document.md).
 
 **The mechanical fix.** For a red the render *proves* — a chart default this
 repository needs pinned back, a coupled pin the new version requires — the
