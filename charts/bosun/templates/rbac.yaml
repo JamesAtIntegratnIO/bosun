@@ -84,18 +84,24 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "bosun.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
-{{- if eq .Values.gate.mode "cluster" }}
+{{- if and (eq .Values.gate.mode "cluster") (eq .Values.gate.inventorySource "secrets") }}
 ---
 {{- /*
 The one grant in this chart worth stopping on. The in-cluster gate renders
 against the live inventory, and the inventory IS the ArgoCD cluster Secrets --
 the same objects that carry cluster credentials. RBAC cannot grant "the labels
-but not the data", so cluster mode reads Secrets, and the honest response is
-to make the grant as small as it can be: a namespaced Role in the ArgoCD
-namespace only, get/list only, existing only while gate.mode is cluster. This
-is the price of deleting the checked-in inventory snapshot and its whole
-drift-check apparatus; an operator who will not pay it sets gate.mode to ci
-and keeps the snapshot.
+but not the data": there are no deny rules, `resourceNames` does not apply to
+`list` (a list request carries no name for the authorizer to match), and the
+label selector the gate sends is a filter the apiserver applies AFTER
+authorising -- so a token holding this Role can drop it and read every Secret
+in the namespace. The honest response is to make the grant as small as it can
+be: a namespaced Role in the ArgoCD namespace only, get/list only, existing
+only while gate.mode is cluster AND the inventory comes from the Secrets.
+
+Two ways to not make it at all. `gate.inventorySource: argocd` reads the same
+four fields from the ArgoCD API, which draws the line RBAC cannot, and this
+Role stops rendering. `gate.mode: ci` keeps the checked-in snapshot and its
+whole drift-check apparatus instead.
 */}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

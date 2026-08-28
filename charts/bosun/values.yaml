@@ -125,9 +125,10 @@ gate:
   #     than a guess. WHAT IT COSTS: get/list on Secrets in the ArgoCD
   #     namespace (the inventory lives in the ArgoCD cluster Secrets, which
   #     also carry cluster credentials -- rbac.create scopes the grant to
-  #     that one namespace), and the render runs over pull-request content
-  #     in-cluster, which is why fork pull requests are refused unless
-  #     `forkPRs` says otherwise.
+  #     that one namespace, and `inventorySource: argocd` below replaces it
+  #     with an ArgoCD account token), and the render runs over pull-request
+  #     content in-cluster, which is why fork pull requests are refused
+  #     unless `forkPRs` says otherwise.
   #   ci -- the original shape: the gate runs in CI (see ci/ in the bosun
   #     repository), the agent waits on the check and reads the report from
   #     a comment. The fallback for public repositories taking fork pull
@@ -147,6 +148,61 @@ gate:
   # mode sweep for new pull requests.
   wait: 10m
   poll: 30s
+
+  # Where cluster mode reads the live inventory from. Ignored in ci mode,
+  # which renders against a checked-in snapshot.
+  #
+  #   secrets (default) -- the ArgoCD cluster Secrets, straight from the
+  #     apiserver. One credential (the pod's own ServiceAccount), nothing in
+  #     the path that can be down by itself.
+  #   argocd -- the ArgoCD API, which serves the same four fields the gate
+  #     wants (name, server, labels, annotations) with the credential block
+  #     redacted.
+  #
+  # WHY YOU MIGHT MOVE. The Secret grant cannot be made smaller. The gate
+  # reads four fields; RBAC has no predicate for "the labels but not the
+  # data" -- there are no deny rules, `resourceNames` does not apply to
+  # `list`, and the label selector in the request is a filter the apiserver
+  # applies AFTER authorising. So a token holding that Role can drop the
+  # selector and read argocd-secret and every repository credential beside
+  # it. ArgoCD's own API draws the line RBAC cannot, and `argocd` deletes
+  # the Role entirely -- rbac.create stops rendering it.
+  #
+  # WHAT IT COSTS, as plainly as the grant it replaces. A second credential
+  # to mint, store and rotate, bearer-equivalent for whatever its ArgoCD RBAC
+  # permits. A second component that can be down on its own: the Secrets are
+  # readable whenever the apiserver is; argocd-server is not. And a second
+  # TLS story, because argocd-server serves its own certificate rather than
+  # the one the kubelet mounts into every pod.
+  #
+  # A trade, not a free win -- which is why it is a value and not the default.
+  inventorySource: secrets
+
+  # `inventorySource: argocd` only. Ignored otherwise.
+  argocd:
+    # The ArgoCD API server. In-cluster, so it CANNOT be reached through an
+    # ipBlock in the NetworkPolicy -- when the source is `argocd` the chart
+    # adds the namespace egress rule itself, on `port` below.
+    baseURL: https://argocd-server.argocd.svc
+    port: 443
+    # An ArgoCD account token:
+    #
+    #   argocd account generate-token --account bosun
+    #
+    # and in argocd-rbac-cm, the smallest policy that answers this question:
+    #
+    #   p, bosun, clusters, get, *, allow
+    #
+    # Nothing else. A token with more is a bigger credential than the Secret
+    # read it replaced, which would defeat the point.
+    existingSecret: ""
+    tokenKey: token
+    # argocd-server's default certificate is self-signed. Give this its CA
+    # (a Secret holding one PEM key) or set insecureSkipTLSVerify -- which of
+    # those you can produce is a fact about your install.
+    caSecret: ""
+    caKey: ca.crt
+    insecureSkipTLSVerify: false
 
   # The account whose gate report the agent will believe.
   #

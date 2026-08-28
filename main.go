@@ -214,22 +214,41 @@ func main() {
 	defer stopRun()
 
 	if cfg.GateMode == GateInCluster {
+		// Where the inventory comes from. Both readers answer the same
+		// question and the gate cannot tell them apart -- gateservice takes
+		// the function, not the reader -- which is the whole reason the choice
+		// can be a value rather than a fork in the service.
+		inventory := reader.ClusterInventory
+		remedy := "the gate renders against the ArgoCD cluster Secrets, which needs get/list on " +
+			"Secrets in the ArgoCD namespace (the chart creates the Role when gate.mode is " +
+			"cluster). Set gate.mode to ci to keep running the gate in CI instead"
+		if cfg.InventorySource == InventoryFromArgoCD {
+			argo := &cluster.ArgoCD{
+				BaseURL:               cfg.ArgoCDBaseURL,
+				Token:                 cfg.ArgoCDToken,
+				CAFile:                cfg.ArgoCDCAFile,
+				InsecureSkipTLSVerify: cfg.ArgoCDInsecureSkipTLSVerify,
+			}
+			inventory = argo.ClusterInventory
+			remedy = "the gate reads the inventory from the ArgoCD API, which needs a reachable " +
+				"argocd-server, a certificate this can verify (gate.argocd.caFile or " +
+				"gate.argocd.insecureSkipTLSVerify), and an account token with `clusters, get`. " +
+				"Set gate.inventorySource to secrets to read the cluster Secrets instead"
+		}
+
 		// Same fail-at-start-up rule as everything above: a ServiceAccount the
 		// RBAC does not let read the ArgoCD cluster Secrets would otherwise
 		// surface as an `error` status on every pull request -- a broken
 		// required check, discovered by whoever tries to merge next.
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		inv, err := reader.ClusterInventory(ctx)
+		inv, err := inventory(ctx)
 		cancel()
 		if err != nil {
-			logger.Fatalf("gate.mode is cluster and the inventory could not be read: %v\n"+
-				"  the gate renders against the ArgoCD cluster Secrets, which needs get/list on "+
-				"Secrets in the ArgoCD namespace (the chart creates the Role when gate.mode is "+
-				"cluster). Set gate.mode to ci to keep running the gate in CI instead", err)
+			logger.Fatalf("gate.mode is cluster and the inventory could not be read: %v\n  %s", err, remedy)
 		}
 		gs := &gateservice.Service{
 			Git:       git,
-			Inventory: reader.ClusterInventory,
+			Inventory: inventory,
 			CheckName: cfg.CheckName,
 			RepoURL:   cfg.GitRepoURL,
 			CloneRoot: cfg.CloneRoot,
@@ -240,8 +259,8 @@ func main() {
 		}
 		t.Gate = gs
 		go gs.Run(runCtx)
-		logger.Printf("gate: in-cluster, polling for open pull requests every %s (%d cluster(s) in the live inventory)",
-			cfg.GatePoll, len(inv.Clusters))
+		logger.Printf("gate: in-cluster, polling for open pull requests every %s (%d cluster(s) in the live inventory, read from %s)",
+			cfg.GatePoll, len(inv.Clusters), cfg.InventorySource)
 	} else {
 		logger.Printf("gate: ci -- waiting on the %s check and reading the report from comments", cfg.CheckName)
 	}

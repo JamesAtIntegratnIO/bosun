@@ -106,31 +106,62 @@ func ExportClusters(kubeContext, namespace string, filter ExportFilter) (*Invent
 // does not stamp GeneratedAt -- that is a property of a snapshot, and the
 // caller taking one adds it.
 func InventoryFromSecrets(items []ClusterSecret, filter ExportFilter) *Inventory {
-	inv := &Inventory{}
+	cs := make([]Cluster, 0, len(items))
 	for _, item := range items {
-		labels := filter.strip(item.Metadata.Labels)
+		c := Cluster{
+			Labels:      item.Metadata.Labels,
+			Annotations: item.Metadata.Annotations,
+			Name:        decode(item.Data["name"]),
+			Server:      decode(item.Data["server"]),
+		}
+		if c.Name == "" {
+			c.Name = item.Metadata.Name
+		}
+		cs = append(cs, c)
+	}
+	return InventoryFromClusters(cs, filter)
+}
+
+// InventoryFromClusters normalises clusters that arrive already decoded --
+// which is what a reader that is not looking at Secrets has: the ArgoCD API
+// serves name, server, labels and annotations as fields, with the credential
+// block redacted.
+//
+// This exists so the normalisation is written ONCE. ClusterSecret's comment
+// says the two Secret readers must never decode the same Secret two different
+// ways; the same argument holds a fortiori for two readers looking at
+// different sources for the same facts. A selector matches, or fails to match,
+// on exactly these maps -- so a source that trimmed one key differently would
+// produce a different targeting verdict from the same cluster, and nothing
+// downstream could tell.
+func InventoryFromClusters(cs []Cluster, filter ExportFilter) *Inventory {
+	inv := &Inventory{}
+	for _, c := range cs {
+		labels := filter.strip(c.Labels)
+		annotations := dropManagedBy(filter.strip(c.Annotations))
 		// Every ArgoCD cluster Secret carries this label -- it is the one the
 		// Secrets are found by -- and generators in the wild routinely select
 		// on it. LoadInventory adds it for snapshots that omitted it; a live
 		// read never passes through LoadInventory, so it is added here too.
+		//
+		// The one entry that must NOT get it is the implicit local cluster,
+		// which is backed by no Secret and carries no labels in ArgoCD either.
+		// Callers hand that one over already built rather than through here.
 		if _, ok := labels["argocd.argoproj.io/secret-type"]; !ok {
 			labels["argocd.argoproj.io/secret-type"] = "cluster"
 		}
-		c := Cluster{
+		inv.Clusters = append(inv.Clusters, Cluster{
+			Name:   c.Name,
+			Server: c.Server,
+			ArgoCD: c.ArgoCD,
 			Labels: labels,
 			// Annotations are trimmed to what the bootstraps actually
 			// template with. Labels are NOT: they are selector inputs, and
 			// which ones a future selector will match on is unknowable, so
 			// dropping any would reintroduce the stale-fixture failure this
 			// export exists to prevent.
-			Annotations: keepOnly(filter.strip(item.Metadata.Annotations), filter.KeepAnnotations),
-		}
-		c.Name = decode(item.Data["name"])
-		if c.Name == "" {
-			c.Name = item.Metadata.Name
-		}
-		c.Server = decode(item.Data["server"])
-		inv.Clusters = append(inv.Clusters, c)
+			Annotations: keepOnly(annotations, filter.KeepAnnotations),
+		})
 	}
 	return inv
 }
@@ -236,6 +267,35 @@ func decode(s string) string {
 // site-specific belongs in `clustersExport.ignoreKeys` in .gitops-gate.yaml --
 // hardcoding a particular platform's annotation here would be exactly the kind
 // of host coupling this package is built to avoid.
+// managedByAnnotation is ArgoCD's own ownership marker, and it is dropped from
+// EVERY inventory regardless of which source built it.
+//
+// Found by running the two sources against a real ArgoCD: the cluster Secrets
+// carry it and `GET /api/v1/clusters` does not, because ArgoCD strips it on
+// the way out of its own API. Left alone, the same cluster produced two
+// different inventories and the gate's verdict would have depended on which
+// source an operator configured -- the one thing this normalisation exists to
+// make impossible.
+//
+// It is dropped rather than synthesised on the ArgoCD side, and that direction
+// is deliberate. Re-adding it would mean asserting a fact the API did not
+// report, for clusters that may never have carried it -- inventing data to
+// make a comparison come out even, which is the habit this codebase refuses
+// everywhere else.
+//
+// The cost, stated because it is real rather than zero: ApplicationSet's
+// cluster generator templates against the Secret's annotations verbatim, so a
+// template referring to `metadata.annotations.managed-by` WOULD see it in
+// production and will not see it here. Nothing sane templates with ArgoCD's
+// ownership marker, and a gate that renders one key differently beats a gate
+// whose answer depends on its configuration.
+const managedByAnnotation = "managed-by"
+
+func dropManagedBy(m map[string]string) map[string]string {
+	delete(m, managedByAnnotation)
+	return m
+}
+
 var defaultNoisyKeys = []string{
 	"kubectl.kubernetes.io/last-applied-configuration",
 	"reconcile.external-secrets.io/data-hash",

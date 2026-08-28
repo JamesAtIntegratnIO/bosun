@@ -76,6 +76,21 @@ spec:
         - protocol: TCP
           port: {{ .port }}
     {{- end }}
+    {{- if and (eq $.Values.gate.mode "cluster") (eq $.Values.gate.inventorySource "argocd") }}
+    {{- /* argocd-server, for the inventory. Emitted by the chart rather than
+           left to `egress.namespaces` because the destination is known from
+           `inventorySource` and the failure mode of forgetting it is the worst
+           one in this file: a ClusterIP is DNAT'd before policy is evaluated,
+           so the connection hangs with zero bytes and the pod dies at start-up
+           blaming ArgoCD. */}}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Values.liveReads.argocdNamespace }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.gate.argocd.port }}
+    {{- end }}
     {{- /* The apiserver, for live cluster reads. Its own key because it is the
            destination people get wrong: `kubernetes.default.svc` is a
            ClusterIP, and a ClusterIP is DNAT'd to a real endpoint before

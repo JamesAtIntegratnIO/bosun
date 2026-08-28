@@ -70,8 +70,13 @@ Two things to know at this step, both loud rather than silent:
   inventory the gate renders against, and they also carry cluster
   credentials. The chart scopes the grant to a namespaced Role (get/list,
   ArgoCD namespace only, cluster mode only). This is the one grant in the
-  chart worth stopping on; if you will not make it, use
-  [CI mode](#appendix-ci-mode-and-the-cli).
+  chart worth stopping on, and it cannot be made smaller: RBAC has no way to
+  say "the labels but not the data". Two ways out if you will not make it.
+  `gate.inventorySource: argocd` reads the same four fields from ArgoCD's own
+  API, which redacts the credentials, and the Role stops being created — the
+  cost is an ArgoCD account token with `clusters, get` and a second component
+  that can be down. Or use [CI mode](#appendix-ci-mode-and-the-cli) and keep
+  the checked-in snapshot.
 - **The NetworkPolicy has two halves and the chart can only write one.** The
   chart's own policy needs your model endpoint and, for `standard` flavor,
   the apiserver's real endpoints (`kubectl get endpoints kubernetes -n

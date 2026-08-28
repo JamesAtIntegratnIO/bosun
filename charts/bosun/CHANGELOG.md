@@ -3,6 +3,30 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.20.0]
+
+### Added
+
+- **`gate.inventorySource`** — `secrets` (the default, unchanged behaviour) or
+  `argocd`. The cluster-mode inventory can now come from `GET /api/v1/clusters`
+  on the ArgoCD API instead of from the cluster Secrets, and **when it does,
+  the namespaced Role on the ArgoCD namespace is no longer created.**
+
+  The Secret grant cannot be made smaller. The gate reads four fields — name,
+  server, labels, annotations — and RBAC has no predicate for "the labels but
+  not the data": there are no deny rules, `resourceNames` does not apply to
+  `list`, and the label selector the gate sends is a filter the apiserver
+  applies *after* authorising. ArgoCD's API draws that line, serving the same
+  four fields with the credential block redacted.
+
+  It is a trade rather than a win, and both halves are stated in `values.yaml`:
+  an ArgoCD account token to mint, store and rotate (`clusters, get` and
+  nothing else), a component that can be down on its own, and a second TLS
+  story — `gate.argocd.caSecret` or `gate.argocd.insecureSkipTLSVerify`,
+  because argocd-server serves its own certificate. The chart emits the
+  NetworkPolicy egress rule for the ArgoCD namespace itself; argocd-server is
+  a ClusterIP, and forgetting it hangs with zero bytes.
+
 ## [0.19.0]
 
 ### Changed

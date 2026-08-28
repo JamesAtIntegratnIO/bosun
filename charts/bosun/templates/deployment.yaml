@@ -125,6 +125,23 @@ spec:
               value: {{ .Values.supervise.interval | quote }}
             - name: GATE_POLL
               value: {{ .Values.gate.poll | quote }}
+            - name: INVENTORY_SOURCE
+              value: {{ .Values.gate.inventorySource | quote }}
+            {{- if and (eq .Values.gate.mode "cluster") (eq .Values.gate.inventorySource "argocd") }}
+            - name: ARGOCD_BASE_URL
+              value: {{ .Values.gate.argocd.baseURL | quote }}
+            - name: ARGOCD_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "gate.argocd.existingSecret is required when gate.inventorySource is argocd" .Values.gate.argocd.existingSecret }}
+                  key: {{ .Values.gate.argocd.tokenKey }}
+            {{- if .Values.gate.argocd.caSecret }}
+            - name: ARGOCD_CA_FILE
+              value: /etc/bosun/argocd-ca/{{ .Values.gate.argocd.caKey }}
+            {{- end }}
+            - name: ARGOCD_INSECURE_SKIP_TLS_VERIFY
+              value: {{ .Values.gate.argocd.insecureSkipTLSVerify | quote }}
+            {{- end }}
             {{- with .Values.gate.reportAuthor }}
             # Only when set. Empty is not "trust nobody" -- it is "use the
             # per-host default", and the binary is where that lives, because
@@ -194,6 +211,15 @@ spec:
             # /tmp and nobody had to think about it.
             - name: tmp
               mountPath: /tmp
+            {{- if and (eq .Values.gate.mode "cluster") (eq .Values.gate.inventorySource "argocd") .Values.gate.argocd.caSecret }}
+            # The CA that verifies argocd-server. Nothing mounts one for it the
+            # way the kubelet does for the apiserver, so it has to come from
+            # somewhere -- and a Secret an operator already manages beats a
+            # certificate baked into the image.
+            - name: argocd-ca
+              mountPath: /etc/bosun/argocd-ca
+              readOnly: true
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
@@ -209,6 +235,11 @@ spec:
           emptyDir: {}
         - name: tmp
           emptyDir: {}
+        {{- if and (eq .Values.gate.mode "cluster") (eq .Values.gate.inventorySource "argocd") .Values.gate.argocd.caSecret }}
+        - name: argocd-ca
+          secret:
+            secretName: {{ .Values.gate.argocd.caSecret }}
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

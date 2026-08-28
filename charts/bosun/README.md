@@ -61,6 +61,57 @@ Role that exists only in this mode). And the render runs over pull-request
 content in-cluster, so **fork pull requests are refused** with an `error`
 status unless `gate.forkPRs` says otherwise.
 
+### Where the inventory comes from
+
+`gate.inventorySource: secrets` (the default) is the grant above: the
+inventory *is* the ArgoCD cluster Secrets, read from the apiserver with the
+pod's own ServiceAccount. One credential, and nothing in the path that can be
+down by itself.
+
+`gate.inventorySource: argocd` reads the same four fields — name, server,
+labels, annotations — from `GET /api/v1/clusters` on the ArgoCD API, which
+serves them with the credential block redacted. **The Role stops being
+created.** The reason to want this is that the Secret grant cannot be made
+smaller: the gate reads four fields, and RBAC has no predicate for "the labels
+but not the data" — there are no deny rules, `resourceNames` does not apply to
+`list`, and the label selector the gate sends is a filter the apiserver
+applies *after* authorising, so a token holding that Role can drop it and read
+`argocd-secret` and every repository credential beside it. ArgoCD's own API
+draws the line RBAC cannot.
+
+What it costs, as plainly as the grant it replaces:
+
+```bash
+argocd account generate-token --account bosun
+```
+
+```yaml
+gate:
+  inventorySource: argocd
+  argocd:
+    baseURL: https://argocd-server.argocd.svc
+    existingSecret: bosun-argocd   # key `token`
+    caSecret: bosun-argocd-ca      # or insecureSkipTLSVerify: true
+```
+
+and in `argocd-rbac-cm`, the smallest policy that answers the question:
+
+```
+p, bosun, clusters, get, *, allow
+```
+
+A second credential to mint, store and rotate, bearer-equivalent for whatever
+its ArgoCD RBAC permits — give it that one line and nothing else, or it is a
+bigger credential than the Secret read it replaced. A second component that
+can be down: the Secrets are readable whenever the apiserver is; argocd-server
+is not. And a second TLS story, because argocd-server serves its own
+certificate rather than the one the kubelet mounts into every pod — hence
+`caSecret`, or `insecureSkipTLSVerify` if nobody can produce that CA. The
+chart adds the NetworkPolicy egress rule for the ArgoCD namespace itself,
+because argocd-server is a ClusterIP and forgetting it hangs with zero bytes.
+
+A trade, not a free win — which is why it is a value and not the default.
+
 `gate.mode: ci` is the original shape — the gate runs in CI
 ([`ci/`](../../ci)), the agent waits on the check and reads the report from a
 comment. The fallback for public repositories taking fork pull requests, and
