@@ -176,11 +176,14 @@ helm install bosun oci://ghcr.io/jamesatintegratnio/charts/bosun \
 ```
 
 :::caution[Two things to get right here]
-**Cluster mode reads the ArgoCD cluster Secrets.** They are the live inventory
-the gate renders against, and they also carry cluster credentials. The chart
-scopes the grant to a namespaced Role — get/list, ArgoCD namespace only, cluster
-mode only. If you will not make that grant, use
-[`gate.mode: ci`](/gate/ci-adapters/).
+**Cluster mode reads the ArgoCD cluster Secrets by default.** They are the live
+inventory the gate renders against, and they also carry cluster credentials. The
+chart scopes the grant to a namespaced Role — get/list, ArgoCD namespace only,
+cluster mode only. Two ways out if you will not make it:
+`gate.inventorySource: argocd` reads the same four fields from ArgoCD's own API,
+which redacts the credentials, and the Role stops being created — the cost is an
+ArgoCD account token with `clusters, get` and a second component that can be
+down. Or [`gate.mode: ci`](/gate/ci-adapters/) and a checked-in snapshot.
 
 **The NetworkPolicy has two halves and the chart can only write one.** The other
 half is the Kargo controller's egress policy, which must permit this namespace

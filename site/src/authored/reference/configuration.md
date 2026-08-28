@@ -298,6 +298,11 @@ a hang with zero bytes, not an error.
 | `resources` | — | `25m` CPU / `64Mi` requested, `512Mi` memory limit |
 | `nodeSelector`, `tolerations`, `affinity`, `podAnnotations`, `priorityClassName` | — | standard |
 
+The pod spec also carries `CLONE_ROOT=/work`, which is not a chart value. It is
+where the agent and the gate clone a pull request's branch, backed by an
+`emptyDir` so the root filesystem can stay read-only. Nothing there is worth
+persisting — a restart mid-triage starts clean rather than resuming.
+
 `branding.mark` is **deprecated and ignored** since 0.17.0. Comments no longer
 carry an identity header at all — authenticating as a GitHub App puts the name
 and avatar above every comment already, and a bold header under that was the

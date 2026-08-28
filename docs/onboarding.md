@@ -183,8 +183,9 @@ change is bad".
   default (rendering a stranger's helm values inside your cluster is a trust
   decision, and the refusal is an `error` status naming `gate.forkPRs`). A
   CI runner is a throwaway sandbox; the cluster is not.
-- **You will not grant the Secret read**, or want the gate to keep answering
-  while the cluster itself is down.
+- **You want the gate to keep answering while the cluster itself is down.**
+  (If the Secret read is the only objection, `gate.inventorySource: argocd`
+  removes that grant without leaving cluster mode — see step 2.)
 - **You want the gate with no agent at all** — it is still a container with
   an exit code, runnable from any CI.
 

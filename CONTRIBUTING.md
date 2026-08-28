@@ -63,6 +63,11 @@ and [`docs/safety-model.md`](docs/safety-model.md).
 A change that alters behaviour and does not touch the relevant documentation is
 incomplete.
 
+The voice and accuracy rules for that prose are in
+[`.claude/skills/docs-voice/SKILL.md`](.claude/skills/docs-voice/SKILL.md): what
+a page may claim without reading the code first, and why `adr/` and the
+changelogs are exempt from it.
+
 ## Where things live
 
 One package per decision, each with a doc comment saying what it owns and what

@@ -161,9 +161,9 @@ clusters:
 
 **The `clusters:` key and this file apply only to `gate.mode: ci` and to the
 CLI.** In cluster mode — the default since
-[ADR 0008](../../adr/0008-the-gate-moves-in-cluster.md) — the agent reads the
-live ArgoCD cluster Secrets on every run, and there is no snapshot to keep
-current. The rest of this section is about the snapshot, which is the gate's
+[ADR 0008](../../adr/0008-the-gate-moves-in-cluster.md) — the inventory is read
+live on every run, from ArgoCD's cluster Secrets or from ArgoCD's API depending
+on `gate.inventorySource`, and there is no snapshot to keep current. The rest of this section is about the snapshot, which is the gate's
 weakest joint when it is in use.
 
 Generators resolve selectors against **live** cluster labels. CI has no cluster

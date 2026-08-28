@@ -114,7 +114,9 @@ A trade, not a free win — which is why it is a value and not the default.
 `gate.mode: ci` is the original shape — the gate runs in CI
 ([`ci/`](../../ci)), the agent waits on the check and reads the report from a
 comment. The fallback for public repositories taking fork pull requests, and
-for clusters that will not grant the Secret read. Everything below about
+for a gate that must keep answering while the cluster is down — the Secret
+grant on its own is answered by `inventorySource: argocd` above, without
+leaving cluster mode. Everything below about
 `gate.reportAuthor` applies to this mode; in cluster mode the verdict never
 travels through a comment, so there is nothing to authenticate.
 

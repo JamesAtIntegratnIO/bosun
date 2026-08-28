@@ -23,7 +23,10 @@ loop names its cause in the log; a degraded process does not.
 | `GATE_MODE "…" is not a mode (cluster or ci)` | Typo | `cluster` or `ci` |
 | `SUPERVISE_PIPELINE needs apiserver access` | Supervisor on, but neither live reads nor cluster mode | Set `liveReads.enabled: true`, or `gate.mode: cluster`, or `supervise.enabled: false` |
 | `no ArgoCD cluster Secrets in namespace "…"` | Wrong `liveReads.argocdNamespace`, or the RBAC grant is missing | The gate cannot expand a generator against an empty inventory. Point it at the real ArgoCD namespace |
-| `secrets is forbidden` | The Role was not created, or `rbac.create: false` | Cluster mode needs get/list on Secrets in the ArgoCD namespace |
+| `secrets is forbidden` | The Role was not created, or `rbac.create: false` | Cluster mode with `gate.inventorySource: secrets` (the default) needs get/list on Secrets in the ArgoCD namespace. `inventorySource: argocd` needs neither |
+| `INVENTORY_SOURCE is argocd but ARGOCD_BASE_URL is empty` | `gate.inventorySource: argocd` without `gate.argocd.baseURL` | Set it to the ArgoCD API server, e.g. `https://argocd-server.argocd.svc` |
+| `INVENTORY_SOURCE is argocd but ARGOCD_TOKEN is empty` | No ArgoCD account token | `argocd account generate-token --account <account>`, and give that account `clusters, get` in ArgoCD's RBAC |
+| `INVENTORY_SOURCE "…" is not a source (secrets or argocd)` | Typo | `secrets` or `argocd` |
 | `github app authentication failed` | Wrong `appId`, wrong key, or the App is not installed on the repository | Check `git.app.privateKeyKey` matches the Secret's key |
 
 ## The gate never reports on a pull request
