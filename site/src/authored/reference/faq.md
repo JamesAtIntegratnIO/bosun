@@ -68,9 +68,14 @@ Secrets are the live inventory the gate renders against, and they also carry
 cluster credentials. The chart scopes that grant to a namespaced Role, in that
 namespace only, in cluster mode only.
 
-It is the one grant in the chart worth stopping on. If you will not make it,
-`gate.mode: ci` keeps the original shape whole: the gate runs as a container in
-your CI, and the agent reads the verdict from a comment.
+It is the one grant in the chart worth stopping on, and it cannot be made
+smaller: RBAC has no way to say "the labels but not the data". Two ways out if
+you will not make it. `gate.inventorySource: argocd` reads the same four fields
+from ArgoCD's own API, which redacts the credentials, and the Role stops being
+created — the cost is an ArgoCD account token with `clusters, get` and a second
+component that can be down. Or `gate.mode: ci` keeps the original shape whole:
+the gate runs as a container in your CI, and the agent reads the verdict from a
+comment.
 
 Beyond that, live reads are **off by default**, and are `get` and `list` only —
 the ClusterRole has no `create`, `update`, `patch` or `delete` verb anywhere.
@@ -129,8 +134,9 @@ when the promotion opens the pull request. Anything that can POST that shape to
 ## Do I need ArgoCD?
 
 For cluster mode, yes — the ArgoCD cluster Secrets *are* the inventory the gate
-expands ApplicationSets against. In CI mode that inventory is a checked-in
-snapshot instead, maintained by `gitops-gate clusters export`.
+expands ApplicationSets against, whether it reads them directly or through
+ArgoCD's API (`gate.inventorySource`). In CI mode that inventory is a
+checked-in snapshot instead, maintained by `gitops-gate clusters export`.
 
 ## Why are the gate and the agent in one repository?
 

@@ -77,9 +77,35 @@ type Config struct {
 	// value and is still the only thing a host with no stable bot identity can
 	// express.
 	GateReportAuthor string
-	MaxAttempts      int
-	GateWait         time.Duration
-	GatePoll         time.Duration
+	// InventorySource is where cluster mode reads the live inventory from.
+	//
+	//   secrets (default) -- the ArgoCD cluster Secrets, read straight from
+	//     the apiserver. One credential (the pod's own ServiceAccount), no
+	//     component in the path that can be down by itself, and a grant that
+	//     cannot be made smaller: RBAC has no way to say "the labels but not
+	//     the data", so the Role that reads them can read every Secret in the
+	//     ArgoCD namespace.
+	//   argocd -- the ArgoCD API, which serves the same four fields with the
+	//     credential block redacted. Deletes that grant, and pays for it with
+	//     a second credential and a second thing that can be down.
+	//
+	// Read only in cluster mode; CI mode renders against a snapshot.
+	InventorySource InventorySource
+	// ArgoCDBaseURL is the ArgoCD API server, e.g.
+	// https://argocd-server.argocd.svc. InventorySource argocd only.
+	ArgoCDBaseURL string
+	// ArgoCDToken authenticates to it: an ArgoCD account token, which needs
+	// `clusters, get` in ArgoCD's own RBAC and nothing else.
+	ArgoCDToken string
+	// ArgoCDCAFile verifies argocd-server. Empty uses the system roots.
+	ArgoCDCAFile string
+	// ArgoCDInsecureSkipTLSVerify accepts any certificate from it -- the
+	// answer for the default self-signed argocd-server certificate when
+	// nobody can produce its CA.
+	ArgoCDInsecureSkipTLSVerify bool
+	MaxAttempts                 int
+	GateWait                    time.Duration
+	GatePoll                    time.Duration
 
 	// Supervise turns on the pipeline sweep: a periodic read of Kargo that
 	// reports what has silently stopped. Independent of the gate, and
@@ -161,6 +187,11 @@ func LoadConfig() (*Config, error) {
 		CloneRoot: env("CLONE_ROOT", ""),
 	}
 	c.GateForkPRs = envBool("GATE_FORK_PRS", false)
+	c.InventorySource = InventorySource(env("INVENTORY_SOURCE", string(InventoryFromSecrets)))
+	c.ArgoCDBaseURL = os.Getenv("ARGOCD_BASE_URL")
+	c.ArgoCDToken = os.Getenv("ARGOCD_TOKEN")
+	c.ArgoCDCAFile = os.Getenv("ARGOCD_CA_FILE")
+	c.ArgoCDInsecureSkipTLSVerify = envBool("ARGOCD_INSECURE_SKIP_TLS_VERIFY", false)
 
 	// Defaulted per host rather than globally, because the answer is a fact
 	// about the host and not a preference. A gate running in GitHub Actions
@@ -286,6 +317,28 @@ func (c *Config) validate() error {
 	case GateInCluster, GateInCI:
 	default:
 		return fmt.Errorf("GATE_MODE %q is not a mode (cluster or ci)", c.GateMode)
+	}
+
+	switch c.InventorySource {
+	case InventoryFromSecrets:
+	case InventoryFromArgoCD:
+		// Checked here rather than left to the reader's start-up probe,
+		// because a missing URL or token is a values mistake with a one-line
+		// fix and this is where the other one-line fixes are named. The probe
+		// still runs: it catches the failures this cannot see, like a token
+		// ArgoCD rejects.
+		if c.GateMode == GateInCluster {
+			if c.ArgoCDBaseURL == "" {
+				return fmt.Errorf("INVENTORY_SOURCE is argocd but ARGOCD_BASE_URL is empty: " +
+					"the gate needs the ArgoCD API server, e.g. https://argocd-server.argocd.svc")
+			}
+			if c.ArgoCDToken == "" {
+				return fmt.Errorf("INVENTORY_SOURCE is argocd but ARGOCD_TOKEN is empty: " +
+					"mint one with `argocd account generate-token --account <account>`")
+			}
+		}
+	default:
+		return fmt.Errorf("INVENTORY_SOURCE %q is not a source (secrets or argocd)", c.InventorySource)
 	}
 
 	// Supervision needs the cluster reader, which is only built for live reads
@@ -423,4 +476,14 @@ type GateMode string
 const (
 	GateInCluster GateMode = "cluster"
 	GateInCI      GateMode = "ci"
+)
+
+// InventorySource is where cluster mode reads the live cluster inventory
+// from. Same rule as the three above: it selects a code path, so it is a named
+// type validated in one switch and dispatched in another.
+type InventorySource string
+
+const (
+	InventoryFromSecrets InventorySource = "secrets"
+	InventoryFromArgoCD  InventorySource = "argocd"
 )

@@ -41,19 +41,26 @@ func (a *APIServer) ClusterInventory(ctx context.Context) (*gate.Inventory, erro
 	}
 	inv := gate.InventoryFromSecrets(out.Items, gate.ExportFilter{})
 	if len(inv.Clusters) == 0 {
-		// A single-cluster ArgoCD managing only itself registers no Secret at
-		// all -- the local cluster is implicit. ArgoCD's own clusters
-		// generator still includes it, as `in-cluster` with no labels, so an
-		// inventory that mirrors ArgoCD says the same thing. No labels is
-		// faithful, not lazy: a selector that matches on a label this entry
-		// lacks excludes it in ArgoCD too, and the inventory validator will
-		// say so out loud.
-		return &gate.Inventory{Clusters: []gate.Cluster{{
-			Name:        "in-cluster",
-			Server:      "https://kubernetes.default.svc",
-			Labels:      map[string]string{},
-			Annotations: map[string]string{},
-		}}}, nil
+		return implicitLocalCluster(), nil
 	}
 	return inv, nil
+}
+
+// implicitLocalCluster is what an ArgoCD managing only the cluster it runs in
+// looks like: no Secret at all, because the local cluster is implicit.
+// ArgoCD's own clusters generator still includes it, as `in-cluster` with no
+// labels, so an inventory that mirrors ArgoCD says the same thing. No labels
+// is faithful, not lazy: a selector that matches on a label this entry lacks
+// excludes it in ArgoCD too, and the inventory validator will say so out loud.
+//
+// Shared by both inventory sources. The two read different endpoints and must
+// still answer identically for the same cluster, and this is the one entry
+// neither endpoint returns.
+func implicitLocalCluster() *gate.Inventory {
+	return &gate.Inventory{Clusters: []gate.Cluster{{
+		Name:        "in-cluster",
+		Server:      "https://kubernetes.default.svc",
+		Labels:      map[string]string{},
+		Annotations: map[string]string{},
+	}}}
 }

@@ -204,8 +204,81 @@
         },
         "forkPRs": {
           "type": "boolean"
+        },
+        "inventorySource": {
+          "type": "string",
+          "enum": [
+            "secrets",
+            "argocd"
+          ]
+        },
+        "argocd": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "baseURL": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "tokenKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "caSecret": {
+              "type": "string"
+            },
+            "caKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "insecureSkipTLSVerify": {
+              "type": "boolean"
+            }
+          }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "inventorySource": {
+                "const": "argocd"
+              }
+            },
+            "required": [
+              "inventorySource"
+            ]
+          },
+          "then": {
+            "properties": {
+              "argocd": {
+                "required": [
+                  "baseURL",
+                  "existingSecret"
+                ],
+                "properties": {
+                  "baseURL": {
+                    "minLength": 1
+                  },
+                  "existingSecret": {
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "required": [
+              "argocd"
+            ]
+          }
+        }
+      ]
     },
     "triage": {
       "type": "object",

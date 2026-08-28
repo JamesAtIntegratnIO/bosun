@@ -105,7 +105,7 @@ func TestSuperviseNeedsApiserverAccess(t *testing.T) {
 			GitProvider: "github",
 			LLMProvider: "anthropic", LLMModel: "m",
 			AllowPaths: []string{"addons/**"},
-			GateMode:   "ci",
+			GateMode:   "ci", InventorySource: InventoryFromSecrets,
 		}
 	}
 
@@ -185,7 +185,7 @@ func TestTheValidatorAcceptsExactlyTheValuesThatDispatch(t *testing.T) {
 			GitProvider: GitGitHub,
 			LLMProvider: LLMAnthropic, LLMModel: "m",
 			AllowPaths: []string{"addons/**"},
-			GateMode:   GateInCluster,
+			GateMode:   GateInCluster, InventorySource: InventoryFromSecrets,
 		}
 	}
 
@@ -230,5 +230,60 @@ func TestTheValidatorAcceptsExactlyTheValuesThatDispatch(t *testing.T) {
 	c.GateMode = "local"
 	if err := c.validate(); err == nil {
 		t.Error("an unknown gate mode must not start")
+	}
+
+	for _, src := range []InventorySource{InventoryFromSecrets, InventoryFromArgoCD} {
+		c := base()
+		c.InventorySource = src
+		// The argocd source needs somewhere to read and something to read it
+		// with; those are separate rules, not a rejection of the source.
+		c.ArgoCDBaseURL, c.ArgoCDToken = "https://argocd-server.argocd.svc", "tok"
+		if err := c.validate(); err != nil {
+			t.Errorf("INVENTORY_SOURCE %q is dispatched but rejected: %v", src, err)
+		}
+	}
+	c = base()
+	c.InventorySource = "configmap"
+	if err := c.validate(); err == nil {
+		t.Error("an inventory source with no dispatch branch must not start")
+	}
+}
+
+// The argocd source replaces one credential with another, and both halves of
+// the new one are things an operator forgets. Naming them at start-up is the
+// difference between a pod that will not start and an `error` status on every
+// pull request, discovered by whoever tries to merge next.
+func TestTheArgoCDInventorySourceNeedsAURLAndAToken(t *testing.T) {
+	base := func() *Config {
+		return &Config{
+			GitOwner: "o", GitRepo: "r", GitRepoURL: "u", GitToken: "t",
+			GitProvider: GitGitHub,
+			LLMProvider: LLMAnthropic, LLMModel: "m",
+			AllowPaths:  []string{"addons/**"},
+			GateMode:    GateInCluster,
+			ArgoCDToken: "tok", ArgoCDBaseURL: "https://argocd-server.argocd.svc",
+			InventorySource: InventoryFromArgoCD,
+		}
+	}
+
+	c := base()
+	c.ArgoCDBaseURL = ""
+	if err := c.validate(); err == nil || !strings.Contains(err.Error(), "ARGOCD_BASE_URL") {
+		t.Errorf("a missing ArgoCD URL must name the setting: %v", err)
+	}
+
+	c = base()
+	c.ArgoCDToken = ""
+	if err := c.validate(); err == nil || !strings.Contains(err.Error(), "ARGOCD_TOKEN") {
+		t.Errorf("a missing ArgoCD token must name the setting: %v", err)
+	}
+
+	// CI mode never reads a live inventory, so neither is required there --
+	// refusing to start would be a rule about a code path that does not run.
+	c = base()
+	c.GateMode, c.Supervise = GateInCI, false
+	c.ArgoCDBaseURL, c.ArgoCDToken = "", ""
+	if err := c.validate(); err != nil {
+		t.Errorf("ci mode reads no live inventory and must not demand ArgoCD credentials: %v", err)
 	}
 }

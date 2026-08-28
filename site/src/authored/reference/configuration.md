@@ -88,6 +88,43 @@ the score to optimise is *unsafe actions = 0* rather than accuracy.
 | `gate.wait` | `GATE_WAIT` | `10m` | How long to wait for a verdict. CI mode only |
 | `gate.poll` | `GATE_POLL` | `30s` | Paces the cluster-mode sweep for new pull requests |
 | `gate.reportAuthor` | `GATE_REPORT_AUTHOR` | *(per-host)* | Whose gate report the agent will believe — see below |
+| `gate.inventorySource` | `INVENTORY_SOURCE` | `secrets` | Where cluster mode reads the live inventory — see below |
+| `gate.argocd.baseURL` | `ARGOCD_BASE_URL` | `https://argocd-server.argocd.svc` | The ArgoCD API. `inventorySource: argocd` only |
+| `gate.argocd.port` | *(NetworkPolicy only)* | `443` | The port the chart's egress rule opens to the ArgoCD namespace |
+| `gate.argocd.existingSecret` | `ARGOCD_TOKEN` | *(none)* | Secret holding the ArgoCD account token, key `tokenKey` |
+| `gate.argocd.caSecret` | `ARGOCD_CA_FILE` | *(none)* | Secret holding the CA that verifies argocd-server, key `caKey` |
+| `gate.argocd.insecureSkipTLSVerify` | `ARGOCD_INSECURE_SKIP_TLS_VERIFY` | `false` | Accept any certificate from argocd-server |
+
+### `gate.inventorySource` is where the uncomfortable grant lives
+
+Cluster mode reads four fields — name, server, labels, annotations — and by
+default it reads them from the ArgoCD cluster Secrets, which also carry cluster
+credentials. **That grant cannot be made smaller.** Kubernetes RBAC has no
+predicate for "the labels but not the data": there are no deny rules,
+`resourceNames` does not apply to `list` (a list request carries no name for
+the authorizer to match), and the label selector the gate sends is a filter the
+apiserver applies *after* authorising — so a token holding the Role can drop it
+and read every Secret in the namespace.
+
+`gate.inventorySource: argocd` reads the same four fields from
+`GET /api/v1/clusters` on the ArgoCD API, which serves them with the credential
+block redacted. **The Role stops being created.** Mint the token with
+
+```bash
+argocd account generate-token --account bosun
+```
+
+and give it one line in `argocd-rbac-cm` — `p, bosun, clusters, get, *, allow`
+— and nothing else, or it is a bigger credential than the Secret read it
+replaced.
+
+It is a trade rather than a win, which is why it is not the default: a second
+credential to rotate, a second component that can be down on its own (the
+Secrets are readable whenever the apiserver is; argocd-server is not), and a
+second TLS story, because argocd-server serves its own certificate rather than
+the one the kubelet mounts into every pod. The chart adds the NetworkPolicy
+egress rule for the ArgoCD namespace itself — argocd-server is a ClusterIP, and
+forgetting that hangs with zero bytes.
 
 ### `gate.forkPRs` is off for a reason
 
