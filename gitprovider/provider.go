@@ -14,6 +14,8 @@ package gitprovider
 
 import (
 	"context"
+	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -177,8 +179,40 @@ type Provider interface {
 	// Never to the default branch. The agent's entire write surface is the
 	// bot's own branch, and the change still has to pass the gate and the
 	// merge policy to reach anywhere.
+	//
+	// On success it ADVANCES pr.HeadSHA to the commit it just pushed, because
+	// that commit is the branch head now. Leaving the caller holding the
+	// pre-push SHA is not a stale read, it is a wrong one: every status the
+	// caller writes afterwards lands on a commit that is no longer the head,
+	// so the new head carries a green gate and no verdict at all -- and a
+	// required check that can never be satisfied is indistinguishable from an
+	// agent that died mid-run. Observed on two independent promotions before
+	// it was traced here.
 	PushFix(ctx context.Context, pr *PullRequest, root, message string) error
 
 	// Name identifies the provider in logs.
 	Name() string
+}
+
+// headSHA reads the commit at HEAD of the worktree at root.
+//
+// Shared by both providers because both push the same way: commit locally,
+// then push HEAD to the pull request's branch. The commit that lands is the
+// one git just made, so the worktree is the authority and no API round-trip is
+// needed to learn it.
+//
+// Falls back to the SHA the caller already had if git cannot answer. That is
+// the pre-push value and therefore wrong, but it is wrong in exactly the way
+// the caller was already wrong before this existed -- a status on a superseded
+// commit -- rather than an empty SHA, which every provider rejects outright
+// and which would turn a recoverable mis-target into a hard failure.
+func headSHA(ctx context.Context, root, fallback string) string {
+	out, err := exec.CommandContext(ctx, "git", "-C", root, "rev-parse", "HEAD").Output()
+	if err != nil {
+		return fallback
+	}
+	if sha := strings.TrimSpace(string(out)); sha != "" {
+		return sha
+	}
+	return fallback
 }

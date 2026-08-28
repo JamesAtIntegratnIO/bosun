@@ -436,5 +436,7 @@ func (g *Gitea) PushFix(ctx context.Context, pr *PullRequest, root, message stri
 				snippet([]byte(redactErr(stderr.String(), g.Token))))
 		}
 	}
+	// The branch head moved; tell the caller so its statuses land on it.
+	pr.HeadSHA = headSHA(ctx, root, pr.HeadSHA)
 	return nil
 }

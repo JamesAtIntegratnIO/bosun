@@ -28,10 +28,11 @@ cuts a tag, and the site should ship as something you can point at.
   `../adr/0008-the-gate-moves-in-cluster.md` has to work on GitHub *and*
   resolve to `/decisions/0008-the-gate-moves-in-cluster/` on the site, so every
   relative link is resolved against its own source directory and rewritten — to
-  a site route if that file is published, to a GitHub URL if it is not. Both halves of that decision fail
-  silently when wrong, so `site/scripts/check-links.mjs` resolves every internal
-  link against the pages that actually built and every rewritten GitHub link
-  against the working tree. It runs on every pull request.
+  a site route if that file is published, to a GitHub URL if it is not. Both
+  halves of that decision fail silently when wrong, so
+  `site/scripts/check-links.mjs` resolves every internal link against the pages
+  that actually built and every rewritten GitHub link against the working tree.
+  It runs on every pull request.
 
 - **Four pages that did not exist.** [Quickstart](https://bosun.integratn.io/start/quickstart/)
   (two tracks: watch the whole loop run on a disposable cluster, or gate a real
@@ -76,6 +77,28 @@ cuts a tag, and the site should ship as something you can point at.
 
 - **The chart's `home` is the documentation site** rather than the source
   repository, which is what `sources` is for.
+
+## [0.18.5] - 2026-08-25
+
+### Fixed
+
+- **A pushed migration left its own verdict on the wrong commit.** When the
+  repair path pushes, the branch head moves — but the agent went on holding the
+  pre-push SHA, so the `bosun` status it wrote afterwards landed on a commit
+  that was no longer the head. The head ended up carrying a green gate and no
+  verdict at all, and because `bosun` is a required check, that pull request
+  could never go green again.
+
+  The failure mode is the one this service exists to find: silence. Nothing
+  errored, nothing retried, and the pull request simply sat there looking like
+  the agent had died mid-run. Observed on two independent promotions —
+  external-secrets under 0.18.3 and again under 0.18.4 — before it was traced.
+
+  `PushFix` now advances `pr.HeadSHA` to the commit it just created, which is
+  the branch head by definition, so every status written afterwards lands on
+  it. The provider fake records the target SHA too: it did not, which is
+  exactly why no test could see this. A test asserting only state and
+  description passes happily while production writes to a superseded commit.
 
 ## [0.18.4] - 2026-08-25
 
