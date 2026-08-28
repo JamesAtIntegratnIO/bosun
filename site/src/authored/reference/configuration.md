@@ -233,8 +233,10 @@ Live reads are `get` and `list` only. The chart's ClusterRole has no `create`,
 `update`, `patch` or `delete` verb anywhere.
 
 :::danger[`scope: wide` can read Secrets]
-With `groups`, the core API group is never granted beyond `pods, events`, so
-Secrets are unreadable **by construction**. With `wide` the chart grants
+With `groups`, the core API group is never granted **cluster-wide** beyond
+`pods, events`. (The cluster-mode inventory Role above is the one namespaced
+exception, and `gate.inventorySource: argocd` removes it.) With `wide` the chart
+grants
 `apiGroups: ["*"]`, which **includes Secrets** — RBAC has no deny rules and no
 way to subtract the core group, which is exactly why "everything except Secrets"
 is not a setting this chart can offer.

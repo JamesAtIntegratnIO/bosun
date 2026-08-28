@@ -89,13 +89,19 @@ the ClusterRole has no `create`, `update`, `patch` or `delete` verb anywhere.
 
 ## Can it read my Secrets?
 
-With `liveReads.scope: groups` (the default), no — the core API group is never
-granted beyond `pods, events`, so Secrets are unreadable by construction.
+**In one namespace, by default, yes** — and only there. `gate.mode: cluster`
+with `gate.inventorySource: secrets` (both defaults) binds a namespaced Role
+granting `get`/`list` on Secrets in the ArgoCD namespace, because the inventory
+the gate renders against *is* ArgoCD's cluster Secrets. That grant is the
+subject of the question above, and `gate.inventorySource: argocd` removes it.
 
-With `scope: wide` it grants `apiGroups: ["*"]`, and that **includes Secrets**.
-RBAC has no deny rules and no way to subtract the core group, which is precisely
-why "everything except Secrets" is not a setting this chart can offer. If that
-matters to you, do not use `wide`.
+**Cluster-wide, no.** With `liveReads.scope: groups` (the default) the core API
+group is never granted beyond `pods, events`.
+
+**Unless you set `scope: wide`**, which grants `apiGroups: ["*"]` and therefore
+**includes Secrets, everywhere**. RBAC has no deny rules and no way to subtract
+the core group, which is precisely why "everything except Secrets" is not a
+setting this chart can offer. If that matters to you, do not use `wide`.
 
 ## What happens when the model endpoint is down?
 
