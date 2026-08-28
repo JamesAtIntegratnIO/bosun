@@ -1,12 +1,12 @@
 ---
 /**
- * Replaces Starlight's stock Hero on any page carrying `hero:` frontmatter,
- * which today is the landing page and nothing else.
+ * Replaces Starlight's stock Hero on any page carrying `hero:` frontmatter:
+ * the landing page, and Starlight's generated 404, which renders a hero of its
+ * own. Anything added here appears on both.
  *
  * The right-hand card is a real gate report -- the external-secrets 0.10.3 ->
- * 2.9.0 finding from docs/the-loop.md, which is the promotion that taught this
- * system its most important lesson. A screenshot of the product doing its job
- * argues better than a paragraph claiming it does.
+ * 2.9.0 finding from docs/the-loop.md. A screenshot of the product doing its
+ * job argues better than a paragraph claiming it does.
  */
 import { Image } from 'astro:assets'
 import mark from '../assets/bosun.svg'
@@ -27,7 +27,14 @@ const actions = hero?.actions ?? []
         Running in production · Argo &amp; Kargo
       </p>
 
-      <h1 class="bo-hero__title" set:html={title} />
+      {/*
+        id="_top" is the target of Starlight's "Skip to content" link, which is
+        emitted on every page. Starlight puts it on the <h1> its own PageTitle
+        renders, so an override that omits it leaves that link pointing at
+        nothing -- on the landing page and on 404, which renders this component
+        too. See the `Hero` contract in @astrojs/starlight/schemas/components.ts.
+      */}
+      <h1 id="_top" class="bo-hero__title" set:html={title} />
       {tagline && <p class="bo-hero__tagline" set:html={tagline} />}
 
       <div class="bo-hero__actions">

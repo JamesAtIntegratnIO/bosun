@@ -2,8 +2,8 @@ apiVersion: v2
 name: bosun
 description: In-cluster triage for automated dependency-bump pull requests, called by Kargo
 type: application
-version: 0.20.0
-appVersion: "0.20.0"
+version: 0.20.1
+appVersion: "0.20.1"
 keywords: [kargo, argocd, gitops, triage, llm]
 home: https://bosun.integratn.io
 sources:

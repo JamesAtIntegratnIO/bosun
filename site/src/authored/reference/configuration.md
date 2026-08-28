@@ -15,6 +15,12 @@ which `helm install` validates against before it renders anything.
 :::note
 **REQUIRED** below means the chart refuses to render without it, or the process
 refuses to start. Both failures are deliberately loud.
+
+Three values are Secret *keys* rather than settings: the chart reads the value
+at that key and passes it as an environment variable. Those rows show the
+variable with an arrow, because the startup error names the variable and not the
+chart value — `missing required configuration: GIT_TOKEN` means `git.tokenKey`
+does not match a key in `git.existingSecret`.
 :::
 
 ## Git host
@@ -26,7 +32,7 @@ refuses to start. Both failures are deliberately loud.
 | `git.repo` | `GIT_REPO` | — | **REQUIRED** |
 | `git.repoURL` | `GIT_REPO_URL` | — | **REQUIRED**. Clone URL, reachable from the cluster |
 | `git.existingSecret` | — | — | **REQUIRED**. Existing Secret holding the credential; the chart creates none |
-| `git.tokenKey` | — | `token` | Key within that Secret |
+| `git.tokenKey` | → `GIT_TOKEN` | `token` | Key within that Secret. Its **value** becomes `GIT_TOKEN`, which is the name the startup error uses |
 | `git.apiBase` | `GIT_API_BASE` | *(unset)* | See below — it means different things per host |
 | `git.insecureSkipTLSVerify` | `GIT_INSECURE_SKIP_TLS_VERIFY` | `false` | Scoped to the agent's git client and its push clone, never global |
 | `git.author.name` | `GIT_AUTHOR_NAME` | *(derived)* | See below — leave empty unless you have a reason |
@@ -34,7 +40,7 @@ refuses to start. Both failures are deliberately loud.
 | `git.app.appId` | `GITHUB_APP_ID` | *(unset)* | Set to authenticate as a GitHub App instead of a token |
 | `git.app.installationId` | `GITHUB_APP_INSTALLATION_ID` | *(discovered)* | Optional; discovered from the repository when unset |
 | `git.app.existingSecret` | — | `git.existingSecret` | Secret holding the App private key |
-| `git.app.privateKeyKey` | — | `private-key` | Key within it |
+| `git.app.privateKeyKey` | → `GITHUB_APP_PRIVATE_KEY` | `private-key` | Key within it. Its **value** becomes `GITHUB_APP_PRIVATE_KEY` |
 
 When `git.app.appId` is set, `GIT_TOKEN` is **not set at all** — installation
 tokens are minted from the key at runtime and live about an hour, so there is
@@ -54,10 +60,10 @@ Empty means the agent derives it. As a GitHub App that is its own bot identity
 (`<slug>[bot] <id+slug[bot]@users.noreply.github.com>`), which is what makes the
 pushed commits attribute to the App's avatar rather than to a stranger.
 
-The old default was `bosun@users.noreply.github.com`, and that namespace
-**belongs to GitHub accounts**: every commit the first live repair pushed was
-attributed, avatar and all, to an unrelated account named `bosun`. If you do set
-an email, never use a `users.noreply.github.com` address that is not your bot's
+If you do set an email, never use a `users.noreply.github.com` address that is
+not your bot's: that namespace **belongs to GitHub accounts**. An earlier
+default of `bosun@users.noreply.github.com` attributed every commit the first
+live repair pushed — avatar and all — to an unrelated account named `bosun`
 own.
 
 ## Model
@@ -70,7 +76,7 @@ own.
 | `llm.reasoningEffort` | `LLM_REASONING_EFFORT` | *(unset)* | Passed through where supported; leave unset otherwise |
 | `llm.timeout` | `LLM_TIMEOUT` | `10m` | |
 | `llm.existingSecret` | — | *(unset)* | Omit entirely for an unauthenticated local endpoint |
-| `llm.apiKeyKey` | — | `api-key` | |
+| `llm.apiKeyKey` | → `LLM_API_KEY` | `api-key` | Key within that Secret. Its **value** becomes `LLM_API_KEY` |
 
 There is **no default provider**. `openai` reaches OpenAI, Azure OpenAI, LM
 Studio, Ollama, vLLM, llama.cpp and LiteLLM; `anthropic` reaches Anthropic and
@@ -227,8 +233,10 @@ Live reads are `get` and `list` only. The chart's ClusterRole has no `create`,
 `update`, `patch` or `delete` verb anywhere.
 
 :::danger[`scope: wide` can read Secrets]
-With `groups`, the core API group is never granted beyond `pods, events`, so
-Secrets are unreadable **by construction**. With `wide` the chart grants
+With `groups`, the core API group is never granted **cluster-wide** beyond
+`pods, events`. (The cluster-mode inventory Role above is the one namespaced
+exception, and `gate.inventorySource: argocd` removes it.) With `wide` the chart
+grants
 `apiGroups: ["*"]`, which **includes Secrets** — RBAC has no deny rules and no
 way to subtract the core group, which is exactly why "everything except Secrets"
 is not a setting this chart can offer.
@@ -291,6 +299,11 @@ a hang with zero bytes, not an error.
 | `rbac.create` | — | `true` |
 | `resources` | — | `25m` CPU / `64Mi` requested, `512Mi` memory limit |
 | `nodeSelector`, `tolerations`, `affinity`, `podAnnotations`, `priorityClassName` | — | standard |
+
+The pod spec also carries `CLONE_ROOT=/work`, which is not a chart value. It is
+where the agent and the gate clone a pull request's branch, backed by an
+`emptyDir` so the root filesystem can stay read-only. Nothing there is worth
+persisting — a restart mid-triage starts clean rather than resuming.
 
 `branding.mark` is **deprecated and ignored** since 0.17.0. Comments no longer
 carry an identity header at all — authenticating as a GitHub App puts the name

@@ -85,9 +85,8 @@ Two things to know at this step, both loud rather than silent:
   must permit this namespace and port — the symptom of missing it is a hang
   with zero bytes, not an error.
 
-**Verify:** the pod starts (it refuses to start if it cannot read the
-apiserver or the inventory — a crash loop with an explanation beats a quiet
-shrug), and the log says
+**Verify:** the pod starts — it refuses to start if it cannot read the
+apiserver or the inventory, rather than running degraded — and the log says
 `gate: in-cluster, polling for open pull requests every 30s`.
 
 ## 3. Commit `.gitops-gate.yaml`
@@ -120,7 +119,7 @@ protection is on.
 
 ## 4. Protect the branch
 
-Order matters, and the middle step is the one people skip:
+Order matters, and step 2 is the one most often skipped:
 
 1. Merge the config. Watch the gate answer a handful of real pull requests.
 2. **Only then** make `addons-gate` — and only `addons-gate` — a required
@@ -132,12 +131,11 @@ Order matters, and the middle step is the one people skip:
    cannot report is the gate failing loudly, and the human override for it
    should exist before it is needed.
 
-There is no step 4. In CI mode there was — every open pull request had to be
-rebased so the workflow would fire on it. The cluster-mode gate polls, so
-existing open pull requests get their verdict on the next sweep without being
-touched. The same property removes the old rule that the bot token must be
-able to re-trigger CI: a pushed fix is a new head commit, and the sweep gates
-it because it is there.
+There is no fourth step. CI mode needs one — every open pull request has to be
+rebased so the workflow fires on it — but the cluster-mode gate polls, so open
+pull requests get their verdict on the next sweep untouched. The same property
+removes the requirement that the bot token be able to re-trigger CI: a pushed
+fix is a new head commit, and the sweep gates it because it is there.
 
 ## 5. Wire the trigger
 
@@ -153,9 +151,9 @@ triage:
   url: http://bosun.bosun.svc:8080/v1/promotion-opened
 ```
 
-`triage.enabled: false` is the chart's default, and forgetting it is the
-classic day-one trap: the agent deploys, the gate answers, and no triage ever
-fires. **Verify:**
+`triage.enabled: false` is the chart's default. Forgetting it is the most
+common day-one mistake, and its symptom is not an error: the agent deploys, the
+gate answers, and no triage ever fires. **Verify:**
 
 ```bash
 kubectl get stages -A -o json | grep -c promotion-opened
@@ -165,13 +163,15 @@ Zero means the hook is not rendered into your Stages.
 
 ## 6. Keep it healthy
 
-Nothing here needs a schedule. The old CI shape needed a cron somewhere with
-cluster access running `clusters export -check`, because its inventory was a
-snapshot that went stale silently; the live inventory is read fresh on every
-gate run. What remains is ordinary operations: watch the agent's log, and
-treat an `error`-state `addons-gate` ("the gate could not run") as a page —
-it is the gate saying *it* is broken, which is deliberately distinct from
-"this change is bad".
+Nothing here needs a schedule. The live inventory is read fresh on every gate
+run, so there is no snapshot to keep current — CI mode needs a cron with
+cluster access running `clusters export -check` for exactly that reason, and
+cluster mode does not.
+
+What remains is ordinary operations: watch the agent's log, and treat an
+`error`-state `addons-gate` ("the gate could not run") as a page. It is the
+gate reporting that *it* is broken, which is deliberately distinct from "this
+change is bad".
 
 ---
 
@@ -183,8 +183,9 @@ it is the gate saying *it* is broken, which is deliberately distinct from
   default (rendering a stranger's helm values inside your cluster is a trust
   decision, and the refusal is an `error` status naming `gate.forkPRs`). A
   CI runner is a throwaway sandbox; the cluster is not.
-- **You will not grant the Secret read**, or want the gate to keep answering
-  while the cluster itself is down.
+- **You want the gate to keep answering while the cluster itself is down.**
+  (If the Secret read is the only objection, `gate.inventorySource: argocd`
+  removes that grant without leaving cluster mode — see step 2.)
 - **You want the gate with no agent at all** — it is still a container with
   an exit code, runnable from any CI.
 

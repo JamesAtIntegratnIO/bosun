@@ -75,21 +75,20 @@ the classification, and the result is still a human being asked.
 
 ## Lever 5 — reject, don't accommodate
 
-Levers 1 to 4 are all about making a *correct* fix expressible and a *malformed*
-one harmless. None of them asks whether a well-formed fix points the right way,
-and on 2026-08-23 that turned out to matter.
+Levers 1 to 4 make a *correct* fix expressible and a *malformed* one harmless.
+None of them asks whether a well-formed fix points the right way, which is a
+distinct failure and one the first live run of the mechanical path hit.
 
-The first live run of the mechanical path met a bump whose render also moved an
-addon's namespace. The agent updated a reference to match the new namespace.
-One scalar, in scope, correct `from` — every guard in the table below was
-satisfied, because a guard checks the *shape* of an edit and this edit's shape
-was perfect. What was wrong was its direction: it accommodated a change nobody
-had explained instead of rejecting it, and burned an attempt doing so.
+That run met a bump whose render also moved an addon's namespace, and the agent
+updated a reference to match it. One scalar, in scope, correct `from` — every
+guard in the table below was satisfied, because a guard checks the *shape* of
+an edit and this edit's shape was perfect. What was wrong was its direction: it
+accommodated a change nobody had explained, and burned an attempt doing so.
 
-The prompt had made this reasonable. It said each pull request "moves one pinned
-version" and then only ever described reds that the version had caused, so
-"make the pull request self-consistent" was a fair reading. It now names the
-changes a version *cannot* cause — a namespace, a project, a source, cluster
+The prompt had made that reading reasonable. It said each pull request "moves
+one pinned version" and then described only reds the version had caused, so
+"make the pull request self-consistent" followed. It now names the changes a
+version *cannot* cause — a namespace, a project, a source, cluster
 targeting — and says outright that making the rest of the repository agree with
 one is the wrong answer even when it is the tidy one.
 
@@ -135,7 +134,7 @@ Neither the prompt nor the model decides any of this:
 | Cannot edit outside the configured area | path allow-list |
 | Cannot overwrite a value it misread | `from` must match the file |
 | Cannot invent a version | corroboration against the evidence |
-| Cannot add keys, only change them | the key must already resolve to a scalar |
+| Cannot add keys with a scalar edit | the key must already resolve to a scalar |
 | Cannot escape the repository | path traversal check |
 | Cannot try forever | attempt cap, tracked by label |
 | Cannot invent data when reshaping a document | every value must be in the original or dictated by the target schema |
@@ -156,13 +155,12 @@ OpenAI-compatible endpoint:
 DELIVERY_AGENT_LIVE=http://localhost:1234/v1 DELIVERY_AGENT_MODELS=your-model go test ./evals -run Eval -v -timeout 60m
 ```
 
-The prompts are **imported** from `prompt/`, not passed in. They used to arrive
-through three environment variables filled by a shell script that regex-scraped
-the Go source, because they lived in `package main` and the eval suite could not
-import them. That bridge supplied an empty string when a constant was renamed,
-so a shipped prompt went unmeasured while the suite reported a confident number
-for the two it still found. Now the thing scored and the thing shipped are the
-same constant, and the compiler says so.
+The prompts are **imported** from `prompt/`, not passed in, so the thing scored
+and the thing shipped are the same constant and the compiler enforces it. Do not
+reintroduce a bridge that passes them in by another route: an earlier one
+scraped the Go source into three environment variables and supplied an empty
+string whenever a constant was renamed, so a shipped prompt went unmeasured
+while the suite reported a confident number for the two it still found.
 
 Add `DELIVERY_AGENT_NO_INVENTORY=1` to reproduce the lever-1 ablation.
 
@@ -219,8 +217,9 @@ opinion from the same opinion.
 
 **The mechanical path never sees any of it.** Not "is told not to use it" —
 never fetches it. Upstream is read on the paths that produce prose: the
-green-gate explanation, and an escalation. An edit is corroborated against the evidence string the model
-was shown, so a commit message that happens to contain `v1.5.0` would make
+green-gate explanation, and an escalation. An edit is corroborated against the
+evidence string the model was shown, so a commit message that happens to
+contain `v1.5.0` would make
 `v1.5.0` a corroborated value to write. Keeping testimony out of that string is
 a property of the code rather than a rule in a prompt.
 

@@ -38,14 +38,13 @@ That renders two Stages:
 | `cert-manager-canary` | `direct: true` | the tenant pin | the tenant app |
 | `cert-manager` | `stages: [cert-manager-canary]`, soak 30m | the hub pin | the hub app |
 
-## Why the gate is free
+## Why chaining needs no orchestration
 
 Kargo only makes Freight available to a downstream Stage once it has been
 **verified** upstream. So `verify` on the canary plus auto-promotion on the
 next stage already *is* "tenant first, hub only if the tenant came up healthy".
-There is no orchestration code, nothing polls, and the chart keeps no state
-of its own — a
-canary that fails verification simply never offers its freight on.
+There is no orchestration code, nothing polls, and the chart keeps no state of
+its own: a canary that fails verification simply never offers its freight on.
 
 `requiredSoakTime` adds "and it has to have been fine for a while", which
 catches the failures that need traffic or a cron tick to show up. Write it on
@@ -67,10 +66,7 @@ stage read the *canary's* file, it would see the version its upstream just
 wrote, conclude there was nothing to do, and silently never promote. The chain
 would look wired up and never move.
 
-## A canary is only as good as its differences
-
-Worth writing down wherever you deploy this, because the shape invites
-over-trust.
+## What a canary does not prove
 
 A canary environment proves something only about the things it actually runs.
 An artifact with no presence there gets **no staging at all** — it goes straight

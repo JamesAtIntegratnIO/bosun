@@ -39,9 +39,9 @@ For non-semver strategies (`Digest`, `NewestBuild`, `Lexical`) only `always`
 and `never` mean anything; `minor` and `patch` behave as `never`, because there
 is no difference to measure.
 
-## The `yaml-update` rules, which are the fiddly part
+## The `yaml-update` rules
 
-These come from how Kargo rewrites files, not from this chart, and getting one
+These come from how Kargo rewrites files, not from this chart. Getting one
 wrong fails in a way that is easy to miss.
 
 - **The key must live in the FIRST YAML document of the file.** Kargo parses
@@ -60,7 +60,7 @@ wrong fails in a way that is easy to miss.
 - **Write durations in Go's canonical form** — `12h0m0s`, not `12h`. Kargo's
   webhook rewrites them, and ArgoCD reads the difference as permanent drift.
 
-## The semver prerelease trap
+## Semver prereleases
 
 A tag with a `-suffix` is a semver **prerelease**. `3.6.8-0` and `7.4.11-alpine`
 both parse that way, and a plain range constraint excludes prereleases by rule:
@@ -81,7 +81,7 @@ target is simply dead and looks idle.
 request merges, an Argo Rollouts AnalysisTemplate checks they are Synced and
 Healthy.
 
-Two things to be clear-eyed about:
+Two limits:
 
 - It runs **after** the merge. It records an outcome; it cannot prevent one.
   For that you want a pre-merge gate.

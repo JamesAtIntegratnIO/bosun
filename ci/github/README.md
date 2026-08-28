@@ -4,14 +4,16 @@ Reference implementation. This is the adapter that is actually exercised.
 
 ## Wiring
 
-> **If you copied this template before 2026-08-24, check two things.** The
-> `diff` step was missing `-repo .`, which is the flag that enables chart-diff —
-> without it the gate reports "a version changed" and stops, silently skipping
-> the resource findings, the dropped-CRD-version detection and the consumer
-> count that decides whether a change blocks. Nothing errored; it just went
-> green on the class of change the gate exists to catch. There was also no
-> schema-validation job, and the aggregate check watched only `render`, so a
-> job added later could fail while the required check stayed green.
+> **Upgrading a copy made before 2026-08-24.** Check three things against the
+> current template:
+>
+> - the `diff` step passes `-repo .`. Without it chart-diff never runs, so the
+>   gate reports "a version changed" and skips the resource findings, the
+>   dropped-CRD-version detection and the consumer count that decides whether a
+>   change blocks. It goes green rather than erroring.
+> - a schema-validation job exists.
+> - the aggregate check watches every job, not only `render`. Otherwise a job
+>   added later can fail while the required check stays green.
 
 [`validate-addons.yaml`](validate-addons.yaml) is a copy-and-adjust template:
 change the `paths:` filter to match where your addon values live, pin
@@ -40,7 +42,7 @@ that person out of their own merges. Two ways through:
 
 ## Rolling it out onto pull requests that already exist
 
-Order matters, and the middle step is the one people skip:
+Order matters, and step 2 is the one most often skipped:
 
 1. **Merge the gate to `main`.** Nothing happens to open pull requests yet —
    merging a workflow does not retroactively trigger runs on them.

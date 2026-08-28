@@ -1,13 +1,14 @@
 # Git providers
 
-Deliberately small: it carries what the workflow needs and nothing more. The
-methods group into four jobs — read a pull request, read what has been said on
-it, say something, and push a fix. `gitprovider/provider.go` is the list; a
-count repeated here would go stale, and this one had (it said six against an
-interface of ten).
-(ADR 0004 committed to four; reading a pull request and listing its comments
-turned out to be workflow needs too, which is the kind of growth the ADR's
-"lowest common denominator" cost paragraph predicted.)
+The interface is deliberately small: it carries what the workflow needs and
+nothing more. The methods group into four jobs — read a pull request, read what
+has been said on it, say something, and push a fix. `gitprovider/provider.go`
+is the authoritative list; a method count repeated here goes stale.
+
+ADR 0004 committed to four methods and the interface now carries ten. Reading a
+pull request, discovering open ones, editing a comment and publishing a commit
+status all turned out to be workflow needs too — the growth its "lowest common
+denominator" cost paragraph predicted.
 
 **On identity.** A token grants the right access and the wrong name: it belongs
 to whoever minted it, so the agent's comments arrive under that person's avatar
@@ -18,12 +19,24 @@ create a dedicated bot user and mint the token as that user; `local/` does
 exactly this.
 
 ```go
+// read a pull request
 GetPullRequest(ctx, number)          // title, branch, head SHA, labels
-ListComments(ctx, number)            // to find the gate's report
+ListOpenPullRequests(ctx)            // how cluster mode discovers work: no webhook, no CI event
+
+// read what has been said on it
+ListComments(ctx, number)            // EVERY comment -- see below
 CheckStatus(ctx, sha, checkName)     // pending | success | failure | missing
+
+// say something
 Comment(ctx, number, body)
+UpdateComment(ctx, id, body)         // edit in place rather than appending per push
+SetCommitStatus(ctx, sha, name, state, description)
 AddLabel(ctx, number, label)         // the attempt cap lives here
+
+// push a fix
 PushFix(ctx, pr, root, message)      // to the PR's branch, never the default
+
+Name() string
 ```
 
 | Provider | Status |
@@ -43,6 +56,12 @@ that root to build a push remote.
 **The gate's report is a comment.** A comment is the only artifact surface
 every git host has, so the gate publishes there rather than into a
 provider-specific artifact store. `ListComments` finds it by an HTML marker.
+
+**`ListComments` must return every comment**, not the first page. The gate's
+report is found by scanning that list, so a client that silently stops at one
+hundred makes the report vanish on a busy pull request — and the agent cannot
+tell that from a gate that published nothing, which is a different situation
+with a different answer.
 
 **Check state has two surfaces.** On GitHub a gate may report as a check run
 (Actions) or a legacy commit status, and a repository can use either. Reading

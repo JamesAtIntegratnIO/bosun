@@ -4,8 +4,8 @@ The deterministic half of the delivery gate. One Go package that answers one
 question about a pull request: **does this change what actually gets deployed,
 and is what it produces still valid?**
 
-It has two faces, same engine, same verdict. The agent imports it and runs it
-in-cluster against the live ArgoCD inventory — the default since [ADR
+The same engine ships in two forms, reaching the same verdict. The agent
+imports it and runs it in-cluster against the live ArgoCD inventory — the default since [ADR
 0008](../adr/0008-the-gate-moves-in-cluster.md), and the reason onboarding no
 longer involves this directory at all. And it ships as a CLI
 ([`cmd/gitops-gate`](cmd/gitops-gate)) whose exit code is the verdict, for
@@ -15,11 +15,10 @@ code into a commit status. The CLI renders against a checked-in inventory
 snapshot, which is what `clusters export` maintains.
 
 > **Status: shipped and judging every pull request** on the platform it was
-> built for, published as `ghcr.io/jamesatintegratnio/gitops-gate`. This README
-> opened as the contract the implementation was written against; the
-> implementation caught up and the contract grew — see
-> [`CHANGELOG.md`](CHANGELOG.md) for what it has learned since. The AI half is
-> deliberately *not* here: it lives in the agent that calls this package.
+> built for, published as `ghcr.io/jamesatintegratnio/gitops-gate`.
+> [`CHANGELOG.md`](CHANGELOG.md) records what has changed since. No model is
+> involved at this layer: the AI half lives in the agent that calls this
+> package.
 
 ## Subcommands
 
