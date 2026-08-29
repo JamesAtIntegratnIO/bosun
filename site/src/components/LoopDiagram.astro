@@ -8,10 +8,10 @@
  * every <rect> and <text> in this diagram the first time round. Astro
  * components have no such ambiguity.
  *
- * The dashed coral arrow is the point of the whole drawing: a deterministic
- * repair goes back through the same gate that demanded it, and that gate
- * re-counts the consumers itself. Nothing else in the system verifies the
- * repair.
+ * The dashed coral arrow carries the claim the drawing exists to make: a
+ * deterministic repair goes back through the same gate that demanded it, and
+ * that gate re-counts the consumers itself. Nothing else in the system
+ * verifies the repair.
  */
 ---
 
@@ -20,8 +20,8 @@
     <title id="loop-title">The bosun loop</title>
     <desc id="loop-desc">
       Kargo opens a pull request. The gate renders it at base and head and publishes a verdict.
-      Bosun reads that verdict and either repairs the change deterministically — which sends it back
-      through the same gate — explains a green one, or escalates it to a human. Only a green gate
+      Bosun reads that verdict and either repairs the change deterministically, which sends it back
+      through the same gate, explains a green one, or escalates it to a human. Only a green gate
       reaches the merge, ArgoCD and the verification.
     </desc>
     <defs>
@@ -64,7 +64,7 @@
       <text x="281" y="140">renders base and head</text>
       <text x="471" y="140">reads the verdict</text>
       <text x="648" y="68">no model involved</text>
-      <text x="648" y="140">what the bump really changed</text>
+      <text x="648" y="140">what the bump changed</text>
       <text x="648" y="211">needs-human, and it stops</text>
       <text x="830" y="140">ArgoCD, then verification</text>
     </g>

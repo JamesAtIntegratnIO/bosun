@@ -11,4 +11,4 @@ kind delete cluster --name "$KIND_CLUSTER"
 # not do, and then printed the vm's own shutdown log as though it were part of
 # deleting a cluster. The next `make up` paid for it: the slowest step in the
 # whole script, silently reintroduced by a sentence about not doing it.
-ok 'gone -- run `colima stop` if you want the VM back too'
+ok 'gone. run `colima stop` if you want the VM back too'

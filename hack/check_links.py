@@ -70,7 +70,7 @@ def main(root_arg: str) -> int:
                     problems.append((rel_md, lineno, target, "does not exist"))
 
     for rel_md, lineno, target, why in problems:
-        print(f"        {rel_md}:{lineno}: {target} -- {why}", file=sys.stderr)
+        print(f"        {rel_md}:{lineno}: {target}: {why}", file=sys.stderr)
 
     return 1 if problems else 0
 

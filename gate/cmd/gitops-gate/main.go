@@ -73,7 +73,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `gitops-gate -- what does this pull request actually change?
+	fmt.Fprint(os.Stderr, `gitops-gate: what does this pull request change?
 
   render    Expand every ApplicationSet into the Applications it generates.
   diff      Compare two renders. Fails when cluster targeting changed.

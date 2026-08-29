@@ -174,7 +174,7 @@
                       "name": {
                         "type": "string",
                         "minLength": 1,
-                        "description": "Suffix for this stage's Kargo object. The LAST stage ignores it and keeps the target's bare name, preserving freight and verification history."
+                        "description": "Suffix for this stage's Kargo object. The last stage ignores it and keeps the target's bare name, preserving freight and verification history."
                       },
                       "updates": {
                         "type": "array",

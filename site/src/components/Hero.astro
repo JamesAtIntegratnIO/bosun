@@ -4,7 +4,7 @@
  * the landing page, and Starlight's generated 404, which renders a hero of its
  * own. Anything added here appears on both.
  *
- * The right-hand card is a real gate report -- the external-secrets 0.10.3 ->
+ * The right-hand card is a real gate report: the external-secrets 0.10.3 ->
  * 2.9.0 finding from docs/the-loop.md. A screenshot of the product doing its
  * job argues better than a paragraph claiming it does.
  */
@@ -31,7 +31,7 @@ const actions = hero?.actions ?? []
         id="_top" is the target of Starlight's "Skip to content" link, which is
         emitted on every page. Starlight puts it on the <h1> its own PageTitle
         renders, so an override that omits it leaves that link pointing at
-        nothing -- on the landing page and on 404, which renders this component
+        nothing, on the landing page and on 404, which renders this component
         too. See the `Hero` contract in @astrojs/starlight/schemas/components.ts.
       */}
       <h1 id="_top" class="bo-hero__title" set:html={title} />
@@ -65,8 +65,8 @@ const actions = hero?.actions ?? []
         </div>
       </dl>
       <p class="bo-scoreboard__note">
-        Ten recorded incidents, replayed against a 27B model on one workstation.
-        Every case really happened.
+        Ten recorded incidents, scored against a 27B model on one workstation.
+        Every case came off a live pull request.
       </p>
     </div>
 
@@ -107,7 +107,7 @@ const actions = hero?.actions ?? []
       </figure>
 
       <p class="bo-report__caption">
-        The text diff was one line. This is what it actually deployed.
+        The text diff was one line. This is what it deployed.
       </p>
     </div>
   </div>

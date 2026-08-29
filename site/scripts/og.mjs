@@ -1,4 +1,4 @@
-// Generates public/og.png -- the 1200x630 card link previews show.
+// Generates public/og.png, the 1200x630 card link previews show.
 //
 // Run it with `npm run og` after changing the wording or the mark; the output
 // IS committed, so the site build stays a pure `astro build` and CI does not
@@ -57,15 +57,15 @@ const card = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"
 
   <text x="80" y="268" font-family="Space Grotesk, Helvetica, Arial, sans-serif"
         font-size="76" font-weight="700" letter-spacing="-2.2" fill="#f2f6f9">
-    The pull request renders green.
+    One line changed. Four CRDs
   </text>
   <text x="80" y="356" font-family="Space Grotesk, Helvetica, Arial, sans-serif"
         font-size="76" font-weight="700" letter-spacing="-2.2" fill="${CORAL}">
-    It still breaks the cluster.
+    stopped serving the API.
   </text>
 
   <text x="80" y="436" font-family="Helvetica, Arial, sans-serif" font-size="27" fill="${TEXT}">
-    A gate that renders what a change actually deploys and blocks what breaks —
+    A gate that renders what a change deploys and blocks what breaks,
   </text>
   <text x="80" y="474" font-family="Helvetica, Arial, sans-serif" font-size="27" fill="${TEXT}">
     and an agent that repairs what is provable and escalates the rest.

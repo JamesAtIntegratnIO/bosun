@@ -2,7 +2,7 @@ name: Pages
 
 # Publishes the documentation site at https://bosun.integratn.io.
 #
-# What is actually the source here: the markdown in this repository, docs/,
+# What is the source here: the markdown in this repository, docs/,
 # adr/, gate/docs/, the chart and CI READMEs. `site/scripts/sync-docs.mjs`
 # copies those into the Starlight tree at build time and rewrites their
 # relative links; `site/src/content/docs/` is generated and is not in git.

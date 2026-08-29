@@ -103,7 +103,7 @@
 }
 
 /* `background-clip: text` paints only inside the inline box, and Space Grotesk
-   hangs the arm of an `r` past its advance width -- so an `r` ending a line of
+   hangs the arm of an `r` past its advance width, so an `r` ending a line of
    "breaks the cluster" lost its arm to the clip. The padding widens the paint
    area, the matching negative margin keeps the text where it was, and the
    cloned decoration break gives every wrapped line the same room rather than
@@ -368,7 +368,7 @@
 
 /* Every other section is tinted, which is what tells the eye where one
    argument ends and the next begins. The rules top and bottom carry the edge
-   where the tint alone is close to the page colour -- in light theme it is
+   where the tint alone is close to the page colour; in light theme it is
    nearly the same cream. */
 .bo-section:nth-of-type(even) {
   background: var(--bo-band);

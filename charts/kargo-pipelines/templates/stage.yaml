@@ -38,7 +38,7 @@ spec:
         {{- /*
         Kargo only makes Freight available downstream once it is VERIFIED
         upstream, so the gate comes free -- no orchestration, no polling. A
-        canary that fails verification simply never offers its Freight on.
+        canary that fails verification never offers its Freight on.
         `direct` is emitted explicitly because the webhook defaults it, and an
         absent field ArgoCD keeps re-adding is permanent drift.
         */}}

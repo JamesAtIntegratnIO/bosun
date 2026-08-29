@@ -8,7 +8,7 @@ Every Kargo expression is assembled here as a Go string and emitted with
 
 {{- /* The name label is a value so a repository migrating from an earlier
      chart can keep its existing one. Changing it rewrites the label on every
-     rendered object, which ArgoCD will happily do -- but it is churn nobody
+     rendered object, which ArgoCD will happily do, but it is churn nobody
      asked for in the middle of a migration. */ -}}
 {{- define "kp.labels" -}}
 app.kubernetes.io/name: {{ .Values.nameLabel | default "kargo-pipelines" }}
@@ -138,7 +138,7 @@ top level that means going through `$env`, the expression environment.
 {{/* "Is there anything to do?" condition. (dict target norm) */}}
 {{- define "kp.changedExpr" -}}
 {{- /* Reads outputs.read.*, which the stage's own yaml-parse produced from the
-     first file of ITS updates -- so per-stage correctness needs nothing here. */ -}}
+     first file of its own updates, so per-stage correctness needs nothing here. */ -}}
 {{- $n := .norm -}}
 {{- if $n.semver -}}
 {{ printf "semverDiff(%s, outputs.read.currentVersion) != \"None\"" (include "kp.newVersionExpr" .target) }}
@@ -150,7 +150,7 @@ top level that means going through `$env`, the expression environment.
 {{/* "May the Stage merge this itself?" condition. (dict target norm) */}}
 {{- define "kp.autoMergeExpr" -}}
 {{- $n := .norm -}}
-{{- /* A stage may tighten the target's policy -- a canary can merge itself
+{{- /* A stage may tighten the target's policy: a canary can merge itself
      while the stage that reaches production still waits for a human. */ -}}
 {{- $policy := default $n.autoMerge .autoMerge -}}
 {{- $new := include "kp.newVersionExpr" .target -}}
@@ -171,7 +171,7 @@ top level that means going through `$env`, the expression environment.
 {{- end -}}
 
 {{/*
-kp.stageList -- normalise a target into an ordered list of stages.
+kp.stageList normalises a target into an ordered list of stages.
 
 A target with no `stages:` is one implicit stage taking the target's own
 `updates`/`verify`/`autoMerge`, which is the single-environment shape and stays
@@ -194,7 +194,7 @@ upstream one. See docs/chaining.md.
     {{- $stageName := $name -}}
     {{- if not $isLast -}}{{- $stageName = printf "%s-%s" $name $s.name -}}{{- end -}}
     {{- /* `ternary` evaluates BOTH arms, so the upstream lookup has to sit
-         behind a real conditional -- index stages -1 is a hard error. */ -}}
+         behind a real conditional, because index stages -1 is a hard error. */ -}}
     {{- $upstream := "" -}}
     {{- $soak := "" -}}
     {{- if gt $i 0 -}}
@@ -239,7 +239,7 @@ upstream one. See docs/chaining.md.
 {{- end -}}
 
 {{/*
-kp.triageBody -- the JSON payload handed to the triage service.
+kp.triageBody is the JSON payload handed to the triage service.
 
 ONE expression producing a map, handed to quote(). Not a hand-assembled JSON
 string, which is what this was until 2026-08-23 and which could never have
@@ -255,7 +255,7 @@ pkg/expressions/json_templates.go:
     }
 
 A body built by interpolating expressions into a JSON string is, by
-construction, always valid JSON -- so it was always unmarshalled into an object,
+construction, always valid JSON, so it was always unmarshalled into an object,
 and the http step's schema requires a string. Every triage call died at config
 validation with:
 
@@ -291,7 +291,7 @@ lists stay lists, because json.Marshal is doing the encoding now instead of us.
 {{- include "kp.expr" (printf "quote({%s})" (join ", " $pairs)) -}}
 {{- end -}}
 
-{{/* kp.stageFiles -- the files one stage touches, for the triage payload. */}}
+{{/* kp.stageFiles is the files one stage touches, for the triage payload. */}}
 {{- define "kp.stageFiles" -}}
 {{- $files := list -}}
 {{- range $u := .stage.updates -}}
