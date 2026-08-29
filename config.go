@@ -389,15 +389,25 @@ func env(k, def string) string {
 // envSecret reads a credential from K, or from the file named by K_FILE, and
 // is the only way this file reads one.
 //
+// Both forms are read here, at start-up, before anything is served. A
+// credential goes from this function to the one client that needs it and
+// nowhere else; none of them is ever part of a prompt.
+//
 // The file form exists because an environment variable is not a private place.
 // `kubectl exec -- env` prints it, /proc/<pid>/environ holds it, a crash dump
 // carries it, and every child process inherits the whole environment: this
-// agent shells out to git and to helm, so a GitHub App private key delivered
+// service shells out to git and to helm, so a GitHub App private key delivered
 // as GITHUB_APP_PRIVATE_KEY is in the environment of binaries that have no
-// business seeing it. A file mounted from the same Secret is read once, here.
+// business seeing it. A path is not a secret, so a child handed
+// GITHUB_APP_PRIVATE_KEY_FILE inherits nothing worth having.
+//
+// _FILE is a convention rather than a platform feature, which is worth knowing
+// when the chart moves ahead of the image: the kubelet mounts the file and
+// sets the variable to a path, and the ReadFile below is the only thing that
+// opens it. A binary without this function sees a path and no credential.
 //
 // Setting both forms is an error rather than a documented precedence. Two
-// credentials where the code wants one is a question with no right answer, and
+// credentials where one is wanted is a question with no right answer, and
 // picking the wrong one fails as a rejected token, which is the symptom of a
 // dozen unrelated mistakes and points at none of them.
 //

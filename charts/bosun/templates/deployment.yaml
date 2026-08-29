@@ -4,9 +4,9 @@ Credentials arrive one of two ways and never both.
 
 `credentials.mountAsFiles` projects each one into /etc/bosun/credentials and
 sets the _FILE variant; off, each one is a secretKeyRef into an environment
-variable, which is what this chart always did. The agent refuses to start when
-it finds both forms of the same credential, so every block below is an if/else
-rather than an addition.
+variable, which is what this chart always did. Start-up fails when both forms
+of the same credential are set, so every block below is an if/else rather than
+an addition.
 */ -}}
 {{- $files := .Values.credentials.mountAsFiles -}}
 {{- $credDir := "/etc/bosun/credentials" -}}

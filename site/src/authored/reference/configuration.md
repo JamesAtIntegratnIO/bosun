@@ -25,6 +25,12 @@ does not match a key in `git.existingSecret`.
 
 ## Credentials as files, not environment
 
+Both forms are read once at start-up by the binary's configuration loader,
+before anything is served. Each value goes to exactly one client: the git host,
+the model provider, ArgoCD. None of them reaches a prompt, and nothing the
+model returns is consulted about them. This section is about how the process is
+handed a credential, which is a different question from what can see it.
+
 Every credential below reads from either its variable or a `_FILE` variant
 holding a path: `GIT_TOKEN_FILE`, `GITHUB_APP_PRIVATE_KEY_FILE`,
 `LLM_API_KEY_FILE`, `ARGOCD_TOKEN_FILE`, `PROMOTION_TOKEN_FILE`. A trailing
@@ -33,19 +39,21 @@ newline is trimmed, so a mounted Secret file works as it is.
 `credentials.mountAsFiles` (default `false`) makes the chart do this for you: a
 projected volume at `/etc/bosun/credentials`, mounted read-only, and the `_FILE`
 variants set in place of every `secretKeyRef`. An environment variable is
-visible to `kubectl exec env`, to `/proc`, and to every child process — and
-this agent shells out to `git` and `helm`, so the App private key was riding
-along in their environment.
+visible to `kubectl exec env`, to `/proc`, and to every child process, and this
+service shells out to `git` and `helm`, so the App private key was riding along
+in their environment. With a path there instead, a child inherits a path.
 
-It defaults off because `image.tag` follows `appVersion`, and an image older
-than the release that added `_FILE` support would ignore the variants and start
-with every credential empty. Turn it on once you are running an image that
-reads them.
+It defaults off because `_FILE` is a convention rather than a Kubernetes
+feature. The kubelet mounts the file and sets the variable to a path; opening
+that path is code in the binary. `image.tag` follows `appVersion`, so an image
+older than the release that added that code sees a path it does not act on and
+starts with every credential empty. Turn it on once you are running an image
+that supports it.
 
 Setting both forms for one credential is a start-up error, not a precedence
 rule, and so is a path that cannot be read or a file that is empty. Two answers
-where the code wants one is a question with no right answer, and guessing wrong
-surfaces as a rejected token — the symptom of a dozen unrelated mistakes.
+where the loader wants one is a question with no right answer, and guessing
+wrong surfaces as a rejected token, the symptom of a dozen unrelated mistakes.
 
 ## Git host
 

@@ -55,26 +55,34 @@ branding:
 
 # How the credentials below reach the process.
 #
+# Both forms are read once at start-up by the binary's configuration loader,
+# before any request is served. No credential is ever part of a prompt, a
+# model call, or anything published; this setting changes how the process is
+# given them, not who sees them.
+#
 # An environment variable is not a private place. `kubectl exec -- env` prints
 # it, /proc/<pid>/environ holds it, a crash dump carries it, and every child
-# process inherits the whole environment. This agent shells out to git and to
+# process inherits the whole environment. This service shells out to git and to
 # helm, so a GitHub App private key delivered as GITHUB_APP_PRIVATE_KEY sits in
 # the environment of binaries that have no business seeing it.
 #
 # On, every credential is projected from the same Secret it already names into
 # a read-only file, and the process is handed the path instead:
 # GIT_TOKEN_FILE, GITHUB_APP_PRIVATE_KEY_FILE, LLM_API_KEY_FILE,
-# ARGOCD_TOKEN_FILE, PROMOTION_TOKEN_FILE. Exactly one form is ever rendered
-# per credential; the agent refuses to start when it finds both, because two
-# credentials where the code wants one has no right answer and guessing fails
-# as a rejected token, which is the symptom of a dozen unrelated mistakes.
+# ARGOCD_TOKEN_FILE, PROMOTION_TOKEN_FILE. A child process then inherits a
+# path rather than a secret. Exactly one form is ever rendered per credential;
+# start-up fails when both are set, because two credentials where the loader
+# wants one has no right answer and guessing fails as a rejected token, which
+# is the symptom of a dozen unrelated mistakes.
 #
-# Off by default, and the reason is the image rather than the risk. The file
-# form is read by the agent, not by Kubernetes, so it only works against an
-# image that has it. Turn it on under an older tag and every credential is
-# unset: the pod refuses to start naming configuration you can see is present,
-# and nothing points at this line. Confirm your image reads the _FILE variants
-# before setting this.
+# Off by default, and the reason is the image rather than the risk. `_FILE` is
+# a convention rather than a Kubernetes feature: the kubelet mounts the file
+# and sets the variable to a path, and opening that path is the binary's own
+# code. An image built before that code existed sees a path it does not act
+# on. Turn it on under an older tag and every credential is unset: the pod
+# refuses to start naming configuration you can see is present, and nothing
+# points at this line. Confirm your image supports the _FILE variants before
+# setting this.
 credentials:
   mountAsFiles: false
 

@@ -316,7 +316,7 @@ use.
 
 **Credentials as files rather than environment.** An environment variable is
 readable through `kubectl exec -- env`, `/proc/<pid>/environ` and a crash dump,
-and every child process inherits the whole environment; this agent shells out
+and every child process inherits the whole environment; this service shells out
 to git and to helm.
 
 ```yaml
@@ -326,10 +326,20 @@ credentials:
 
 The same Secrets and the same keys, projected read-only into
 `/etc/bosun/credentials`, with `GIT_TOKEN_FILE` and its four siblings set
-instead of the variables. Exactly one form is rendered per credential, and the
-agent refuses to start if it finds both. **Your image has to read the `_FILE`
-variants**: under an older one every credential is unset, and the pod refuses
-to start over configuration you can see is present.
+instead of the variables. A child process then inherits a path rather than a
+secret. Exactly one form is rendered per credential, and start-up fails if both
+are set.
+
+Either way the values are loaded once at start-up by the binary's
+configuration loader and go only to the git host, the model provider and
+ArgoCD, each over its own client. No credential is part of a prompt or of
+anything published.
+
+**Your image has to support the `_FILE` variants**: `_FILE` is a convention,
+not a Kubernetes feature, so the kubelet mounts the file and sets the variable
+to a path while opening that path is the binary's own code. Under an older
+image every credential is unset, and the pod refuses to start over
+configuration you can see is present.
 
 **Which pods may call this, not which namespace.** A NetworkPolicy peer with
 only a `namespaceSelector` admits every pod in that namespace, so the ingress

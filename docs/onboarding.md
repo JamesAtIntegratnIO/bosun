@@ -34,19 +34,29 @@ keep fresh, and no paths filter to hand-edit.
   the model API key, one the ArgoCD account token the gate reads the inventory
   with.
 
-  Each of them reaches the process one of two ways. By default they arrive as
-  environment variables, which is not a private place: `kubectl exec -- env`
-  prints them, `/proc/<pid>/environ` holds them, and every child process
-  inherits the whole environment — and this agent shells out to git and to
-  helm, so a GitHub App private key sits in the environment of binaries with no
-  business seeing it. `credentials.mountAsFiles: true` projects each one into a
-  read-only file from the same Secret it already names and hands the process
-  the path instead (`GIT_TOKEN_FILE`, `GITHUB_APP_PRIVATE_KEY_FILE`,
-  `LLM_API_KEY_FILE`, `ARGOCD_TOKEN_FILE`, `PROMOTION_TOKEN_FILE`). It is off
-  by default because of the image, not the risk: the file form is read by the
-  agent rather than by Kubernetes, so turning it on under a tag that predates
-  it leaves every credential unset and the pod refuses to start naming
-  configuration you can see is present. Check your image reads it, then set it.
+  All four are read once at start-up by the binary's configuration loader, and
+  each one goes to exactly one client: the git host, the model provider,
+  ArgoCD. None of them is part of a prompt, and nothing the model returns is
+  consulted about them. What follows is about how the process is handed them,
+  which is a separate question from who sees them.
+
+  There are two ways. By default they arrive as environment variables, which is
+  not a private place: `kubectl exec -- env` prints them,
+  `/proc/<pid>/environ` holds them, and every child process inherits the whole
+  environment. This service shells out to git and to helm, so a GitHub App
+  private key sits in the environment of binaries with no business seeing it.
+  `credentials.mountAsFiles: true` projects each one into a read-only file from
+  the same Secret it already names and sets a path instead
+  (`GIT_TOKEN_FILE`, `GITHUB_APP_PRIVATE_KEY_FILE`, `LLM_API_KEY_FILE`,
+  `ARGOCD_TOKEN_FILE`, `PROMOTION_TOKEN_FILE`), so a child inherits a path
+  rather than a secret.
+
+  It is off by default because of the image, not the risk. `_FILE` is a
+  convention rather than a Kubernetes feature: the kubelet mounts the file and
+  sets the variable to a path, and opening that path is code in the binary. An
+  image built before that code existed leaves every credential unset, and the
+  pod refuses to start naming configuration you can see is present. Check your
+  image supports it, then set it.
 
 ## 2. Install the agent
 
