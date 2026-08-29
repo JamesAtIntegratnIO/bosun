@@ -5,6 +5,8 @@ All notable changes to `bosun`. Format follows
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-08-29
+
 ### Security
 
 A round of remediation against an OWASP-framed source review. No finding was
