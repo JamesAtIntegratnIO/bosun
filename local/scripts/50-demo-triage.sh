@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Act two: a pull request the gate REFUSES, and an agent that has to earn it.
+# Act two: a pull request the gate refuses, and an agent that has to earn it.
 #
 # The happy-path demo is not a demonstration of the agent. When the gate is
-# green the agent correctly does nothing -- "gate is green, nothing to
-# triage" -- which is the right behaviour and a dull thing to watch.
+# green the agent correctly does nothing, "gate is green, nothing to
+# triage", which is the right behaviour and a dull thing to watch.
 #
 # This opens a pull request the gate blocks: a version bump that arrives
-# together with a changed destination namespace -- one word, changed in
+# together with a changed destination namespace, one word, changed in
 # passing, that silently moves everything the Application deploys.
 #
-# The agent reads the gate's report and ESCALATES, with its reasoning, as a
+# The agent reads the gate's report and escalates, with its reasoning, as a
 # comment on the pull request. That is the correct verdict here and not a
 # limitation: measured against both qwen3.5-9b and qwen3.8-27b, each
 # independently concluded that a namespace move cannot be proven accidental
@@ -17,10 +17,10 @@
 # for. What you are watching is the agent refusing to guess, in public,
 # with an argument.
 #
-# See README.md ("What the agent will and will not fix") for why a
-# mechanical FIX does not appear here: the gate blocks on structural changes,
-# and the agent's mechanical class is values conflicts, which the gate
-# reports without blocking. The two barely intersect today.
+# See README.md ("What the agent will and will not fix") for why a mechanical
+# fix does not appear here: the gate blocks on structural changes, and the
+# agent's mechanical class is values conflicts, which the gate reports
+# without blocking. The two barely intersect today.
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 load_credentials
@@ -74,11 +74,11 @@ step "agent log is ${BEFORE} lines; only what follows belongs to this run"
 HEAD_BEFORE="$(gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls/${PR}" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["head"]["sha"])')"
 
-# The SAME body Kargo's triage step posts. `files` is the important field:
-# the agent turns each one into a scalar inventory -- every key and its exact
-# value -- and the model picks a key from that list rather than inventing a
+# The same body Kargo's triage step posts. `files` is the important field:
+# the agent turns each one into a scalar inventory, every key and its exact
+# value, and the model picks a key from that list rather than inventing a
 # path. Send only prNumber and it has the gate's report, no keys to edit
-# against, and nothing it can honestly propose.
+# against, and nothing it can propose.
 BODY=$(python3 -c "
 import json,sys
 print(json.dumps({
@@ -94,16 +94,16 @@ kc -n bosun exec -i "$AGENT_POD" -- \
   --header 'Content-Type: application/json' \
   http://localhost:8080/v1/promotion-opened 2>&1 | sed 's/^/    /' || true
 
-# `tail -n +N` starts AT line N, so `+$BEFORE` re-reads the last line of the
-# previous run -- and the last line of a previous run is, reliably, its own
+# `tail -n +N` starts at line N, so `+$BEFORE` re-reads the last line of the
+# previous run, and the last line of a previous run is, reliably, its own
 # `triage done`. The loop matched it on the first pass, declared the verdict in
 # before this run had read the gate, and reported "it pushed nothing" about a
 # triage that had not started. The demo said the agent did nothing on a pull
 # request it escalated correctly twenty seconds later.
 #
-# Two fixes, because either alone still lies. Start PAST the old log, and match
-# only lines naming THIS pull request -- a run that shares the pod with any
-# other work must not be able to read someone else's verdict as its own.
+# Two fixes, because either alone still lies. Start past the old log, and match
+# only lines naming this pull request, a run that shares the pod with any other
+# work must not be able to read someone else's verdict as its own.
 step "waiting for the verdict (a local model takes a moment)"
 for _ in $(seq 1 60); do
   kc -n bosun logs "$AGENT_POD" 2>/dev/null | tail -n +$((BEFORE + 1)) \

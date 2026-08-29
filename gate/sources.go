@@ -31,11 +31,11 @@ type docs struct {
 
 // collect turns one source into manifests.
 //
-// Each type answers the same question -- "what Applications and
-// ApplicationSets does this repository define?" -- and they coexist. A real
-// repository routinely has ApplicationSets committed as YAML *and* a chart
-// that renders more of them, which is why this is a list of strategies rather
-// than a mode switch.
+// Each type answers the same question, "what Applications and ApplicationSets
+// does this repository define?", and they coexist. A real repository
+// routinely has ApplicationSets committed as YAML *and* a chart that renders
+// more of them, which is why this is a list of strategies rather than a mode
+// switch.
 func collect(repoRoot string, cfg *Config, inv *Inventory, s Source) ([]docs, error) {
 	switch s.Type {
 	case SourceRendered:
@@ -53,10 +53,10 @@ func collect(repoRoot string, cfg *Config, inv *Inventory, s Source) ([]docs, er
 		return []docs{{source: s.Name, objects: objs}}, nil
 
 	case SourceKustomize:
-		// NEITHER binary ships in the gate's image, which carries helm and
+		// Neither binary ships in the gate's image, which carries helm and
 		// kubeconform only. A kustomize source therefore works on a
 		// workstation and on a CI runner that installs one, and fails
-		// in-cluster -- so say which of the two happened rather than letting
+		// in-cluster, so say which of the two happened rather than letting
 		// "kustomize build failed" cover both. A broken kustomization and a
 		// missing builder want completely different next actions.
 		if !haveEither("kustomize", "kubectl") {
@@ -72,8 +72,8 @@ func collect(repoRoot string, cfg *Config, inv *Inventory, s Source) ([]docs, er
 			var fallbackErr error
 			out, fallbackErr = run(repoRoot, "kubectl", "kustomize", s.Path)
 			if fallbackErr != nil {
-				// BOTH failures, because with only the second a kustomization
-				// that `kustomize` explained clearly is reported through
+				// Both failures, because with only the second a kustomization
+				// that `kustomize` explained is reported through
 				// whatever `kubectl kustomize` happened to say instead.
 				return nil, fmt.Errorf("source %q: kustomize build %s: %w (kubectl kustomize also failed: %v)",
 					s.Name, s.Path, kErr, fallbackErr)
@@ -144,7 +144,7 @@ func resolveAll(files []string, data map[string]any) []string {
 			out = append(out, r)
 		}
 		// A value file whose placeholders do not resolve for this cluster is
-		// simply not that cluster's file. ArgoCD's own
+		// not that cluster's file. ArgoCD's own
 		// ignoreMissingValueFiles behaves the same way.
 	}
 	return out
@@ -172,14 +172,14 @@ func readGlobs(repoRoot string, patterns []string) ([]map[string]any, error) {
 	}
 	sort.Strings(files)
 
-	// One policy for both failures, because these manifests ARE the render: a
+	// One policy for both failures, because these manifests are the render: a
 	// file that will not parse fails the source, and a file that will not read
-	// used to vanish from it silently -- so a permission problem produced a
+	// used to vanish from it silently, so a permission problem produced a
 	// smaller target table, which the diff then reported as objects removed by
 	// this pull request.
 	var out []map[string]any
 	for _, f := range files {
-		// A glob can match a directory -- `paths: [apps]` rather than
+		// A glob can match a directory, `paths: [apps]` rather than
 		// `apps/*.yaml`. Not a manifest, and not an error either: skipped
 		// explicitly so it does not arrive at ReadFile and become one.
 		if info, err := os.Stat(f); err == nil && info.IsDir() {

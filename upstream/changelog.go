@@ -10,22 +10,22 @@ import (
 	"strings"
 )
 
-// Where maintainers actually write down what they changed, in the order this
+// Where maintainers write down what they changed, in the order this
 // asks.
 //
-//	RELEASES    a GitHub Release object per version. The richest source and the
-//	            least reliable: creating one is a separate, optional step that
-//	            plenty of projects never take. This repository has 8 tags and 0
-//	            releases.
-//	CHANGELOG   a file in the repository. Kept by most projects that keep
-//	            anything, updated in the same commit as the change, and -- for
-//	            a chart -- frequently the ONLY place the chart's own version
-//	            numbers are described at all.
-//	COMMITS     what they did rather than what they wrote. Always available,
-//	            never polished. Handled by Compare.
+// 	Releases a GitHub Release object per version. The richest source and the
+// 	 least reliable: creating one is a separate, optional step that
+// 	 plenty of projects never take. This repository has 8 tags and 0
+// 	 releases.
+// 	CHANGELOG a file in the repository. Kept by most projects that keep
+// 	 anything, updated in the same commit as the change, and, for
+// 	 a chart, frequently the only place the chart's own version
+// 	 numbers are described at all.
+// 	Commits what they did rather than what they wrote. Always available,
+// 	 never polished. Handled by Compare.
 //
-// All three are TESTIMONY. The gate's render is the only computed fact in a
-// brief, and a changelog is a claim like the rest -- with one wrinkle worth
+// All three are testimony. The gate's render is the only computed fact in a
+// brief, and a changelog is a claim like the rest, with one wrinkle worth
 // stating: it is read at the default branch, so an entry can have been edited
 // after the release it describes. That is a smaller risk than it sounds (an
 // edited changelog is usually a corrected one) and it is why the provenance
@@ -37,7 +37,7 @@ import (
 // is the point rather than a nicety: a chart's version numbers and the
 // application's are different sequences, and a repository that publishes both
 // has a file for each. Reading the root changelog for a chart bump answers with
-// the wrong project's versions -- confidently, and in the right shape.
+// the wrong project's versions, confidently, and in the right shape.
 func changelogCandidates(chart string) []string {
 	var out []string
 	if chart != "" {
@@ -49,11 +49,11 @@ func changelogCandidates(chart string) []string {
 // changelogHeading matches a markdown heading that names a version.
 //
 // Deliberately tolerant. `## [1.2.3] - 2026-08-24` is Keep a Changelog, and it
-// is far from universal: `## v1.2.3`, `# 1.2.3 (2026-08-24)` and
-// `## Release 1.2.3` are all in the wild. What every one of them has is a
-// heading line containing a version-shaped token, so that is what this looks
-// for -- and a heading with no version in it is a section title like
-// "Unreleased" or "Added", correctly ignored.
+// is far from universal: `## v1.2.3`, `# 1.2.3 (2026-08-24)` and `## Release
+// 1.2.3` are all in the wild. What every one of them has is a heading line
+// containing a version-shaped token, so that is what this looks for, and a
+// heading with no version in it is a section title like "Unreleased" or
+// "Added", correctly ignored.
 var changelogHeading = regexp.MustCompile(`^(#{1,3})\s+.*?v?(\d+\.\d+(?:\.\d+)?)`)
 
 type changelogSection struct {
@@ -63,7 +63,7 @@ type changelogSection struct {
 
 // parseChangelog splits a changelog into version sections.
 //
-// A section runs until the next heading AT THE SAME LEVEL OR HIGHER, so the
+// A section runs until the next heading at the same level or higher, so the
 // `### Fixed` sub-headings inside an entry stay part of it. Matching any
 // heading would truncate every entry at its first subsection, which is where
 // the content is.
@@ -91,7 +91,7 @@ func parseChangelog(text string) []changelogSection {
 		}
 		if cur != nil && strings.HasPrefix(line, "#") {
 			// A heading with no version. Ends the section only if it is at the
-			// same level or higher -- otherwise it is this entry's own "Fixed".
+			// same level or higher; otherwise it is this entry's own "Fixed".
 			level := len(line) - len(strings.TrimLeft(line, "#"))
 			if level <= curLevel {
 				flush()
@@ -111,7 +111,7 @@ func parseChangelog(text string) []changelogSection {
 // (from, to].
 //
 // Bounded: at most one file is read in full, from a short candidate list, and
-// the first that yields an entry in range wins. Never an error -- an absent
+// the first that yields an entry in range wins. Never an error; an absent
 // changelog is the ordinary case and is reported by returning nothing.
 func (g *GitHubReleases) changelogNotes(ctx context.Context, repo, chart, lo, hi string) ([]Release, string) {
 	maxSections := g.MaxReleases
@@ -199,12 +199,12 @@ func (g *GitHubReleases) repoFile(ctx context.Context, repo, path string) (text,
 }
 
 // chartNameOf is the last path segment of an OCI reference, which for a chart
-// repository is the chart's name -- and therefore the directory its own
-// changelog lives in.
-// chartNameOf is the chart's name, for finding its own CHANGELOG.md.
+// repository is the chart's name, and therefore the directory its own
+// changelog lives in. chartNameOf is the chart's name, for finding its own
+// CHANGELOG.md.
 //
 // The promotion names it outright for a classic Helm repository. For an OCI
-// chart the name field is empty and the last path segment IS the chart, which
+// chart the name field is empty and the last path segment is the chart, which
 // is how `helm push` addresses it.
 func chartNameOf(artifact string) string {
 	ref, chart := ParseArtifact(artifact)

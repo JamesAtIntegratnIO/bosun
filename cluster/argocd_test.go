@@ -14,14 +14,14 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/gate"
 )
 
-// The ArgoCD API is where the gate reads the inventory, and the CLI's
-// `clusters export` snapshot is decoded from the cluster Secrets instead. Those
-// two must describe the same cluster the same way -- a selector matches on
-// those maps, so a key one side trimmed differently is a different targeting
-// verdict from the same cluster. So the centre of gravity here is the
-// equivalence test: the same cluster, decoded once from a Secret and once from
-// an ArgoCD cluster, must produce byte-identical inventories. Everything else
-// is about refusing rather than guessing.
+// The ArgoCD API is where the gate reads the inventory, and the CLI's `clusters
+// export` snapshot is decoded from the cluster Secrets instead. Those two must
+// describe the same cluster the same way; a selector matches on those maps, so
+// a key one side trimmed differently is a different targeting verdict from the
+// same cluster. So the centre of gravity here is the equivalence test: the same
+// cluster, decoded once from a Secret and once from an ArgoCD cluster, must
+// produce byte-identical inventories. Everything else is about refusing rather
+// than guessing.
 
 func argoFor(t *testing.T, h http.Handler) *ArgoCD {
 	t.Helper()
@@ -61,7 +61,7 @@ func TestArgoCDAndSecretsDecodeTheSameClusterIdentically(t *testing.T) {
 			"name": "hub", "server": "https://media.example:6443",
 			"labels": labels, "annotations": annotations,
 			// ArgoCD serves the credential block redacted. Nothing here reads
-			// it, and the struct has no field for it -- this asserts that an
+			// it, and the struct has no field for it; this asserts that an
 			// unknown field does not break the decode.
 			"config": map[string]any{"bearerToken": "********"},
 		}))
@@ -111,7 +111,7 @@ func TestArgoCDSendsTheTokenAndReadsTheClustersEndpoint(t *testing.T) {
 func TestArgoCDLeavesTheImplicitLocalClusterUnlabelled(t *testing.T) {
 	a := argoFor(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		// ArgoCD includes the local cluster in this list rather than omitting
-		// it, with no labels -- exactly the entry the Secret path invents.
+		// it, with no labels, exactly the entry the Secret path invents.
 		fmt.Fprint(w, clusterList(map[string]any{
 			"name": "in-cluster", "server": "https://kubernetes.default.svc",
 		}))
@@ -132,7 +132,7 @@ func TestArgoCDLeavesTheImplicitLocalClusterUnlabelled(t *testing.T) {
 
 func TestArgoCDKeepsALocalClusterSomebodyRegistered(t *testing.T) {
 	a := argoFor(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		// Same address, but a real Secret behind it -- so it has labels, and
+		// Same address, but a real Secret behind it, so it has labels, and
 		// dropping it as "the implicit one" would delete a cluster the gate
 		// must render against.
 		fmt.Fprint(w, clusterList(map[string]any{

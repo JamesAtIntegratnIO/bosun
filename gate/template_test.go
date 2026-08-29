@@ -84,7 +84,7 @@ func TestGoTemplateCannotReachTheEnvironmentOrNetwork(t *testing.T) {
 	}
 }
 
-// Deleting the three must not cost us the rest of sprig -- the dialect has to
+// Deleting the three must not cost us the rest of sprig; the dialect has to
 // stay the one Argo CD renders, or the gate blocks changes Argo accepts.
 func TestGoTemplateKeepsOrdinarySprigFunctions(t *testing.T) {
 	node := map[string]any{"name": `{{ .cluster | upper | trunc 4 }}`}

@@ -22,7 +22,7 @@ type Hit struct {
 	Path string
 	// Versions are the distinct dropped versions the file declares, sorted.
 	Versions []string
-	// Docs counts the declarations -- a file can declare the same dropped
+	// Docs counts the declarations; a file can declare the same dropped
 	// version several times, as documents, as manifests nested inside a values
 	// block, or as manifests embedded in a string.
 	Docs int
@@ -32,12 +32,12 @@ type Hit struct {
 // manifest of d.Kind at one of d's dropped versions.
 //
 // "Declaring" is deliberately wider than "is a document of that kind". A
-// GitOps repository embeds manifests inside chart values -- an `extraObjects:`
-// list, a block-scalar string handed to a chart that applies it -- and those
+// GitOps repository embeds manifests inside chart values, an `extraObjects:`
+// list, a block-scalar string handed to a chart that applies it, and those
 // render into real objects that break at apply exactly like a top-level
 // document does. Measured on the repository this was built for: 13 of 27
-// declaring files held the declaration somewhere other than the top level,
-// and counting every shape reproduces the 33 declaring documents the incident
+// declaring files held the declaration somewhere other than the top level, and
+// counting every shape reproduces the 33 declaring documents the incident
 // analysis counted by hand.
 //
 // Two kinds of file are deliberately not answers. Files that fail to parse
@@ -45,7 +45,7 @@ type Hit struct {
 // `templates` dir beside a Chart.yaml, Helm's own definition) is skipped
 // entirely: a template that happens to parse as YAML is still a program, and
 // rewriting a program with a document editor is a guess. A chart declaring a
-// dropped version shows up in the gate's chart-diff instead, where its RENDER
+// dropped version shows up in the gate's chart-diff instead, where its render
 // is what gets judged.
 func Scan(root string, d Dropped) ([]Hit, error) {
 	var hits []Hit
@@ -92,7 +92,7 @@ func walkYAML(root string, visit func(rel string, data []byte)) error {
 		}
 		// A walk reports a symbolic link as an ordinary entry, and reading it
 		// leaves the checkout: `manifests/app.yaml` can be a link to anything
-		// the pod can open. Skipped rather than read -- what this walk finds
+		// the pod can open. Skipped rather than read; what this walk finds
 		// gets rewritten and sent to a model, and neither belongs to a file
 		// that is not in this repository.
 		if entry.Type()&fs.ModeSymlink != 0 {
@@ -123,12 +123,12 @@ type declaration struct {
 	embedded bool
 	// covered is false for an embedded declaration whose kind none of the
 	// migrations name. It cannot be rewritten, and its presence makes
-	// pattern-editing its neighbours unsafe -- see rewrite.
+	// pattern-editing its neighbours unsafe, see rewrite.
 	covered bool
 }
 
-// onlyCovered filters declarations to the ones some migration actually names.
-// A verb, not an adjective: it returns the subset, not a yes or no -- which is
+// onlyCovered filters declarations to the ones some migration names.
+// A verb, not an adjective: it returns the subset, not a yes or no, which is
 // what `covered` read as beside every other adjective-named predicate here.
 func onlyCovered(in []declaration) []declaration {
 	var out []declaration
@@ -144,12 +144,12 @@ func onlyCovered(in []declaration) []declaration {
 // versions: top-level documents, mappings nested at any depth (an
 // `extraObjects:` list), and manifests embedded in block-scalar strings.
 //
-// The match is always a mapping with `apiVersion` and `kind` sibling keys --
-// never a bare string occurrence -- so a value that merely mentions a version
+// The match is always a mapping with `apiVersion` and `kind` sibling keys,
+// never a bare string occurrence, so a value that only mentions a version
 // is not a declaration.
 //
-// Uncovered declarations -- a kind no migration names, at a version another
-// CRD of the same group dropped -- are returned too, marked, because the
+// Uncovered declarations, a kind no migration names, at a version another
+// CRD of the same group dropped, are returned too, marked, because the
 // rewrite needs to see them to refuse pattern-editing around them. They are
 // never counted as consumers and never edited: that CRD still serves the
 // version, and rewriting its manifests would break what the migration exists
@@ -204,7 +204,7 @@ func declarations(data []byte, drops []Dropped) []declaration {
 				walk(n.Content[i+1], embedded)
 			}
 		case yaml.ScalarNode:
-			// A manifest smuggled in as a string -- `extraManifests: - |`.
+			// A manifest smuggled in as a string, `extraManifests: - |`.
 			// Parsing it is the only way to know whether the version in it is
 			// a declaration or a mention.
 			if embedded || !strings.Contains(n.Value, "apiVersion:") {
@@ -244,7 +244,7 @@ func declarations(data []byte, drops []Dropped) []declaration {
 	}
 }
 
-// Result is what a Migrate call did, and -- as important -- what it refused.
+// Result is what a Migrate call did, and, as important, what it refused.
 type Result struct {
 	Applied []Applied
 	Refused []Refused
@@ -273,7 +273,7 @@ type Refused struct {
 // edits package applies to values files.
 //
 // All migrations run as one pass so a file declaring several kinds is judged
-// once, whole. check is the caller's path policy -- deny-list first -- and a
+// once, whole. check is the caller's path policy, deny-list first, and a
 // non-empty return refuses the file. After rewriting, the file is re-scanned;
 // if any dropped declaration survives, the file is restored untouched and
 // refused, because a half-migrated file is worse than an unmigrated one with
@@ -348,7 +348,7 @@ func Migrate(root string, drops []Dropped, check func(path string) string) (*Res
 //
 // Documents and nested mappings carry an exact line, and only that line is
 // touched. Embedded-string declarations have no file-relative line, so their
-// lines are found by pattern -- and that is only safe when every embedded
+// lines are found by pattern, and that is only safe when every embedded
 // declaration of a dropped version is covered by a migration. One embedded
 // manifest of a foreign kind at the same version makes the pattern ambiguous,
 // and the whole file is refused rather than edited on a guess.

@@ -50,7 +50,7 @@ webhooksCleanup:
 }
 
 // Kargo's yaml-update only writes the first document, so a key living in a
-// later one is never written -- which is a dead pin, and reading every
+// later one is never written, which is a dead pin, and reading every
 // document here would hide it.
 func TestOnlyTheFirstDocumentCounts(t *testing.T) {
 	root := repoWith(t, map[string]string{"multi.yaml": `
@@ -78,7 +78,7 @@ func TestALeadingSeparatorIsNotAnEmptyDocument(t *testing.T) {
 }
 
 // "Absent" produces a finding, so it may only be claimed about a path that was
-// actually walked. Anything exotic makes no claim.
+// walked. Anything exotic makes no claim.
 func TestAPathThisCannotWalkMakesNoClaim(t *testing.T) {
 	root := repoWith(t, map[string]string{"list.yaml": "items:\n  - name: a\n  - name: b\n"})
 	fk := NewFileKeys(root)
@@ -104,9 +104,9 @@ func TestItRefusesToLeaveTheCheckout(t *testing.T) {
 	}
 }
 
-// A separator with nothing but comments before it OPENS the first document.
+// A separator with nothing but comments before it opens the first document.
 // Reading it as a terminator made every key in such a file look absent, which
-// is a false dead-pin report for the whole file -- ten of them, live.
+// is a false dead-pin report for the whole file, ten of them, live.
 func TestACommentHeaderBeforeASeparatorIsNotTheFirstDocument(t *testing.T) {
 	root := repoWith(t, map[string]string{"deploy.yaml": `# The MCP server for ArgoCD.
 #

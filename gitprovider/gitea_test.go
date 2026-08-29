@@ -10,9 +10,9 @@ import (
 )
 
 // The Gitea implementation is a port of the GitHub one, so the tests worth
-// having are the places the two hosts genuinely differ. A test that only
+// having are the places the two hosts differ. A test that only
 // proved "GET /pulls/1 returns a PullRequest" would pass against either and
-// catch none of the three things that actually bite.
+// catch none of the three things that bite.
 
 func giteaFor(t *testing.T, h http.Handler) (*Gitea, *httptest.Server) {
 	t.Helper()
@@ -54,7 +54,7 @@ func TestGiteaReadsPullRequest(t *testing.T) {
 }
 
 // Gitea has no check-runs API. Everything reports as a commit status, so a
-// gate that reported as one must be readable -- and a name that matches
+// gate that reported as one must be readable, and a name that matches
 // nothing has to be Missing rather than an error, or the agent cannot tell
 // "no gate here" from "the host is broken".
 func TestGiteaCheckStatusReadsCommitStatuses(t *testing.T) {
@@ -101,7 +101,7 @@ func TestGiteaCheckStatusMissingIsNotAnError(t *testing.T) {
 }
 
 // A commit accumulates one status per CI re-run, newest first. Reading past
-// the first match would report a result that has already been superseded --
+// the first match would report a result that has already been superseded;
 // the agent would act on a red gate that is now green, or the reverse.
 func TestGiteaCheckStatusTakesTheNewest(t *testing.T) {
 	g, _ := giteaFor(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -199,11 +199,11 @@ func TestGiteaName(t *testing.T) {
 	var _ Provider = (*Gitea)(nil)
 }
 
-// Gitea returns statuses newest first -- but it stamps whole seconds, so a
-// gate that posts `pending` and then its verdict lands both in one and the
-// order inside that tie is arbitrary. Observed on the proving ground: pending
-// and success both at 01:04:02, pending listed first, and a client that took
-// the first match read a green check as permanently pending.
+// Gitea returns statuses newest first, but it stamps whole seconds, so a gate
+// that posts `pending` and then its verdict lands both in one and the order
+// inside that tie is arbitrary. Observed on the proving ground: pending and
+// success both at 01:04:02, pending listed first, and a client that took the
+// first match read a green check as permanently pending.
 //
 // So the tie is broken on meaning: a verdict cannot precede the pending that
 // announced it. Both orders are covered, because the fix must not depend on
@@ -244,7 +244,7 @@ func TestGiteaTakesTheNewestStatusWhicheverOrderItArrivesIn(t *testing.T) {
 		},
 		{
 			// A re-run, seconds apart: the verdict is old news and the gate is
-			// working again. Newest genuinely wins here, and it is pending.
+			// working again. Newest wins here, and it is pending.
 			name: "a re-run supersedes an older verdict",
 			in: []st{
 				{"gate", "success", at(2)},

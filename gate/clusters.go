@@ -18,8 +18,8 @@ import (
 
 // ClusterSecret is the subset of an ArgoCD cluster Secret the inventory is
 // built from, in the shape the Kubernetes API serves it: `data` values are
-// base64 strings on the JSON wire. Both readers of these Secrets -- the CLI
-// shelling out to kubectl, and the agent reading the API server directly --
+// base64 strings on the JSON wire. Both readers of these Secrets, the CLI
+// shelling out to kubectl, and the agent reading the API server directly,
 // parse into this and hand it to InventoryFromSecrets, so the two can never
 // decode the same Secret two different ways.
 type ClusterSecret struct {
@@ -32,7 +32,7 @@ type ClusterSecret struct {
 }
 
 // ExportFilter trims snapshot noise from an exported inventory. The zero
-// value keeps everything -- which is exactly right for a live read: nothing
+// value keeps everything, which is exactly right for a live read: nothing
 // is ever diffed against a live inventory, so churn cannot cause drift and
 // an extra annotation costs nothing.
 type ExportFilter struct {
@@ -45,7 +45,7 @@ type ExportFilter struct {
 
 // NewExportFilter builds the filter a snapshot export wants: the defaults
 // common to any ArgoCD install, plus whatever the config declares, plus the
-// annotation keys the repository actually templates with.
+// annotation keys the repository templates with.
 func NewExportFilter(repoRoot string, cfg *Config) ExportFilter {
 	f := ExportFilter{IgnoreKeys: append([]string{}, defaultNoisyKeys...)}
 	if cfg != nil {
@@ -63,8 +63,8 @@ func NewExportFilter(repoRoot string, cfg *Config) ExportFilter {
 // an inventory snapshot, stamped with the export time so a reviewer can see
 // its age.
 //
-// A WORKSTATION command. kubectl is not in the gate's image -- which ships
-// helm and kubeconform only -- and this needs a kubeconfig pointing at the
+// A workstation command. kubectl is not in the gate's image, which ships
+// helm and kubeconform only, and this needs a kubeconfig pointing at the
 // cluster anyway, which the in-cluster gate does not have and does not want.
 // The in-cluster path reads the same Secrets through the apiserver directly
 // (see the cluster package).
@@ -103,7 +103,7 @@ func ExportClusters(kubeContext, namespace string, filter ExportFilter) (*Invent
 }
 
 // InventoryFromSecrets builds an inventory from ArgoCD cluster Secrets. It
-// does not stamp GeneratedAt -- that is a property of a snapshot, and the
+// does not stamp GeneratedAt; that is a property of a snapshot, and the
 // caller taking one adds it.
 func InventoryFromSecrets(items []ClusterSecret, filter ExportFilter) *Inventory {
 	cs := make([]Cluster, 0, len(items))
@@ -122,16 +122,16 @@ func InventoryFromSecrets(items []ClusterSecret, filter ExportFilter) *Inventory
 	return InventoryFromClusters(cs, filter)
 }
 
-// InventoryFromClusters normalises clusters that arrive already decoded --
+// InventoryFromClusters normalises clusters that arrive already decoded,
 // which is what a reader that is not looking at Secrets has: the ArgoCD API
 // serves name, server, labels and annotations as fields, with the credential
 // block redacted.
 //
-// This exists so the normalisation is written ONCE. ClusterSecret's comment
+// This exists so the normalisation is written once. ClusterSecret's comment
 // says the two Secret readers must never decode the same Secret two different
 // ways; the same argument holds a fortiori for two readers looking at
 // different sources for the same facts. A selector matches, or fails to match,
-// on exactly these maps -- so a source that trimmed one key differently would
+// on exactly these maps, so a source that trimmed one key differently would
 // produce a different targeting verdict from the same cluster, and nothing
 // downstream could tell.
 func InventoryFromClusters(cs []Cluster, filter ExportFilter) *Inventory {
@@ -139,12 +139,12 @@ func InventoryFromClusters(cs []Cluster, filter ExportFilter) *Inventory {
 	for _, c := range cs {
 		labels := filter.strip(c.Labels)
 		annotations := dropManagedBy(filter.strip(c.Annotations))
-		// Every ArgoCD cluster Secret carries this label -- it is the one the
-		// Secrets are found by -- and generators in the wild routinely select
+		// Every ArgoCD cluster Secret carries this label; it is the one the
+		// Secrets are found by, and generators in the wild routinely select
 		// on it. LoadInventory adds it for snapshots that omitted it; a live
 		// read never passes through LoadInventory, so it is added here too.
 		//
-		// The one entry that must NOT get it is the implicit local cluster,
+		// The one entry that must not get it is the implicit local cluster,
 		// which is backed by no Secret and carries no labels in ArgoCD either.
 		// Callers hand that one over already built rather than through here.
 		if _, ok := labels["argocd.argoproj.io/secret-type"]; !ok {
@@ -155,11 +155,11 @@ func InventoryFromClusters(cs []Cluster, filter ExportFilter) *Inventory {
 			Server: c.Server,
 			ArgoCD: c.ArgoCD,
 			Labels: labels,
-			// Annotations are trimmed to what the bootstraps actually
-			// template with. Labels are NOT: they are selector inputs, and
-			// which ones a future selector will match on is unknowable, so
-			// dropping any would reintroduce the stale-fixture failure this
-			// export exists to prevent.
+			// Annotations are trimmed to what the bootstraps template with.
+			// Labels are not: they are selector inputs, and which ones a
+			// future selector will match on is unknowable, so dropping any
+			// would reintroduce the stale-fixture failure this export
+			// exists to prevent.
 			Annotations: keepOnly(annotations, filter.KeepAnnotations),
 		})
 	}
@@ -201,8 +201,8 @@ func keepOnly(m map[string]string, keep map[string]bool) map[string]string {
 // Derived rather than configured: a list an operator maintains by hand is a
 // list that goes wrong, and the answer is already in the repository.
 //
-// It scans the WHOLE repository, not just the bootstraps. Scanning only the
-// bootstraps was the obvious first guess and it was wrong -- the inner
+// It scans the whole repository, not just the bootstraps. Scanning only the
+// bootstraps was the obvious first guess and it was wrong, the inner
 // ApplicationSets reference `cert_manager_namespace` and
 // `external_dns_namespace` too, and trimming those broke their templates.
 // Under-collecting here silently drops Applications from the render, so the
@@ -232,7 +232,7 @@ func annotationsUsedBy(repoRoot string) (map[string]bool, error) {
 			// Best-effort enrichment, and a miss is safe in the direction that
 			// matters: a file this cannot read contributes no annotation to
 			// the keep-set, and an annotation kept unnecessarily costs one
-			// line -- which is the trade this whole scan is built on.
+			// line, which is the trade this whole scan is built on.
 			return nil
 		}
 		for _, m := range re.FindAllStringSubmatch(string(raw), -1) {
@@ -259,33 +259,33 @@ func decode(s string) string {
 }
 
 // defaultNoisyKeys are keys that churn without changing what any selector or
-// template sees -- a resync timestamp, a content hash. Otherwise every export
+// template sees, a resync timestamp, a content hash. Otherwise every export
 // reports drift, and a check that always fails gets switched off, which is
 // worse than not having it.
 //
 // The defaults are the ones common to any ArgoCD install. Anything
-// site-specific belongs in `clustersExport.ignoreKeys` in .gitops-gate.yaml --
+// site-specific belongs in `clustersExport.ignoreKeys` in.gitops-gate.yaml,
 // hardcoding a particular platform's annotation here would be exactly the kind
-// of host coupling this package is built to avoid.
-// managedByAnnotation is ArgoCD's own ownership marker, and it is dropped from
-// EVERY inventory regardless of which source built it.
+// of host coupling this package is built to avoid. managedByAnnotation is
+// ArgoCD's own ownership marker, and it is dropped from every inventory
+// regardless of which source built it.
 //
 // Found by running the two sources against a real ArgoCD: the cluster Secrets
 // carry it and `GET /api/v1/clusters` does not, because ArgoCD strips it on
 // the way out of its own API. Left alone, the same cluster produced two
 // different inventories and the gate's verdict would have depended on which
-// source an operator configured -- the one thing this normalisation exists to
+// source an operator configured; the one thing this normalisation exists to
 // make impossible.
 //
 // It is dropped rather than synthesised on the ArgoCD side, and that direction
 // is deliberate. Re-adding it would mean asserting a fact the API did not
-// report, for clusters that may never have carried it -- inventing data to
-// make a comparison come out even, which is the habit this codebase refuses
+// report, for clusters that may never have carried it, inventing data to make
+// a comparison come out even, which is the habit this codebase refuses
 // everywhere else.
 //
 // The cost, stated because it is real rather than zero: ApplicationSet's
 // cluster generator templates against the Secret's annotations verbatim, so a
-// template referring to `metadata.annotations.managed-by` WOULD see it in
+// template referring to `metadata.annotations.managed-by` would see it in
 // production and will not see it here. Nothing sane templates with ArgoCD's
 // ownership marker, and a gate that renders one key differently beats a gate
 // whose answer depends on its configuration.

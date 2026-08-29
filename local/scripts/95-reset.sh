@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Puts the flow back to its starting position so the demo can run again.
 #
-# Re-seeding the repository is NOT enough, and that is the whole reason this
+# Re-seeding the repository is not enough, and that is the whole reason this
 # script exists. `20-seed.sh` force-pushes the sample repo back to its original
-# pins, but Kargo's Stage still holds the Freight it already promoted -- so
-# there is nothing left to promote, no Promotion is created, and the demo
-# fails at step 2 with "a promotion exists (waited 240s)". The git side and the
-# Kargo side both have to go back.
+# pins, but Kargo's Stage still holds the Freight it already promoted, so there
+# is nothing left to promote, no Promotion is created, and the demo fails at
+# step 2 with "a promotion exists (waited 240s)". The git side and the Kargo
+# side both have to go back.
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 load_credentials

@@ -17,9 +17,9 @@ import (
 //
 // `spec.store` becomes `spec.secretStoreRef.name` between v1beta1 and v1. Swap
 // the version alone and the document parses, applies, and has `store` pruned by
-// the apiserver on the way in. The render is fine, the gate goes GREEN, and the
-// value is gone. Everything here is about catching that -- and about refusing
-// the cure when it is worse than the disease.
+// the apiserver on the way in. The render is fine, the gate goes green, and the
+// value is gone. Everything here is about catching that, and about refusing the
+// cure when it is worse than the disease.
 
 const esOldSchema = `{
  "type":"object",
@@ -210,8 +210,8 @@ spec:
 	}
 }
 
-// The part that is not the obvious choice. A partial push makes the gate GREEN
-// -- no manifest declares a dropped version any more -- over a document the
+// The part that is not the obvious choice. A partial push makes the gate
+// green, no manifest declares a dropped version any more, over a document the
 // apiserver will silently prune. That is the exact failure shape this service
 // exists to find.
 func TestNothingIsPushedWhenAnyDocumentIsRefused(t *testing.T) {
@@ -242,7 +242,7 @@ spec: {secretStoreRef: {name: invented}, refreshInterval: 1h}
 }
 
 // Without both schemas there is nothing to check against, so the plain swap
-// ships -- and says that is all it did.
+// ships, and says that is all it did.
 func TestWithoutBothSchemasThePlainSwapShipsAndSaysSo(t *testing.T) {
 	h := restructureHarness(t, map[string]string{"v1beta1": esOldSchema})
 
@@ -304,7 +304,7 @@ spec: {secretStoreRef: {name: my-store}, refreshInterval: 1h}
 
 // jsonMap decodes a schema fixture. JSON rather than YAML in these fixtures
 // because an OpenAPI schema is mostly punctuation and the indentation of a
-// YAML one buries the two fields each test is actually about.
+// YAML one buries the two fields each test is about.
 func jsonMap(t *testing.T, raw string) map[string]any {
 	t.Helper()
 	var m map[string]any
@@ -316,17 +316,17 @@ func jsonMap(t *testing.T, raw string) map[string]any {
 
 // ADR 0007 promises the live-CRD fallback is "labelled as one in the comment".
 // It was not: the note was attached to the schema pair and then only surfaced
-// when the pair was INCOMPLETE -- which is exactly when the fallback had not
+// when the pair was incomplete, which is exactly when the fallback had not
 // been used. A fallback that works was silent, which is the wrong way round.
 //
-// It matters because a target schema taken from what the cluster serves TODAY
+// It matters because a target schema taken from what the cluster serves today
 // predates the bump. It can miss a field the new chart version added, so a
 // clean result carries less confidence than a clean result checked against the
-// chart's own schema -- and only the comment can tell those apart.
+// chart's own schema, and only the comment can tell those apart.
 func TestAFallbackSchemaSaysSoEvenWhenItWorked(t *testing.T) {
 	h := restructureHarness(t, bothSchemas())
 	// No helm on PATH in the test environment, so the target schema can only
-	// have come from the live CustomResourceDefinition -- the fallback.
+	// have come from the live CustomResourceDefinition, the fallback.
 	if err := h.triage.Run(context.Background(), promotion()); err != nil {
 		t.Fatal(err)
 	}

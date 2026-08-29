@@ -30,7 +30,7 @@ func TestCoveredUnderstandsWhatASurfaceImplies(t *testing.T) {
 		{"a parent of documented children is known", "a.b", surface("a.b.c"), true},
 		{"unrelated sibling proves nothing", "a.b", surface("a.c"), false},
 		{"empty surface knows nothing", "a", surface(), false},
-		// The bug this guards: a prefix STRING match would call `image` known
+		// The bug this guards: a prefix string match would call `image` known
 		// because `imagePullSecrets` exists, and silently hide a real drop.
 		{"a shared string prefix is not containment", "image", surface("imagePullSecrets"), false},
 	} {
@@ -56,7 +56,7 @@ empty: {}
 	got := leafPaths(doc, "")
 	sort.Strings(got)
 	// `image` is a container, not a setting; counting it would report one drop
-	// as three. `empty: {}` IS a setting -- someone wrote it deliberately.
+	// as three. `empty: {}` is a setting; someone wrote it deliberately.
 	want := []string{"empty", "image.registry", "image.tag", "replicas"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("leafPaths = %v, want %v", got, want)
@@ -113,10 +113,10 @@ func TestRepoValuesMergesFilesInHelmsOrder(t *testing.T) {
 		t.Errorf("inline values must apply last: %v", got["replicas"])
 	}
 	// A value file an Application names but does not have is normal, exactly
-	// as it is for the render -- ArgoCD's ignoreMissingValueFiles does this.
+	// as it is for the render, ArgoCD's ignoreMissingValueFiles does this.
 }
 
-// A finding is only trustworthy if the OLD chart explained what we already
+// A finding is only trustworthy if the old chart explained what we already
 // set. Below the coverage floor the correct output is silence, not a guess.
 func TestAnUnreadableChartSurfaceSaysNothing(t *testing.T) {
 	set := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"}

@@ -17,7 +17,7 @@ func post(body string) *http.Request {
 
 // The endpoint's payload names the pull request the agent will edit and the
 // files it will read into a published prompt. Unauthenticated, its only
-// boundary is a namespace-level NetworkPolicy -- which admits every workload
+// boundary is a namespace-level NetworkPolicy, which admits every workload
 // in the namespace.
 func TestTheEndpointRequiresItsTokenWhenOneIsConfigured(t *testing.T) {
 	ran := make(chan struct{}, 4)
@@ -65,10 +65,10 @@ func TestNoTokenMeansNoCheck(t *testing.T) {
 	s.Wait()
 }
 
-// Collapsing on the pull request number alone acknowledged a genuinely new
-// promotion with 202 and dropped it: the second Freight into a stage that
-// already had an open pull request got a verdict about the FIRST one, and
-// nothing ever revisited it.
+// Collapsing on the pull request number alone acknowledged a new promotion
+// with 202 and dropped it: the second Freight into a stage that already
+// had an open pull request got a verdict about the first one, and nothing
+// ever revisited it.
 func TestANewPromotionForABusyPRIsRunRatherThanDropped(t *testing.T) {
 	started := make(chan string, 8)
 	release := make(chan struct{})
@@ -89,14 +89,14 @@ func TestANewPromotionForABusyPRIsRunRatherThanDropped(t *testing.T) {
 		t.Fatal("no triage started")
 	}
 
-	// A RETRY of the running promotion is still collapsed.
+	// A retry of the running promotion is still collapsed.
 	rec := httptest.NewRecorder()
 	s.PromotionOpened(rec, post(`{"prNumber":7,"promotion":"promo-a"}`))
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("want 202, got %d", rec.Code)
 	}
 
-	// A DIFFERENT promotion is new work.
+	// A different promotion is new work.
 	s.PromotionOpened(httptest.NewRecorder(), post(`{"prNumber":7,"promotion":"promo-b"}`))
 	// And a third supersedes the second: newest wins, and exactly one re-run
 	// follows however many arrive.

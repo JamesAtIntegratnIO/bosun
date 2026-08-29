@@ -7,6 +7,11 @@ All notable changes to `gitops-gate`. Format follows
 
 ### Changed
 
+- **Documentation only, across `README.md`, `docs/` and the package comments.**
+  Em dashes, emphasis capitals and filler adverbs are gone. `docs/config-reference.md`
+  loses a line that narrated the page's own structure. The report strings the
+  agent parses back are untouched, so the wire format is unchanged.
+
 - **The engine is a package; the CLI is one caller of it.** `gate/` compiled
   as a single main package, so the only way to run a render was the binary.
   Now the engine is importable — the agent imports it and runs the gate

@@ -9,9 +9,9 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/safepath"
 )
 
-// The deny-list is this package's central promise -- "never edit the gate",
-// "never weaken a merge policy to go green" -- and it was a promise about
-// STRINGS. A tracked symlink at a permitted path made every one of those
+// The deny-list is this package's central promise, "never edit the gate",
+// "never weaken a merge policy to go green", and it was a promise about
+// Strings. A tracked symlink at a permitted path made every one of those
 // entries a suggestion.
 func TestASymlinkAtAPermittedPathCannotReachADeniedFile(t *testing.T) {
 	root := repo(t, map[string]string{
@@ -60,7 +60,7 @@ func TestAnEmptyFromIsNotASkeletonKey(t *testing.T) {
 	}
 }
 
-// The other half of the same rule: a scalar that really is empty matches ""
+// The other half of the same rule: a scalar that is empty matches ""
 // exactly, so tightening the check did not make empty values uneditable.
 func TestAnActuallyEmptyScalarStillMatches(t *testing.T) {
 	root := repo(t, map[string]string{"addons/values.yaml": "metallb:\n  note: \"\"\n"})

@@ -1,12 +1,12 @@
 # kargo-pipelines for the local proving ground.
 #
-# One target, deliberately shaped as a CHAIN: podinfo promotes into the tenant
+# One target, deliberately shaped as a chain: podinfo promotes into the tenant
 # pin file first, verifies, then into the hub pin file. A single-stage target
 # would exercise less of the chart than the production one does, and chains are
 # the part that has never run anywhere.
 git:
   # Set by 20-seed.sh to the seeded Gitea repository. Must match the repoURL on
-  # the kargo credential Secret exactly -- Kargo matches by normalised URL.
+  # the kargo credential Secret exactly; Kargo matches by normalised URL.
   repoURL: ""
   branch: main
   provider: gitea

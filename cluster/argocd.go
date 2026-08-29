@@ -19,22 +19,22 @@ import (
 // ArgoCD reads the cluster inventory from the ArgoCD API server. It is the
 // gate's only inventory source.
 //
-// WHY THE API AND NOT THE SECRETS those clusters are stored in. Reading them
+// Why the API and not the secrets those clusters are stored in. Reading them
 // needs get/list on Secrets in the ArgoCD namespace, and that grant cannot be
-// made smaller. The gate wants four fields -- name, server, labels,
-// annotations -- and Kubernetes RBAC has no predicate that expresses "the
+// made smaller. The gate wants four fields, name, server, labels,
+// annotations, and Kubernetes RBAC has no predicate that expresses "the
 // labels but not the data": there are no deny rules, `resourceNames` does not
 // apply to `list` (a list request carries no name for the authorizer to
 // match), and the label selector in the request URL is a filter the apiserver
-// applies AFTER authorising, so a token holding the Role can simply drop it
+// applies after authorising, so a token holding the Role can drop it
 // and read argocd-secret and every repository credential beside it.
 //
 // ArgoCD already solved this for its own API: `GET /api/v1/clusters` serves
 // exactly those four fields and redacts the credential block, so the
-// authorisation happens somewhere that CAN express the distinction.
+// authorisation happens somewhere that can express the distinction.
 //
-// WHAT IT COSTS, stated as plainly as the grant it replaces. A credential to
-// mint, store and rotate -- an ArgoCD account token, which is
+// What it costs, stated as plainly as the grant it replaces. A credential to
+// mint, store and rotate, an ArgoCD account token, which is
 // bearer-equivalent for whatever that account's ArgoCD RBAC permits, so it
 // gets `clusters, get` and nothing else. A dependency on the ArgoCD API
 // server being up: the apiserver is reachable whenever the cluster is,
@@ -53,7 +53,7 @@ type ArgoCD struct {
 	CAFile string
 	// InsecureSkipTLSVerify accepts any certificate. argocd-server's default
 	// certificate is self-signed, so a cluster that has not given it a real
-	// one needs either this or the CA above -- and which of those an operator
+	// one needs either this or the CA above, and which of those an operator
 	// can produce is a fact about their install, not a preference this can
 	// have an opinion about.
 	InsecureSkipTLSVerify bool
@@ -82,7 +82,7 @@ type argoCluster struct {
 //
 // It returns an error for the same reason the Secret-backed reader does, and
 // the reason is worth repeating rather than cross-referencing: an unreadable
-// inventory does not make a verdict poorer, it makes it WRONG. A render
+// inventory does not make a verdict poorer, it makes it wrong. A render
 // against a world the gate could not see finds no targeting change and waves
 // everything through. Every other read in this package degrades to "not
 // permitted to check"; this one refuses.
@@ -97,13 +97,13 @@ func (a *ArgoCD) ClusterInventory(ctx context.Context) (*gate.Inventory, error) 
 	cs := make([]gate.Cluster, 0, len(out.Items))
 	for _, item := range out.Items {
 		// ArgoCD synthesises the implicit local cluster into this list rather
-		// than omitting it, and it arrives with no labels -- the same entry
-		// the Secret-backed reader invents when it finds no Secrets at all.
-		// It must NOT pass through InventoryFromClusters, which stamps every
+		// than omitting it, and it arrives with no labels, the same entry the
+		// Secret-backed reader invents when it finds no Secrets at all. It
+		// must not pass through InventoryFromClusters, which stamps every
 		// entry with the secret-type label that only a real Secret carries: a
 		// selector matching on that label excludes the local cluster in
-		// ArgoCD, and an inventory that said otherwise would target a
-		// cluster ArgoCD would not.
+		// ArgoCD, and an inventory that said otherwise would target a cluster
+		// ArgoCD would not.
 		if isImplicitLocal(item) {
 			continue
 		}
@@ -115,7 +115,7 @@ func (a *ArgoCD) ClusterInventory(ctx context.Context) (*gate.Inventory, error) 
 		})
 	}
 
-	// Same filter as the live Secret read -- the zero value, which keeps
+	// Same filter as the live Secret read, the zero value, which keeps
 	// everything. Filtering exists to stabilise a snapshot against churn, and
 	// a live read is never diffed against anything.
 	inv := gate.InventoryFromClusters(cs, gate.ExportFilter{})
@@ -147,12 +147,11 @@ func (a *ArgoCD) client() (*http.Client, error) {
 		case a.InsecureSkipTLSVerify:
 			// An escape hatch the apiserver reader deliberately does not have,
 			// and the asymmetry is not an inconsistency. The kubelet mounts a
-			// CA that verifies the apiserver into every pod, so skipping
+			// Ca that verifies the apiserver into every pod, so skipping
 			// verification there only ever hides a problem. Nothing mounts a
-			// CA for argocd-server, whose default certificate is self-signed
-			// -- refusing to talk to it would not make an install safer, it
-			// would make this source unusable on the setup it is most needed
-			// on.
+			// Ca for argocd-server, whose default certificate is self-signed,
+			// refusing to talk to it would not make an install safer, it would
+			// make this source unusable on the setup it is most needed on.
 			tlsCfg.InsecureSkipVerify = true
 		case a.CAFile != "":
 			pem, err := os.ReadFile(a.CAFile)

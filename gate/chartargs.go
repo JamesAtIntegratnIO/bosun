@@ -14,15 +14,15 @@ import (
 // `oci://https://kyverno.github.io/kyverno kyverno` for a classic Helm
 // repository and failed with `invalid repository`. Half the artifacts in a real
 // target list are that shape, and they include external-secrets, kyverno and
-// cert-manager -- the charts that actually drop CRD versions, which is to say
+// cert-manager, the charts that drop CRD versions, which is to say
 // every promotion the schema probe exists for.
 //
 // The four cases, in the order they are tested:
 //
-//   - a classic Helm repository (http:// or https://) takes the chart NAME plus
+//   - a classic Helm repository (http:// or https://) takes the chart name plus
 //     --repo, rather than a pre-added repository, so nothing has to mutate the
 //     runner's helm config;
-//   - an oci:// repository IS the chart reference, with the chart name appended
+//   - an oci:// repository is the chart reference, with the chart name appended
 //     only when the repository does not already end in it;
 //   - no repository at all is a chart the caller has already made resolvable;
 //   - anything else is an OCI reference written without its scheme.

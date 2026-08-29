@@ -57,7 +57,7 @@ const declaring = "apiVersion: external-secrets.io/v1beta1\nkind: ExternalSecret
 
 // The blast radius is the manifests still declaring a dropped version, so they
 // are what decides blocking: present blocks, counted-at-zero reports, and not
-// scanned at all blocks -- "we could not look" must never read as safe.
+// scanned at all blocks; "we could not look" must never read as safe.
 func TestConsumersDecideWhetherADroppedVersionBlocks(t *testing.T) {
 	finding := esoFinding(t)
 
@@ -88,8 +88,8 @@ func TestConsumersDecideWhetherADroppedVersionBlocks(t *testing.T) {
 }
 
 // A finding without the consumer kind cannot say what to scan for, so it stays
-// unscanned -- and therefore blocking -- rather than being counted at zero by
-// a scan that was looking for nothing.
+// unscanned, and therefore blocking, rather than being counted at zero by a
+// scan that was looking for nothing.
 func TestAFindingWithoutAKindStaysBlocking(t *testing.T) {
 	before := []Object{objWith("before", crd("things.example.io",
 		map[string]any{"name": "v1beta1", "served": true},
@@ -109,7 +109,7 @@ func TestAFindingWithoutAKindStaysBlocking(t *testing.T) {
 }
 
 // The report line is rendered by the shared migrate package, and the consumers
-// appear under it -- they are both the human's evidence and the reason the
+// appear under it; they are both the human's evidence and the reason the
 // finding blocks, so the report must carry them.
 func TestTheReportNamesTheConsumers(t *testing.T) {
 	root := t.TempDir()
@@ -134,7 +134,7 @@ func TestTheReportNamesTheConsumers(t *testing.T) {
 // The live scenario that forced this: the repair migrated every consumer to
 // the survivor, and the re-run gate blocked on the migration's own apiVersion
 // moves. A move the findings themselves demand is the repair, not a new
-// migration -- and a move they do not name still blocks, exactly as before.
+// migration, and a move they do not name still blocks, exactly as before.
 func TestTheRepairsOwnMoveDoesNotReBlock(t *testing.T) {
 	crdFinding := func() ObjectChange {
 		before := []Object{objWith("before", crdWithNames("clustersecretstores.external-secrets.io", "ClusterSecretStore",
@@ -186,7 +186,7 @@ func TestTheRepairsOwnMoveDoesNotReBlock(t *testing.T) {
 	}
 }
 
-// A CRD removed outright is the limiting case of dropping served versions --
+// A CRD removed outright is the limiting case of dropping served versions,
 // all of them, no survivor. It joins the consumer-scanned class: consumers
 // present blocks, counted at zero the report says the removal looks safe from
 // inspection, and the agent's parser deliberately cannot repair it (there is

@@ -6,7 +6,7 @@ import "github.com/JamesAtIntegratnIO/bosun/upstream"
 // against a different prompt and score on a different thing, and mixing them
 // into the triage list would hide both facts behind an ordering.
 //
-// They are appended to Cases rather than kept apart so that there is still ONE
+// They are appended to Cases rather than kept apart so that there is still one
 // list. The live scenario demo reads that list; a second export it did not know
 // about is how the thing the suite measures and the thing anyone watches start
 // to drift.
@@ -18,7 +18,7 @@ import "github.com/JamesAtIntegratnIO/bosun/upstream"
 // version is refused. The explain prompt writes nothing. Its failure is a
 // fluent, plausible account of what a version "did", assembled from what the
 // model remembers about the project rather than from the two sources it was
-// handed -- and it goes straight to somebody about to press merge, who cannot
+// handed, and it goes straight to somebody about to press merge, who cannot
 // tell it from the half that was true.
 //
 // So the pairs matter more than the cases. The same removed ClusterRole
@@ -67,7 +67,7 @@ No manifest in this repository declares a version that stopped being served.`,
 	{
 		// A resource disappearing is the finding a render can prove and cannot
 		// explain. With the maintainers' own words in front of it, the answer
-		// should say WHY -- the whole reason upstream notes are fetched.
+		// should say why; the whole reason upstream notes are fetched.
 		Name:    "explain-removed-rbac-with-the-reason-in-front-of-it",
 		Path:    PathExplain,
 		Subject: "bump trivy-operator-explorer chart 0.5.8 -> 1.0.0",
@@ -107,7 +107,7 @@ Rendered diff, trivy-operator-explorer 0.5.8 -> 1.0.0:
 	{
 		// The same finding with the notes taken away. This is where invention
 		// lives: the render still shows a ClusterRole disappearing, and the
-		// model still knows -- or believes it knows -- why.
+		// model still knows, or believes it knows, why.
 		//
 		// The probe is the previous case's reason. `targetNamespaces` is a real
 		// upstream value name, it is nowhere in this case's evidence, and there
@@ -137,15 +137,15 @@ Rendered diff, trivy-operator-explorer 0.5.8 -> 1.0.0:
 			},
 			// Say what the render did. That much is fact and it is the finding.
 			MustMention: []string{"ClusterRole"},
-			// Say WHY, and it came from somewhere that is not the evidence.
+			// Say why, and it came from somewhere that is not the evidence.
 			//
 			// `namespaced` was a probe here on the first run and was wrong.
 			// qwen3.8-27b answered "swaps the cluster-scoped ClusterRole and
-			// ClusterRoleBinding for namespaced Role and RoleBinding" -- which is
-			// the render, restated. A Role IS namespaced; the word is a property
+			// ClusterRoleBinding for namespaced Role and RoleBinding", which is
+			// the render, restated. A Role is namespaced; the word is a property
 			// of the kind the report names, not a claim about the project. A probe
 			// that fires on a fact rephrased measures vocabulary, and the guard
-			// test cannot catch that because the word genuinely is absent from the
+			// test cannot catch that because the word is absent from the
 			// evidence as a string. It has to be a term whose only source is
 			// memory of the upstream, which is what `targetNamespaces` is.
 			MustNotMention: []string{"targetNamespaces"},
@@ -190,7 +190,7 @@ Rendered diff, authentik 2026.6.3 -> 2026.6.4:
 	},
 	{
 		// A chart that stops shipping a CRD renders green when nothing in the
-		// repository declares one -- the gate has counted, and says so. That is
+		// repository declares one; the gate has counted, and says so. That is
 		// exactly the promotion whose diff is one version number and whose
 		// consequence arrives later, when something that was using the CRD
 		// through some other path finds it gone.
@@ -233,7 +233,7 @@ Consumers of the removed CustomResourceDefinitions in this repository: 0.`,
 		// in a sentence nobody wrote for a changelog.
 		//
 		// Measured because the failure is subtle: given a real reason at last,
-		// a model can take it as licence to extend it -- from what the commit
+		// a model can take it as licence to extend it; from what the commit
 		// says to what it implies about the project.
 		Name:    "explain-the-commit-says-what-the-notes-did-not",
 		Path:    PathExplain,
@@ -317,8 +317,8 @@ Consumers of the removed CustomResourceDefinition in this repository: 0.`,
 		},
 	},
 	{
-		// A live count of zero is the strongest evidence in a brief -- nobody
-		// wrote it down, it was measured -- and the failure it invites is the
+		// A live count of zero is the strongest evidence in a brief, nobody
+		// wrote it down; it was measured, and the failure it invites is the
 		// opposite of invention: a model that has been shown "0 objects are
 		// stored on the version being removed" and flags the bump anyway,
 		// because a disappearing CRD looks alarming in the abstract.
@@ -358,7 +358,7 @@ evidence that anything is safe.`,
 			MustMention: []string{"v1alpha1"},
 			// Nothing was stored on it and nothing in the repository declared it,
 			// so there is no consequence to warn about. Note the probes are for
-			// invented CONSEQUENCES, not for the word "migrate" -- "nothing needs
+			// invented consequences, not for the word "migrate"; "nothing needs
 			// migrating" is a perfectly grounded sentence here, and a probe that
 			// fired on it would be measuring vocabulary again.
 			MustNotMention: []string{"data loss", "downtime", "irreversible"},
@@ -367,7 +367,7 @@ evidence that anything is safe.`,
 	{
 		// The other half, and the dangerous one. A refusal is not a zero, and
 		// a model shown "not permitted to check" must not convert it into
-		// reassurance -- which is the single most natural thing to do with a
+		// reassurance, which is the single most natural thing to do with a
 		// sentence that contains no bad news.
 		Name:    "explain-nobody-checked-is-not-the-same-as-nothing-found",
 		Path:    PathExplain,
@@ -402,8 +402,8 @@ would have shown.`,
 			// A refusal converted into reassurance, which is the most natural thing
 			// to do with a sentence containing no bad news.
 			//
-			// Not "safe" and not "zero": the prompt block's own warning -- "it is
-			// not zero, and it is not evidence that anything is safe" -- contains
+			// Not "safe" and not "zero": the prompt block's own warning, "it is
+			// not zero, and it is not evidence that anything is safe", contains
 			// both, so a probe for either fires on the evidence. The guard test
 			// caught that on the first two writes of this case, which is what the
 			// guard is for. These are words that could only arrive by supplying an

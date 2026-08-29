@@ -18,7 +18,7 @@ hand-written promotion pipeline per artifact.
 - **A merge policy per target.** `always` / `minor` / `patch` / `never`,
   evaluated against the semver difference, so a patch can merge itself while a
   major waits for a human.
-- **Bounded retries.** Kargo's default `errorThreshold` is 1 — a single
+- **Bounded retries.** Kargo's default `errorThreshold` is 1, so a single
   transient API error fails the whole promotion. This sets a real policy, and
   caps how long a step that is waiting on a check may retry.
 - **A triage hook.** An optional `http` step that hands the promotion's context
@@ -28,8 +28,9 @@ hand-written promotion pipeline per artifact.
 
 `yaml-update` rewrites the matched line in place and parses **only the first
 YAML document** of a file. So a tracked key must already exist, address a
-scalar, sit in the first document, and carry no trailing comment. Multi-document
-files need the tracked resource first — see [`docs/targets.md`](docs/targets.md).
+scalar, sit in the first document, and carry no trailing comment.
+Multi-document files need the tracked resource first; see
+[`docs/targets.md`](docs/targets.md).
 
 Kargo's admission webhook also defaults and canonicalizes fields on write. If
 the chart does not emit those fields explicitly and in canonical form, ArgoCD
@@ -37,5 +38,5 @@ reads the difference as permanent drift and re-syncs forever.
 
 ## Reference
 
-- [`docs/targets.md`](docs/targets.md) — the target schema and the `yaml-update` rules
-- [`docs/chaining.md`](docs/chaining.md) — multi-stage chains and verification gating
+- [`docs/targets.md`](docs/targets.md): the target schema and the `yaml-update` rules
+- [`docs/chaining.md`](docs/chaining.md): multi-stage chains and verification gating

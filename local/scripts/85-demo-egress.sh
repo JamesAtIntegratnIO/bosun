@@ -2,7 +2,7 @@
 # Act five: the agent reaches the internet, and says where it went.
 #
 # 0.15.0 replaced the egress allow-list with an open door and a log. The
-# allow-list was correct and it was a full-time job -- every chart repository,
+# allow-list was correct and it was a full-time job, every chart repository,
 # every registry's blob CDN and every redirect target had to be named before the
 # agent could read it, and three separate incidents in this project added a host
 # after the fact. The symptom each time was a two-minute timeout and a brief
@@ -10,11 +10,11 @@
 # exists to end.
 #
 # What replaced it is accountability after the fact: every outbound request is
-# logged -- method, host and path, with the QUERY STRING REDACTED because
-# release-asset URLs are pre-signed and carry a JWT -- and `triage.egressDeny`
+# logged, method, host and path, with the query string redacted because
+# release-asset URLs are pre-signed and carry a JWT, and `triage.egressDeny`
 # forbids a host by name or by `*.suffix`.
 #
-# The log half is visible in every other act. The DENY half is not, because a
+# The log half is visible in every other act. The deny half is not, because a
 # working deployment never contacts a host it has forbidden. So this forbids one
 # it is about to contact.
 #
@@ -32,8 +32,8 @@ BRANCH="egress/a-host-it-was-told-not-to-visit"
 ORIGINAL="$(kc -n bosun get deploy bosun-bosun \
   -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="EGRESS_DENY")].value}')"
 # During a rollout there are two Running pods and `logs deploy/...` picks one
-# of them, so confirming the restore from a log line is a coin flip -- the
-# first two versions of this printed the OLD pod's startup banner and the
+# of them, so confirming the restore from a log line is a coin flip, the
+# first two versions of this printed the old pod's startup banner and the
 # restore looked like it had not happened. The deployment's own spec is the
 # authoritative answer and needs no pod at all.
 deny_now() {
@@ -62,7 +62,7 @@ POD="$(agent_pod)"
 step "now: $(deny_now)"
 
 say "1. a pull request the agent will escalate"
-# The escalate path is one of the two that read upstream notes -- and reading
+# The escalate path is one of the two that read upstream notes, and reading
 # them starts by asking the registry which repository publishes the artifact.
 # That is the request about to be refused.
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"; restore' EXIT
@@ -81,11 +81,11 @@ git -C "$WORK/repo" commit -qam "chore(podinfo): bump, and move the namespace"
 git -C "$WORK/repo" push -q --force "$CLONE" "$BRANCH"
 
 # The agent will not re-triage a pull request it has already escalated, and it
-# tracks that with a LABEL, which a force-push does not clear. A second run of
+# tracks that with a label, which a force-push does not clear. A second run of
 # this script against the same open pull request therefore proves nothing: the
-# agent short-circuits before it reaches for upstream notes, nothing is
-# refused, and the demo reports a failure that is really its own reuse. Close
-# any open one first so every run starts from a pull request with no history.
+# agent short-circuits before it reaches for upstream notes; nothing is
+# refused, and the demo reports a failure that is its own reuse. Close any
+# open one first so every run starts from a pull request with no history.
 for old in $(gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls?state=open" \
     | python3 -c "import json,sys;print(' '.join(str(p['number']) for p in json.load(sys.stdin) if p['head']['ref']=='$BRANCH'))"); do
   gitea_api PATCH "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls/${old}" -d '{"state":"closed"}' >/dev/null
@@ -99,7 +99,7 @@ PR="$(gitea_api POST "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls" \
 ok "pull request #${PR}"
 
 # Nothing seeds a verdict here. The namespace move is a real change to what
-# gets deployed, so the agent's own sweep renders it and blocks it -- which is
+# gets deployed, so the agent's own sweep renders it and blocks it, which is
 # what the triage below then has to answer for.
 HEAD_SHA="$(head_sha "$PR")"
 step "waiting for the sweep to render ${HEAD_SHA:0:8}"

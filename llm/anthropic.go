@@ -13,7 +13,7 @@ import (
 
 // Anthropic speaks the Messages API.
 //
-// Covers hosted Anthropic directly, and -- via BaseURL -- Bedrock and Vertex
+// Covers hosted Anthropic directly, and via BaseURL the Bedrock and Vertex
 // gateways or a LiteLLM-style proxy presenting the same shape.
 type Anthropic struct {
 	BaseURL   string

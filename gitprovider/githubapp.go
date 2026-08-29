@@ -20,8 +20,8 @@ import (
 
 // AppAuth authenticates as a GitHub App installation rather than as a person.
 //
-// THIS IS ABOUT IDENTITY, not permissions. A fine-grained token works fine and
-// grants exactly the same access -- but it belongs to whoever minted it, so
+// This is about identity, not permissions. A fine-grained token works fine and
+// grants exactly the same access, but it belongs to whoever minted it, so
 // every comment the agent writes carries that person's name and avatar, and
 // every reader has to notice the "automated triage, not a review" footer to
 // learn otherwise. An agent indistinguishable from a colleague at a glance is
@@ -32,7 +32,7 @@ import (
 //
 // Two other things follow, both of which matter more than they sound:
 //
-//   - INSTALLATION TOKENS EXPIRE, in an hour, and are minted on demand from a
+//   - installation tokens expire, in an hour, and are minted on demand from a
 //     key. A leaked one is a bad hour rather than a standing grant. The PAT
 //     this replaces had no expiry at all.
 //   - The App is its own principal, so revoking it does not disturb the
@@ -47,7 +47,7 @@ type AppAuth struct {
 	// PrivateKey is the PEM the App issued. PKCS#1 or PKCS#8.
 	PrivateKey []byte
 	// InstallationID is optional. Left empty it is discovered from the
-	// repository, which removes a value that can be silently wrong -- an
+	// repository, which removes a value that can be silently wrong, an
 	// installation id belonging to another org fails as a 404 on a call that
 	// looks otherwise correct.
 	InstallationID string
@@ -119,12 +119,12 @@ func (a *AppAuth) Token(ctx context.Context) (string, error) {
 // This exists because commit emails are unauthenticated display-matching, and
 // the first live repair proved what that means: a commit authored with the
 // default `bosun@users.noreply.github.com` rendered on the pull request under
-// the avatar of the unrelated GitHub account named `bosun` -- the
-// `<username>@users.noreply.github.com` namespace BELONGS to accounts, and an
+// the avatar of the unrelated GitHub account named `bosun`, the
+// `<username>@users.noreply.github.com` namespace belongs to accounts, and an
 // email in it that is not yours attributes your commit to a stranger. The
 // comments were already the App's; the commits said someone else wrote them.
 //
-// The slug comes from GET /app (JWT -- the one endpoint family app JWTs are
+// The slug comes from GET /app (JWT, the one endpoint family app JWTs are
 // for) and the bot user's numeric id from GET /users/<slug>[bot] with an
 // installation token.
 func (a *AppAuth) BotIdentity(ctx context.Context) (name, email string, err error) {
@@ -170,7 +170,7 @@ func (a *AppAuth) installation(ctx context.Context, jwt string) (string, error) 
 	var out struct {
 		ID int64 `json:"id"`
 	}
-	// Asks "which installation covers THIS repository", so a misconfigured id
+	// Asks "which installation covers this repository", so a misconfigured id
 	// is not a thing that can exist.
 	if err := a.call(ctx, http.MethodGet,
 		fmt.Sprintf("%s/repos/%s/%s/installation", a.base(), a.Owner, a.Repo), jwt, &out); err != nil {
@@ -231,8 +231,8 @@ func b64(s string) string { return base64.RawURLEncoding.EncodeToString([]byte(s
 // way a valid key reliably arrives broken.
 //
 // PEM is line-structured, and secret stores are not. A key pasted into a
-// single-line field -- which is the default in most vaults, including
-// 1Password -- arrives with every newline gone. It is still the right key,
+// single-line field, which is the default in most vaults, including
+// 1Password, arrives with every newline gone. It is still the right key,
 // byte for byte, and pem.Decode refuses it.
 //
 // This cost a production crash-loop, and the error message even guessed the
@@ -266,8 +266,8 @@ func parseKey(pemBytes []byte) (*rsa.PrivateKey, error) {
 
 // rewrap restores the line structure of a PEM whose newlines were stripped.
 //
-// Returns the input unchanged when it cannot find a BEGIN/END pair, so a blob
-// that is genuinely not PEM still fails with the message that says so.
+// Returns the input unchanged when it cannot find a begin/end pair, so a blob
+// that is not PEM still fails with the message that says so.
 func rewrap(in []byte) []byte {
 	s := strings.TrimSpace(string(in))
 	begin := strings.Index(s, "-----BEGIN ")

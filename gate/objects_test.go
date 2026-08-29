@@ -11,7 +11,7 @@ func obj(kind, ns, name, apiVersion, hash string) Object {
 }
 
 // The signal the Application table cannot carry. A chart moving 0.15.2 -> 0.16.0
-// is one version row; what it DOES is remove two containers and add a
+// is one version row; what it does is remove two containers and add a
 // DaemonSet, four CRDs and a webhook.
 func TestObjectDiffReportsAddedRemovedAndChanged(t *testing.T) {
 	base := []Object{
@@ -39,7 +39,7 @@ func TestObjectDiffReportsAddedRemovedAndChanged(t *testing.T) {
 	}
 }
 
-// An apiVersion moving under an existing resource is a MIGRATION. Reporting it
+// An apiVersion moving under an existing resource is a migration. Reporting it
 // as one removal plus one addition hides the very thing a reviewer needs, and
 // it is the single most reliable indicator that a bump needs a human.
 func TestApiVersionChangeIsItsOwnKindAndBlocks(t *testing.T) {
@@ -164,7 +164,7 @@ spec: {revisionHistoryLimit: 10}
 }
 
 // Whether a chart stamps metadata.namespace varies between versions of the
-// SAME chart -- podinfo omits it at 6.7.0 and sets it at 6.14.1. Keying on the
+// same chart, podinfo omits it at 6.7.0 and sets it at 6.14.1. Keying on the
 // raw value made every object in the chart read as one removal plus one
 // addition, which buried the actual change under a full-set churn.
 func TestNamespaceDefaultsToTheApplicationDestination(t *testing.T) {
@@ -206,8 +206,8 @@ func TestNamespaceIsNotInventedWithoutADestination(t *testing.T) {
 }
 
 // Helm test hooks are never applied by a sync, and charts routinely give them
-// a random name -- so they appeared as the same three pods added AND removed
-// on every render. Other hooks are applied and must still be reported.
+// a random name, so they appeared as the same three pods added and removed on
+// every render. Other hooks are applied and must still be reported.
 func TestHelmTestHooksAreExcludedButOtherHooksAreNot(t *testing.T) {
 	hooked := func(v string) map[string]any {
 		return map[string]any{
@@ -277,7 +277,7 @@ func TestChangedObjectReportsWhichFieldsMoved(t *testing.T) {
 	}
 }
 
-// A table loaded from the JSON artifact has no bodies -- Hash exists precisely
+// A table loaded from the JSON artifact has no bodies; Hash exists precisely
 // so the artifact stays small. The finding must still be reported; only the
 // field list is absent.
 func TestFieldDiffIsOmittedWhenBodiesWereNotCarried(t *testing.T) {
@@ -325,7 +325,7 @@ func crd(name string, versions ...map[string]any) map[string]any {
 	}
 }
 
-// external-secrets 0.10.3 -> 2.9.0 rendered GREEN. The CRD object is
+// external-secrets 0.10.3 -> 2.9.0 rendered green. The CRD object is
 // apiextensions.k8s.io/v1 on both sides, so the apiVersion rule cannot see it,
 // while every manifest in the repository still declaring the dropped version
 // breaks on apply. That is a migration, and it must block.
@@ -382,7 +382,7 @@ func TestAVersionTurnedOffCountsAsDropped(t *testing.T) {
 
 // Without bodies the question cannot be answered. Reporting "nothing dropped"
 // because we could not look is the worst available answer, so the change is
-// still reported -- just not as a migration.
+// still reported, just not as a migration.
 func TestNoBodyMeansNoCRDClaimEitherWay(t *testing.T) {
 	got := diffObjects(
 		[]Object{{Cluster: "c", Kind: "CustomResourceDefinition", Name: "x", APIVersion: "apiextensions.k8s.io/v1", Hash: "a"}},

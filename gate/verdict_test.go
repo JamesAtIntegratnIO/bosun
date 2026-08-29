@@ -7,7 +7,7 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
 )
 
-// The report used to read identically whether it was blocking or not -- the
+// The report used to read identically whether it was blocking or not; the
 // findings were listed and the verdict lived only in the commit status. Two
 // reports on one pull request, a red one and the green one after a repair,
 // were then indistinguishable at a glance.
@@ -125,7 +125,7 @@ func TestTheVerdictHeadlineCannotBeMistakenForAParsedHeading(t *testing.T) {
 }
 
 // A run blocked only by schema validation used to publish a report headlined
-// "No blocking findings" and an all-zero blockers marker beside a FAILURE
+// "No blocking findings" and an all-zero blockers marker beside a failure
 // status, because the report was written before validation ran. The report,
 // the marker and the status have to be three renderings of one answer.
 func TestSchemaFailuresBlockAndReachTheHeadlineAndTheMarker(t *testing.T) {
@@ -155,7 +155,7 @@ func TestSchemaFailuresBlockAndReachTheHeadlineAndTheMarker(t *testing.T) {
 		t.Errorf("marker lost the schema count: %+v", got)
 	}
 
-	// The remedy is an author's, not the agent's -- same class as an
+	// The remedy is an author's, not the agent's, same class as an
 	// apiVersion that moved under a chart-rendered object.
 	if got.RepoSideRemedy() {
 		t.Error("a schema failure has no repair the agent performs")

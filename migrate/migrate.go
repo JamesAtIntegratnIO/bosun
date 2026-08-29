@@ -1,21 +1,21 @@
 // Package migrate turns one red gate into a repair: a CustomResourceDefinition
 // that stopped serving a version, and the manifests still declaring it.
 //
-// It is shared by the gate and the agent ON PURPOSE, and that sharing is the
+// It is shared by the gate and the agent on purpose, and that sharing is the
 // safety argument. The gate uses Scan to decide whether a dropped version
-// blocks -- it blocks exactly while manifests in the repository still declare
-// it -- and Line to write the report. The agent uses ParseReport to read that
+// blocks, it blocks exactly while manifests in the repository still declare
+// it, and Line to write the report. The agent uses ParseReport to read that
 // line back and Migrate to rewrite the declaring manifests. One scanner, one
 // line format, two callers: the inspection and the repair cannot disagree
 // about what a consumer is, and the re-run gate independently verifies the
 // repair by counting again.
 //
-// The agent side involves no model. Everything it needs -- the kind, the
-// dropped versions, the version that remains -- is computed by the gate and
+// The agent side involves no model. Everything it needs, the kind, the
+// dropped versions, the version that remains, is computed by the gate and
 // carried in the report line, so the rewrite is a deterministic function of
 // evidence, not a proposal to be corroborated.
 //
-// By extension this package owns READING the gate's report, not only the
+// By extension this package owns reading the gate's report, not only the
 // repair: Line writes a finding, ParseReport reads it back, and Subjects names
 // what a whole report is about so an upstream search can be aimed at it. They
 // live together because they are one format, and two files that each believe
@@ -24,14 +24,13 @@
 //
 // # Why gopkg.in/yaml.v3 here and sigs.k8s.io/yaml everywhere else
 //
-// The rest of the module decodes YAML into structs, which sigs.k8s.io/yaml
-// does by round-tripping through JSON -- so it honours `json:` tags and matches
-// what Kubernetes itself accepts. That round trip is exactly what the scanner
-// and rewriter here cannot use: they need yaml.Node, which carries source
-// positions, so a value can be rewritten ON ITS OWN LINE with the indentation,
-// quoting style and trailing comment intact. Re-serialising a whole document instead would
-// reformat the file, discard comments, and turn a one-line change into an
-// unreviewable diff.
+// The rest of the module decodes YAML into structs, which sigs.k8s.io/yaml does by
+// round-tripping through JSON, so it honours `json:` tags and matches what Kubernetes
+// itself accepts. That round trip is exactly what the scanner and rewriter here cannot
+// use: they need yaml.Node, which carries source positions, so a value can be rewritten on
+// its own line with the indentation, quoting style and trailing comment intact.
+// Re-serialising a whole document instead would reformat the file, discard comments, and
+// turn a one-line change into an unreviewable diff.
 package migrate
 
 import (
@@ -51,7 +50,7 @@ type Dropped struct {
 	CRD string
 	// Group is the API group consumers declare, derived from CRD.
 	Group string
-	// Kind is what a consuming manifest writes in its `kind:` field --
+	// Kind is what a consuming manifest writes in its `kind:` field,
 	// spec.names.kind, not the plural.
 	Kind string
 	// Versions are the served versions that are gone.
@@ -61,7 +60,7 @@ type Dropped struct {
 }
 
 // Report-section headings the gate emits and the agent looks for. They live
-// here so both sides read the same bytes by construction -- the same reason
+// here so both sides read the same bytes by construction, the same reason
 // the gate's ReportMarker lives in the gate binary rather than in each CI
 // adapter.
 const (
@@ -70,7 +69,7 @@ const (
 	HeadingAPIVersion = "**API version changed**"
 )
 
-// OtherBlockers is the PRE-MARKER FALLBACK for the same question
+// OtherBlockers is the pre-marker fallback for the same question
 // Blockers.OtherThanDropped answers, and should only be reached for a report
 // from a gate old enough not to emit the machine-readable breakdown.
 //
@@ -93,8 +92,8 @@ func OtherBlockers(report string) bool {
 //
 // When the consumer kind and the surviving version are known the line carries
 // them, and that suffix is what makes the finding repairable: the agent's
-// parser accepts nothing less. A known kind with NO survivor is a CRD removed
-// outright -- there is nowhere to move, so the line says so and the parser
+// parser accepts nothing less. A known kind with no survivor is a CRD removed
+// outright; there is nowhere to move, so the line says so and the parser
 // deliberately cannot act on it. Without either it falls back to the plain
 // statement.
 func Line(object, dropped, kind, target string) string {
@@ -116,8 +115,8 @@ func Line(object, dropped, kind, target string) string {
 // the right migration.
 //
 // The optional " in <namespace>" exists because chart-diff stamps every object
-// with the Application's destination namespace, cluster-scoped or not -- so
-// the real report reads `.../externalsecrets.external-secrets.io in
+// with the Application's destination namespace, cluster-scoped or not, so the
+// real report reads `.../externalsecrets.external-secrets.io in
 // external-secrets`, and a parser blind to that would never fire on a real
 // promotion.
 var reportLine = regexp.MustCompile(
@@ -127,13 +126,13 @@ var reportLine = regexp.MustCompile(
 // ParseReport extracts every repairable dropped-version finding from a gate
 // report.
 //
-// The suffix-less line -- `X: no longer serves Y`, with no consumer kind and no
-// destination -- is deliberately not returned. It names a problem without
-// naming where the manifests must move, and a repair must not guess.
+// The suffix-less line, `X: no longer serves Y`, with no consumer kind and no
+// destination, is deliberately not returned. It names a problem without naming
+// where the manifests must move, and a repair must not guess.
 //
-// NOT an old format, though this comment used to call it one. Line still emits
+// Not an old format, though this comment used to call it one. Line still emits
 // it today, from gate/diff.go, whenever the gate knows a version was dropped
-// but not what declares it or what survives -- a finding built from a bodiless
+// but not what declares it or what survives, a finding built from a bodiless
 // table. It is the unrepairable case, not a legacy one, and reading it as
 // legacy invites somebody to delete the branch that produces it.
 func ParseReport(report string) []Dropped {
@@ -171,7 +170,7 @@ var kubeVersion = regexp.MustCompile(`^v(\d+)(?:(alpha|beta)(\d+))?$`)
 // PreferredVersion picks the version consumers should move to, by the same
 // priority the API server uses: GA before beta before alpha, higher numbers
 // first within each class. Anything that does not parse as a Kubernetes
-// version sorts last, alphabetically -- deterministic even for charts that
+// version sorts last, alphabetically, deterministic even for charts that
 // invent their own naming.
 func PreferredVersion(versions []string) string {
 	if len(versions) == 0 {
@@ -215,8 +214,8 @@ func PreferredVersion(versions []string) string {
 // PreferredOrder is every version, most-preferred first, by the same ranking
 // PreferredVersion uses.
 //
-// Exported for the structural migration, which wants the NEWEST of several
-// dropped versions -- the one a document is most likely to have been written
+// Exported for the structural migration, which wants the newest of several
+// dropped versions; the one a document is most likely to have been written
 // against, and therefore the one whose schema best describes the shape being
 // left behind. Sharing the ranking rather than re-deriving it is the same rule
 // as sharing the report format: two orderings would eventually disagree.
@@ -234,20 +233,20 @@ func PreferredOrder(versions []string) []string {
 // Blockers counts each reason the gate is red, separately, because they do not
 // all have the same answer.
 //
-// The distinction that matters is whether a reason has a REPOSITORY-SIDE
-// remedy. Manifests declaring a dropped version do -- move them, which the
-// agent does deterministically. A targeting or source change does -- a human
-// edits the values that caused it. An object whose own apiVersion moved does
-// NOT: the chart renders it, nothing in the repository declares it, and there
-// is no edit anyone can make. Telling a reader "this needs a human" without
+// The distinction that matters is whether a reason has a repository-side
+// remedy. Manifests declaring a dropped version have one: move them, which the
+// agent does deterministically. A targeting or source change has one: a human
+// edits the values that caused it. An object whose own apiVersion moved has
+// none, because the chart renders it, nothing in the repository declares it,
+// and there is no edit anyone can make. Telling a reader "this needs a human" without
 // telling them nothing can be done in the repository wastes the search.
 type Blockers struct {
 	Targeting int `json:"targeting"`
 	Source    int `json:"source"`
-	// APIVersion is objects the CHART renders whose apiVersion moved, and that
+	// APIVersion is objects the chart renders whose apiVersion moved, and that
 	// is not part of a migration the repair is performing.
 	APIVersion int `json:"apiVersion"`
-	// Consumers is manifests IN THIS REPOSITORY still declaring a version a
+	// Consumers is manifests in this repository still declaring a version a
 	// definition stopped serving.
 	Consumers int `json:"consumers"`
 	// Unscanned is definitions whose consumers could not be counted. "We could
@@ -290,8 +289,8 @@ func (b Blockers) RepoSideRemedy() bool {
 // re-derives the format from memory drifts from the writer silently.
 //
 // It drifted once already. A reader matching the bullets without tracking
-// which group it was in treated an ADDED CustomResourceDefinition as a removed
-// one -- all three groups render a bullet of exactly the same shape.
+// which group it was in treated an added CustomResourceDefinition as a removed
+// one, all three groups render a bullet of exactly the same shape.
 const (
 	GroupAdded   = "Added"
 	GroupRemoved = "Removed"
@@ -315,7 +314,7 @@ var crdBullet = regexp.MustCompile(
 	"^- `CustomResourceDefinition/([a-z0-9][a-z0-9.-]*\\.[a-z0-9.-]+)(?: in [^`]+)?`$")
 
 // ParseRemovedCRDs returns the definitions the report lists as removed
-// outright -- gone entirely, not merely no longer serving a version.
+// outright, gone entirely, not only no longer serving a version.
 //
 // The two are different findings and only the second carries its own versions,
 // which is why this exists alongside ParseReport rather than inside it.

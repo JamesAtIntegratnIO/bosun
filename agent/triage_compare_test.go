@@ -14,8 +14,8 @@ import (
 // ClusterRole and no release note explains why" hands over a search; the same
 // sentence with the commit that removed it hands over an answer.
 //
-// These are about WHERE that reaches, and -- more carefully -- where it does
-// not. The mechanical path must never see it: an edit's evidence is the gate
+// These are about where that reaches, and, more carefully, where it does not.
+// The mechanical path must never see it: an edit's evidence is the gate
 // report alone, and a commit message that happens to contain a version number
 // must not become corroboration for writing one.
 
@@ -116,7 +116,7 @@ func TestAnEscalationWithNothingUpstreamSaysNothingRatherThanAnEmptySection(t *t
 }
 
 // The rule that keeps the safety story intact. A commit message is testimony
-// and testimony is never evidence for a write -- so the mechanical path does
+// and testimony is never evidence for a write, so the mechanical path does
 // not even pay for the lookup.
 func TestTheMechanicalPathNeverReadsUpstream(t *testing.T) {
 	h := newHarness(t)
@@ -209,7 +209,7 @@ func containsAll(list []string, want ...string) bool {
 // a number in it that reads as the wrong fact is worse than no number.
 //
 // "0 upstream commit(s) in v0.13.1...v0.13.2" was the first wording, and it
-// reads as THE RANGE WAS EMPTY. It was not -- there were two commits and
+// reads as the range was empty. It was not; there were two commits and
 // neither mentioned what the gate found, which is a different statement and a
 // more useful one.
 func TestTheProvenanceDistinguishesAnEmptyRangeFromAnUnhelpfulOne(t *testing.T) {
@@ -274,7 +274,7 @@ func TestTheProvenanceDistinguishesAnEmptyRangeFromAnUnhelpfulOne(t *testing.T) 
 }
 
 // A compare answer carries at most 250 commits. "None of the 1896 mentions it"
-// therefore claims a search nobody ran -- observed on a live authentik bump.
+// therefore claims a search nobody ran, observed on a live authentik bump.
 func TestATruncatedSearchSaysHowManyItActuallyRead(t *testing.T) {
 	h := newHarness(t)
 	h.triage.Brand = "Bosun"

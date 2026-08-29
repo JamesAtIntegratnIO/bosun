@@ -14,7 +14,7 @@ import (
 // A setting the repository makes that the new chart version no longer reads.
 //
 // This is the quietest failure a version bump has. Helm does not error on an
-// unknown value -- it ignores it -- so a chart that renames or removes a key
+// unknown value, it ignores it, so a chart that renames or removes a key
 // takes the setting with it and renders perfectly. Nothing in the text diff
 // shows it: the values file did not change, the chart did. The resource diff
 // often does not show it either, because the affected object frequently
@@ -27,17 +27,17 @@ import (
 //
 // # Why absence is trustworthy here
 //
-// A key missing from the new chart only means something if the OLD chart's
-// declared surface actually covered what the repository sets. So coverage is
+// A key missing from the new chart only means something if the old chart's
+// declared surface covered what the repository sets. So coverage is
 // measured first, and a chart whose surface does not explain what we already
-// set says nothing at all -- see minCoverage.
+// set says nothing at all, see minCoverage.
 const (
-	// minCoverage is how much of the repository's own settings the OLD chart
+	// minCoverage is how much of the repository's own settings the old chart
 	// version must account for before this check will trust an absence.
 	//
-	// Below it, the chart simply does not declare the surface it reads --
-	// undocumented-but-honoured keys are common -- and every finding would be
-	// a guess. Silence is the correct output for a chart we cannot read.
+	// Below it, the chart does not declare the surface it reads,
+	// undocumented-but-honoured keys are common, and every finding would be a
+	// guess. Silence is the correct output for a chart we cannot read.
 	minCoverage = 90
 
 	// maxDroppedListed bounds one Application's list. The finding is "this
@@ -69,7 +69,7 @@ func valuesSurface(repoRoot string, r Row) (map[string]bool, error) {
 	}
 
 	// Best-effort: a chart without a README, or with one helm-docs did not
-	// write, simply contributes nothing here.
+	// write, contributes nothing here.
 	if readme, err := helmShow(repoRoot, "readme", r); err == nil {
 		for _, k := range helmDocsKeys(string(readme)) {
 			out[k] = true
@@ -120,7 +120,7 @@ func allPaths(node any, prefix string) []string {
 	return out
 }
 
-// leafPaths is every path the repository actually SETS. Only leaves: a parent
+// leafPaths is every path the repository sets. Only leaves: a parent
 // that exists to hold children is not itself a setting, and counting it would
 // report the same drop several times over.
 func leafPaths(node any, prefix string) []string {
@@ -214,7 +214,7 @@ func pathCovered(path string, surface map[string]bool) bool {
 // droppedValues finds settings this Application makes that the new chart
 // version no longer declares.
 //
-// Returns nothing -- not an error -- when the old chart's surface does not
+// Returns nothing, not an error, when the old chart's surface does not
 // account for what the repository already sets. See minCoverage.
 func droppedValues(repoRoot string, before, after Row) ([]string, error) {
 	vals, err := repoValues(repoRoot, after)

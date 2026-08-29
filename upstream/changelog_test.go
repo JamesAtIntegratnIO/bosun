@@ -41,9 +41,9 @@ All notable changes. Format follows Keep a Changelog.
 - The legacy author is ignored.
 `
 
-// A section runs to the next heading AT THE SAME LEVEL OR HIGHER. Ending it at
+// A section runs to the next heading at the same level or higher. Ending it at
 // any heading would truncate every entry at its first `### Added`, which is
-// where the content is -- the entry would become its own blank line.
+// where the content is; the entry would become its own blank line.
 func TestAnEntryKeepsItsSubsections(t *testing.T) {
 	secs := parseChangelog(keepAChangelog)
 	byVersion := map[string]string{}
@@ -95,7 +95,7 @@ func TestTheHeadingStylesProjectsActuallyUse(t *testing.T) {
 }
 
 // changelogFile serves one path and 404s everything else, so a test can assert
-// WHICH candidate was taken.
+// which candidate was taken.
 func changelogServer(t *testing.T, files map[string]string) (*GitHubReleases, *[]string) {
 	t.Helper()
 	var asked []string
@@ -125,7 +125,7 @@ func changelogServer(t *testing.T, files map[string]string) (*GitHubReleases, *[
 
 // A chart's version numbers and its application's are different sequences, and
 // a repository that publishes both has a file for each. Reading the root
-// changelog for a chart bump answers with the wrong project's versions --
+// changelog for a chart bump answers with the wrong project's versions,
 // confidently, and in exactly the right shape.
 func TestAChartsOwnChangelogIsPreferredToTheRepositorys(t *testing.T) {
 	g, asked := changelogServer(t, map[string]string{

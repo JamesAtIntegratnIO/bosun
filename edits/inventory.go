@@ -21,7 +21,7 @@ type Scalar struct {
 //
 // This is the single biggest lever on making a small model usable here. Asked
 // to invent a key path and reproduce a value, a 9B model will return a file
-// path in the key field and a paraphrased block as the value -- observed, not
+// path in the key field and a paraphrased block as the value, observed, not
 // theorised. Handed an inventory, the same model is choosing from a list
 // instead of generating from memory, and a key that does not exist is no
 // longer expressible.
@@ -80,10 +80,10 @@ func walk(n *yaml.Node, path []string, out *[]Scalar) {
 // The `path:` line is repeated on every scalar rather than stated once as a
 // header. That looks redundant and is not: given a header, a 9B model
 // reconstructs the path from memory when it writes the edit and drops a
-// segment -- `a/b/c/addons.yaml` becomes `a/b/addons.yaml`, the applier
-// cannot open it, and the fix is silently lost. Repeating it puts the exact
-// string adjacent to every key it might choose, which turns writing the path
-// into copying rather than recalling.
+// segment, `a/b/c/addons.yaml` becomes `a/b/addons.yaml`, the applier cannot
+// open it, and the fix is silently lost. Repeating it puts the exact string
+// adjacent to every key it might choose, which turns writing the path into
+// copying rather than recalling.
 func Render(path string, scalars []Scalar) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "--- editable scalars in %s ---\n", path)

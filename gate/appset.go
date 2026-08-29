@@ -16,8 +16,8 @@ type Param struct {
 }
 
 // generatorSpec is the subset of ApplicationSet generators this gate
-// understands. Anything else is reported rather than silently ignored --
-// a generator we cannot expand is a blind spot, and a blind spot that
+// understands. Anything else is reported rather than silently ignored; a
+// generator we cannot expand is a blind spot, and a blind spot that
 // announces itself is survivable.
 type generatorSpec struct {
 	Clusters *clustersGenerator `json:"clusters,omitempty"`
@@ -46,7 +46,7 @@ type listGenerator struct {
 //
 // This is the heart of the targeting check. A selector is evaluated against
 // live cluster labels, which means an addon's scope can change without its own
-// definition changing at all -- someone relabels a cluster, or adds one, and an
+// definition changing at all, someone relabels a cluster, or adds one, and an
 // addon silently starts or stops targeting it. Reading the addon definition
 // tells you nothing; only expanding the generator does.
 func expandGenerators(gens []generatorSpec, inv *Inventory) ([]Param, []string, error) {
@@ -113,7 +113,7 @@ func expandClusters(g *clustersGenerator, inv *Inventory) ([]Param, error) {
 // expandMerge reproduces ApplicationSet's merge semantics: the first generator
 // establishes the base set, and each subsequent generator overrides values for
 // the params it matches, keyed by mergeKeys. Params produced only by a later
-// generator are discarded -- merge is a left join, not a union.
+// generator are discarded; merge is a left join, not a union.
 func expandMerge(g *mergeGenerator, inv *Inventory) ([]Param, []string, error) {
 	if len(g.Generators) == 0 {
 		return nil, nil, nil

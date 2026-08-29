@@ -9,13 +9,13 @@ import (
 )
 
 // TestLiveResolve points the real resolver at a real registry. Skipped unless
-// UPSTREAM_LIVE_ARTIFACT names one, so `go test ./...` stays hermetic and
+// UPSTREAM_LIVE_ARTIFACT names one, so `go test./...` stays hermetic and
 // offline.
 //
 // It exists because the bug this file's fixtures pin was not findable from the
 // fixtures: the resolver did exactly what its tests said, against a shape of
 // artifact nobody had put in front of it. A one-command way to ask a real
-// registry "what do you actually publish, and can we read it" is the cheapest
+// registry "what do you publish, and can we read it" is the cheapest
 // guard against the next version of that.
 //
 //	UPSTREAM_LIVE_ARTIFACT=oci://ghcr.io/org/charts/thing \

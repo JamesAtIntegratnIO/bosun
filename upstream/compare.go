@@ -10,7 +10,7 @@ import (
 // Commit is one upstream commit between the two versions.
 //
 // The first line of the message only. A commit body is prose written for other
-// maintainers and it crowds the gate report -- which is the fact -- out of a
+// maintainers and it crowds the gate report, which is the fact, out of a
 // prompt that has to hold both.
 type Commit struct {
 	SHA     string
@@ -19,20 +19,20 @@ type Commit struct {
 	Author  string
 }
 
-// Compare is what the maintainers CHANGED between two tags, as opposed to what
+// Compare is what the maintainers changed between two tags, as opposed to what
 // they said they changed.
 //
 // It exists because of a specific kind of finding. The gate proves a chart
 // dropped its ClusterRole; the release notes, if there are any, say nothing
-// about it; and the honest answer -- "the report does not say why" -- is
-// correct and unsatisfying. The commits between the two tags do say why, and
-// they say it in a form nobody wrote for a changelog and therefore nobody
+// about it; and the honest answer, "the report does not say why", is correct
+// and unsatisfying. The commits between the two tags do say why, and they
+// say it in a form nobody wrote for a changelog and therefore nobody
 // polished.
 //
-// Still TESTIMONY, not fact. A commit message is a claim about a change, made
+// Still testimony, not fact. A commit message is a claim about a change, made
 // by the person making it. What renders here is the only fact in this system.
 type Compare struct {
-	// Range is the two tags actually compared, "v0.5.8...v1.0.0". Not the
+	// Range is the two tags compared, "v0.5.8...v1.0.0". Not the
 	// promotion's own versions: a chart version and the app version its git
 	// tags use are frequently different namespaces, and comparing across them
 	// yields a confident 404.
@@ -45,33 +45,33 @@ type Compare struct {
 	// broke.
 	Total int
 	// Relevant are the commits whose message mentions something the gate
-	// found. Chosen by deterministic string matching over terms the CALLER
-	// derived from the report -- never by a model, which would be asking the
+	// found. Chosen by deterministic string matching over terms the caller
+	// derived from the report, never by a model, which would be asking the
 	// thing under supervision to pick its own evidence.
 	Relevant []Commit
 	// Files are paths in the upstream diff that mention one of those terms.
 	//
 	// Often the stronger signal, and the reason this is here at all. A commit
 	// titled "refactor: watch namespaces via config" does not contain the
-	// string "ClusterRole"; the file it deleted --
-	// `charts/x/templates/clusterrole.yaml` -- does.
+	// string "ClusterRole"; the file it deleted,
+	// `charts/x/templates/clusterrole.yaml`, does.
 	Files []string
 	// Note explains an empty or partial result in one sentence.
 	Note string
-	// Truncated means the range was LARGER THAN COULD BE READ -- GitHub answers
-	// a compare with at most 250 commits and reports the real total separately,
+	// Truncated means the range was larger than could be read; GitHub answers a
+	// compare with at most 250 commits and reports the real total separately,
 	// so a bigger range was filtered over a partial list.
 	//
 	// Strictly about coverage. It is what licenses the phrase "more than could
 	// be read", and a brief that says that about a range it read completely is
 	// lying in the direction of "we might have missed it".
 	Truncated bool
-	// Capped means everything was read and this is showing fewer -- the
+	// Capped means everything was read and this is showing fewer, the
 	// relevant or file list hit MaxCommits.
 	//
 	// A different fact from Truncated and it took a live run to notice they had
 	// been sharing a flag: a fully-read three-commit range reported "more than
-	// could be read" because eleven FILES matched the search terms.
+	// could be read" because eleven files matched the search terms.
 	Capped bool
 }
 
@@ -80,7 +80,7 @@ func (c *Compare) Any() bool {
 	return c != nil && (len(c.Relevant) > 0 || len(c.Files) > 0)
 }
 
-// CompareResolver is a SECOND interface rather than two more methods on
+// CompareResolver is a second interface rather than two more methods on
 // Resolver.
 //
 // ADR 0004's rule is that an interface is what the caller needs and nothing
@@ -104,15 +104,15 @@ const MaxCompareCommits = 10
 const compareTruncateAt = 250
 
 // CompareReadCap is how many commits one compare answer carries, exported so a
-// caller can say how many it actually searched rather than how many exist.
+// caller can say how many it searched rather than how many exist.
 const CompareReadCap = compareTruncateAt
 
 // Compare reads the commits between the two versions and keeps the ones that
 // mention something the gate found.
 //
-// Never an error for "could not look". Every failure -- an artifact with no
+// Never an error for "could not look". Every failure, an artifact with no
 // source label, tags that cannot be matched to the promotion's versions, a
-// rate-limited API -- becomes a Note, because the explanation this feeds is a
+// rate-limited API, becomes a Note, because the explanation this feeds is a
 // courtesy and losing it must never be the reason a pull request looks
 // unattended.
 func (g *GitHubReleases) Compare(ctx context.Context, artifact, from, to string, terms []string) (*Compare, error) {
@@ -168,7 +168,7 @@ func (g *GitHubReleases) Compare(ctx context.Context, artifact, from, to string,
 		c.Note = how
 	}
 	// GitHub answers with at most 250 commits and reports the real total
-	// separately, so a range bigger than that is INCOMPLETE and has to say so.
+	// separately, so a range bigger than that is incomplete and has to say so.
 	// A filter run over a truncated list that claimed to be whole would report
 	// "nothing upstream mentions this" about a range it never read.
 	if payload.Total > compareTruncateAt || len(payload.Commits) < payload.Total {
@@ -220,12 +220,12 @@ func (g *GitHubReleases) Compare(ctx context.Context, artifact, from, to string,
 	return c, nil
 }
 
-// compareTags decides WHICH two refs to compare, and it is the part that has
+// compareTags decides which two refs to compare, and it is the part that has
 // to be right.
 //
 // The promotion's own versions are the wrong answer and confidently so. A
 // chart version and the git tags of the project it packages are different
-// namespaces -- chart 0.5.1 ships app v1.0.0 -- so `compare/0.5.8...1.0.0`
+// namespaces, chart 0.5.1 ships app v1.0.0, so `compare/0.5.8...1.0.0`
 // against the source repository is a 404 at best and, at worst, two real tags
 // from an unrelated numbering.
 //
@@ -233,7 +233,7 @@ func (g *GitHubReleases) Compare(ctx context.Context, artifact, from, to string,
 //
 //  1. The project's own releases. The tags on release objects are real git
 //     tags by construction. Base is the newest release at or below `from` --
-//     the release the repository is actually leaving -- and head is the newest
+//     the release the repository is leaving, and head is the newest
 //     in range. This is the case that works whenever the upstream publishes
 //     releases at all.
 //  2. The artifact's OCI labels. `org.opencontainers.image.revision` is a
@@ -256,8 +256,8 @@ func (g *GitHubReleases) compareTags(ctx context.Context, repo, artifact, from, 
 	}
 
 	// A project that tags without releasing. Same arithmetic as above against
-	// a different list, because a compare range wants refs and a tag is a ref
-	// -- the release OBJECT was only ever a convenient place to find one.
+	// a different list, because a compare range wants refs and a tag is a
+	// ref; the release object was only ever a convenient place to find one.
 	if tags, terr := g.tagNames(ctx, repo); terr == nil {
 		if base, head := framing(tags, lo, hi); base != "" && head != "" {
 			return base, head,
@@ -280,8 +280,8 @@ func (g *GitHubReleases) compareTags(ctx context.Context, repo, artifact, from, 
 
 // framing picks the two refs to compare from a newest-first list of tag names.
 //
-// Base is the newest ref AT OR BELOW `from` -- the version the repository is
-// actually leaving -- and head is the newest one in range. Base is not "the
+// Base is the newest ref at or below `from`, the version the repository is
+// leaving, and head is the newest one in range. Base is not "the
 // oldest in range", and the difference is the whole point: the commits that
 // did the damage usually sit between the version being left and the first one
 // in range, so the narrower window would exclude exactly what was wanted.
@@ -290,17 +290,17 @@ func (g *GitHubReleases) compareTags(ctx context.Context, repo, artifact, from, 
 // question asked of two sources and two implementations would eventually
 // disagree about it.
 func framing(names []string, lo, hi string) (base, head string) {
-	// BY VERSION, not by the order the list arrived in.
+	// By version, not by the order the list arrived in.
 	//
 	// This took the first match in each direction, on the reasoning that a
-	// release list is newest-first. GitHub returns releases in PUBLISH-DATE
+	// release list is newest-first. GitHub returns releases in publish-date
 	// order, and any project that backports interleaves them: authentik
 	// published `version/2026.5.5` at 17:15 and `version/2026.2.6` at 17:14, so
 	// the "newest" entry in range depends on who cut a patch last.
 	//
 	// Measured on a live promotion of 2025.12.4 -> 2026.2.3, which framed
-	// itself as `version/2025.8.6...version/2025.12.6` -- a window that ends
-	// BELOW the version being adopted and starts four minor releases early.
+	// itself as `version/2025.8.6...version/2025.12.6`; a window that ends
+	// below the version being adopted and starts four minor releases early.
 	// 1896 commits were then read over the wrong range and reported as
 	// evidence, which is worse than reading none.
 	var headV, baseV string
@@ -309,7 +309,7 @@ func framing(names []string, lo, hi string) (base, head string) {
 		if v == "" {
 			continue
 		}
-		// Head is the HIGHEST version in range, base the highest at or below
+		// Head is the highest version in range, base the highest at or below
 		// the version being left.
 		if inRange(v, lo, hi) && (headV == "" || cmpVer(v, headV) > 0) {
 			head, headV = name, v

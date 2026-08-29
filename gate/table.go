@@ -19,10 +19,10 @@ type Row struct {
 	App       string `json:"app"`
 	Project   string `json:"project"`
 	Namespace string `json:"namespace"`
-	// SourceType is how THIS Application gets its manifests, which is a
+	// SourceType is how this Application gets its manifests, which is a
 	// different vocabulary from the config's SourceType (manifests, rendered,
-	// helm, kustomize, argocd-bootstrap) despite the shared name -- that one
-	// says where the gate reads Applications FROM. Named separately so the two
+	// helm, kustomize, argocd-bootstrap) despite the shared name; that one
+	// says where the gate reads Applications from. Named separately so the two
 	// cannot be assigned to each other, and typed so the accepted values are
 	// the const block rather than a trailing comment; the comment here claimed
 	// a `manifest` value nothing ever assigns.
@@ -38,8 +38,8 @@ type Row struct {
 	//
 	// Rendering with the wrong values is worse than not rendering: a chart
 	// default that this repository overrides would show as a change when
-	// nothing changed, and the override that MATTERS -- the one being flipped
-	// out from under you -- would be invisible.
+	// nothing changed, and the override that matters, the one being flipped
+	// out from under you, would be invisible.
 	ValueFiles   []string `json:"valueFiles,omitempty"`
 	ValuesInline string   `json:"valuesInline,omitempty"`
 }
@@ -53,7 +53,7 @@ func (r Row) Key() string {
 
 type Table struct {
 	Rows []Row `json:"rows"`
-	// Objects are the Kubernetes resources a source produced directly --
+	// Objects are the Kubernetes resources a source produced directly,
 	// from a rendered-manifests branch, or from any source whose output is
 	// not itself an Application. Empty when nothing in the repository is
 	// rendered, which is the common case and is why the object diff is
@@ -98,10 +98,10 @@ func WriteTableFile(path string, t *Table) error {
 // writeThenClose runs write against an open file and closes it, reporting
 // whichever failed.
 //
-// Close is CHECKED rather than deferred. On a file that was written to, close
+// Close is checked rather than deferred. On a file that was written to, close
 // is where a short write finally surfaces, and this one produces the target
-// table the whole diff is computed against -- a truncated table is a diff
-// that quietly compares against less than it says it did.
+// table the whole diff is computed against; a truncated table is a diff that
+// quietly compares against less than it says it did.
 func writeThenClose(f *os.File, path string, write func() error) error {
 	if err := write(); err != nil {
 		_ = f.Close()
@@ -138,7 +138,7 @@ func (r Row) Describe() string {
 		return fmt.Sprintf("%s (%s)", r.Path, r.SourceType)
 	default:
 		// A row with no source type at all. It reads as the empty string,
-		// which is honest -- there is nothing to describe.
+		// which is honest; there is nothing to describe.
 		return string(r.SourceType)
 	}
 }
@@ -147,7 +147,7 @@ func (r Row) Describe() string {
 type RowSource string
 
 const (
-	// RowHelm is a chart pulled at a pinned version -- the rows chart-diff can
+	// RowHelm is a chart pulled at a pinned version, the rows chart-diff can
 	// render on both sides of a bump.
 	RowHelm RowSource = "helm"
 	// RowPath is a directory in the repository, rendered as it stands.

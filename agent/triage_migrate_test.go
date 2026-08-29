@@ -66,7 +66,7 @@ func (h *harness) writeFile(t *testing.T, rel, content string) {
 }
 
 // The whole feature in one test: a red gate whose only cause is dropped served
-// versions gets its consumers rewritten and pushed -- deterministically. The
+// versions gets its consumers rewritten and pushed, deterministically. The
 // model is never consulted, because there is nothing to judge: the gate named
 // the versions, the survivor and the kind, and the rest is arithmetic.
 func TestARedGateWithDroppedVersionsIsRepairedWithoutTheModel(t *testing.T) {
@@ -108,7 +108,7 @@ func TestARedGateWithDroppedVersionsIsRepairedWithoutTheModel(t *testing.T) {
 		}
 	}
 	// A counter on the only attempt there will ever be describes a sequence
-	// that did not happen; it belongs in the comment only when it is a RE-try.
+	// that did not happen; it belongs in the comment only when it is a re-try.
 	if strings.Contains(comment, "attempt") {
 		t.Errorf("the first and only attempt should not be numbered:\n%s", comment)
 	}
@@ -128,13 +128,13 @@ func TestARedGateWithDroppedVersionsIsRepairedWithoutTheModel(t *testing.T) {
 	}
 }
 
-// The scope check is deliberately absent on this path -- consumers are files
-// the promotion did not touch -- but the deny-list is not, and a repair that
+// The scope check is deliberately absent on this path, consumers are files
+// the promotion did not touch, but the deny-list is not, and a repair that
 // policy refuses everywhere is an escalation, not a silent success.
 func TestAMigrationRefusedEverywhereEscalates(t *testing.T) {
 	h := migrateHarness(t)
 	// The only consumer sits outside the allowlist (`addons/**`), so policy
-	// refuses it -- same machinery that stops a model's stray edit.
+	// refuses it; same machinery that stops a model's stray edit.
 	h.writeFile(t, "terraform/externalsecret.yaml", externalSecretBefore)
 
 	if err := h.triage.Run(context.Background(), promotion()); err != nil {
@@ -156,7 +156,7 @@ func TestAMigrationRefusedEverywhereEscalates(t *testing.T) {
 }
 
 // The gate counted consumers; this branch has none. Whichever of the two is
-// stale, guessing is not the answer -- say so and hand it to a human.
+// stale, guessing is not the answer, say so and hand it to a human.
 func TestAGateAndBranchDisagreementEscalates(t *testing.T) {
 	h := migrateHarness(t)
 
@@ -287,10 +287,10 @@ func TestBlockersRoundTripThroughTheReport(t *testing.T) {
 // The bug this pins was observed twice in production before it was traced.
 //
 // When the migration path pushes, the branch head moves. The verdict written
-// afterwards used to land on the PRE-push SHA, so the commit that is actually
-// the head carried a green gate and no `bosun` status at all -- and because
-// `bosun` is a required check, that pull request could never go green. Silence
-// that reads as a dead agent, which is the failure this service exists to find.
+// afterwards used to land on the pre-push SHA, so the commit that is the head
+// carried a green gate and no `bosun` status at all, and because `bosun` is a
+// required check, that pull request could never go green. Silence that reads as
+// a dead agent, which is the failure this service exists to find.
 func TestTheVerdictLandsOnTheCommitTheMigrationPushed(t *testing.T) {
 	h := migrateHarness(t)
 	h.writeFile(t, "addons/external-secrets/externalsecret.yaml", externalSecretBefore)

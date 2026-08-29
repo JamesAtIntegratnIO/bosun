@@ -75,7 +75,7 @@ func TestAPathSourceDoesNotStopTheSearch(t *testing.T) {
 		t.Errorf("a later chart source must win: %+v", row)
 	}
 
-	// On its own, a path source IS the answer.
+	// On its own, a path source is the answer.
 	row, err = rowFromApp("addons", "hub", app(map[string]any{
 		"source": map[string]any{"path": "manifests", "targetRevision": "main"},
 	}))

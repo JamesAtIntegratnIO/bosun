@@ -25,7 +25,7 @@ func commentHarness(t *testing.T) (*Service, *gitprovider.Fake) {
 }
 
 // The shape the whole change exists for: a pull request that was red, got
-// repaired, and is now green must end up with ONE report saying it is green
+// repaired, and is now green must end up with one report saying it is green
 // and still recording that it was not.
 func TestARepairedPullRequestKeepsOneReportAndRemembersTheRed(t *testing.T) {
 	gs, f := commentHarness(t)
@@ -117,9 +117,9 @@ func TestAFailedRewriteStillPublishes(t *testing.T) {
 
 // The bug this guards shipped because the fake agreed with the mistake: the
 // agent looked for its own report by comparing the comment's author to
-// Name(), which is the PROVIDER's name ("github"), never the account. The
+// Name(), which is the provider's name ("github"), never the account. The
 // fake wrote comments authored by its own Name(), so the match succeeded in
-// every test and failed on every real pull request -- which then carried two
+// every test and failed on every real pull request, which then carried two
 // twenty-thousand-character reports, the exact thing the change was for.
 func TestTheReportIsFoundByItsStampNotItsAuthor(t *testing.T) {
 	gs, f := commentHarness(t)
@@ -143,7 +143,7 @@ func TestTheReportIsFoundByItsStampNotItsAuthor(t *testing.T) {
 }
 
 // A report this agent did not write carries no verdict stamp, so it is not
-// ours to rewrite -- we post our own beside it rather than failing.
+// ours to rewrite; we post our own beside it rather than failing.
 func TestAForeignReportIsNotRewritten(t *testing.T) {
 	gs, f := commentHarness(t)
 	ctx := context.Background()

@@ -11,7 +11,7 @@ import (
 // later if it was true at all.
 const (
 	// stalenessFactor multiplies a Warehouse's own interval. A Warehouse is
-	// stale only after it has missed TWO discoveries -- one missed sweep is a
+	// stale only after it has missed two discoveries; one missed sweep is a
 	// slow registry, two is a Warehouse that stopped.
 	stalenessFactor = 2
 	// verifyStuck is how long a verification may hold a Stage before it is
@@ -28,18 +28,18 @@ const (
 	// which would be the fastest possible way to teach someone to ignore this.
 	//
 	// Caught by running it: the first live sweep flagged bosun's own promotion
-	// three minutes after its pull request merged. A genuinely stranded one
-	// waits indefinitely -- the ones observed had been running for hours -- so
-	// the grace costs nothing real.
+	// three minutes after its pull request merged. A stranded one
+	// waits indefinitely, the ones observed had been running for hours, so the
+	// grace costs nothing real.
 	orphanGrace = 15 * time.Minute
 	// pendingStuck is how long a promotion may sit Pending. Pending means
-	// queued behind something -- usually a verification -- and a queue that
+	// queued behind something, usually a verification, and a queue that
 	// never drains is the pipeline stopped.
 	//
 	// Two hours because a promotion queued behind a normal verification clears
 	// in minutes, and one queued behind a long AnalysisRun in tens of minutes.
 	// Past two hours nothing is draining, and the Stage is reporting no error
-	// while it happens -- which is precisely the class of failure that produces
+	// while it happens, which is precisely the class of failure that produces
 	// no event and so needs a timer to find.
 	pendingStuck = 2 * time.Hour
 )
@@ -47,8 +47,8 @@ const (
 // Detect runs every detector over one snapshot.
 //
 // Ordering note: detectors do not consult each other. A Stage can legitimately
-// produce two findings -- a wedged promotion AND a dead pin -- and collapsing
-// them would hide whichever the collapser thought less important. Reports are
+// produce two findings, a wedged promotion and a dead pin, and collapsing them
+// would hide whichever the collapser thought less important. Reports are
 // sorted, not deduplicated.
 func Detect(s *Snapshot) *Report {
 	r := &Report{At: s.Now, Checked: Checked{
@@ -88,11 +88,11 @@ func Detect(s *Snapshot) *Report {
 // detectWedged finds Stages whose most recent promotion ended without
 // delivering, and which therefore will not try again.
 //
-// THIS IS THE ONE THAT MATTERS MOST, and the one nothing else reports. Kargo
+// This is the one that matters most, and the one nothing else reports. Kargo
 // creates a Promotion per freight; when it reaches a terminal phase it is over
 // for good. Auto-promotion does not retry it, because from the controller's
-// point of view that freight HAS been promoted -- the attempt simply failed.
-// So a single transient error at the wrong moment stops that Stage receiving
+// point of view that freight has been promoted; the attempt failed. So
+// a single transient error at the wrong moment stops that Stage receiving
 // artifacts permanently, and every Application it manages stays Synced and
 // Healthy on the old version, which is exactly what "nothing is wrong" looks
 // like from every other angle.
@@ -115,7 +115,7 @@ func detectWedged(s *Snapshot) []Finding {
 		if st.CurrentFreight != "" && st.CurrentFreight == latest.Freight {
 			continue
 		}
-		// An older promotion that DID deliver this freight means the Stage
+		// An older promotion that did deliver this freight means the Stage
 		// has it; the later failure was a retry of something already done.
 		delivered := false
 		for _, p := range ps[1:] {
@@ -155,9 +155,9 @@ func detectWedged(s *Snapshot) []Finding {
 // promoteCmd is the exact YAML that re-runs a promotion.
 //
 // Every detail here is load-bearing and none of it is guessable. A Warehouse
-// refresh does NOT do this -- it re-discovers artifacts, and freight that
+// refresh does not do this; it re-discovers artifacts, and freight that
 // already carries a terminal promotion is never auto-promoted again. And
-// `generateName` must NOT end in a dot: the webhook computes Kargo's own name
+// `generateName` must not end in a dot: the webhook computes Kargo's own name
 // from it and then validates the generateName itself as RFC1123, which a
 // trailing dot fails.
 func promoteCmd(ns, stage, freight string) string {
@@ -230,7 +230,7 @@ func refreshCmd(ns, name string) string {
 // that no longer exists.
 //
 // A promotion's last step waits for its pull request to merge. Close that pull
-// request -- superseded, or replaced by a rebase -- and the promotion keeps
+// request, superseded, or replaced by a rebase, and the promotion keeps
 // waiting, holding the Stage's queue behind it. Kargo does notice eventually,
 // but "eventually" was measured in tens of minutes, and until then the Stage
 // accepts nothing else.
@@ -282,9 +282,9 @@ func detectOrphanedPromotions(s *Snapshot) []Finding {
 //
 // `kargo.akuity.io/abort=true` is accepted by the API and silently does
 // nothing: the value is parsed as a request object, and a bare `true` is not
-// one. There is no error, no event and no log line -- the promotion simply
-// keeps running, which is indistinguishable from the annotation not having
-// been applied. Measured the hard way.
+// one. There is no error, no event and no log line; the promotion keeps
+// running, which is indistinguishable from the annotation not having been
+// applied. Measured the hard way.
 func abortCmd(ns, promotion string) string {
 	if ns == "" {
 		ns = "<namespace>"
@@ -297,8 +297,8 @@ kubectl -n %s annotate promotion %s \
 // detectSupersededPRs finds a Stage with more than one open promotion pull
 // request.
 //
-// Only the newest can ever merge -- the others promote freight the Stage has
-// moved past -- but they stay open, gather gate runs and triage comments, and
+// Only the newest can ever merge, the others promote freight the Stage has
+// moved past, but they stay open, gather gate runs and triage comments, and
 // crowd out the pull requests a human still has to read. Nine of them had
 // accumulated against four Stages.
 func detectSupersededPRs(s *Snapshot) []Finding {
@@ -351,12 +351,12 @@ func trimHashes(in []string) []string {
 
 // detectVerificationStuck finds a Stage that a verification has stopped.
 //
-// TWO SITUATIONS, and they read differently on purpose.
+// Two situations, and they read differently on purpose.
 //
-// A verification still RUNNING after long enough is a Stage nothing promotes
+// A verification still running after long enough is a Stage nothing promotes
 // past while an AnalysisRun with no timeout takes its time.
 //
-// A verification that FAILED or ERRORED is worse and much easier to miss,
+// A verification that failed or errored is worse and much easier to miss,
 // because it is over. Kargo does not re-run it: that freight has been
 // verified, and the answer was no. The Stage sits `Ready=False` forever,
 // declines every promotion behind it, and every Application it manages stays
@@ -374,7 +374,7 @@ func detectVerificationStuck(s *Snapshot) []Finding {
 		over := isTerminalVerification(st.VerificationPhase)
 		// A verification still running is only worth reporting once it has
 		// run long enough to be stuck. One that already failed is worth
-		// reporting immediately -- it is not going to change.
+		// reporting immediately; it is not going to change.
 		if !over && st.ReadySince > 0 && st.ReadySince < verifyStuck {
 			continue
 		}
@@ -417,10 +417,10 @@ func isTerminalVerification(phase string) bool {
 
 // reverifyCmd re-runs a verification that has already answered.
 //
-// The id is not optional and not discoverable from the Stage's conditions --
-// it lives in `status.freightHistory[0].verificationHistory[0].id`, which is
+// The id is not optional and not discoverable from the Stage's conditions; it
+// lives in `status.freightHistory[0].verificationHistory[0].id`, which is
 // three levels deeper than anyone looks. Fixing the underlying cause does
-// NOTHING on its own: the verification is over, and the Stage stays stuck
+// nothing on its own: the verification is over, and the Stage stays stuck
 // until something asks it again. Proved by fixing a NetworkPolicy and watching
 // three Stages not move.
 func reverifyCmd(ns, stage, id string) string {
@@ -447,19 +447,19 @@ func orNS(ns string) string {
 //
 // A Kargo target names a file and a set of keys, and rewrites those keys on
 // every promotion. If the key is not in the file, the write lands nowhere and
-// the promotion still succeeds -- so the pin looks maintained forever while
+// the promotion still succeeds, so the pin looks maintained forever while
 // having no effect at all.
 //
 // The two ways this happens are both invisible:
 //
 //   - the file moved or was renamed, and the target still names the old path;
-//   - the CHART stopped reading the key, someone removed it from the values
-//     file, and the target that writes it belongs to a DIFFERENT artifact.
+//   - the chart stopped reading the key, someone removed it from the values
+//     file, and the target that writes it belongs to a different artifact.
 //     Observed exactly: the `kubectl` target writes seven keys into kyverno's
 //     values file, and kyverno 3.9.0 stops declaring six of them. Two targets,
 //     one dependency, nothing connecting them.
 //
-// Returns the findings and how many (file, key) pairs were actually resolved,
+// Returns the findings and how many (file, key) pairs were resolved,
 // because a pin check that could not read the checkout must not be reported as
 // a pin check that found nothing.
 func detectDeadPins(s *Snapshot) ([]Finding, int) {
@@ -544,10 +544,10 @@ func trimDir(p string) string {
 //
 // Pending is the phase with no symptom. The Stage reports no error, every
 // Application it manages stays Synced and Healthy on the version it already
-// had, and the promotion that would move it never starts -- so nothing about
+// had, and the promotion that would move it never starts, so nothing about
 // this produces an event, which is the whole reason the supervisor is a timer.
 //
-// One finding per Stage, on the OLDEST pending promotion. A wedged queue backs
+// One finding per Stage, on the oldest pending promotion. A wedged queue backs
 // up behind a single blocker, and reporting each promotion in the queue
 // separately would turn one problem into a page of them.
 func detectPendingStuck(s *Snapshot) []Finding {

@@ -37,7 +37,7 @@ ok "pushed $(git -C "$WORK" rev-parse --short main)"
 
 say "argocd credentials for the same repository"
 # ArgoCD reconciles from inside the cluster, so it takes the Service address
-# over plain HTTP -- no certificate, nothing to trust. (Kargo cannot: it
+# over plain HTTP, no certificate, nothing to trust. (Kargo cannot: it
 # refuses to send credentials to a plain-HTTP endpoint, so 30-kit.sh gives it
 # the ingress address instead.)
 REPO_URL="${GITEA_SVC}/${GITEA_OWNER}/${SAMPLE_REPO_NAME}.git"
@@ -55,9 +55,9 @@ ok "argocd repository credentials"
 say "argocd credentials for the OCI chart registry"
 # Kargo's chart is published to an OCI registry, and ArgoCD matches an OCI
 # helm source to a repository entry by the registry path with no scheme. No
-# credentials -- ghcr is public for this chart -- but the entry has to exist or
-# the Application fails with "repository not accessible", which reads like an
-# auth problem and is not one.
+# credentials, ghcr is public for this chart, but the entry has to exist or the
+# Application fails with "repository not accessible", which reads like an auth
+# problem and is not one.
 kc -n argocd delete secret oci-kargo-charts >/dev/null 2>&1 || true
 kc -n argocd create secret generic oci-kargo-charts \
   --from-literal=type=helm \
@@ -70,7 +70,7 @@ ok "oci-kargo-charts"
 
 say "app-of-apps"
 # Without this nothing applies the sample repo's Applications, and the
-# reconcile step of the demo has nothing to watch -- the pin lands on main and
+# reconcile step of the demo has nothing to watch, the pin lands on main and
 # the cluster never hears about it. One root Application pointed at apps/ is
 # the smallest thing that closes the loop.
 cat <<YAML | kc apply -f - >/dev/null
@@ -98,8 +98,8 @@ ok "sample-apps root Application"
 # The gate's sources are `apps/*.yaml`, so a demo pull request renders podinfo
 # and not a fifty-object monitoring chart at two versions.
 #
-# And the structural demo writes `apps/cert-manager.yaml` pinned at v1.5.5 --
-# a 2021 chart it needs the gate to RENDER, never to install. Keeping the real
+# And the structural demo writes `apps/cert-manager.yaml` pinned at v1.5.5; a
+# 2021 chart it needs the gate to render, never to install. Keeping the real
 # cert-manager in platform/ is what stops those two being the same Application.
 cat <<YAML | kc apply -f - >/dev/null
 apiVersion: argoproj.io/v1alpha1

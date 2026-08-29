@@ -63,8 +63,8 @@ func githubFor(t *testing.T, h http.Handler) *GitHub {
 	return &GitHub{APIBase: srv.URL, Owner: "org", Repo: "repo", Token: "s3cret", HTTP: srv.Client()}
 }
 
-// The bug this replaced: 250 comments, one page read, and the gate's report --
-// the newest comment on the pull request -- not in the list at all.
+// The bug this replaced: 250 comments, one page read, and the gate's report,
+// the newest comment on the pull request, not in the list at all.
 func TestGitHubReadsEveryCommentPastTheFirstHundred(t *testing.T) {
 	const total = 250
 	g := githubFor(t, pageHandler(t, total, func(r *http.Request) (int, bool) {
@@ -94,7 +94,7 @@ func TestGitHubReadsEveryCommentPastTheFirstHundred(t *testing.T) {
 }
 
 // A bound that truncates has to truncate the half nobody came for. Asked
-// newest-first, the comments that fall off the end are the oldest -- so the
+// newest-first, the comments that fall off the end are the oldest, so the
 // gate's report, which is minutes old, is always still in the list.
 func TestGitHubKeepsTheNewestWhenItRunsOutOfPages(t *testing.T) {
 	total := maxCommentPages*100 + 500

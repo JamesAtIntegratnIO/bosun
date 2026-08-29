@@ -8,13 +8,13 @@ import (
 
 // A correctly-configured GitHub App is not a missing token.
 //
-// This crashed in production: the chart stops setting GIT_TOKEN under App auth
-// -- installation tokens are minted per use, so there is nothing static to set
-// -- while validate() still demanded it. The pod would not start:
+// This crashed in production: the chart stops setting GIT_TOKEN under App
+// auth, installation tokens are minted per use, so there is nothing static to
+// set, while validate() still demanded it. The pod would not start:
 //
 //	configuration: missing required configuration: GIT_TOKEN
 //
-// Verifying the chart RENDER was not the same as running the binary without a
+// Verifying the chart render was not the same as running the binary without a
 // token, and only the second would have caught this.
 func TestCredentialRequirementFollowsTheAuthMode(t *testing.T) {
 	base := map[string]string{
@@ -80,7 +80,7 @@ func TestCredentialRequirementFollowsTheAuthMode(t *testing.T) {
 // for its whole early life, so it sits copied into consumers' values files as
 // though somebody chose it. It is the noreply address of an unrelated GitHub
 // account, and honoring it attributed the first live repair's commits to that
-// stranger THROUGH the release that fixed the default -- explicit values beat
+// stranger through the release that fixed the default, explicit values beat
 // defaults, and the explicit value was the old default, fossilised.
 func TestTheLegacyAuthorIsIgnoredNotHonored(t *testing.T) {
 	c := &Config{AuthorName: "bosun", AuthorEmail: "bosun@users.noreply.github.com"}
@@ -97,8 +97,8 @@ func TestTheLegacyAuthorIsIgnoredNotHonored(t *testing.T) {
 	}
 }
 
-// Seven boolean settings had drifted into two idioms -- `== "true"` and
-// `!= "false"` -- which agree on nothing except the exact strings "true" and
+// Seven boolean settings had drifted into two idioms, `== "true"` and `!=
+// "false"`, which agree on nothing except the exact strings "true" and
 // "false". LIVE_READS=1 was off; EXPLAIN_GREEN=no was on.
 func TestEveryBooleanSettingAcceptsTheSameWords(t *testing.T) {
 	onWords := []string{"1", "t", "true", "TRUE", "yes", "on"}
@@ -154,12 +154,12 @@ func TestABooleanTypoIsAConfigurationError(t *testing.T) {
 
 // Each of these three is validated in one switch and dispatched in another, in
 // a different file. A value the validator accepts and the dispatcher does not
-// is a pod that starts healthy and then does nothing -- so the two sets have to
+// is a pod that starts healthy and then does nothing, so the two sets have to
 // be the same, and a named type is what lets a test say so.
 
 // Each of these two is validated in one switch and dispatched in another, in a
 // different file. A value the validator accepts and the dispatcher does not is
-// a pod that starts healthy and then does nothing -- so the two sets have to be
+// a pod that starts healthy and then does nothing, so the two sets have to be
 // the same, and a named type is what lets a test say so.
 func TestTheValidatorAcceptsExactlyTheValuesThatDispatch(t *testing.T) {
 	base := func() *Config {
@@ -209,7 +209,7 @@ func TestTheValidatorAcceptsExactlyTheValuesThatDispatch(t *testing.T) {
 }
 
 // The gate reads its inventory from the ArgoCD API and from nowhere else, so
-// both halves of that credential are required -- and both are things an
+// both halves of that credential are required, and both are things an
 // operator forgets. Naming them at start-up is the difference between a pod
 // that will not start and an `error` status on every pull request, discovered
 // by whoever tries to merge next.
@@ -239,8 +239,8 @@ func TestTheInventoryNeedsAnArgoCDURLAndAToken(t *testing.T) {
 
 // GitHub defaults to the public API when GIT_API_BASE is empty. Gitea has no
 // public instance to default to, so an empty base URL is a pod that starts
-// healthy and then cannot read a pull request or push a fix -- and PushFix
-// says so only once a fix is ready to push, minutes and one model call later.
+// healthy and then cannot read a pull request or push a fix, and PushFix says
+// so only once a fix is ready to push, minutes and one model call later.
 func TestGiteaRequiresAnAPIBase(t *testing.T) {
 	base := func() *Config {
 		return &Config{

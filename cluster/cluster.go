@@ -1,9 +1,9 @@
-// Package cluster answers "what is actually running?".
+// Package cluster answers "what is running?".
 //
 // The gate renders a repository and compares. Everything it knows is a
 // property of the text: which manifests declare an API version, which
 // Applications target which clusters, what a chart's output looks like at two
-// versions. It cannot see the cluster, and CI structurally cannot -- which is
+// versions. It cannot see the cluster, and CI structurally cannot, which is
 // the argument ADR 0002 made for putting triage in the cluster in the first
 // place, and which ADR 0008 finished: the gate itself now runs here too by
 // default, reading its inventory through this package instead of from a
@@ -17,19 +17,19 @@
 //
 // Three rules shape everything here.
 //
-// READ-ONLY, structurally. Only GET, only LIST. The chart's ClusterRole has no
+// Read-only, structurally. Only GET, only LIST. The chart's ClusterRole has no
 // create, update, patch or delete verb anywhere and says a feature needing one
 // should be reconsidered; this package is the first Go code to use that role
 // and it does not change that sentence.
 //
-// NEVER AN ERROR FOR "COULD NOT LOOK". A denied group, an unreachable
-// apiserver, a CRD the cluster does not serve -- all ordinary, all reported as
-// a note that says which. Cluster facts inform a brief; losing them must never
+// Never an error for "could not look". A denied group, an unreachable
+// apiserver, a CRD the cluster does not serve, all ordinary, all reported as a
+// note that says which. Cluster facts inform a brief; losing them must never
 // be the reason a pull request goes unattended.
 //
-// NO client-go. This package is four endpoints and a bearer token, and the
-// house rule -- the git client and the App JWT are both hand-rolled with an
-// ADR-style comment saying why -- is that a vendored SDK should not become the
+// No client-go. This package is four endpoints and a bearer token, and the
+// house rule, the git client and the App JWT are both hand-rolled with an
+// ADR-style comment saying why, is that a vendored SDK should not become the
 // largest dependency in a service whose whole point is being small enough to
 // audit. client-go would be roughly forty times the size of everything here.
 package cluster
@@ -46,7 +46,7 @@ import (
 //
 // Known is the field that matters. A zero with Known false is "nobody
 // checked", and a brief that printed it as "0 live objects" would be stating
-// the safest possible fact on no evidence -- which is worse than saying
+// the safest possible fact on no evidence, which is worse than saying
 // nothing, because a reader acts on it.
 type Count struct {
 	N     int
@@ -61,7 +61,7 @@ type Count struct {
 // String renders the count the way a brief says it.
 //
 // The note wins whenever there is one, and a note is only ever set when the
-// bare number would mislead. "The cluster does not serve this API" is a KNOWN
+// bare number would mislead. "The cluster does not serve this API" is a known
 // answer whose number is zero, and printing that zero on its own would say
 // "nothing is using it" when what happened is that the question does not apply
 // here.
@@ -94,19 +94,19 @@ func (h Health) String() string {
 // CRD is what the cluster currently serves for one CustomResourceDefinition.
 //
 // Read for the finding the report cannot make countable on its own: a chart
-// that stops shipping a CRD ENTIRELY names the object but not its versions, and
+// that stops shipping a CRD entirely names the object but not its versions, and
 // a collection cannot be listed without one. Pre-merge the definition is still
-// installed, so asking the cluster is both possible and the only honest source
-// -- the versions a repository's manifests happen to declare are not the
-// versions objects are stored under.
+// installed, so asking the cluster is both possible and the only honest source,
+// the versions a repository's manifests happen to declare are not the versions
+// objects are stored under.
 type CRD struct {
 	Versions []string
 	// Schemas are the OpenAPI schemas the cluster serves, keyed by version
 	// name. Populated for the same reason the versions are: when a chart moves
-	// a field between versions, the OLD shape is only knowable from the
+	// a field between versions, the old shape is only knowable from the
 	// definition that is installed right now, and after the merge it is gone.
 	//
-	// Decoded maps rather than a typed struct -- these carry vendor extensions
+	// Decoded maps rather than a typed struct, these carry vendor extensions
 	// no generic OpenAPI struct models, and a field this code does not
 	// understand must survive rather than be dropped.
 	Schemas map[string]map[string]any
@@ -127,7 +127,7 @@ type CRD struct {
 type Reader interface {
 	// CountLive counts the objects live on one group/version/plural.
 	//
-	// The coordinates come from the GATE'S REPORT, not from a cluster lookup.
+	// The coordinates come from the gate'S report, not from a cluster lookup.
 	// That matters precisely when it is most wanted: for a CustomResourceDefinition
 	// removed outright, an apiextensions GET would 404 at the moment the
 	// question "is anything still using this" is most worth answering.
@@ -164,8 +164,8 @@ func listPath(group, version, plural string) string {
 
 // list is the shape of any collection response, reduced to what is counted.
 //
-// metadata.remainingItemCount is deliberately NOT used. The apiserver sets it
-// only for lists served from etcd -- not the default watch-cache path -- and
+// metadata.remainingItemCount is deliberately not used. The apiserver sets it
+// only for lists served from etcd, not the default watch-cache path, and
 // documents it as best-effort, so treating its absence as "no more items"
 // silently under-counts and presents the result as a fact. The pages are
 // walked instead.

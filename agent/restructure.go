@@ -27,10 +27,10 @@ import (
 // gate is green. The value is gone.
 //
 // Enumerating every upstream's structural changes is not possible, so this
-// shows the model BOTH schemas and the document and asks it to translate. What
-// makes that safe is not the prompt -- it is `structural.Validate`, which
-// checks the OUTPUT: identity preserved, valid against the target schema, and
-// every value present in the original or dictated by the schema itself.
+// shows the model both schemas and the document and asks it to translate. What
+// makes that safe is not the prompt; it is `structural.Validate`, which checks
+// the output: identity preserved, valid against the target schema, and every
+// value present in the original or dictated by the schema itself.
 //
 // The model is a translator between two schemas it is shown. The harness is
 // what makes that true.
@@ -62,17 +62,17 @@ type restructureResult struct {
 	Refused []refused
 	// Skipped explains, per definition, why a document was not analysed at
 	// all: no schema pair, no model that can restructure, the cap. Never
-	// silent -- a structural change nobody looked for is the failure this
+	// silent; a structural change nobody looked for is the failure this
 	// exists to end.
 	Skipped []string
 	// Provenance says where a schema came from when it was not the obvious
 	// place. ADR 0007 promises the live-CRD fallback is "labelled as one in the
 	// comment", and it was not: the note was attached to the pair and then only
-	// surfaced when the pair was INCOMPLETE -- which is exactly when the
-	// fallback had not been used. A fallback that works is silent, which is the
-	// wrong way round.
+	// surfaced when the pair was incomplete, which is exactly when the fallback
+	// had not been used. A fallback that works is silent, which is the wrong
+	// way round.
 	Provenance []string
-	// ModelCalls counts model calls, so a comment can say honestly whether a
+	// ModelCalls counts model calls, so a comment can say whether a
 	// model was involved at all. Named for what it counts: `Called` read as a
 	// boolean beside Applied, Refused and Skipped.
 	ModelCalls int
@@ -84,13 +84,13 @@ func (r *restructureResult) touched() bool {
 
 // restructureAll analyses every file the deterministic swap rewrote.
 //
-// TOP-LEVEL DOCUMENTS ONLY, and that is a real limit rather than an oversight.
-// `migrate` deliberately reaches further -- a manifest nested in an
+// Top-level documents only, and that is a real limit rather than an oversight.
+// `migrate` deliberately reaches further, a manifest nested in an
 // `extraObjects:` list or embedded in a block scalar renders into a real object
 // and breaks at apply exactly like a document does, and 13 of 27 declaring
 // files in the incident this was built from held the declaration somewhere
 // other than the top level. Swapping a value on one line inside such a file is
-// safe. REPLACING a document inside one is not: it means re-serialising a
+// safe. Replacing a document inside one is not: it means re-serialising a
 // values file whose every remaining line would move. Those are reported as
 // skipped and reach a human.
 func (t *Triage) restructureAll(ctx context.Context, root string, drops []migrate.Dropped,
@@ -119,10 +119,10 @@ func (t *Triage) restructureAll(ctx context.Context, root string, drops []migrat
 				firstNonEmpty(pair.Note, "both schemas were needed and one could not be read")))
 		case pair.Note != "":
 			// Complete, but not from where it would normally come. Worth saying
-			// out loud: a target schema taken from what the cluster serves
-			// TODAY predates the bump, so it can miss a field the new chart
-			// version added -- and a check that silently used the old shape
-			// would report a clean document with more confidence than it earned.
+			// out loud: a target schema taken from what the cluster serves today
+			// predates the bump, so it can miss a field the new chart version
+			// added, and a check that silently used the old shape would report a
+			// clean document with more confidence than it earned.
 			res.Provenance = append(res.Provenance, fmt.Sprintf("`%s`: %s", d.CRD, pair.Note))
 		}
 	}

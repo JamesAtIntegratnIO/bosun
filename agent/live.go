@@ -12,15 +12,15 @@ import (
 
 // The cluster half of a brief.
 //
-// Everything the gate knows is a property of TEXT. It renders a repository at
+// Everything the gate knows is a property of text. It renders a repository at
 // two revisions and compares, so "3 manifests still declare a version this
 // chart stops serving" is a fact about the repository and the only fact it can
-// have. Whether anything is actually stored on that version is a different
-// question, it usually decides whether a human needs to be woken up, and CI
-// structurally cannot answer it. This service runs in the cluster; ADR 0002
+// have. Whether anything is stored on that version is a different question.
+// It usually decides whether a human needs to be woken up, and CI structurally
+// cannot answer it. This service runs in the cluster; ADR 0002
 // said that was the point and this is the first code that spends it.
 //
-// Gathered by CODE, labelled fact, and never asserted by a model. The model is
+// Gathered by code, labelled fact, and never asserted by a model. The model is
 // shown the result the same way it is shown the gate report.
 
 // liveFacts is what the cluster said about one promotion.
@@ -37,7 +37,7 @@ type liveFacts struct {
 type liveCRD struct {
 	// Name is <plural>.<group>, as the report prints it.
 	Name string
-	// Versions are the versions counted -- the ones the chart stops serving,
+	// Versions are the versions counted; the ones the chart stops serving,
 	// or every served version when the definition is going away entirely.
 	Versions []string
 	// Counts parallels Versions.
@@ -65,7 +65,7 @@ func (c liveCRD) String() string {
 	n, known, atLeast := c.Total()
 	if !known {
 		// Name the first thing that stopped it, rather than a generic
-		// "unknown" -- the note is the fix instruction for an operator who
+		// "unknown"; the note is the fix instruction for an operator who
 		// scoped the ClusterRole by API group.
 		for _, x := range c.Counts {
 			if !x.Known {
@@ -99,7 +99,7 @@ const maxLiveCRDs = 8
 //
 // Never fails, never blocks anything. A reader that is not configured, not
 // permitted, or cannot reach the apiserver produces a brief without a live
-// section -- which is the brief that existed before this, and still useful.
+// section, which is the brief that existed before this, and still useful.
 func (t *Triage) liveFor(ctx context.Context, p Promotion, report string) *liveFacts {
 	if t.Cluster == nil {
 		return nil
@@ -118,10 +118,10 @@ func (t *Triage) liveFor(ctx context.Context, p Promotion, report string) *liveF
 	for _, d := range migrate.ParseReport(report) {
 		remember(d.CRD, d.Versions)
 	}
-	// Removed outright -- the finding that names a definition and no versions.
+	// Removed outright; the finding that names a definition and no versions.
 	// Read through migrate rather than re-matched here: this file used to
 	// carry a third regexp for the gate's bullet format, and because it did
-	// not track which group the bullet was in, an ADDED definition sent us to
+	// not track which group the bullet was in, an added definition sent us to
 	// the apiserver to ask what was running.
 	for _, name := range migrate.ParseRemovedCRDs(report) {
 		remember(name, nil)
@@ -142,9 +142,9 @@ func (t *Triage) liveFor(ctx context.Context, p Promotion, report string) *liveF
 		if len(versions) == 0 {
 			// The definition is going away entirely and the report does not
 			// say under which versions anything is stored. Pre-merge it is
-			// still installed, so the cluster can say -- and the cluster is
-			// the only honest source, since the versions a repository declares
-			// are not necessarily the versions objects live on.
+			// still installed, so the cluster can say, and the cluster is the
+			// only honest source, since the versions a repository declares are
+			// not necessarily the versions objects live on.
 			crd := t.Cluster.CRD(ctx, name)
 			if !crd.Known || len(crd.Versions) == 0 {
 				f.CRDs = append(f.CRDs, liveCRD{

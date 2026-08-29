@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-// The target schema comes out of a rendered chart, and `helm template
-// --include-crds` produces a manifest stream with everything else in it too.
-// These are about pulling the right objects out of that and, more importantly,
-// about what happens to the parts that are not objects at all.
+// The target schema comes out of a rendered chart, and `helm
+// template,include-crds` produces a manifest stream with everything else in it
+// too. These are about pulling the right objects out of that and, more
+// importantly, about what happens to the parts that are not objects at all.
 
 const renderedStream = `---
 # Source: es/templates/serviceaccount.yaml
@@ -83,7 +83,7 @@ func TestTheTargetSchemaIsFoundInARenderedChart(t *testing.T) {
 
 // A rendered stream carries comments, empty documents and, on some charts,
 // fragments that do not parse. None of those is a reason to lose the schemas
-// that did parse -- the fallback for "no schema" is the plain apiVersion swap,
+// that did parse, the fallback for "no schema" is the plain apiVersion swap,
 // and taking that path because one document was odd would be a silent
 // downgrade.
 func TestARenderedStreamWithJunkStillYieldsItsSchemas(t *testing.T) {

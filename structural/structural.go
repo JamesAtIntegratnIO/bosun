@@ -2,37 +2,37 @@
 // judges a proposed rewrite when it does not.
 //
 // The deterministic migration in `migrate` swaps an apiVersion line and nothing
-// else. That is exactly right when the two versions are compatible -- and a
+// else. That is exactly right when the two versions are compatible, and a
 // silent corruption when they are not. A chart that moves `spec.foo` to
 // `spec.bar.foo` between v1beta1 and v1 leaves a document that parses, applies,
 // and quietly loses a field the API server prunes on the way in. Nothing in the
 // repository, the render or the gate can see that: the manifest is valid YAML
-// declaring a served version, and the value is simply gone.
+// declaring a served version, and the value is gone.
 //
 // Enumerating every upstream's structural changes is not possible. So the model
-// is shown BOTH schemas and the document, and asked to translate. What makes
+// is shown both schemas and the document, and asked to translate. What makes
 // that safe is not the prompt. It is this package.
 //
 // # The three checks
 //
 // A proposal is written only if it passes all three, and they are deliberately
-// about the OUTPUT rather than the proposal:
+// about the output rather than the proposal:
 //
-//   - IDENTITY. apiVersion is the target, and kind, metadata.name and
+//   - identity. apiVersion is the target, and kind, metadata.name and
 //     metadata.namespace are byte-identical to the original. A migration that
 //     renames the object is not a migration.
-//   - SCHEMA VALIDITY. Every field the target schema rejects is gone, every
+//   - schema validity. Every field the target schema rejects is gone, every
 //     field it requires is present, and every typed leaf has the type the
 //     schema names. This is what the apiserver would have said, said earlier.
-//   - VALUE PROVENANCE. Every scalar leaf in the proposal appears as a scalar
-//     leaf in the ORIGINAL, unless the target schema itself dictates it -- a
+//   - value provenance. Every scalar leaf in the proposal appears as a scalar
+//     leaf in the original, unless the target schema itself dictates it: a
 //     default, a single-value enum, a const. Structure comes from the schema;
-//     DATA comes only from the document. This is the document-level analogue
+//     Data comes only from the document. This is the document-level analogue
 //     of "never invent a version", and it is the check that makes the model a
 //     translator rather than an author.
 //
 // And one report rather than a check: values present in the original and absent
-// from the proposal are LISTED. Some of those are correct -- a field the target
+// from the proposal are listed. Some of those are correct, a field the target
 // schema no longer accepts has to go somewhere, and sometimes nowhere. A human
 // reads that list; the harness does not silently accept it.
 package structural
@@ -83,13 +83,13 @@ func (f Finding) String() string { return fmt.Sprintf("%s: %s", f.Path, f.Detail
 // Check walks a document against a schema and reports everything that does not
 // fit.
 //
-// An EMPTY result is the common case and the valuable one: it means the plain
+// An empty result is the common case and the valuable one: it means the plain
 // apiVersion swap was complete, and no model is called at all. Every guard
-// downstream of here exists for the minority of bumps that actually moved a
+// downstream of here exists for the minority of bumps that moved a
 // field.
 //
-// Unknown constructs are not findings. A schema this does not understand --
-// oneOf, anyOf, a vendor extension, a $ref -- means the field is not judged
+// Unknown constructs are not findings. A schema this does not understand,
+// oneOf, anyOf, a vendor extension, a $ref, means the field is not judged
 // rather than judged harshly, because the cost of a false Rejected is a model
 // call and a diff a human has to read, on a document that was fine.
 func Check(doc map[string]any, schema Schema) []Finding {
@@ -132,14 +132,14 @@ func walk(prefix string, node any, schema Schema, out *[]Finding) {
 			// apiVersion, kind and metadata belong to the API machinery, not to
 			// a CustomResourceDefinition's own schema. Kubernetes' structural
 			// schema rules say a root schema must not restrict them, and plenty
-			// of real CRDs simply declare `spec` and `status` and nothing else.
+			// of real CRDs declare `spec` and `status` and nothing else.
 			//
 			// Judging them turned every object of such a kind into a document
-			// "the target schema rejects" -- measured at 5 of 152 live objects
+			// "the target schema rejects", measured at 5 of 152 live objects
 			// across a real cluster, each producing findings for apiVersion,
 			// kind and every metadata key. In production that fires the model on
 			// a document that was fine, and the only proposal that could satisfy
-			// the complaint would be one that DELETED the object's identity,
+			// the complaint would be one that deleted the object's identity,
 			// which the identity validator then refuses. A confusing escalation
 			// on a healthy manifest.
 			if prefix == "" && rootSupplied[name] {

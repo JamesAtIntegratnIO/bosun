@@ -3,6 +3,31 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [Unreleased]
+
+### Changed
+
+- **Every doc and code comment in the repository is edited for one voice.** No
+  em dashes, no emphasis capitals, no filler adverbs, no story framing, and an
+  aphorism used once rather than on eight pages. This is prose only: `git diff`
+  on `*.go` touches comment lines and nothing else, and the report strings the
+  agent parses back are unchanged. `adr/` and the changelogs keep their own
+  voice.
+
+### Fixed
+
+- **The quickstart documented `gate.mode: cluster`, removed in 0.22.0.** It is
+  not in `values.schema.json`, so the values file that page hands you fails at
+  install time naming the key. The same page linked to an appendix on CI mode
+  that is now the CLI appendix.
+- **`docs/git-providers.md` warned that a repeated method count goes stale and
+  then stated one.** The count is right (ten, checked against
+  `gitprovider/provider.go`); the contradiction is gone.
+- **`site/src/authored/reference/configuration.md` carried a dangling `own.`**
+  from an earlier edit, with the word missing from the sentence above it.
+- **`agent/comment.go` had two doc comments for `renderMigration`**, the second
+  restating and contradicting the first.
+
 ## [0.23.0] - 2026-08-28
 
 Seven defects from an external security review, and the checks that pin them.

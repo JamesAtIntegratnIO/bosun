@@ -1,12 +1,12 @@
 // Package prompt holds the three instructions the agent gives a model.
 //
-// Its own package because it is MEASURED as well as used. The eval suite
+// Its own package because it is measured as well as used. The eval suite
 // scores each of these against real incidents, and the only way that score
 // describes the prompt that ships is for both to read the same constant.
 //
 // They used to live in package main, which evals could not import, so a shell
-// script regex-scraped them out of the Go source into environment variables --
-// a bridge that silently supplied nothing when a constant was renamed, and let
+// script regex-scraped them out of the Go source into environment variables, a
+// bridge that silently supplied nothing when a constant was renamed, and let
 // one shipped prompt go unmeasured for a while. Deleting that script was the
 // point of this package.
 package prompt
@@ -14,17 +14,17 @@ package prompt
 // System is the whole of the agent's instruction to the model.
 //
 // Two things it must get right, and the second is the one that fails in
-// practice. The classification is easy -- models are good at "is this a
-// migration or a toggle". The EDIT FORMAT is not: asked for "the fix", a model
+// practice. The classification is easy; models are good at "is this a
+// migration or a toggle". The edit format is not: asked for "the fix", a model
 // will happily return a file path in the key field and a multi-line YAML block
 // as the value, which the applier then rejects and nothing gets fixed. So the
 // contract is spelled out with worked examples rather than described.
 //
 // A third thing joined them on 2026-08-23, from the first live run of the
 // mechanical path. Handed a bump whose render also moved an addon's namespace,
-// the model updated a reference to MATCH the new namespace rather than
-// questioning the move. Every guard held -- the edit was one scalar, in scope,
-// with a correct `from` -- because none of them is in a position to ask whether
+// the model updated a reference to match the new namespace rather than
+// questioning the move. Every guard held, the edit was one scalar, in scope,
+// with a correct `from`, because none of them is in a position to ask whether
 // an edit points the right way. The prompt had said "each moves one pinned
 // version" and then only ever described reds the version had caused, so "make
 // the pull request self-consistent" was a reasonable reading of the job. It now
@@ -209,24 +209,23 @@ are printed together, so a repeated thought is printed twice:
                      shown in the comment; do not spend detail on it, and do
                      not repeat it elsewhere.`
 
-// Explain is used when the gate is GREEN but the render still changed --
-// a chart bump that adds resources, moves a port, or flips a default the gate
+// Explain is used when the gate is green but the render still changed; a
+// chart bump that adds resources, moves a port, or flips a default the gate
 // reports without blocking on.
 //
 // It may also flag. Measured 2026-08-23 against four real held promotions:
-// kyverno 3.2.8 -> 3.9.0 was escalated correctly and precisely, but ONLY
+// kyverno 3.2.8 -> 3.9.0 was escalated correctly and precisely, but only
 // because its PodDisruptionBudget migration made the gate red. external-secrets
-// 0.10.3 -> 2.9.0 -- the more dangerous of the two, dropping a served CRD
-// version while every ExternalSecret in the repository still declares it --
-// rendered GREEN, and this path was pinned to no_action, so the same model
-// produced an accurate inventory of 11 added CRDs and said nothing about the
-// risk. Nothing differed between those two runs except which branch of Run
-// they entered.
+// 0.10.3 -> 2.9.0, the more dangerous of the two, dropping a served CRD version
+// while every ExternalSecret in the repository still declares it, rendered
+// green, and this path was pinned to no_action, so the same model produced an
+// accurate inventory of 11 added CRDs and said nothing about the risk. Nothing
+// differed between those two runs except which branch of Run they entered.
 //
-// So a green gate is a verdict on the RENDER, not on the bump, and this path
-// can now say a human should look. It still blocks nothing -- the commit
-// status is never a failure state -- and the criteria are deliberately narrow,
-// because a flag on every bump is a flag nobody reads.
+// So a green gate is a verdict on the render, not on the bump, and this path
+// can now say a human should look. It still blocks nothing, the commit status
+// is never a failure state, and the criteria are deliberately narrow, because
+// a flag on every bump is a flag nobody reads.
 //
 // Nothing is being fixed here, so there is no schema to fill and no edit to
 // refuse. That removes every guard the triage path relies on, which makes the
@@ -236,7 +235,7 @@ are printed together, so a repeated thought is printed twice:
 // The failure this guards against is specific: a plausible, fluent account of
 // what a version does, assembled from what the model remembers about the
 // project rather than from the diff in front of it. That is the same class of
-// error as an invented version number -- except an invented version gets
+// error as an invented version number; except an invented version gets
 // refused by the applier, and an invented explanation goes straight into a
 // human's head, where nothing checks it.
 const Explain = `You explain what a dependency bump actually changes, to
@@ -391,9 +390,9 @@ changes anything.`
 //
 // The narrowest job this agent gives a model, and deliberately so. It is not
 // asked to judge whether the migration is wise, to decide which fields matter,
-// or to improve anything on the way past. It is shown the old schema, the new
-// schema, one document, and the specific ways that document does not fit -- and
-// asked to translate.
+// or to improve anything on the way past. It is shown four things: the old
+// schema, the new schema, one document, and the specific ways that document
+// does not fit. Then it is asked to translate.
 //
 // None of the rules below are load-bearing on their own. `structural.Validate`
 // checks the answer: identity byte-identical, valid against the target schema,

@@ -6,9 +6,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 : "${KIND_CLUSTER:=localdev}"
 say "deleting kind/${KIND_CLUSTER}"
 kind delete cluster --name "$KIND_CLUSTER"
-# SINGLE quotes. In double quotes those backticks are command substitution, so
-# this line RAN `colima stop` -- the exact thing the comment above says it does
-# not do -- and then printed the VM's own shutdown log as though it were part
-# of deleting a cluster. The next `make up` paid for it: the slowest step in
-# the whole script, silently reintroduced by a sentence about not doing it.
+# Single quotes. In double quotes those backticks are command substitution, so
+# this line ran `colima stop`, the exact thing the comment above says it does
+# not do, and then printed the vm's own shutdown log as though it were part of
+# deleting a cluster. The next `make up` paid for it: the slowest step in the
+# whole script, silently reintroduced by a sentence about not doing it.
 ok 'gone -- run `colima stop` if you want the VM back too'

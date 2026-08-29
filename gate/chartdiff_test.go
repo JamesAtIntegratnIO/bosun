@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// Only rows whose version actually moved are rendered. A chart pull and two
+// Only rows whose version moved are rendered. A chart pull and two
 // renders per Application is real cost, and on a typical bump pull request
 // exactly one row qualifies.
 func TestChartDiffOnlyConsidersVersionChanges(t *testing.T) {
@@ -63,8 +63,8 @@ func TestChartDiffReportsWhatItCouldNotRender(t *testing.T) {
 }
 
 // Helm stamps chart and app version onto every object it renders. Hashing
-// those makes a bump report every resource as changed -- measured at 101 of
-// 105 on one cert-manager bump -- burying the handful that really changed.
+// those makes a bump report every resource as changed, measured at 101 of
+// 105 on one cert-manager bump, burying the handful that changed.
 func TestVersionStampsDoNotCountAsChanges(t *testing.T) {
 	withStamp := func(chart, version string) map[string]any {
 		return map[string]any{
@@ -139,7 +139,7 @@ func TestCollapsedChangeIsStableAcrossRuns(t *testing.T) {
 		}
 	}
 	for _, c := range want {
-		// "hub" must survive alongside "hub-east" -- a substring membership
+		// "hub" must survive alongside "hub-east"; a substring membership
 		// test would have swallowed it.
 		if c.Cluster != "adam, edge, hub, hub-east, zulu" {
 			t.Errorf("want every cluster named in sorted order, got %q", c.Cluster)
@@ -147,10 +147,10 @@ func TestCollapsedChangeIsStableAcrossRuns(t *testing.T) {
 	}
 }
 
-// An OCI repository URL IS the chart. ArgoCD accepts one that already ends in
+// An OCI repository URL is the chart. ArgoCD accepts one that already ends in
 // the chart name alongside a `chart` field naming the same thing, and the gate
-// used to append regardless -- producing `.../charts/bosun/bosun`, a 403, and
-// an addon silently dropped from resource-level coverage.
+// used to append regardless, producing `.../charts/bosun/bosun`, a 403, and an
+// addon silently dropped from resource-level coverage.
 func TestOCIChartRefDoesNotDoubleTheChartName(t *testing.T) {
 	for _, tc := range []struct {
 		name, repo, chart, want string

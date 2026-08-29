@@ -18,7 +18,7 @@ import (
 // properties a CI job could only document and hope for: every head commit gets
 // a verdict, a broken gate is an error rather than a failure, the report is
 // posted once, and the verdict the triage consumes is the one this run
-// produced -- not one scraped off a comment.
+// produced, not one scraped off a comment.
 
 const gateConfig = `sources:
   - name: apps
@@ -75,7 +75,7 @@ type gateHarness struct {
 }
 
 // newGateHarness wires the service to two directories on disk standing in for
-// the base and head revisions -- the same substitution the triage tests make
+// the base and head revisions, the same substitution the triage tests make
 // for their single checkout.
 func newGateHarness(t *testing.T, baseFiles, headFiles map[string]string) *gateHarness {
 	t.Helper()
@@ -301,7 +301,7 @@ func TestASettledStatusIsNotRelitigated(t *testing.T) {
 }
 
 // A verdict answers a commit and the commit does not change, so it is kept.
-// A FAILURE TO RUN is not a verdict: its cause is usually cluster-side, and
+// A failure to run is not a verdict: its cause is usually cluster-side, and
 // the fix for those is not a commit. Cached forever, the error status would
 // outlive its own cause and clear only when somebody pushed.
 func TestABrokenGateTriesAgainWhenItsCauseMayHaveBeenFixed(t *testing.T) {
@@ -324,7 +324,7 @@ func TestABrokenGateTriesAgainWhenItsCauseMayHaveBeenFixed(t *testing.T) {
 		t.Fatalf("a gate that could not look must say so; got %s %q", s.State, s.Description)
 	}
 
-	// Not on the very next poll, though: a genuinely broken gate must not
+	// Not on the very next poll, though: a broken gate must not
 	// re-render every ten seconds for as long as the pull request is open.
 	before := len(h.git.Statuses)
 	h.gs.sweep(context.Background())
@@ -332,8 +332,8 @@ func TestABrokenGateTriesAgainWhenItsCauseMayHaveBeenFixed(t *testing.T) {
 		t.Fatal("a broken gate retried immediately is a busy loop")
 	}
 
-	// The operator grants the permission. No commit is pushed -- the head is
-	// the same -- so the gate trying again is the only thing that can clear it.
+	// The operator grants the permission. No commit is pushed, the head is the
+	// same, so the gate trying again is the only thing that can clear it.
 	denied = false
 	h.gs.mu.Lock()
 	h.gs.results["re7r1ed"].retryAfter = time.Now().Add(-time.Second)
@@ -363,7 +363,7 @@ func TestAForkPullRequestIsRefusedNotIgnored(t *testing.T) {
 	}
 
 	// And it is not retried. Refusing to render fork content is a decision,
-	// not a failure, so it carries no retry deadline -- otherwise every sweep
+	// not a failure, so it carries no retry deadline; otherwise every sweep
 	// would repost the same refusal for the life of the pull request.
 	before := len(h.git.Statuses)
 	h.gs.sweep(context.Background())
@@ -374,7 +374,7 @@ func TestAForkPullRequestIsRefusedNotIgnored(t *testing.T) {
 
 // The default checkout, against a real repository on disk: the head arrives
 // as a clone of the pull request's branch, the base as a worktree at the base
-// branch's CURRENT tip -- fetched by name, which any host serves, rather than
+// branch's current tip, fetched by name, which any host serves, rather than
 // by SHA, which some refuse.
 func TestTwoRevisionCheckout(t *testing.T) {
 	origin := t.TempDir()
@@ -426,7 +426,7 @@ func execGit(args ...string) (string, error) {
 
 // A pull request blocked for a reason that is neither targeting nor source
 // used to get "0 targeting change(s), 0 other source change(s)" beside a red
-// cross -- the most-read surface saying nothing changed, exactly when it most
+// cross, the most-read surface saying nothing changed, exactly when it most
 // needed to say what did.
 func TestAFailingStatusSaysWhyItFailed(t *testing.T) {
 	for _, tc := range []struct {
@@ -464,7 +464,7 @@ func TestAFailingStatusSaysWhyItFailed(t *testing.T) {
 	}
 }
 
-// The gate reads .gitops-gate.yaml from the head, which is the right rule --
+// The gate reads.gitops-gate.yaml from the head, which is the right rule,
 // but it means a pull request can switch a check off in a file the agent is
 // forbidden to edit, and the report used to say nothing about it.
 func TestTheReportNamesChecksThisPullRequestTurnedOff(t *testing.T) {
@@ -517,7 +517,7 @@ func TestTheReportNamesChecksThisPullRequestTurnedOff(t *testing.T) {
 
 // The sweep is not the only way in. Ensure is called directly by the triage on
 // a network-triggered promotion, so a fork pull request the sweep had not
-// reached yet used to be rendered -- with helm, in the cluster, over content
+// reached yet used to be rendered, with helm, in the cluster, over content
 // somebody outside the repository controls.
 func TestAForkPullRequestIsRefusedOnEveryPath(t *testing.T) {
 	git := &gitprovider.Fake{}

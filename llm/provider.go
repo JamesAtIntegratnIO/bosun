@@ -2,8 +2,8 @@
 //
 // The agent never lets a model touch a file. A model is asked one question and
 // returns one structured answer; the agent decides what, if anything, to do
-// with it. That is what keeps this portable -- any provider able to return
-// schema-constrained JSON is enough -- and it is also the safety model, because
+// with it. That is what keeps this portable, any provider able to return
+// schema-constrained JSON is enough, and it is also the safety model, because
 // "never edit the gate" is then a property of the code rather than a sentence
 // in a prompt.
 package llm
@@ -15,7 +15,7 @@ import (
 
 // Verdict is what the model is asked to produce. The schema is deliberately
 // small: a classification, a short explanation a human will read on the pull
-// request, and -- only for the mechanical case -- a list of precise edits.
+// request, and, only for the mechanical case, a list of precise edits.
 type Verdict struct {
 	// Classification is one of: mechanical, escalate, no_action.
 	Classification string `json:"classification"`
@@ -38,9 +38,9 @@ type Verdict struct {
 
 // Edit is one scalar change: set Key in Path from From to To.
 //
-// `From` is not decoration. It is checked against what the file actually
-// contains, so a model working from a stale or hallucinated view of the
-// repository has its edit rejected rather than applied to the wrong line.
+// `From` is not decoration. It is checked against what the file contains,
+// so a model working from a stale or hallucinated view of the repository
+// has its edit rejected rather than applied to the wrong line.
 type Edit struct {
 	Path      string `json:"path"`
 	Key       string `json:"key"`
@@ -55,14 +55,14 @@ const (
 	ClassNoAction   = "no_action"
 )
 
-// Validate checks that a verdict is well-formed enough to act on, and REPAIRS
+// Validate checks that a verdict is well-formed enough to act on, and repairs
 // the one field worth recovering. Schema validation guarantees shape, not
 // sense.
 //
 // A verb, and named to match Inventory.Validate, because it is not a
 // predicate: the adjective-named checks in this codebase (Pass, Clean, Any,
 // Blocking, OK) return a bool and touch nothing. This returns an error and can
-// write to its receiver -- an escalation whose reason is empty gets the
+// write to its receiver; an escalation whose reason is empty gets the
 // reasoning copied into it rather than failing a correct verdict over a soft
 // field. `Valid() error` advertised the opposite of both.
 func (v *Verdict) Validate() error {
@@ -95,7 +95,7 @@ func (v *Verdict) Validate() error {
 // Two implementations cover the field: Anthropic Messages and OpenAI chat
 // completions. Between them they reach hosted Anthropic, Bedrock, Vertex,
 // OpenAI, Azure, vLLM, Ollama, LM Studio, and anything behind a LiteLLM-style
-// proxy -- because `baseURL` is a value, not a constant.
+// proxy, because `baseURL` is a value, not a constant.
 type Provider interface {
 	// Classify sends the prompt and returns a validated Verdict. An
 	// implementation must constrain the model to the Verdict schema where the
@@ -110,11 +110,11 @@ type Provider interface {
 // Migration is one whole document, rewritten for a schema version that moved
 // its fields around.
 //
-// A DOCUMENT, not a set of edits, and that is the difference between this and
+// A document, not a set of edits, and that is the difference between this and
 // everything else the model is asked for. A scalar edit can be corroborated
-// against the file it targets -- the `from` value either matches or it does
+// against the file it targets, the `from` value either matches or it does
 // not. A restructured document cannot: the whole point is that the shape
-// changed. So the guarantees move from the proposal to the OUTPUT, and they
+// changed. So the guarantees move from the proposal to the output, and they
 // are stricter for it: identity preserved byte for byte, valid against the
 // target schema, and every scalar value present in the original.
 //
@@ -129,13 +129,13 @@ type Migration struct {
 	Notes string `json:"notes"`
 }
 
-// Restructurer is a SECOND interface, type-asserted rather than added to
+// Restructurer is a second interface, type-asserted rather than added to
 // Provider.
 //
 // Same reasoning as upstream.CompareResolver: ADR 0004's rule is that an
 // interface is what the caller needs and nothing more, and growing one is a
 // decision. A Provider that only classifies keeps compiling, and a deployment
-// behind one degrades to the plain apiVersion swap -- which is what this did
+// behind one degrades to the plain apiVersion swap, which is what this did
 // before, and is still correct as far as it goes.
 type Restructurer interface {
 	// Restructure returns one migrated document. The implementation must
@@ -170,7 +170,7 @@ func MigrationSchema() map[string]any {
 }
 
 // VerdictSchema is the JSON Schema handed to providers that support
-// constrained decoding. With it, a malformed answer is impossible -- the model
+// constrained decoding. With it, a malformed answer is impossible; the model
 // can be wrong, but it cannot return something the agent fails to parse.
 func VerdictSchema() map[string]any {
 	edit := map[string]any{
@@ -189,9 +189,9 @@ func VerdictSchema() map[string]any {
 		"type":                 "object",
 		"additionalProperties": false,
 		// Every property is required. Strict constrained decoding expects it,
-		// and a model will simply omit an optional field -- the first live
-		// test returned classification "escalate" with an empty
-		// escalationReason for exactly that reason.
+		// and a model will omit an optional field; the first live test
+		// returned classification "escalate" with an empty escalationReason
+		// for exactly that reason.
 		"required": []string{"classification", "summary", "reasoning", "edits", "escalationReason"},
 		"properties": map[string]any{
 			"classification": map[string]any{

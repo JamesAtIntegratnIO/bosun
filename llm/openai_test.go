@@ -91,7 +91,7 @@ func TestOpenAIClassifySendsASchemaAndReadsTheAnswer(t *testing.T) {
 	}
 
 	// Constrained decoding is the point: where the backend honours it, a
-	// malformed answer becomes impossible rather than merely unlikely.
+	// malformed answer becomes impossible rather than unlikely.
 	rf, _ := got["response_format"].(map[string]any)
 	js, _ := rf["json_schema"].(map[string]any)
 	if js == nil || js["strict"] != true || js["name"] != "verdict" {

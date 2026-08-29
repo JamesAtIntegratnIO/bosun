@@ -7,18 +7,18 @@ import "sort"
 // dropped API versions to the manifests that still declare them.
 //
 // It exists because the sequence is not obvious and the order inside it
-// matters. The gate has two delivery surfaces -- the in-cluster service and the
-// gitops-gate CLI -- and each used to hand-assemble these four steps itself.
-// They had already drifted: the same commit could get two different verdicts
+// matters. The gate has two delivery surfaces, the in-cluster service and the
+// gitops-gate CLI, and each used to hand-assemble these four steps itself. They
+// had already drifted: the same commit could get two different verdicts
 // depending on which surface looked at it, which is the one thing a gate must
 // never do. `gate` exported only the primitives, so there was nowhere for the
 // sequence to live except in each caller.
 //
 // repoRoot is the head worktree. Empty means "no worktree available": the two
-// steps that need one -- chart rendering and consumer annotation -- are skipped
-// and the result says so by having no chart-derived findings, rather than
-// claiming a clean scan of something it never read. cfg may be nil only when
-// repoRoot is empty.
+// steps that need one, chart rendering and consumer annotation, are skipped and
+// the result says so by having no chart-derived findings, rather than claiming
+// a clean scan of something it never read. cfg may be nil only when repoRoot is
+// empty.
 //
 // base and head are mutated: the rendered objects and the render warnings are
 // spliced into them, which is what makes them visible to Diff.
@@ -41,7 +41,7 @@ func Assemble(repoRoot string, cfg *Config, base, head *Table) *DiffResult {
 	// render identical, which is exactly why it needs saying out loud.
 	//
 	// Diff has already sorted res.Objects, so these are re-sorted in rather
-	// than appended to the end -- otherwise the drops arrive in ChartDiff's
+	// than appended to the end; otherwise the drops arrive in ChartDiff's
 	// pair order after an otherwise sorted list, and the report has a tail
 	// that does not follow its own ordering.
 	if len(valueDrops) > 0 {
@@ -50,8 +50,8 @@ func Assemble(repoRoot string, cfg *Config, base, head *Table) *DiffResult {
 	}
 
 	// With a worktree, a dropped served version can be traced to the manifests
-	// that still declare it -- which is what decides whether it blocks, and
-	// what a repair needs to know it moved.
+	// that still declare it, which is what decides whether it blocks, and what
+	// a repair needs to know it moved.
 	if repoRoot != "" {
 		AnnotateConsumers(repoRoot, res)
 	}
@@ -59,8 +59,8 @@ func Assemble(repoRoot string, cfg *Config, base, head *Table) *DiffResult {
 }
 
 // sortObjectChanges is the object-change order the report is written in. Kind
-// and Object alone leave ties -- one object can produce two findings differing
-// only in From/To -- and a tie left to sort.Slice is a report that reorders
+// and Object alone leave ties, one object can produce two findings differing
+// only in From/To, and a tie left to sort.Slice is a report that reorders
 // itself between runs.
 func sortObjectChanges(in []ObjectChange) {
 	sort.Slice(in, func(i, j int) bool {

@@ -94,7 +94,7 @@ func TestEveryExportedKindCanActuallyBeProduced(t *testing.T) {
 }
 
 // The zeros are the point: an alert rule has to be writable against a series
-// that exists BEFORE the first occurrence, not one that appears at the same
+// that exists before the first occurrence, not one that appears at the same
 // moment as the problem it describes.
 func TestAnEmptyReportStillEmitsAZeroForEveryKind(t *testing.T) {
 	var sb strings.Builder

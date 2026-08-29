@@ -7,7 +7,7 @@ import (
 
 // APIBase has supported GitHub Enterprise since this provider was written, so
 // an Enterprise deployment read its pull requests from its own host and pushed
-// the fix to github.com -- failing outright if no such repository exists, and
+// the fix to github.com, failing outright if no such repository exists, and
 // pushing an unreviewed commit and a live installation token to a stranger's
 // repository if `owner/repo` happens to be taken there.
 func TestThePushGoesWhereTheCloneCameFrom(t *testing.T) {
@@ -58,7 +58,7 @@ func TestThePushGoesWhereTheCloneCameFrom(t *testing.T) {
 }
 
 // A configured Enterprise host must never appear alongside github.com in the
-// remote -- the failure this test is named for was exactly that substitution.
+// remote; the failure this test is named for was exactly that substitution.
 func TestAnEnterpriseRemoteNeverMentionsPublicGitHub(t *testing.T) {
 	g := &GitHub{
 		APIBase: "https://github.example.com/api/v3",

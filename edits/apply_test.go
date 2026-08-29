@@ -58,7 +58,7 @@ func TestAppliesScalarEditsInPlace(t *testing.T) {
 	got, _ := os.ReadFile(filepath.Join(root, "addons/values.yaml"))
 	s := string(got)
 
-	// The trailing comment must survive -- Kargo's own yaml-update deletes
+	// The trailing comment must survive, Kargo's own yaml-update deletes
 	// them, and losing one silently removes the note explaining the value.
 	if !strings.Contains(s, "enabled: false      # keep FRR off; this cluster is L2-only") {
 		t.Errorf("indentation or trailing comment not preserved:\n%s", s)
@@ -170,7 +170,7 @@ func TestRejectsTraversalOutOfTheRepository(t *testing.T) {
 	}
 }
 
-// The guard must not reject ordinary paths that merely contain a ".." segment
+// The guard must not reject ordinary paths that only contain a ".." segment
 // resolving back inside the repository.
 func TestAllowsATraversalThatStaysInside(t *testing.T) {
 	root := repo(t, map[string]string{"addons/values.yaml": sample})
@@ -194,7 +194,7 @@ func TestRejectsAKeyThatDoesNotExist(t *testing.T) {
 	}
 }
 
-// The shape the model produced BEFORE the prompt spelled out the contract: a
+// The shape the model produced before the prompt spelled out the contract: a
 // file path in `key`, a multi-line blob in `from`. It must fail closed.
 func TestRejectsAMalformedEditShape(t *testing.T) {
 	root := repo(t, map[string]string{"addons/values.yaml": sample})
@@ -237,8 +237,8 @@ func TestAppliesInsideAList(t *testing.T) {
 }
 
 // A model told "requires Gateway API v1.5" will confidently write v1.5.0 when
-// the answer was v1.5.1 -- observed on a live model, with the prompt
-// explicitly forbidding it. So the guarantee lives in code.
+// the answer was v1.5.1, observed on a live model, with the prompt explicitly
+// forbidding it. So the guarantee lives in code.
 func TestRefusesAnInventedVersion(t *testing.T) {
 	root := repo(t, map[string]string{"addons/values.yaml": "gateway-api-crds:\n  defaultVersion: v1.4.0\n"})
 	policy := Policy{
@@ -274,7 +274,7 @@ func TestAllowsAVersionThatAppearsInTheEvidence(t *testing.T) {
 	}
 }
 
-// Booleans and ports must not be caught by the corroboration check -- "false"
+// Booleans and ports must not be caught by the corroboration check, "false"
 // rarely appears in a failure report, and rejecting toggles would break the
 // most common mechanical fix there is.
 func TestCorroborationIgnoresNonVersionValues(t *testing.T) {
@@ -295,7 +295,7 @@ func TestCorroborationIgnoresNonVersionValues(t *testing.T) {
 // The concrete case: a MetalLB bump rewrites metallb.defaultVersion in
 // addons.yaml and nothing else, while the repository also holds a
 // NetworkPolicy naming the old metrics port. Before Scope, a model that
-// proposed editing that NetworkPolicy got it applied -- the standing
+// proposed editing that NetworkPolicy got it applied; the standing
 // allowlist is addons/**, and the NetworkPolicy is under addons/.
 func TestScopeRefusesAFileThePromotionDidNotTouch(t *testing.T) {
 	root := t.TempDir()
@@ -331,7 +331,7 @@ func TestScopeRefusesAFileThePromotionDidNotTouch(t *testing.T) {
 		t.Fatalf("want a scope refusal naming why, got %+v", res.Rejected)
 	}
 
-	// And the same policy still applies an edit to the file it DID touch,
+	// And the same policy still applies an edit to the file it did touch,
 	// or scoping would just be a way to refuse everything.
 	res, err = Apply(root, policy, []Edit{
 		{Path: bumped, Key: "metallb.defaultVersion", From: "0.16.0", To: "0.16.1"},
@@ -395,15 +395,15 @@ func TestMatchGlobDoubleStarForms(t *testing.T) {
 
 // A write failing partway leaves the earlier edits on disk. Returning a nil
 // Result made a half-written repository the one case the caller could say
-// nothing about -- in a package whose contract is that a refusal is never
+// nothing about, in a package whose contract is that a refusal is never
 // silent.
 func TestApplyReportsWhatItWroteBeforeFailing(t *testing.T) {
 	root := repo(t, map[string]string{
 		"addons/first.yaml":  sample,
 		"addons/second.yaml": sample,
 	})
-	// Readable so the edit resolves, unwritable so the write is what fails --
-	// a rejection would take the other branch and prove nothing.
+	// Readable so the edit resolves, unwritable so the write is what fails; a
+	// rejection would take the other branch and prove nothing.
 	unwritable := filepath.Join(root, "addons", "second.yaml")
 	if err := os.Chmod(unwritable, 0o444); err != nil {
 		t.Fatal(err)

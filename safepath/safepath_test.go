@@ -35,7 +35,7 @@ func TestASymlinkedFileIsNotContained(t *testing.T) {
 	}
 }
 
-// A link at a DIRECTORY redirects everything under it, so checking only the
+// A link at a directory redirects everything under it, so checking only the
 // leaf would call the whole subtree contained.
 func TestASymlinkedDirectoryIsNotContained(t *testing.T) {
 	root := tree(t)
@@ -80,8 +80,8 @@ func TestLexicalEscapesAreStillRefused(t *testing.T) {
 }
 
 // An absolute path joins to root and lands inside it, which is the behaviour
-// every caller already relied on -- worth pinning so a future "improvement"
-// to Join does not quietly turn it into an escape.
+// every caller already relied on, worth pinning so a future "improvement" to
+// Join does not quietly turn it into an escape.
 func TestOrdinaryPathsResolve(t *testing.T) {
 	root := tree(t)
 	for _, rel := range []string{"charts/app/values.yaml", "charts/app/../app/values.yaml", "charts/app/new.yaml"} {

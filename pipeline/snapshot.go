@@ -7,11 +7,11 @@ import (
 
 // The Kargo objects this package reads, reduced to the fields it uses.
 //
-// Deliberately NOT Kargo's own types. Vendoring them would make the largest
+// Deliberately not Kargo's own types. Vendoring them would make the largest
 // dependency in this service a CRD schema it reads five fields from, which is
 // the same argument the cluster package makes about client-go. It also means a
 // Kargo release that adds a field cannot break this build, and a field this
-// package needs but does not get simply arrives as a zero value the detectors
+// package needs but does not get arrives as a zero value the detectors
 // already have to handle.
 
 // Phase values Kargo writes. Terminal ones will never change again without a
@@ -26,8 +26,8 @@ const (
 	PhaseAborted   = "Aborted"
 )
 
-// Verification phases an AnalysisRun reports. A DIFFERENT vocabulary from the
-// promotion phases above, and deliberately so -- they overlap on "Failed" and
+// Verification phases an AnalysisRun reports. A different vocabulary from the
+// promotion phases above, and deliberately so; they overlap on "Failed" and
 // "Aborted" and differ everywhere else, and the near-miss is the trap: the
 // promotion phase is PhaseErrored, "Errored", while a verification says
 // "Error". Tidying these into the constants twenty lines up would silently
@@ -57,11 +57,11 @@ func Unsuccessful(phase string) bool {
 // Update is one `yaml-update` step's target: the file a promotion rewrites and
 // the keys it rewrites in it.
 //
-// READ FROM THE CLUSTER, not from the repository's Kargo values. That is the
-// difference between "what the target list says" and "what Kargo will actually
-// do", and they diverge exactly when something is wrong -- a values file that
-// stopped rendering a target produces a Stage with no update step, and a
-// supervisor reading the values file would report the pipeline as healthy.
+// Read from the cluster, not from the repository's Kargo values. That is the
+// difference between "what the target list says" and "what Kargo will do", and
+// they diverge exactly when something is wrong; a values file that stopped
+// rendering a target produces a Stage with no update step, and a supervisor
+// reading the values file would report the pipeline as healthy.
 type Update struct {
 	Path string
 	Keys []string
@@ -71,8 +71,8 @@ type Update struct {
 //
 // A promotion clones into a working directory and its steps address files as
 // `./repo/addons/...`. The repository itself has no `repo/` directory, so the
-// first segment is dropped -- but only when it is not itself a directory the
-// repository has, because a repository whose top level really is called `repo`
+// first segment is dropped, but only when it is not itself a directory the
+// repository has, because a repository whose top level is called `repo`
 // is legal and rare, and guessing wrong there would report every pin as dead.
 func (u Update) RepoPath(exists func(string) bool) string {
 	p := strings.TrimPrefix(u.Path, "./")
@@ -91,7 +91,7 @@ func (u Update) RepoPath(exists func(string) bool) string {
 type Stage struct {
 	Name      string
 	Namespace string
-	// CurrentFreight is what the Stage is actually running, "" if none.
+	// CurrentFreight is what the Stage is running, "" if none.
 	CurrentFreight string
 	// Updates are every `yaml-update` step in the promotion template.
 	Updates []Update
@@ -113,7 +113,7 @@ type Warehouse struct {
 	Name      string
 	Namespace string
 	// Interval is the discovery period. Zero means Kargo's default, which
-	// this package does not guess at -- an unknown interval disables the
+	// this package does not guess at, an unknown interval disables the
 	// staleness check for that Warehouse rather than inventing a threshold.
 	Interval     time.Duration
 	DiscoveredAt time.Time
@@ -133,7 +133,7 @@ type Promotion struct {
 	Phase     string
 	StartedAt time.Time
 	// CreatedAt is when the object appeared, which is the only timestamp a
-	// Pending promotion has.
+	// pending promotion has.
 	CreatedAt time.Time
 	Message   string
 }
@@ -155,7 +155,7 @@ func (p Promotion) Age(now time.Time) time.Duration {
 //
 // Kargo's own convention, and the join between a Kargo object and a pull
 // request without either of them recording the other. A promotion whose branch
-// has no open pull request has had its pull request closed underneath it --
+// has no open pull request has had its pull request closed underneath it,
 // which leaves it Running against something that will never merge.
 func (p Promotion) Branch() string { return "kargo/promotion/" + p.Name }
 
@@ -166,7 +166,7 @@ func StageOfBranch(branch string) string {
 	if !strings.HasPrefix(branch, prefix) {
 		return ""
 	}
-	// <stage>.<ulid>.<short-sha> -- the stage is everything before the first
+	// <stage>.<ulid>.<short-sha>; the stage is everything before the first
 	// dot, and stage names cannot contain one.
 	rest := branch[len(prefix):]
 	if i := strings.Index(rest, "."); i > 0 {
@@ -211,7 +211,7 @@ func (s *Snapshot) promotionsByStage() map[string][]Promotion {
 	for k := range out {
 		ps := out[k]
 		// Newest first. CreatedAt is the reliable one; StartedAt is unset
-		// until a promotion actually begins.
+		// until a promotion begins.
 		for i := 0; i < len(ps); i++ {
 			for j := i + 1; j < len(ps); j++ {
 				if ps[j].CreatedAt.After(ps[i].CreatedAt) {

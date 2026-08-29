@@ -12,15 +12,15 @@ import (
 )
 
 // TestLiveArgoCDMatchesTheSecrets is the equivalence claim, checked against a
-// REAL ArgoCD rather than a fixture.
+// real ArgoCD rather than a fixture.
 //
 // The unit test proves the two readers agree on a cluster somebody wrote down
 // in a test file, which is exactly the kind of agreement that survives being
 // wrong: both sides were written by the same person on the same afternoon, and
 // a field ArgoCD populates differently from the Secret appears in neither. The
-// interesting failure is a live one -- ArgoCD strips an annotation, or reports
-// a name the Secret spells another way -- and the only thing that finds it is
-// a cluster with real clusters registered in it.
+// interesting failure is a live one, ArgoCD strips an annotation, or reports a
+// name the Secret spells another way, and the only thing that finds it is a
+// cluster with real clusters registered in it.
 //
 // The gate's verdict depends on these two answering identically. A label the
 // API drops is an ApplicationSet the gate stops seeing as targeted.
@@ -30,10 +30,10 @@ import (
 //	ARGOCD_BASE_URL=https://argocd.example \
 //	ARGOCD_TOKEN_FILE=/path/to/token \
 //	KUBE_CONTEXT=your-context ARGOCD_NS=argocd \
-//	  go test ./cluster -run LiveArgoCD -v
+//	 go test ./cluster -run LiveArgoCD -v
 //
 // The token needs `clusters, get` in ArgoCD's RBAC; the kube context needs
-// get/list on Secrets in the ArgoCD namespace -- this test reads BOTH sources
+// get/list on Secrets in the ArgoCD namespace; this test reads both sources
 // precisely because it is checking that it need not, in production, be both.
 func TestLiveArgoCDMatchesTheSecrets(t *testing.T) {
 	base, tokenFile := os.Getenv("ARGOCD_BASE_URL"), os.Getenv("ARGOCD_TOKEN_FILE")

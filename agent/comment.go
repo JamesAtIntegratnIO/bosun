@@ -12,19 +12,19 @@ import (
 
 // The pull-request comment: everything the agent writes for a human to read.
 //
-// Split from triage.go, which is the workflow -- decide, repair, escalate,
+// Split from triage.go, which owns the workflow: decide, repair, escalate,
 // publish. Rendering is the largest single thing that file did and the one
 // least related to the rest of it, and none of these functions is a method:
 // they take the brand and the model name and nothing else, so the report text
 // can be changed and tested without standing up a Triage.
 
-// renderMigration is the comment for the deterministic path. Its footer names
-// no model, because none was involved -- a reader deciding how much to trust
-// this needs to know it is arithmetic, not judgement.
-// renderMigration builds the migration comment.
+// renderMigration is the comment for the deterministic path.
 //
-// A package function taking the two strings it needs, not a method: the report
-// text is the agent's most-read output and it should be changeable and
+// Its footer names no model, because none was involved; a reader deciding how
+// much to trust this needs to know it is arithmetic rather than judgement.
+//
+// A package function taking the two strings it needs rather than a method: the
+// report text is the agent's most-read output and it should be changeable and
 // testable without standing up a 28-field Triage.
 func renderMigration(brand, model string, drops []migrate.Dropped, res *migrate.Result, rr *restructureResult,
 	headline string, live *liveFacts) string {
@@ -38,8 +38,8 @@ func renderMigration(brand, model string, drops []migrate.Dropped, res *migrate.
 	}
 	if len(res.Applied) > 0 {
 		// Collapsed, because it is the commit's file list written out a second
-		// time. Twenty-seven rows of it pushed the live-cluster facts -- the
-		// part only this agent can supply -- off the bottom of the comment.
+		// time. Twenty-seven rows of it pushed the live-cluster facts, the
+		// part only this agent can supply, off the bottom of the comment.
 		files := map[string]bool{}
 		for _, a := range res.Applied {
 			files[a.Path] = true
@@ -60,7 +60,7 @@ func renderMigration(brand, model string, drops []migrate.Dropped, res *migrate.
 	}
 	b.WriteString(renderRestructured(rr))
 	b.WriteString(renderLive(live))
-	// The footer says honestly which kind of work this was. "No model" is a
+	// The footer says which kind of work this was. "No model" is a
 	// claim a reader uses to decide how carefully to look, and it stops being
 	// true the moment a document was reshaped.
 	how := "deterministic repair, no model"
@@ -98,7 +98,7 @@ func renderRestructured(rr *restructureResult) string {
 				fmt.Fprintf(&b, "- %s\n", f)
 			}
 			fmt.Fprintf(&b, "\n```diff\n%s```\n", a.Diff)
-			// Respelled BEFORE lost, and named differently, because they are
+			// Respelled before lost, and named differently, because they are
 			// different news. A value the target schema spells another way
 			// survived; a value with nowhere to go did not. Printed together
 			// under one heading, the first kind made the migration look lossy
@@ -150,7 +150,7 @@ func countOf(n int, noun string) string {
 // noRemedyReason states, from the gate's own count, exactly why no fix was
 // attempted. A reader's next question after "needs a human" is always "what
 // would I even change?", and the honest answer here is nothing in this
-// repository -- so the comment leads with that instead of implying a search.
+// repository, so the comment leads with that instead of implying a search.
 func noRemedyReason(b migrate.Blockers) string {
 	var what string
 	switch {
@@ -172,17 +172,17 @@ func noRemedyReason(b migrate.Blockers) string {
 }
 
 // render builds the pull-request comment. It always states which model
-// produced the verdict, and always lists what was refused -- a silent refusal
+// produced the verdict, and always lists what was refused; a silent refusal
 // would let a reader believe a fix was applied when it was not.
 func render(brand, model string, v *llm.Verdict, res *edits.Result, headline string) string {
 	var b strings.Builder
 	// No identity header. It was here because the agent used to comment as
-	// whoever owned its token -- a person -- so a comment opening with a
-	// verdict read like a colleague's review. Authenticating as a GitHub App
-	// moved identity into the avatar and the name the host renders above every
+	// whoever owned its token (a person), so a comment opening with a verdict
+	// read like a colleague's review. Authenticating as a GitHub App moved
+	// identity into the avatar and the name the host renders above every
 	// comment, which says it earlier and more reliably than a bold line could.
 	// The footer still records the provenance, which is the half a reader
-	// actually needs and the host cannot supply.
+	// needs and the host cannot supply.
 	fmt.Fprintf(&b, "%s\n\n", headline)
 	fmt.Fprintf(&b, "**%s**\n\n%s\n", v.Summary, v.Reasoning)
 
@@ -203,7 +203,7 @@ func render(brand, model string, v *llm.Verdict, res *edits.Result, headline str
 }
 
 // renderExplanation is deliberately shorter than render(). Nothing was changed
-// and nothing was refused, so there are no tables to show -- and a long comment
+// and nothing was refused, so there are no tables to show, and a long comment
 // on a green pull request is the fastest way to teach people to ignore this
 // agent entirely.
 func renderExplanation(model string, v *llm.Verdict, notes *upstream.Notes) string {
@@ -212,7 +212,7 @@ func renderExplanation(model string, v *llm.Verdict, notes *upstream.Notes) stri
 	if v.Classification == llm.ClassEscalate {
 		// The marker alone, before the summary: a reader who stops at the
 		// first bold line must still learn this one wants their eyes. The
-		// escalation reason itself stays on the commit status -- it is
+		// escalation reason itself stays on the commit status; it is
 		// reliably a paraphrase of the summary printed on the next line, and
 		// printing both was the agent announcing itself twice.
 		b.WriteString("**Worth a look before merging.**\n\n")
@@ -264,12 +264,12 @@ func renderExplanation(model string, v *llm.Verdict, notes *upstream.Notes) stri
 	return b.String()
 }
 
-// commitProvenance says what the commit range actually contributed.
+// commitProvenance says what the commit range contributed.
 //
 // "0 upstream commit(s) in v0.13.1...v0.13.2" was the first wording, and it
-// reads as THE RANGE WAS EMPTY. It was not: there were two commits and neither
+// reads as the range was empty. It was not: there were two commits and neither
 // mentioned what the gate found, which is a different statement and a more
-// useful one -- it says the maintainers did work and none of it explains this.
+// useful one; it says the maintainers did work and none of it explains this.
 //
 // The same class of error as a fully-read range calling itself truncated. A
 // provenance line's whole job is being exact about what the evidence was, so a
@@ -285,7 +285,7 @@ func commitProvenance(c *upstream.Compare) string {
 		}
 		return out
 	case len(c.Files) > 0:
-		// The commits said nothing and the DIFF said something. That is the
+		// The commits said nothing and the diff said something. That is the
 		// ordinary shape of the case this feature was built for: a commit
 		// titled "watch namespaces via config" does not contain the string
 		// ClusterRole, and the template it deleted does. Claiming nothing
@@ -294,7 +294,7 @@ func commitProvenance(c *upstream.Compare) string {
 	case c.Total > 0 && c.Truncated:
 		// "None of the 1896 mentions it" claims a search nobody ran: GitHub
 		// answers a compare with at most 250 commits, so the filter saw a
-		// fraction of them. Same rule as everywhere else here -- a provenance
+		// fraction of them. Same rule as everywhere else here; a provenance
 		// line may not describe evidence it did not have.
 		return fmt.Sprintf(", and none of the %d commit(s) read from `%s` (of %d) mentions it",
 			upstream.CompareReadCap, c.Range, c.Total)
@@ -309,7 +309,7 @@ func commitProvenance(c *upstream.Compare) string {
 //
 // Rendered only where a human is about to spend time: an escalation, and a
 // green gate flagged for a second look. An ordinary green-gate explanation
-// FETCHES the commits -- they are what it is grounded in -- and does not print
+// Fetches the commits, which are what it is grounded in, and does not print
 // them, because a comment nobody needed to act on is how this agent becomes
 // something people collapse.
 //

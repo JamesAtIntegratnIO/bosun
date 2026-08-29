@@ -12,8 +12,8 @@ import (
 
 // The first HTTP-level tests in this package, and the reason they are worth
 // having is the tag resolution rather than the request. Comparing the wrong two
-// refs does not fail loudly -- it returns real commits from a real range that
-// is not this promotion's, which reads exactly like the truth.
+// refs does not fail loudly; it returns real commits from a real range that is
+// not this promotion's, which reads exactly like the truth.
 
 // registryAndAPI stands in for both hosts this resolver talks to: the registry
 // it walks to read an artifact's labels, and api.github.com. One server, routed
@@ -29,7 +29,7 @@ type registryAndAPI struct {
 	// tags is what /repos/{r}/tags answers, newest first.
 	tags []string
 
-	// asked records the compare ranges requested, so a test can assert WHICH
+	// asked records the compare ranges requested, so a test can assert which
 	// two refs were chosen rather than only that something came back.
 	asked []string
 	// rateLimit, when set, is the status every api.github.com call answers.
@@ -102,7 +102,7 @@ func (s *registryAndAPI) server(t *testing.T) *GitHubReleases {
 
 // artifact points the registry hops at the test server. The host has to look
 // like a host for splitRef to accept it, and the resolver builds registry URLs
-// as https://, so the client is what redirects them -- which is why every test
+// as https://, so the client is what redirects them, which is why every test
 // here uses the server's own client.
 func commit(sha, msg string) map[string]any {
 	return map[string]any{
@@ -116,7 +116,7 @@ func release(tag string) map[string]any {
 }
 
 // The motivating case. A chart bump from 0.5.8 to 1.0.0 whose upstream tags are
-// app versions: the base is the release the repository is LEAVING, not the
+// app versions: the base is the release the repository is leaving, not the
 // oldest one that happens to fall in range, or the commits that removed the
 // thing the gate found are outside the window.
 func TestTheRangeStartsAtTheReleaseBeingLeft(t *testing.T) {
@@ -205,7 +205,7 @@ func TestItFallsBackToTheRevisionsThePublisherRecorded(t *testing.T) {
 }
 
 // Neither namespace meets the other. The honest answer is a sentence, and no
-// compare call at all -- comparing two refs picked out of the wrong numbering
+// compare call at all; comparing two refs picked out of the wrong numbering
 // would return real commits from a range that is not this promotion's.
 func TestItRefusesToGuessARangeItCannotEstablish(t *testing.T) {
 	s := &registryAndAPI{
@@ -231,8 +231,8 @@ func TestItRefusesToGuessARangeItCannotEstablish(t *testing.T) {
 }
 
 // A great deal of upstream work, none of it about the finding. That is a real
-// answer about a bump and it has to survive as one -- an empty section that
-// simply vanished would read as "nothing was looked for".
+// answer about a bump and it has to survive as one, an empty section that
+// vanished would read as "nothing was looked for".
 func TestManyCommitsAndNoneRelevantIsItselfTheFinding(t *testing.T) {
 	s := &registryAndAPI{
 		labels: map[string]map[string]string{
@@ -330,8 +330,8 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-// A project that TAGS but never creates a GitHub Release. Common, and -- as it
-// turned out -- this project's own shape: 8 tags, 0 releases. The release list
+// A project that tags but never creates a GitHub Release. Common, and, as it
+// turned out, this project's own shape: 8 tags, 0 releases. The release list
 // is empty, so the compare range has to come from somewhere else, and a tag is
 // a ref like any other.
 func TestARangeCanBeFramedByTagsWhenAProjectPublishesNoReleases(t *testing.T) {
@@ -367,8 +367,8 @@ func TestARangeCanBeFramedByTagsWhenAProjectPublishesNoReleases(t *testing.T) {
 	}
 }
 
-// Base is the version being LEFT, not the oldest tag that happens to fall in
-// range -- the commits that did the damage usually sit between the two.
+// Base is the version being left, not the oldest tag that happens to fall in
+// range; the commits that did the damage usually sit between the two.
 func TestFramingStartsAtTheVersionBeingLeft(t *testing.T) {
 	names := []string{"v1.0.0", "v0.9.0", "v0.5.8", "v0.5.0"}
 	base, head := framing(names, normalise("0.5.8"), normalise("1.0.0"))
@@ -386,7 +386,7 @@ func TestFramingRefusesWhenBothEndsAreTheSameRef(t *testing.T) {
 
 // "More than could be read" and "showing fewer than we found" are different
 // facts, and they shared one flag until a live run reported a fully-read
-// three-commit range as truncated because eleven FILES matched the terms.
+// three-commit range as truncated because eleven files matched the terms.
 //
 // The difference matters in the direction it fails: a brief saying "more than
 // could be read" about a range it read completely tells a reader the evidence
@@ -460,13 +460,13 @@ func TestARangeBiggerThanOneAnswerIsStillTruncated(t *testing.T) {
 	}
 }
 
-// GitHub returns releases in PUBLISH-DATE order, and any project that backports
+// GitHub returns releases in publish-date order, and any project that backports
 // interleaves them. Taking the first match in each direction therefore frames
-// the wrong window -- measured live on authentik, which published
+// the wrong window, measured live on authentik, which published
 // `version/2026.5.5` one minute after `version/2026.2.6`.
 //
 // The real promotion this came from, 2025.12.4 -> 2026.2.3, framed itself as
-// `version/2025.8.6...version/2025.12.6`: a window ending BELOW the version
+// `version/2025.8.6...version/2025.12.6`: a window ending below the version
 // being adopted. 1896 commits were read over it and reported as evidence.
 func TestFramingPicksByVersionNotByTheOrderTheListArrivedIn(t *testing.T) {
 	// Publish order, exactly as the API returns it: a backport lands after a

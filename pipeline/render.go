@@ -7,8 +7,8 @@ import (
 )
 
 // ReportMarker leads the rendered report, for the same reason the gate's does:
-// whatever publishes this -- a comment, an issue, a job summary -- finds its
-// own previous copy by looking for this string, and an adapter that has to
+// whatever publishes this, a comment, an issue, a job summary, finds its own
+// previous copy by looking for this string, and an adapter that has to
 // remember a magic string is an adapter that will forget it.
 const ReportMarker = "<!-- bosun:pipeline -->"
 
@@ -75,7 +75,7 @@ func (r *Report) Render(w io.Writer) {
 	}
 
 	// Blocking findings first and separately: a reader who stops after the
-	// first section must have read everything that is actually stopped.
+	// first section must have read everything that is stopped.
 	bySeverity := map[Severity][]Finding{}
 	for _, f := range r.Findings {
 		bySeverity[f.Severity] = append(bySeverity[f.Severity], f)

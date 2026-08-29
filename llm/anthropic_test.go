@@ -11,7 +11,7 @@ import (
 )
 
 // The Messages API answers through a forced tool call, so the verdict arrives
-// already shaped -- and the adapter has to prefer that over any text the model
+// already shaped, and the adapter has to prefer that over any text the model
 // also produced.
 func TestAnthropicClassifyReadsTheToolInput(t *testing.T) {
 	var got map[string]any
@@ -53,7 +53,7 @@ func TestAnthropicClassifyReadsTheToolInput(t *testing.T) {
 }
 
 // A backend that answers in text instead of through the tool still has to be
-// readable -- that is what parseVerdict is for on this path.
+// readable; that is what parseVerdict is for on this path.
 func TestAnthropicFallsBackToText(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":

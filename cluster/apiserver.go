@@ -22,7 +22,7 @@ const (
 	saDir       = "/var/run/secrets/kubernetes.io/serviceaccount"
 	defaultHost = "https://kubernetes.default.svc"
 	// maxItems bounds a count. Past it the answer becomes a floor, which is
-	// still a useful sentence -- "at least 2500 objects are live on a version
+	// still a useful sentence; "at least 2500 objects are live on a version
 	// this chart stops serving" ends the same conversation as the exact
 	// number.
 	maxItems = 2500
@@ -31,15 +31,15 @@ const (
 
 // APIServer reads the Kubernetes API from inside the cluster.
 //
-// The token is re-read from disk ON EVERY REQUEST, and that is not caution.
-// Projected service-account tokens are BOUND tokens: they expire in about an
+// The token is re-read from disk on every request, and that is not caution.
+// Projected service-account tokens are bound tokens: they expire in about an
 // hour and the kubelet rewrites the file in place. A client that read it once
 // at start-up works beautifully for fifty minutes and then 401s forever, which
 // on a service called a few times a day means it looks fine in every test and
 // is broken in production by lunchtime. The GitHub client already learned this
 // with App installation tokens; this is the same shape and the same answer.
 //
-// The CA is cached, because that one does not rotate under a running pod.
+// The ca is cached, because that one does not rotate under a running pod.
 type APIServer struct {
 	// Host is the apiserver. Defaults to the in-cluster Service DNS name.
 	Host string
@@ -104,7 +104,7 @@ func (a *APIServer) client() (*http.Client, error) {
 			a.err = fmt.Errorf("the mounted cluster CA is not a certificate")
 			return
 		}
-		// No InsecureSkipVerify escape hatch, deliberately. The CA is mounted
+		// No InsecureSkipVerify escape hatch, deliberately. The ca is mounted
 		// into every pod by the kubelet; a deployment that cannot verify the
 		// apiserver with it has a problem that skipping verification hides.
 		a.cl = &http.Client{
@@ -120,7 +120,7 @@ func (a *APIServer) client() (*http.Client, error) {
 //
 // Same rule as the App's key: a misconfiguration should be a pod that will not
 // start, which somebody notices, rather than a triage that quietly says "not
-// permitted to check" forever -- which is a sentence this deliberately makes
+// permitted to check" forever, which is a sentence this deliberately makes
 // harmless, and therefore one nobody would chase.
 func (a *APIServer) Check(ctx context.Context) error {
 	var out struct {
@@ -215,7 +215,7 @@ func (a *APIServer) CountLive(ctx context.Context, group, version, plural string
 				return Count{Note: "not permitted to check " + where}
 			case http.StatusNotFound:
 				// The cluster does not serve it at all. For a CRD removed
-				// outright that is the answer, not a failure -- and it is
+				// outright that is the answer, not a failure, and it is
 				// exactly the case where asking apiextensions instead would
 				// have 404'd too.
 				return Count{Known: true, Note: "the cluster does not serve " + where}
@@ -269,7 +269,7 @@ func (a *APIServer) CRD(ctx context.Context, name string) CRD {
 			out.Versions = append(out.Versions, v.Name)
 		}
 		// Schemas for every version, served or not. The version a document is
-		// migrating OFF may already be unserved in this cluster while the
+		// migrating off may already be unserved in this cluster while the
 		// repository still declares it, and that is the shape most worth
 		// having.
 		if len(v.Schema.OpenAPIV3Schema) > 0 {

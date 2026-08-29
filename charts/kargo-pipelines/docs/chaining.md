@@ -44,7 +44,7 @@ Kargo only makes Freight available to a downstream Stage once it has been
 **verified** upstream. So `verify` on the canary plus auto-promotion on the
 next stage already *is* "tenant first, hub only if the tenant came up healthy".
 There is no orchestration code, nothing polls, and the chart keeps no state of
-its own: a canary that fails verification simply never offers its freight on.
+its own: a canary that fails verification never offers its freight on.
 
 `requiredSoakTime` adds "and it has to have been fine for a while", which
 catches the failures that need traffic or a cron tick to show up. Write it on
@@ -61,22 +61,22 @@ already had and gains a new upstream one.
 
 **Each stage parses the first file of its own `updates`.** This is what makes a
 chain correct rather than cosmetic. A stage decides whether to act by comparing
-the Warehouse's version against what is currently pinned — so if the downstream
+the Warehouse's version against what is currently pinned, so if the downstream
 stage read the *canary's* file, it would see the version its upstream just
-wrote, conclude there was nothing to do, and silently never promote. The chain
-would look wired up and never move.
+wrote, conclude there was nothing to do, and never promote. The chain would
+look wired up and never move.
 
 ## What a canary does not prove
 
-A canary environment proves something only about the things it actually runs.
-An artifact with no presence there gets **no staging at all** — it goes straight
-to the terminal stage, exactly as it did before you built the chain. And a
-smaller environment running a subset of workloads at a smaller scale can be
-perfectly healthy while the same version breaks the real one.
+A canary environment proves something only about the things it runs. An
+artifact with no presence there gets **no staging at all**: it goes straight to
+the terminal stage, exactly as it did before you built the chain. And a smaller
+environment running a subset of workloads at a smaller scale can be healthy
+while the same version breaks the real one.
 
-State plainly which targets are chained and which are not. A chain that is
-assumed to cover everything is worse than no chain, because it converts
-"nobody checked" into "we thought it was checked".
+State plainly which targets are chained and which are not. A chain assumed to
+cover everything converts "nobody checked" into "we thought it was checked",
+which is a worse position than having no chain.
 
 ## Per-stage merge policy
 

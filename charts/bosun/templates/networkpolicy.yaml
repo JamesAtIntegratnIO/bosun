@@ -129,7 +129,7 @@ spec:
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  # The `-fqdn` suffix is historical: this policy started as the FQDN
+  # The `-fqdn` suffix is historical: this policy started as the fqdn
   # allow-list and now also carries the apiserver entity rule. Renaming it
   # would delete and recreate a live policy on every existing install, which
   # is a worse trade than a slightly narrow name.

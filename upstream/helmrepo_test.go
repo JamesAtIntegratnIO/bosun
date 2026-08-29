@@ -88,7 +88,7 @@ func TestTheRightChartIsTakenFromAnIndexOfMany(t *testing.T) {
 }
 
 // A pin that has already moved past what the index still lists is normal, and a
-// `sources:` field almost never changes between versions -- so the newest entry
+// `sources:` field almost never changes between versions, so the newest entry
 // is a far better answer than refusing to give one.
 func TestAVersionTheIndexNoLongerListsFallsBackToTheNewest(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -103,8 +103,8 @@ func TestAVersionTheIndexNoLongerListsFallsBackToTheNewest(t *testing.T) {
 	}
 }
 
-// `home` is a documentation link as often as a repository, so it is a fallback
-// -- but for a great many charts it is the only thing set.
+// `home` is a documentation link as often as a repository, so it is a
+// fallback, but for a great many charts it is the only thing set.
 func TestHomeIsUsedWhenSourcesIsAbsent(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, helmIndex)
@@ -119,7 +119,7 @@ func TestHomeIsUsedWhenSourcesIsAbsent(t *testing.T) {
 }
 
 // A chart that declares nothing gets an honest refusal naming the chart, the
-// version and the index -- not a guess derived from the repository's hostname.
+// version and the index, not a guess derived from the repository's hostname.
 func TestAChartThatDeclaresNothingIsRefusedByName(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, helmIndex)

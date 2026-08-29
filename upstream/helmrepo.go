@@ -15,14 +15,14 @@ import (
 //
 // The promotion pipeline builds a chart's artifact as `repoURL SPACE chartName`
 // (kargo-pipelines' stage.yaml). For an OCI chart the name is empty, so the
-// value trims down to a bare URL and every OCI path worked. For a CLASSIC Helm
+// value trims down to a bare URL and every OCI path worked. For a classic Helm
 // repository the name is set, so the string is
 //
-//	https://kyverno.github.io/kyverno kyverno
+// 	https://kyverno.github.io/kyverno kyverno
 //
 // which this package treated as a single OCI reference and turned into
 // `https://https/v2//kyverno.github.io/kyverno/manifests/latest`. Twenty of the
-// fifty-three artifacts in the real target list are that shape -- including
+// fifty-three artifacts in the real target list are that shape, including
 // metallb, kyverno, cilium, cert-manager, external-secrets, argo-cd, authentik
 // and trivy-operator-explorer, which is to say every chart in the eval suite
 // and the one this feature was designed around.
@@ -31,7 +31,7 @@ import (
 // chart, its name.
 //
 // Exported because the agent renders the same chart to read its target schema,
-// and "what shape is this artifact" must have ONE owner. Two answers to that
+// and "what shape is this artifact" must have one owner. Two answers to that
 // question is how the structural migration came to build
 // `oci://https://kyverno.github.io/kyverno kyverno` while the resolver beside
 // it was parsing the same string correctly.
@@ -56,7 +56,7 @@ func IsHelmRepo(ref string) bool {
 // maxIndexBytes caps an index.yaml read.
 //
 // A classic Helm repository has no per-chart endpoint: the whole index is the
-// only thing on offer, and some are enormous -- prometheus-community's runs to
+// only thing on offer, and some are enormous, prometheus-community's runs to
 // tens of megabytes because it lists every version of every chart it has ever
 // published. Reading one of those to answer "where does this come from" is not
 // a trade worth making, so it is bounded and the failure is a sentence.
@@ -119,8 +119,8 @@ func (g *GitHubReleases) helmIndexSource(ctx context.Context, repoURL, chart, ve
 
 	// The exact version when it is there, and the newest entry otherwise. An
 	// index is newest-first by convention, and a `sources:` field almost never
-	// changes between versions -- so falling back is far better than refusing
-	// to answer because a pin has already moved on.
+	// changes between versions, so falling back is far better than refusing to
+	// answer because a pin has already moved on.
 	pick := versions[0]
 	for _, v := range versions {
 		if version != "" && normalise(v.Version) == normalise(version) {
@@ -135,7 +135,7 @@ func (g *GitHubReleases) helmIndexSource(ctx context.Context, repoURL, chart, ve
 	}
 	if pick.Home != "" {
 		// `home` is a documentation link as often as a repository, so it is a
-		// fallback rather than a first choice -- but for a great many charts it
+		// fallback rather than a first choice, but for a great many charts it
 		// is the only thing set, and it is usually the GitHub project.
 		if repo, err := githubPath(pick.Home); err == nil {
 			return repo, nil
@@ -152,8 +152,8 @@ func (g *GitHubReleases) helmIndexSource(ctx context.Context, repoURL, chart, ve
 // repository.
 //
 // The principle is right and it does not apply here. A short reference is not
-// ambiguous -- Docker's own convention gives it exactly one meaning, and the
-// promotion pipeline is HANDING us the reference rather than us inferring one
+// ambiguous, Docker's own convention gives it exactly one meaning, and the
+// promotion pipeline is handing us the reference rather than us inferring one
 // from a name. What stays refused is a string that is not a reference at all.
 func dockerHubRef(ref string) (string, bool) {
 	if ref == "" || strings.Contains(ref, "://") {
@@ -176,9 +176,9 @@ func dockerHubRef(ref string) (string, bool) {
 // registryHost maps a reference's host to the one that serves the v2 API.
 //
 // `docker.io` is a website. The registry API lives at `registry-1.docker.io`,
-// and asking docker.io for a manifest returns HTML -- which surfaced as
-// `invalid character '<' looking for beginning of value`, an error that names
-// neither the host nor the problem. The auth host was already mapped here; the
+// and asking docker.io for a manifest returns HTML, which surfaced as `invalid
+// character '<' looking for beginning of value`, an error that names neither
+// the host nor the problem. The auth host was already mapped here; the
 // registry host was not.
 func registryHost(host string) string {
 	if host == "docker.io" {

@@ -2,18 +2,18 @@ name: Image
 
 # Publishes the two images this repository ships: the agent (`bosun`) and the
 # gate (`gitops-gate`). They share one Go module and one workflow, but they do
-# NOT share a reason to be rebuilt.
+# not share a reason to be rebuilt.
 #
-# WHY THE SCOPE JOB EXISTS: both images used to be one matrix behind one
-# `paths-ignore`, so any commit touching Go source anywhere republished BOTH.
-# A triage-only fix would publish a byte-identical gate under a new
-# `main-<sha>` tag -- and the consumer of that tag
-# (gitops_homelab_2_0, Kargo target `gitops-gate`, strategy NewestBuild) opened
-# a pull request for every one of them. It cannot dedupe them either: the
-# `org.opencontainers.image.revision` label carries the commit sha, so even an
-# identical build has a different digest.
+# Why the scope job exists: both images used to be one matrix behind one
+# `paths-ignore`, so any commit touching Go source anywhere republished both. A
+# triage-only fix would publish a byte-identical gate under a new `main-<sha>`
+# tag, and the consumer of that tag (gitops_homelab_2_0, Kargo target
+# `gitops-gate`, strategy NewestBuild) opened a pull request for every one of
+# them. It cannot dedupe them either: the `org.opencontainers.image.revision`
+# label carries the commit sha, so even an identical build has a different
+# digest.
 #
-# That pin is `autoMerge: never` on purpose -- the gate judges every other
+# That pin is `autoMerge: never` on purpose, the gate judges every other
 # promotion, so a human has to read the bump. Bumps that change nothing about
 # the gate are exactly what teaches that human to stop reading them.
 
@@ -21,7 +21,7 @@ on:
   push:
     branches: [main]
     tags: ['v*']
-    # A cheap pre-filter for what cannot affect EITHER image. Which of the two
+    # A cheap pre-filter for what cannot affect either image. Which of the two
     # a qualifying push affects is the `scope` job's problem.
     paths-ignore:
       - 'local/**'
@@ -31,8 +31,8 @@ on:
       - '**.md'
   workflow_dispatch:
   # Called by release.yaml once it has cut a tag. It cannot rely on the tag
-  # push to trigger this workflow: a tag created with GITHUB_TOKEN does NOT
-  # start a new workflow run -- GitHub blocks that to prevent recursion -- so
+  # push to trigger this workflow: a tag created with GITHUB_TOKEN does not
+  # start a new workflow run, GitHub blocks that to prevent recursion, so
   # "push a tag and let the existing workflows fire" silently does nothing.
   workflow_call:
     inputs:
@@ -60,8 +60,8 @@ jobs:
       - name: Pick the images this revision changed
         id: pick
         env:
-          # `inputs.version` is the ONLY reliable sign of a release call.
-          # A called workflow inherits the caller's event context: release.yaml
+          # `inputs.version` is the only reliable sign of a release call. A
+          # called workflow inherits the caller's event context: release.yaml
           # runs on a push to main, so `github.event_name` reads `push` and
           # `github.ref_type` reads `branch` inside this workflow too. Deciding
           # from those would path-filter a release, which must ship both images
@@ -82,11 +82,11 @@ jobs:
           retag_gate=false
           zero=0000000000000000000000000000000000000000
 
-          # A RELEASE IS NOT A REASON TO REBUILD THE GATE.
+          # A release is not A reason to rebuild the gate.
           #
           # This built both on every release, and the comment defending it said
           # a release "must ship both images at the tagged revision whatever the
-          # last commit touched". The tagged revision part is right. The REBUILD
+          # last commit touched". The tagged revision part is right. The rebuild
           # is not, and it costs exactly what the scope job was created to stop:
           #
           # `is_default_branch` is true inside a release call, so the tag list
@@ -94,14 +94,14 @@ jobs:
           # what the consumer's Kargo target tracks with NewestBuild, and the
           # `org.opencontainers.image.revision` label means a byte-identical
           # gate still gets a new digest. Every agent-only release therefore
-          # opened a gate bump pull request -- `autoMerge: never`, so a human
-          # reads it -- describing no change to the gate. Bumps that change
+          # opened a gate bump pull request, `autoMerge: never`, so a human
+          # reads it, describing no change to the gate. Bumps that change
           # nothing are what teach that human to stop reading them, which is the
           # exact failure this file already argues against one paragraph up.
           #
           # So: on a release the gate is rebuilt only if the gate MOVED since
           # the previous release. If it did not, the existing image is given the
-          # release tag with `imagetools create` -- same digest, no new
+          # release tag with `imagetools create`, same digest, no new
           # `main-<sha>`, nothing for Kargo to notice.
           if [ -n "${VERSION}" ]; then
             build_agent=true
@@ -138,7 +138,7 @@ jobs:
             # What the gate compiles: gate/ itself plus migrate/, the scanner
             # it shares with the agent so the report line and its parser
             # cannot drift. This list mirrors `go list -deps ./gate` filtered
-            # to this module -- re-run that before editing it, not memory: the
+            # to this module, re-run that before editing it, not memory: the
             # last time this comment said "the gate imports nothing else" the
             # claim was checked once and outlived its truth by one feature.
             if printf '%s\n' "${code}" | grep -qE '^gate/|^migrate/|^go\.(mod|sum)$|^\.github/workflows/image\.yaml$'; then
@@ -148,7 +148,7 @@ jobs:
             # Everything else in the module is the agent's. Deliberately the
             # loose half of the pair: an unnecessary agent build costs a runner
             # and nothing else, because nothing downstream tracks its
-            # `main-<sha>` tags -- the chart's appVersion decides what deploys.
+            # `main-<sha>` tags, the chart's appVersion decides what deploys.
             if printf '%s\n' "${code}" | grep -qvE '^gate/|^$'; then
               build_agent=true
             fi
@@ -176,9 +176,9 @@ jobs:
 
   # The release tag for a gate that did not change.
   #
-  # `imagetools create` writes a new tag pointing at an EXISTING manifest. No
-  # rebuild, no new digest, and -- the point of all this -- no new `main-<sha>`
-  # for the consumer's Kargo target to open a pull request about.
+  # `imagetools create` writes a new tag pointing at an existing manifest. No
+  # rebuild, no new digest, and, the point of all this, no new `main-<sha>` for
+  # the consumer's Kargo target to open a pull request about.
   retag-gate:
     name: Tag the unchanged gate at ${{ inputs.version }}
     needs: scope
@@ -199,8 +199,8 @@ jobs:
           V: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          # `:main` is the gate that was last built, which -- because it did not
-          # change -- is the gate this release ships.
+          # `:main` is the gate that was last built, which, because it did not
+          # change, is the gate this release ships.
           docker buildx imagetools create -t "${IMAGE}:${V}" "${IMAGE}:main"
           docker buildx imagetools inspect "${IMAGE}:${V}" --format '{{.Manifest.Digest}}'
           echo "::notice::${IMAGE}:${V} now points at the existing :main build; no new image was published."
@@ -220,8 +220,8 @@ jobs:
       #
       # bosun is amd64 only: it runs in a cluster whose nodes are all amd64, so
       # an arm64 image has no consumer. gitops-gate is multi-arch, because that
-      # one never runs in the cluster -- its consumers are CI runners (amd64)
-      # and developer machines (arm64 Macs). An amd64-only gate cannot be
+      # one never runs in the cluster; its consumers are CI runners (amd64) and
+      # developer machines (arm64 Macs). An amd64-only gate cannot be
       # reproduced locally except under emulation.
       matrix:
         include: ${{ fromJSON(needs.scope.outputs.matrix) }}
@@ -242,16 +242,16 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ matrix.image }}
           # No 'latest'. An unpinned tag is how an image silently changes
           # underneath a cluster, which is the incident class this service
-          # exists to prevent -- shipping one here would be embarrassing.
+          # exists to prevent; shipping one here would be embarrassing.
           #
           # metadata-action adds `latest` on its own for any semver tag, so
           # saying nothing is not the same as saying no. It did exactly that on
           # the first v0.1.0 build.
           flavor: |
             latest=false
-          # The branch-prefixed sha tag is guarded too: on a TAG push there is
+          # The branch-prefixed sha tag is guarded too: on a tag push there is
           # no branch, `{{branch}}` expands to nothing, and the result is the
-          # literal `:-<sha>` -- which buildx rejects as an invalid reference
+          # literal `:-<sha>`, which buildx rejects as an invalid reference
           # and fails the whole build.
           #
           # `:main` moves only when the image it names is rebuilt, which is now

@@ -10,7 +10,7 @@ import (
 )
 
 // TestLiveOpenAI exercises a real endpoint. Skipped unless DELIVERY_AGENT_LIVE
-// names one, so `go test ./...` stays hermetic.
+// names one, so `go test./...` stays hermetic.
 //
 //	DELIVERY_AGENT_LIVE=http://localhost:1234/v1 \
 //	DELIVERY_AGENT_MODEL=qwen/qwen3.6-35b-a3b go test ./llm -run Live -v

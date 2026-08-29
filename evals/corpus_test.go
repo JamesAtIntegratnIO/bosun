@@ -11,9 +11,9 @@ import (
 )
 
 // The corpus is a few hundred lines of fixtures whose only consumer was
-// TestEval, which skips without a live endpoint -- so CI's claim that "the
-// eval suite runs here too, with a fake provider, no model endpoint" was not
-// true of the cases themselves. Nothing checked that a case was even runnable
+// TestEval, which skips without a live endpoint, so CI's claim that "the eval
+// suite runs here too, with a fake provider, no model endpoint" was not true
+// of the cases themselves. Nothing checked that a case was even runnable
 // until somebody stood up a model.
 //
 // These run every case through the real harness against a fake, so a fixture
@@ -87,7 +87,7 @@ func TestEveryCaseBuildsAPrompt(t *testing.T) {
 	}
 }
 
-// And every case must be RUNNABLE: handed the answer it expects, the harness
+// And every case must be runnable: handed the answer it expects, the harness
 // scores it as a pass. A case that cannot pass even when the model is right is
 // measuring the fixture.
 func TestEveryTriageCasePassesWhenTheModelIsRight(t *testing.T) {
@@ -99,10 +99,10 @@ func TestEveryTriageCasePassesWhenTheModelIsRight(t *testing.T) {
 		for key, to := range c.Triage.WantEdits {
 			edits = append(edits, llm.Edit{
 				Path: c.Triage.EditFile, Key: key,
-				// The value the fixture actually holds. A verdict without it
-				// is not "the expected answer": `from` is half the contract
-				// the applier enforces, and omitting it here made the suite
-				// score a model that never read the file it was editing.
+				// The value the fixture holds. A verdict without it is not
+				// "the expected answer": `from` is half the contract the
+				// applier enforces, and omitting it here made the suite score
+				// a model that never read the file it was editing.
 				From:      currentScalar(t, c.Files[c.Triage.EditFile], key),
 				To:        to,
 				Rationale: "because the fixture says so",

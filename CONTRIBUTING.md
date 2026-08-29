@@ -3,7 +3,7 @@
 Bosun has to run on somebody else's cluster, in somebody else's CI, against
 somebody else's model. Two rules keep it that way.
 
-## Rule 1 — no environment assumptions
+## Rule 1: no environment assumptions
 
 Nothing in `charts/` or the service may assume:
 
@@ -16,14 +16,14 @@ Nothing in `charts/` or the service may assume:
 | A model provider | `LLMProvider`, with **no default**. The values file must name one. |
 | A repository layout | `triage.allowPaths` is a value. The service knows nothing about any particular repo. |
 
-## Rule 1a — the contracts between the halves are the fragile part
+## Rule 1a: the contracts between the halves are the fragile part
 
 The gate, the agent and the charts are joined by **wire contracts**, and every
 one of them has broken silently at least once.
 
 The Go dependency runs one way only: `package main` (the agent) and `cluster`
 import `gate`, and `gate` imports `migrate` for the report format both sides
-read. Nothing points back — the gate cannot import the agent, and neither
+read. Nothing points back, so the gate cannot import the agent, and neither
 touches the charts. That single direction is what ADR 0008 bought when it moved
 the gate in-cluster, and it is why the shared report vocabulary lives in `gate`
 and `migrate` rather than being spelled out twice. What follows are the
@@ -35,30 +35,31 @@ contracts that still cross a process boundary, where no compiler is watching:
 | Any version the agent writes must appear verbatim in the gate's report | Still untested. Change how the report renders a version and every mechanical fix silently becomes an escalation |
 | `kargo-pipelines` POSTs a promotion body the agent's handler must parse | Untested |
 
-This is the reason both halves live in one repository. A boundary is safe
-where its contract can be tested; across two repositories, no CI run can check
-both sides. **A change to either side of a contract needs a test that sees
-both**, and adding one is worth more than almost any feature.
+This is why both halves live in one repository. A boundary is safe where its
+contract can be tested; across two repositories, no CI run can check both
+sides. **A change to either side of a contract needs a test that sees both**,
+and adding one is worth more than almost any feature.
 
-## Rule 2 — the safety model lives in code
+## Rule 2: the safety model lives in code
 
-The model returns a verdict and a proposal — scalar edits, or a complete
+The model returns a verdict and a proposal: scalar edits, or a complete
 migrated document on the structural path. It applies neither, and it does not
 choose what it is allowed to touch.
 
-Any change that moves an invariant from `edits/` or `agent/` into the prompt
-is a regression, however well the prompt performs. A prompt is a request; the
+Any change that moves an invariant from `edits/` or `agent/` into the prompt is
+a regression, however well the prompt performs. A prompt is a request; the
 allowlist is a guarantee. See
 [`adr/0001-structured-edits-not-agentic-loop.md`](adr/0001-structured-edits-not-agentic-loop.md)
 and [`docs/safety-model.md`](docs/safety-model.md).
 
 ## Everything documents itself
 
-- `README.md` — what it is, what it needs, how to install
-- `charts/bosun/values.schema.json` — the machine-checkable values contract
-- `CHANGELOG.md` — keep-a-changelog style, one per unit
-- `docs/` — reference material too long for a README
-- `adr/` — anything load-bearing: the context, the decision, and what it costs
+- `README.md`: what it is, what it needs, how to install
+- `charts/bosun/values.schema.json`: the machine-checkable values contract
+- `CHANGELOG.md`: keep-a-changelog style, one per unit
+- `docs/`: reference material too long for a README
+- `adr/`: anything load-bearing, with the context, the decision, and what it
+  costs
 
 A change that alters behaviour and does not touch the relevant documentation is
 incomplete.
@@ -71,7 +72,7 @@ it deliberately does not:
 | Package | Owns |
 |---|---|
 | `agent/` | judging one pull request, and what to say about it |
-| `gate/` | rendering the repository and diffing it — no git host, no model |
+| `gate/` | rendering the repository and diffing it, with no git host and no model |
 | `gateservice/` | running the gate in-process, per open pull request, on a timer |
 | `supervisor/` | the pipeline sweep: the promotions that never happened |
 | `prompt/` | what the model is told, and what the eval suite scores |
@@ -79,19 +80,19 @@ it deliberately does not:
 | `cluster/`, `gitprovider/`, `llm/`, `upstream/`, `egress/` | the outside world, one seam each, every one with a fake |
 | root | the composition root: read the environment, build one of each, wire, serve |
 
-There are three `main` packages, in three shapes, and the shapes mean
-different things:
+There are three `main` packages, in three shapes, and the shapes mean different
+things:
 
-- **root** is the module's primary binary. Idiomatic Go for a module that
-  ships one thing; `cmd/bosun/` would say there are several.
+- **root** is the module's primary binary. Idiomatic Go for a module that ships
+  one thing; `cmd/bosun/` would say there are several.
 - **`gate/cmd/gitops-gate/`** is a second shipped binary inside a
-  self-contained sub-product with its own README, CHANGELOG and Dockerfile.
-  The `cmd/` is what keeps `gate/` importable as a library, which the agent
-  depends on.
-- **`evals/export/`** is a development tool, beside the thing it exports
-  rather than in a top-level `cmd/`, because it is useless without it.
+  self-contained sub-product with its own README, CHANGELOG and Dockerfile. The
+  `cmd/` is what keeps `gate/` importable as a library, which the agent depends
+  on.
+- **`evals/export/`** is a development tool, beside the thing it exports rather
+  than in a top-level `cmd/`, because it is useless without it.
 
-A new binary belongs in whichever of those three it actually is.
+A new binary belongs in whichever of those three it is.
 
 ## The toolchain
 
@@ -102,18 +103,17 @@ nix develop     # or `direnv allow`, which does it on cd
 Go, kubectl, kind, kubeconform and helm, at the versions this repository is
 meant to be built and tested with. **helm and kubeconform are pinned to the
 versions the images carry**, and taken from the same upstream releases rather
-than from nixpkgs — which currently ships Helm 4.
+than from nixpkgs, which currently ships Helm 4.
 
-That pin is not tidiness. The gate's verdict *is* the output of `helm
-template`, so the helm that produced it is part of the answer: render with a
-different one and you get a verdict that is locally true and globally wrong,
-looking nothing like a version problem while you chase it. Both Dockerfiles
-already say this where they pin; `hack/portability-test.sh` now asserts the
-flake agrees with both, because three copies of a version number is exactly
-the shape that drifts.
+That pin earns its keep. The gate's verdict *is* the output of `helm template`,
+so the helm that produced it is part of the answer: render with a different one
+and you get a verdict that is locally true and globally wrong, and nothing
+about the symptom points at a version. Both Dockerfiles already say this where
+they pin, and `hack/portability-test.sh` asserts the flake agrees with both,
+because three copies of a version number drift.
 
-Two tools stay outside the shell, because they manage host state a second
-copy would fight over: **colima** (a VM with state in `~/.colima`) and
+Two tools stay outside the shell, because they manage host state a second copy
+would fight over: **colima** (a VM with state in `~/.colima`) and
 **idpbuilder** (not in nixpkgs). `local/scripts/00-runtime.sh` installs both
 with brew, and the shell says so if they are missing.
 
@@ -127,8 +127,8 @@ hack/lint.sh               # helm lint + values.schema.json validation
 hack/portability-test.sh   # no environment assumptions; everything renders
 ```
 
-`hack/portability-test.sh` is the successor to an extraction test that
-enforced a one-way link rule while this package still lived inside the platform
+`hack/portability-test.sh` is the successor to an extraction test that enforced
+a one-way link rule while this package still lived inside the platform
 repository. It keeps the checks that were never about extraction: no
 environment assumptions, and everything renders.
 
@@ -145,34 +145,36 @@ say so in the changelog with the model it was measured against.
   tag. Publishing refuses to overwrite, so re-running is harmless.
 - **A release is cut when `charts/bosun`'s `appVersion` changes on main.**
   `release.yaml` tags it and publishes the images at that version. `appVersion`
-  is already the single source of truth for which image deploys -- the
-  consuming addon leaves `image.tag` unset -- so deriving the tag from the same
+  is already the single source of truth for which image deploys, since the
+  consuming addon leaves `image.tag` unset, so deriving the tag from the same
   field means the tag, the chart and the running image cannot disagree.
 - **A merge publishes only the images it changed.** `image.yaml` diffs the
   push: `gate/**` (plus `go.mod`/`go.sum`) rebuilds `gitops-gate`, anything
   else in the module rebuilds `bosun`, a release or a manual run builds both.
-  Rule 1a cuts both ways -- the gate imports nothing from the agent, so a
-  triage fix is not a reason to republish the gate.
+  Rule 1a cuts both ways: the gate imports nothing from the agent, so a triage
+  fix is not a reason to republish the gate.
 
-  Publishing both from one matrix is not merely wasteful. The consumer pins
-  the gate by `main-<sha>` and will not auto-merge it, because the gate judges
-  every other promotion and a human has to read the bump. Republishing an
-  identical gate under a new sha -- and it is never byte-identical, since the
-  revision label carries the commit -- spends that attention on nothing.
+  Publishing both from one matrix costs more than the build minutes. The
+  consumer pins the gate by `main-<sha>` and will not auto-merge it, because
+  the gate judges every other promotion and a human has to read the bump.
+  Republishing an identical gate under a new sha, and it is never
+  byte-identical since the revision label carries the commit, spends that
+  attention on nothing.
 
 - **CI refuses a pull request that changes a chart without bumping its
   version.** Publishing already refuses to overwrite, but silently and after
   the fact: the pull request merges, publishes nothing, and looks exactly like
   a release.
 
-That last rule comes from an incident. When releases were a version bump
-merged by a person followed by someone remembering to push a tag, 0.2.0 merged
-untagged: nothing between 0.1.0 and 0.3.0 was published, and the cluster ran the
-first agent for a day while five fixes sat on main looking shipped.
+That last rule comes from an incident. When releases were a version bump merged
+by a person followed by someone remembering to push a tag, 0.2.0 merged
+untagged: nothing between 0.1.0 and 0.3.0 was published, and the cluster ran
+the first agent for a day while five fixes sat on main looking shipped.
 
-One thing to know if you change any of this: **a tag pushed with `GITHUB_TOKEN` does not
-trigger workflows.** GitHub blocks it to prevent recursion, so `release.yaml`
-*calls* the image workflow rather than tagging and hoping something notices.
+One thing to know if you change any of this: **a tag pushed with
+`GITHUB_TOKEN` does not trigger workflows.** GitHub blocks it to prevent
+recursion, so `release.yaml` *calls* the image workflow rather than tagging and
+hoping something notices.
 
 ## License
 

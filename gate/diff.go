@@ -12,7 +12,7 @@ import (
 // ChangeKind is what happened to an Application's targeting or its source.
 //
 // A named type rather than a string with a comment listing the values, because
-// the comment named four of these while the code assigned all nine -- and the
+// the comment named four of these while the code assigned all nine, and the
 // three it omitted (project, namespace, source-type) are the ones a reader
 // would go looking for the meaning of.
 type ChangeKind string
@@ -48,23 +48,23 @@ type DiffResult struct {
 	// does not reveal.
 	Targeting []Change `json:"targeting"`
 	// Introduced covers whole ApplicationSets that did not exist before, and
-	// does NOT block. Adding an addon is a deliberate act by the author of the
+	// does not block. Adding an addon is a deliberate act by the author of the
 	// pull request; the dangerous case is an addon that already existed
 	// quietly changing which clusters it reaches. Blocking on both would make
 	// every new-addon PR red for a reason nobody needs to investigate, and a
 	// check that is routinely overridden stops being a check.
 	Introduced []Change `json:"introduced"`
-	// Versions are reported, not blocked -- a version bump is the point.
+	// Versions are reported, not blocked; a version bump is the point.
 	Versions []Change `json:"versions"`
 	// Other covers a source moving between chart and path, or a project or
 	// namespace change: not a targeting change, but not routine either.
 	Other []Change `json:"other"`
 
 	// Objects are resource-level differences, present only when the
-	// repository renders manifests into git. This is the evidence a reviewer
-	// -- or a triage agent -- actually needs: a version number says a chart
-	// moved, whereas "removed two containers, added a DaemonSet and four
-	// CRDs" says what will happen.
+	// repository renders manifests into git. This is the evidence a
+	// reviewer, or a triage agent, needs: a version number says a
+	// chart moved, whereas "removed two containers, added a DaemonSet and
+	// four CRDs" says what will happen.
 	Objects  []ObjectChange `json:"objects,omitempty"`
 	Warnings []string       `json:"warnings,omitempty"`
 
@@ -73,7 +73,7 @@ type DiffResult struct {
 	//
 	// Separate from Warnings, which mean "the gate tried and could not". This
 	// means "the gate was told not to", and by a file read from the pull
-	// request's own head -- so a change can switch a check off, and the report
+	// request's own head, so a change can switch a check off, and the report
 	// that results has to say which one, or the project's own "cannot act
 	// without saying so" rule holds everywhere except where it matters most.
 	Suppressed []string `json:"suppressed,omitempty"`
@@ -83,8 +83,8 @@ type DiffResult struct {
 	//
 	// It lives on the result rather than beside it because the headline, the
 	// machine-readable marker and the commit status are all derived from this
-	// struct. Kept outside, a run blocked ONLY by schema validation published
-	// a report headlined "No blocking findings" next to a red cross -- the
+	// struct. Kept outside, a run blocked only by schema validation published
+	// a report headlined "No blocking findings" next to a red cross, the
 	// report and the status disagreeing about the same run.
 	SchemaFailures int `json:"schemaFailures,omitempty"`
 }
@@ -95,7 +95,7 @@ func (d *DiffResult) Blocking() bool {
 	}
 	// An API version moving under an existing resource is a migration, and
 	// migrations are the class of change that renders perfectly and breaks at
-	// runtime. Objects appearing or changing are reported but not blocked --
+	// runtime. Objects appearing or changing are reported but not blocked;
 	// that is what a version bump legitimately does.
 	for _, o := range d.Objects {
 		// Both are migrations. The first is an object whose own apiVersion
@@ -106,7 +106,7 @@ func (d *DiffResult) Blocking() bool {
 			return true
 		}
 		// A dropped served version blocks exactly while manifests in this
-		// repository still declare it -- they are what breaks at apply. A
+		// repository still declare it; they are what breaks at apply. A
 		// finding whose consumers were counted at zero is reported and does
 		// not block, which is what lets a repair that moves every consumer
 		// turn this red green on the re-run. Not scanned means not counted:
@@ -116,7 +116,7 @@ func (d *DiffResult) Blocking() bool {
 			return true
 		}
 		// A setting the new chart no longer reads. It renders green by
-		// construction -- helm ignores an unknown value -- so if this does not
+		// construction, helm ignores an unknown value, so if this does not
 		// block, nothing anywhere will ever mention it.
 		if o.Kind == ObjectValuesKeyDropped && len(o.Keys) > 0 {
 			return true
@@ -145,14 +145,14 @@ func Diff(base, head *Table) *DiffResult {
 	}
 
 	// An app that vanishes from one cluster and appears on another is one
-	// event, not two -- report it as a move so the reviewer sees the shape of
+	// event, not two, report it as a move so the reviewer sees the shape of
 	// what happened rather than two unrelated-looking lines.
 	//
 	// Only when there is one candidate on each side. Pairing two departures
 	// with two arrivals is a guess: nothing in the render says which arrival
 	// corresponds to which departure, and asserting one anyway produced a
 	// sentence the reader had no way to check. Worse, both slices were built
-	// by ranging a map, so the guess was not even stable -- identical input
+	// by ranging a map, so the guess was not even stable; identical input
 	// could describe two different moves on two runs.
 	removedByApp := map[string][]Row{}
 	addedByApp := map[string][]Row{}
@@ -178,8 +178,8 @@ func Diff(base, head *Table) *DiffResult {
 			res.Targeting = append(res.Targeting, Change{
 				// The AppSet, not the head Application. The Application name
 				// carries the cluster, so naming the head one describes a
-				// departure by something that did not exist before the change
-				// -- which reads as the gate being wrong about its own report.
+				// departure by something that did not exist before the change,
+				// which reads as the gate being wrong about its own report.
 				// The ApplicationSet is the identity that survives the move.
 				Kind: ChangeMoved, AppSet: appset, App: appset,
 				From: r.Cluster, To: a.Cluster,
@@ -326,7 +326,7 @@ func sortChanges(c []Change) {
 // Twelve for the same reason maxDroppedListed is: the finding is "these
 // changed", and forty entries make that point no better than a dozen do, while
 // a comment nobody opens makes it not at all. Named because it appeared as a
-// bare 12 twice in this file, beside a maxDroppedListed the same size -- so a
+// bare 12 twice in this file, beside a maxDroppedListed the same size, so a
 // reader had to check whether the three were the same decision or a
 // coincidence.
 const maxListed = maxDroppedListed
@@ -343,7 +343,7 @@ const maxListed = maxDroppedListed
 const ReportMarker = "<!-- gitops-gate -->"
 
 // NothingChanged is the report's answer when the render is identical on both
-// sides -- not "nothing blocking", but nothing at all.
+// sides, not "nothing blocking", but nothing at all.
 //
 // Exported for the same reason ReportMarker is. The agent decides whether to
 // spend a model call explaining a change by looking for this sentence, and it
@@ -385,9 +385,9 @@ func (d *DiffResult) Blockers() migrate.Blockers {
 // Verdict is the report's own answer, in one line, so a reader knows what they
 // are looking at before they read anything else.
 //
-// This exists because a report that merely LISTS findings reads the same when
-// it is blocking and when it is not. Two of them on one pull request -- a red
-// one and the green one after a repair -- were indistinguishable at a glance,
+// This exists because a report that only lists findings reads the same when
+// it is blocking and when it is not. Two of them on one pull request, a red
+// one and the green one after a repair, were indistinguishable at a glance,
 // and the failed pass looked like a duplicate of the pass that succeeded
 // rather than the thing that had to be fixed.
 //
@@ -421,7 +421,7 @@ func (d *DiffResult) Verdict() (blocking bool, headline string) {
 		why = append(why, fmt.Sprintf("%s the target schemas reject", plural(n, "manifest")))
 	}
 	if len(why) == 0 {
-		// Not blocking. Say what DID change, because "nothing blocking" and
+		// Not blocking. Say what did change, because "nothing blocking" and
 		// "nothing changed" are different answers and only one of them means
 		// the reader can stop reading.
 		switch {
@@ -450,7 +450,7 @@ func plural(n int, noun string) string {
 	return fmt.Sprintf("%d %ss", n, noun)
 }
 
-// joinAnd is an English list. Same name and shape as pipeline.joinAnd -- two
+// joinAnd is an English list. Same name and shape as pipeline.joinAnd, two
 // packages that never import each other, each rendering findings for a human,
 // and a shared helper package for one function would cost more than the
 // duplicate does.
@@ -471,8 +471,8 @@ func joinAnd(parts []string) string {
 // job summary.
 //
 // Write errors are not checked here and it has no error to return, which is
-// deliberate: BOTH callers render into a strings.Builder, whose Write cannot
-// fail, and then perform one real write they do check -- gateservice into the
+// deliberate: both callers render into a strings.Builder, whose Write cannot
+// fail, and then perform one real write they do check, gateservice into the
 // comment body, the CLI through writeReport. Checking forty individual writes
 // into a buffer would be forty branches that cannot be taken, in place of the
 // one that can. A third caller streaming this straight at a file would be
@@ -482,7 +482,7 @@ func (d *DiffResult) Report(w io.Writer) {
 	blocking, headline := d.Verdict()
 	// The breakdown, machine-readable, for the same reason ReportMarker is
 	// emitted here rather than remembered by each adapter: an agent reading
-	// this report should not have to infer WHY it is red from prose that was
+	// this report should not have to infer why it is red from prose that was
 	// written for a person. Every adapter that posts the report verbatim
 	// carries it, so the CI path gets it for free.
 	b := d.Blockers()
@@ -496,7 +496,7 @@ func (d *DiffResult) Report(w io.Writer) {
 	if len(d.Targeting) > 0 {
 		// The section headings the agent keys on come from the migrate
 		// package, so both sides of that contract read the same bytes by
-		// construction -- the ReportMarker lesson, applied before it is
+		// construction, the ReportMarker lesson, applied before it is
 		// re-learned.
 		fmt.Fprintf(w, "%s\n\n", migrate.HeadingTargeting)
 		fmt.Fprintf(w, "These Applications are generated for a different set of clusters than before. ")
@@ -542,7 +542,7 @@ func (d *DiffResult) Report(w io.Writer) {
 			}
 		}
 		if len(vdrop) > 0 {
-			// FIRST, deliberately. It is the finding with no other symptom:
+			// First, deliberately. It is the finding with no other symptom:
 			// the render is identical, the values file did not change, and
 			// helm does not complain. If it is below three tables of resource
 			// diffs, it is below the fold.
@@ -632,7 +632,7 @@ func (d *DiffResult) Report(w io.Writer) {
 				if o.Note != "" {
 					fmt.Fprintf(w, "  - %s\n", o.Note)
 				}
-				// The whole point of rendering both versions is knowing WHICH
+				// The whole point of rendering both versions is knowing which
 				// fields moved. Reporting only that an object "changed" hands
 				// the reader the same non-answer the version number already
 				// gave, and asks for human eyes while withholding what those

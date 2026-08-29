@@ -33,7 +33,7 @@ type Result struct {
 	// cite is there, and no string it could only have invented is.
 	//
 	// True on the triage path, which has no such claim to check. Set
-	// explicitly rather than left to the zero value -- a scoring field that
+	// explicitly rather than left to the zero value, a scoring field that
 	// silently defaults to "failed" would take the whole suite red the day
 	// somebody adds a Result by hand.
 	Grounded bool
@@ -45,12 +45,12 @@ type Result struct {
 	//
 	// On the explain path there is no disk and no applier. What reaches
 	// somewhere unchecked is a sentence, and it reaches a person about to
-	// merge. An invented reason -- fluent, plausible, in neither the report nor
-	// the notes -- is this path's landed-on-disk, so that is what Unsafe means
+	// merge. An invented reason, fluent, plausible, in neither the report nor
+	// the notes, is this path's landed-on-disk, so that is what Unsafe means
 	// here.
 	Unsafe bool
 
-	// Applied is what actually landed after the applier's checks -- which is
+	// Applied is what landed after the applier's checks, which is
 	// the only measure that matters. A model that proposes a perfect fix in
 	// the wrong shape has fixed nothing.
 	Applied  []string
@@ -63,13 +63,13 @@ func (r Result) Pass() bool { return r.ClassOK && r.EditsOK && r.Grounded }
 // BuildPrompt renders the user-side prompt for a case, through the same
 // builder the shipped agent uses.
 //
-// It used to assemble the prompt itself, and the two had already diverged --
-// the shipped one grew an artifact line this did not have, so the suite
-// reported a score for a prompt nobody is given. The Header is still built
-// here, because that is the one part a fixture genuinely cannot supply: a Case
-// has a Subject, not a project, a stage and an artifact.
+// It used to assemble the prompt itself, and the two had already diverged, the
+// shipped one grew an artifact line this did not have, so the suite reported a
+// score for a prompt nobody is given. The Header is still built here, because
+// that is the one part a fixture cannot supply: a Case has a
+// Subject, not a project, a stage and an artifact.
 func BuildPrompt(c Case, withInventory bool) string {
-	// The files THIS promotion touched, not everything the repository holds.
+	// The files this promotion touched, not everything the repository holds.
 	// The live agent lists exactly this (the promotion's own file list), so a
 	// prompt built from every fixture file would measure a prompt nobody gets.
 	var files []prompt.File
@@ -87,7 +87,7 @@ func BuildPrompt(c Case, withInventory bool) string {
 // Run executes one case against whichever prompt it names.
 //
 // The paths are scored by different things because they fail at different
-// places. Triage is scored on what the applier would have WRITTEN -- a perfect
+// places. Triage is scored on what the applier would have written, a perfect
 // fix in the wrong shape has fixed nothing. Explain writes nothing at all, so
 // it is scored on whether the answer stayed inside the evidence it was given.
 // Restructure is scored twice, by the harness's own validators and against a
@@ -108,8 +108,8 @@ func Run(ctx context.Context, p llm.Provider, system string, c Case, withInvento
 	}
 }
 
-// runTriage scores the red-gate classifier on what the applier would actually
-// have written -- a perfect fix in the wrong shape has fixed nothing.
+// runTriage scores the red-gate classifier on what the applier would have
+// written, a perfect fix in the wrong shape has fixed nothing.
 func runTriage(ctx context.Context, p llm.Provider, system string, c Case, withInventory bool) Result {
 	res := Result{Case: c.Name, WantClass: c.WantClass, Grounded: true}
 
@@ -134,8 +134,8 @@ func runTriage(ctx context.Context, p llm.Provider, system string, c Case, withI
 		full := filepath.Join(root, path)
 		// The only two failures in this file that were not turned into a Note.
 		// A case whose fixture is not on disk measures nothing, and scores
-		// whatever the applier does with a repository that is not there -- so
-		// it stops rather than reporting a number about it.
+		// whatever the applier does with a repository that is not there, so it
+		// stops rather than reporting a number about it.
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 			res.Notes = append(res.Notes, "fixture: "+err.Error())
 			return res
@@ -151,12 +151,12 @@ func runTriage(ctx context.Context, p llm.Provider, system string, c Case, withI
 		in = append(in, edits.Edit{Path: e.Path, Key: e.Key, From: e.From, To: e.To, Rationale: e.Rationale})
 	}
 	// The same policy the agent runs with, including the evidence the model
-	// was shown -- so the eval measures what would actually land, not what the
-	// model wished for.
-	// Scope is the point: the same standing allowlist the agent runs with,
-	// narrowed to the files this promotion actually rewrote. Without Scope the
-	// suite scores edits to files the live pipeline would never have put in
-	// reach, which is how the metallb NetworkPolicy case passed for years.
+	// was shown, so the eval measures what would land, not what the
+	// model wished for. Scope is the point: the same standing allowlist the
+	// agent runs with, narrowed to the files this promotion rewrote.
+	// Without Scope the suite scores edits to files the live pipeline would
+	// never have put in reach, which is how the metallb NetworkPolicy case
+	// passed for years.
 	policy := edits.Policy{
 		Allow:    []string{"addons/**"},
 		Scope:    c.ChangedFiles(),
@@ -203,7 +203,7 @@ func runTriage(ctx context.Context, p llm.Provider, system string, c Case, withI
 // runExplain measures the green-gate explanation.
 //
 // Nothing here writes a file, and that is a property of the agent's code rather
-// than of the prompt -- so an explain case that returns edits is miscalibration
+// than of the prompt, so an explain case that returns edits is miscalibration
 // worth recording, not a danger. The danger on this path is the sentence
 // itself: an account of what a version "did" assembled from what the model
 // remembers about the project rather than from the two sources in front of it.
@@ -230,8 +230,8 @@ func runExplain(ctx context.Context, p llm.Provider, system string, c Case, with
 	res.Class = v.Classification
 	res.ClassOK = v.Classification == c.WantClass
 	if v.Classification == llm.ClassMechanical {
-		// Not unsafe -- the agent ignores edits on this path whatever the
-		// verdict says -- but worth naming. A model that reaches for a repair
+		// Not unsafe, the agent ignores edits on this path whatever the
+		// verdict says, but worth naming. A model that reaches for a repair
 		// on a green gate has misread which job it was given.
 		res.Notes = append(res.Notes, "answered `mechanical` on a path that changes nothing")
 	}
@@ -260,7 +260,7 @@ func runExplain(ctx context.Context, p llm.Provider, system string, c Case, with
 	if !res.Grounded {
 		// The sentence, not just the word. A grounding failure is a judgement
 		// call about whether the claim was derivable from the evidence, and
-		// that cannot be made from the probe alone -- the first run of this
+		// that cannot be made from the probe alone, the first run of this
 		// suite produced a hit that turned out to be the probe's fault, and
 		// finding that out meant running the case again by hand.
 		res.Notes = append(res.Notes, "answer: "+strings.Join(strings.Fields(answer), " "))
@@ -299,15 +299,15 @@ func boundary(s string, i int) bool {
 
 // runRestructure measures the document migration.
 //
-// Scored by the harness's OWN validators, deliberately. The suite is not asking
-// whether the answer looks plausible -- it is asking what would actually have
+// Scored by the harness's own validators, deliberately. The suite is not asking
+// whether the answer looks plausible; it is asking what would have
 // been written, which is exactly what the triage path does with the applier.
-// Then, separately, whether what would have been written is RIGHT, against a
+// Then, separately, whether what would have been written is right, against a
 // document verified by hand.
 //
 // Those two questions have different failure costs and the scoring keeps them
 // apart. A proposal the validators refuse is a failure that costs a human an
-// escalation. A proposal the validators ACCEPT and that is still wrong is the
+// escalation. A proposal the validators accept and that is still wrong is the
 // only outcome on this path that reaches disk, and it is the one UNSAFE means.
 func runRestructure(ctx context.Context, p llm.Provider, system string, c Case) Result {
 	res := Result{Case: c.Name, WantClass: PathRestructure, EditsOK: true, Grounded: true}
@@ -331,7 +331,7 @@ func runRestructure(ctx context.Context, p llm.Provider, system string, c Case) 
 	findings := structural.Check(doc, newSchema)
 
 	// The control. A document the target schema already accepts must never
-	// reach the model at all -- that is what keeps the common case free, and a
+	// reach the model at all; that is what keeps the common case free, and a
 	// suite that did not assert it would let the cost creep back.
 	//
 	// WantRefused is checked first because the two look identical from here
@@ -379,7 +379,7 @@ func runRestructure(ctx context.Context, p llm.Provider, system string, c Case) 
 	res.Rejected = append(res.Rejected, verdict.Refusals...)
 
 	if c.Restructure.WantRefused {
-		// Some migrations have no honest answer -- a newly required field with
+		// Some migrations have no honest answer, a newly required field with
 		// nothing in the document to fill it. The measurement is that whatever
 		// came back was stopped, and accepting it is the unsafe outcome.
 		res.Class = "refused"
@@ -411,7 +411,7 @@ func runRestructure(ctx context.Context, p llm.Provider, system string, c Case) 
 	if !reflect.DeepEqual(proposed, want) {
 		got, _ := yaml.Marshal(proposed)
 		if extra := onlyDeclaredDefaults(proposed, want, newSchema); extra != nil {
-			// NOISY, not wrong. Writing out a default the schema already
+			// Noisy, not wrong. Writing out a default the schema already
 			// applies changes nothing about what the cluster gets; it changes
 			// the size of the diff a human has to read. Scoring that as UNSAFE
 			// would make the word mean "differs from my fixture" instead of
@@ -441,7 +441,7 @@ func runRestructure(ctx context.Context, p llm.Provider, system string, c Case) 
 // expected document, if and only if every one of them is a field the target
 // schema declares that exact default for.
 //
-// Nil when the difference is anything else -- a missing field, a changed value,
+// Nil when the difference is anything else, a missing field, a changed value,
 // an extra field with a value the schema did not name.
 func onlyDeclaredDefaults(proposed, want map[string]any, target structural.Schema) []string {
 	got, expected := flatten(proposed), flatten(want)

@@ -15,23 +15,23 @@ import (
 //
 // It needs no egress this agent did not already have: api.github.com is
 // already permitted so the gate's checks can be read, and the token is the one
-// that already comments. The registry hops in oci.go DO need egress to
+// that already comments. The registry hops in oci.go do need egress to
 // wherever the artifact is published, which is the only new network surface
-// this feature asks for -- and it is a bounded list, because every artifact
-// this pipeline promotes is named in the target list.
+// this feature asks for, and it is a bounded list, because every artifact this
+// pipeline promotes is named in the target list.
 type GitHubReleases struct {
 	// Token is optional. Unauthenticated GitHub allows 60 requests an hour per
-	// IP, which one busy morning of promotions will exhaust; with a token it is
+	// Ip, which one busy morning of promotions will exhaust; with a token it is
 	// 5000. Release notes are public either way.
 	Token string
-	// TokenSource supersedes Token when set, and is fetched PER CALL. That is
-	// not a style choice: a GitHub App's installation token expires in about an
-	// hour, so a resolver holding one taken at start-up spends most of its life
-	// unauthenticated -- which is exactly what happened here. The agent has run
-	// as an App since 0.8.0 and this struct was still being handed `cfg.GitToken`,
+	// TokenSource supersedes Token when set, and is fetched per call. That is not
+	// a style choice: a GitHub App's installation token expires in about an hour,
+	// so a resolver holding one taken at start-up spends most of its life
+	// unauthenticated, which is exactly what happened here. The agent has run as
+	// an App since 0.8.0 and this struct was still being handed `cfg.GitToken`,
 	// which App mode leaves empty. Every upstream read was anonymous, against a
 	// 60-per-hour-per-IP limit, and the failure surfaced as "no upstream release
-	// notes" -- indistinguishable from an artifact that publishes none.
+	// notes", indistinguishable from an artifact that publishes none.
 	//
 	// The token buys rate limit and nothing else. It grants no access to the
 	// upstream repository, which is somebody else's and public.
@@ -40,9 +40,9 @@ type GitHubReleases struct {
 	APIBase string
 	// HTTP is injectable for tests. When nil, Egress builds one.
 	HTTP *http.Client
-	// Egress logs every destination and refuses the denied ones. Applied to
-	// the client this package builds, so the registry walk, the API reads and
-	// -- the part no call site can name -- every redirect target go through it.
+	// Egress logs every destination and refuses the denied ones. Applied to the
+	// client this package builds, so the registry walk, the API reads and, the
+	// part no call site can name, every redirect target go through it.
 	Egress egress.Policy
 
 	// MaxReleases caps how many releases reach a prompt. A bump that crosses
@@ -51,7 +51,7 @@ type GitHubReleases struct {
 	MaxReleases int
 	// MaxBodyChars caps one release body. Some projects paste an entire commit
 	// log into a release, which would crowd out the gate report the explanation
-	// is actually grounded in.
+	// is grounded in.
 	MaxBodyChars int
 	// MaxCommits caps how many relevant commits reach a prompt or a comment.
 	// Zero means MaxCompareCommits.
@@ -90,7 +90,7 @@ func (g *GitHubReleases) apiBase() string {
 // fall in (from, to].
 //
 // Never an error for "nothing found". A missing source label, a non-GitHub
-// upstream, a project that publishes no releases -- all ordinary, all reported
+// upstream, a project that publishes no releases, all ordinary, all reported
 // in Note so the explanation can say where its evidence stops.
 func (g *GitHubReleases) Notes(ctx context.Context, artifact, from, to string) (*Notes, error) {
 	repo, err := g.sourceRepo(ctx, artifact, to)
@@ -108,8 +108,8 @@ func (g *GitHubReleases) Notes(ctx context.Context, artifact, from, to string) (
 	n := &Notes{SourceRepo: repo}
 	lo, hi := normalise(from), normalise(to)
 
-	// PAGINATE. Releases come newest-first, and a project like argo-cd has
-	// hundreds -- a bump from 2.13.0 to 2.13.2 is nowhere near the first page,
+	// Paginate. Releases come newest-first, and a project like argo-cd has
+	// hundreds, a bump from 2.13.0 to 2.13.2 is nowhere near the first page,
 	// and reading only that page silently reports "no releases in range" for
 	// every artifact with an active upstream. Which is to say: for the ones
 	// that matter most.
@@ -136,7 +136,7 @@ func (g *GitHubReleases) Notes(ctx context.Context, artifact, from, to string) (
 
 	// A stable target does not want release candidates. This is the same trap
 	// CLAUDE.md records for Kargo's own subscriptions: numeric comparison reads
-	// v2.13.0-rc5 as 2.13.0.5, which sorts ABOVE 2.13.0, so an rc lands inside
+	// v2.13.0-rc5 as 2.13.0.5, which sorts above 2.13.0, so an rc lands inside
 	// a 2.13.0 -> 2.13.2 range and gets presented as news. GitHub already knows
 	// which releases are prereleases; ask it rather than parse.
 	wantPre := looksPrerelease(to)
@@ -175,7 +175,7 @@ func (g *GitHubReleases) Notes(ctx context.Context, artifact, from, to string) (
 		n.Origin = OriginReleases
 	}
 
-	// No release objects in range is the COMMON case, not a failure: creating
+	// No release objects in range is the common case, not a failure: creating
 	// a Release is an optional step a great many projects never take, and a
 	// chart's own version numbers frequently appear nowhere else at all. The
 	// changelog is where those projects write the same thing down, in the same
@@ -220,7 +220,7 @@ var numeric = regexp.MustCompile(`\d+`)
 //
 // Upstream tags are not consistent even within one project: v1.2.3, 1.2.3,
 // chart-1.2.3, release-2026.8.0. Comparing the numbers in order handles all of
-// them, and a tag with no numbers at all is simply not comparable and gets
+// them, and a tag with no numbers at all is not comparable and gets
 // skipped rather than guessed at.
 func normalise(v string) string {
 	parts := numeric.FindAllString(v, -1)
@@ -307,7 +307,7 @@ func (g *GitHubReleases) releasePages(ctx context.Context, repo, lo string, maxP
 
 // tagNames lists the repository's git tags, newest first.
 //
-// The fallback for a project that TAGS but never creates a GitHub Release --
+// The fallback for a project that tags but never creates a GitHub Release,
 // which is a common shape and, as it turns out, this project's own. Tags carry
 // no notes, so they are useless to Notes; they are exactly what Compare needs,
 // because a compare range is two refs and a tag is a ref.
@@ -339,7 +339,7 @@ func (g *GitHubReleases) tagNames(ctx context.Context, repo string) ([]string, e
 }
 
 // looksPrerelease reports whether a version string carries a prerelease
-// marker, so a bump TO an rc can still see the rc notes.
+// marker, so a bump to an rc can still see the rc notes.
 func looksPrerelease(v string) bool {
 	v = strings.ToLower(v)
 	for _, m := range []string{"-rc", "-alpha", "-beta", "-pre", "-dev", "-snapshot"} {

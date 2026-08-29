@@ -9,8 +9,8 @@ import (
 
 // AnnotateConsumers counts, for every dropped served version, the manifests in
 // the repository that still declare it. Those manifests are the actual blast
-// radius -- they are what breaks at apply -- so Blocking() keys on them:
-// consumers present blocks, consumers counted at zero reports.
+// radius, because they are what breaks at apply, so Blocking() keys on them: consumers
+// present blocks, consumers counted at zero reports.
 //
 // Only possible with a worktree, which is why it runs from the diff command's
 // -repo path and nowhere else. A diff without a repository leaves the findings
@@ -43,7 +43,7 @@ func AnnotateConsumers(repoRoot string, res *DiffResult) {
 // markMigrationConsistent flags apiVersion moves that are exactly what a
 // crdVersionRemoved finding in the same diff demands: the same consumer kind,
 // from a dropped version, to the named survivor. That move is the repair, not
-// a new migration -- and without this, no pull request that fixes a dropped
+// a new migration, and without this, no pull request that fixes a dropped
 // served version could ever go green, because the fix itself would trip the
 // apiVersion rule. The first live repair proved it: 27 manifests migrated,
 // consumers counted at zero, and the gate red on its own prescription.
@@ -92,7 +92,7 @@ func droppedFromChange(o ObjectChange) (migrate.Dropped, bool) {
 		name = name[:i]
 	}
 	// No Target required: a CRD removed outright has no survivor, and its
-	// consumers are exactly as scannable -- Scan needs the group, the kind and
+	// consumers are exactly as scannable; Scan needs the group, the kind and
 	// the versions; only a rewrite needs a destination, and Migrate refuses an
 	// empty one on its own.
 	dot := strings.Index(name, ".")

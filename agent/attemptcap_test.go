@@ -12,7 +12,7 @@ import (
 
 // The attempt cap has exactly one memory: a label on the pull request. Both
 // repair paths used to push first and label afterwards, logging a label
-// failure and carrying on -- so a token with push permission and no permission
+// failure and carrying on, so a token with push permission and no permission
 // to label repaired, failed to record it, counted zero attempts on the next
 // run and repaired again, indefinitely.
 //
@@ -33,7 +33,7 @@ func TestTheAttemptCapRefusesToPushWhenItCannotBeRecorded(t *testing.T) {
 	}
 
 	// escalate also labels, so with a host refusing every label this returns
-	// the error. What matters is what did NOT happen.
+	// the error. What matters is what did not happen.
 	_ = h.triage.Run(context.Background(), promotion())
 
 	if len(h.git.Pushes) != 0 {

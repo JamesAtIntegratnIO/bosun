@@ -6,20 +6,20 @@
 // every registry's blob CDN, every redirect target had to be named before the
 // agent could read it, and each omission surfaced as a two-minute timeout and a
 // brief that said it had no evidence. Three separate incidents added a host
-// after the fact -- `pkg-containers.githubusercontent.com`,
-// `release-assets.githubusercontent.com`, `external-secrets.io` -- and the next
+// after the fact, `pkg-containers.githubusercontent.com`,
+// `release-assets.githubusercontent.com`, `external-secrets.io`, and the next
 // chart adoption would have added a fourth.
 //
-// The trade is deliberate: reach anything, SAY where you went, and let an
+// The trade is deliberate: reach anything, say where you went, and let an
 // operator forbid a destination by name. Accountability after the fact rather
 // than permission before it. That is a weaker guarantee, and it is the right
 // one for a component whose whole job is reading public metadata about public
-// artifacts -- it holds a git token and a model key, and neither is improved by
+// artifacts; it holds a git token and a model key, and neither is improved by
 // making it fail to read a chart index.
 //
-// What did NOT change: the agent still writes only to the pull request's own
+// What did not change: the agent still writes only to the pull request's own
 // branch, still refuses paths on the deny-list, and still never mutates the
-// cluster. Widening what it may READ is not widening what it may DO.
+// cluster. Widening what it may read is not widening what it may do.
 package egress
 
 import (
@@ -46,7 +46,7 @@ type Policy struct {
 
 // Denied reports whether a host is forbidden, and by which rule.
 //
-// Matching is on the HOST only. A rule per path would look more precise and be
+// Matching is on the host only. A rule per path would look more precise and be
 // less enforceable: a redirect can move a request to another path on the same
 // host, and the thing an operator wants to stop is talking to somebody.
 func (p Policy) Denied(host string) (string, bool) {
@@ -58,7 +58,7 @@ func (p Policy) Denied(host string) (string, bool) {
 		case r == host:
 			return rule, true
 		case strings.HasPrefix(r, "*."):
-			// `*.example.com` forbids subdomains AND the apex. An operator
+			// `*.example.com` forbids subdomains and the apex. An operator
 			// blocking a domain means the domain; making them write both is a
 			// footgun that shows up as a request they thought they had stopped.
 			suffix := r[1:]
@@ -110,8 +110,8 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	return base.RoundTrip(r)
 }
 
-// Hosts is every host contacted so far, with a count. For a periodic summary --
-// a per-request log is the record, and a reader wants the shape of it.
+// Hosts is every host contacted so far, with a count. For a periodic summary, a
+// per-request log is the record, and a reader wants the shape of it.
 func (t *Transport) Hosts() map[string]int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -139,10 +139,10 @@ func (t *Transport) logf(f string, a ...any) {
 
 // redact removes the query string.
 //
-// Registry and release-asset URLs carry signed tokens in their query -- a
-// GitHub release download is a pre-signed blob URL with a JWT in it -- and a log
-// line is exactly the wrong place for a credential that happens to be
-// short-lived. The path is what tells a reader what was fetched.
+// Registry and release-asset URLs carry signed tokens in their query, a GitHub
+// release download is a pre-signed blob URL with a JWT in it, and a log line is
+// exactly the wrong place for a credential that happens to be short-lived. The
+// path is what tells a reader what was fetched.
 func redact(u string) string {
 	if i := strings.IndexByte(u, '?'); i >= 0 {
 		return u[:i] + "?…"
@@ -160,21 +160,21 @@ func (p Policy) Client(base *http.Client) *http.Client {
 	return &c
 }
 
-// HostOf is the host a reference will actually reach, and the single owner of
+// HostOf is the host a reference will reach, and the single owner of
 // that question.
 //
 // It lived privately in two packages that both feed it to Denied, and they
-// disagreed on the case that matters: a chart repository written WITHOUT a
-// scheme. `ghcr.io/org/charts` is a real destination -- helm is handed it as
-// `oci://ghcr.io/org/charts` moments later -- and one copy returned "" for it,
+// disagreed on the case that matters: a chart repository written without a
+// scheme. `ghcr.io/org/charts` is a real destination, helm is handed it as
+// `oci://ghcr.io/org/charts` moments later, and one copy returned "" for it,
 // so the deny-list and the outbound log were both skipped for exactly those
 // references. The other copy returned the first segment of anything, so a bare
 // chart name like `podinfo` was checked as though it were a hostname.
 //
 // The rule that separates them is the one a registry uses: the first element
-// is a host if it looks like one -- it contains a dot, or it is localhost,
-// with an optional port. Anything else is a chart name and reaches nothing on
-// its own.
+// is a host if it looks like one; it contains a dot, or it is localhost, with
+// an optional port. Anything else is a chart name and reaches nothing on its
+// own.
 func HostOf(ref string) string {
 	s := strings.TrimSpace(ref)
 	for _, scheme := range []string{"oci://", "https://", "http://"} {

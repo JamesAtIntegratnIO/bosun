@@ -23,9 +23,9 @@ type KargoSource interface {
 // here: a source that cannot answer is read as it always was.
 //
 // Worth asking because without it a cluster with no Kargo installed produces
-// three separate read failures -- "Stages could not be read", "Warehouses
-// could not be read", "promotions could not be read" -- which reads as three
-// things going wrong rather than one thing being absent, and sends the reader
+// three separate read failures, "Stages could not be read", "Warehouses could
+// not be read", "promotions could not be read", which reads as three things
+// going wrong rather than one thing being absent, and sends the reader
 // looking for a permissions problem that is not there.
 type kargoPresence interface {
 	KargoAvailable(ctx context.Context) bool
@@ -39,8 +39,8 @@ type PRSource interface {
 
 // Collector assembles a Snapshot.
 //
-// EVERY SOURCE IS OPTIONAL AND EVERY FAILURE IS A NOTE, never an error. That
-// is not politeness -- it is the package's subject applied to itself. A sweep
+// Every source is optional and every failure is a note, never an error. That
+// is not politeness; it is the package's subject applied to itself. A sweep
 // that gave up because it could not list pull requests would report nothing,
 // and reporting nothing is indistinguishable from finding nothing, which is
 // the exact confusion this package exists to end. So a sweep does what it can,
@@ -62,8 +62,8 @@ func (c *Collector) now() time.Time {
 // Collect reads everything available and returns a Snapshot.
 //
 // repoRoot is a checkout to resolve tracked pins against, and is empty when
-// there is none -- which disables the pin check and puts a note on the report
-// saying so. A PARAMETER, not a field: it is a property of one sweep, and the
+// there is none, which disables the pin check and puts a note on the report
+// saying so. A parameter, not a field: it is a property of one sweep, and the
 // caller used to hand it over by writing to the Collector between calls, so two
 // overlapping sweeps would have raced over which checkout the second one read.
 func (c *Collector) Collect(ctx context.Context, repoRoot string) *Snapshot {

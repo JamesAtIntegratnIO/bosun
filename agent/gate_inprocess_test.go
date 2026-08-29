@@ -16,7 +16,7 @@ import (
 // find and no check to poll.
 
 // The triage reading the verdict in-process: no gate comment on the pull
-// request, no check to poll -- the evidence is handed over, not scraped back.
+// request, no check to poll; the evidence is handed over, not scraped back.
 func TestTriageReadsTheVerdictInProcess(t *testing.T) {
 	h := newHarness(t)
 	// Strip away everything the CI path needed: no report comment, no check.
@@ -48,7 +48,7 @@ func TestTriageReadsTheVerdictInProcess(t *testing.T) {
 }
 
 // A broken in-process gate resolves the triage status rather than leaving it
-// pending forever -- the same rule every other error path answers to.
+// pending forever, the same rule every other error path answers to.
 func TestTriageSurfacesABrokenInProcessGate(t *testing.T) {
 	h := newHarness(t)
 	h.git.Comments = nil

@@ -6,7 +6,7 @@ import (
 )
 
 // Render and ChartDiff size their semaphore from this. A zero would make the
-// channel unbuffered, so the first worker blocks on a send nobody receives --
+// channel unbuffered, so the first worker blocks on a send nobody receives,
 // an exported entry point that hangs forever instead of erroring.
 func TestWorkersNeverReturnsZero(t *testing.T) {
 	for _, tc := range []struct {
@@ -27,7 +27,7 @@ func TestWorkersNeverReturnsZero(t *testing.T) {
 }
 
 // The list an operator is shown when they leave `type` unset has to be the
-// list the switch above actually accepts. Hand-written, it fell behind the
+// list the switch above accepts. Hand-written, it fell behind the
 // const block: `rendered` was added and the message kept offering four of the
 // five, so the one type they could not discover was the one the error existed
 // to teach them.
@@ -41,7 +41,7 @@ func TestSourceTypeListNamesEveryAcceptedType(t *testing.T) {
 		}
 	}
 
-	// And every type it offers must actually be accepted -- validate's
+	// And every type it offers must be accepted, validate's
 	// default branch rejects anything the const block does not declare.
 	for _, tc := range sourceTypes {
 		s := &Source{Name: "s", Type: tc, Path: "p", Chart: "c", Paths: []string{"p"}}

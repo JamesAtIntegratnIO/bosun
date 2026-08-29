@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Container runtime. idpbuilder builds a kind cluster, and kind needs a docker
-# socket -- on macOS that means a VM.
+# socket; on macOS that means a vm.
 #
 # colima rather than Docker Desktop: it installs and starts from the command
-# line with no admin password and no GUI, which is the difference between a
+# line with no admin password and no gui, which is the difference between a
 # setup you can automate and one you have to click through.
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 

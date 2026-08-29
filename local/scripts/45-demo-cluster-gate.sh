@@ -3,11 +3,11 @@
 #
 # Three beats, each a property a CI workflow could not have by construction:
 #
-#   1. A comment-only change goes green as "no change to what gets deployed"
-#      -- an ANSWER from a render, where a paths filter would have guessed.
+#   1. A comment-only change goes green as "no change to what gets deployed",
+#      an answer from a render, where a paths filter would have guessed.
 #      And it posts no report, because a report that says nothing is noise.
 #   2. A destination move goes red, with the report comment posted by the
-#      agent itself -- no CI ran, nothing was scraped.
+#      agent itself: no CI ran, nothing was scraped.
 #   3. A fix pushed to the red branch is re-gated because it is a new head
 #      commit. A CI workflow needed a specially-minted bot token for this;
 #      the sweep needs the commit to exist.
@@ -17,7 +17,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 load_credentials
 
-# EVERY pod carrying the label, not whichever one `head -1` names.
+# Every pod carrying the label, not whichever one `head -1` names.
 #
 # The agent waits up to a minute for in-flight triage before it exits, so an
 # outgoing pod is still Running while the incoming one starts, and asking a
@@ -38,7 +38,7 @@ open_pr() { # branch title -> pr number
     -d "$(BR="$1" TITLE="$2" python3 -c 'import json,os; print(json.dumps({"head":os.environ["BR"],"base":"main","title":os.environ["TITLE"],"body":"Opened by the local proving ground: the in-cluster gate act."}))')" \
     | python3 -c 'import json,sys; print(json.load(sys.stdin).get("number",""))')"
   # A second run force-pushes the same branches, and Gitea refuses to open a
-  # pull request that is already open. Reuse it -- the same fallback act two
+  # pull request that is already open. Reuse it, the same fallback act two
   # uses, and without it this script works exactly once per cluster.
   [ -n "$pr" ] || pr="$(gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls?state=open" \
     | BR="$1" python3 -c 'import json,os,sys; d=[p for p in json.load(sys.stdin) if p["head"]["ref"]==os.environ["BR"]]; print(d[0]["number"] if d else "")')"

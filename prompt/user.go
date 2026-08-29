@@ -11,7 +11,7 @@ import (
 // File is one repository file the prompt may describe.
 //
 // Err records why a file could not be read, because the alternative is
-// dropping it silently -- and this prompt is also the evidence string
+// dropping it silently, and this prompt is also the evidence string
 // edits.Policy.corroborated checks proposed versions against, so a file that
 // quietly vanishes narrows what the applier will accept without saying so.
 type File struct {
@@ -28,23 +28,23 @@ type UserInput struct {
 	Header string
 	// Report is the gate's own report, verbatim.
 	Report string
-	// Files are the files this promotion may change -- not everything the
+	// Files are the files this promotion may change; not everything the
 	// repository holds. Order does not matter; they are sorted by path.
 	Files []File
 	// Inventory selects the scalar inventory over whole-file pasting.
 	//
 	// True on every shipped path. The scalar inventory is the important part:
 	// handed one, a model chooses a key from a list; without one it invents a
-	// key path and paraphrases a value, and the applier -- correctly -- throws
-	// the result away. False exists for the eval suite's ablation, which
-	// measures exactly that difference.
+	// key path and paraphrases a value, and the applier, correctly, throws the
+	// result away. False exists for the eval suite's ablation, which measures
+	// exactly that difference.
 	Inventory bool
 }
 
 // User renders the user-side prompt.
 //
 // One implementation, in the package that owns the prompts, because the eval
-// suite rebuilt this and the two had already diverged -- the shipped prompt
+// suite rebuilt this and the two had already diverged, the shipped prompt
 // grew an artifact line and the copy being scored did not, so the score
 // described a prompt nobody was given.
 func User(in UserInput) string {

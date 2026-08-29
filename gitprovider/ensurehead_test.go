@@ -37,11 +37,10 @@ func commitRepo(t *testing.T) (dir, sha string) {
 	return dir, git(t, dir, "rev-parse", "HEAD")
 }
 
-// Every checkout in this service clones a BRANCH while every verdict it
+// Every checkout in this service clones a branch while every verdict it
 // produces is keyed to the head SHA the host reported moments earlier. A push
 // in that window means the gate renders commit B and publishes the result
-// against commit A -- a green verdict standing over a commit nothing
-// inspected.
+// against commit A, a green verdict standing over a commit nothing inspected.
 func TestEnsureHeadAcceptsTheCommitItWasPromised(t *testing.T) {
 	dir, sha := commitRepo(t)
 	if err := EnsureHead(context.Background(), dir, sha); err != nil {
@@ -57,7 +56,7 @@ func TestEnsureHeadAcceptsTheCommitItWasPromised(t *testing.T) {
 func TestEnsureHeadRefusesADifferentCommit(t *testing.T) {
 	dir, _ := commitRepo(t)
 	// A real, well-formed object name that this checkout is not at, and that
-	// no origin can serve -- the branch-moved-and-cannot-be-fetched case.
+	// no origin can serve, the branch-moved-and-cannot-be-fetched case.
 	other := "0123456789abcdef0123456789abcdef01234567"
 	err := EnsureHead(context.Background(), dir, other)
 	if err == nil {
@@ -69,7 +68,7 @@ func TestEnsureHeadRefusesADifferentCommit(t *testing.T) {
 }
 
 // Hosts and fakes that report no head SHA leave nothing to pin to, and that is
-// not an error -- it is the absence of a promise.
+// not an error; it is the absence of a promise.
 func TestEnsureHeadIsANoOpWithoutASHA(t *testing.T) {
 	dir, _ := commitRepo(t)
 	if err := EnsureHead(context.Background(), dir, ""); err != nil {

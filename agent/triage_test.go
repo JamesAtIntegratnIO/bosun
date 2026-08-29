@@ -44,7 +44,7 @@ type harness struct {
 }
 
 // newHarness wires the workflow to a real directory on disk, so a permitted
-// edit genuinely rewrites a file and a refused one genuinely leaves it alone.
+// edit rewrites a file and a refused one leaves it alone.
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 
@@ -91,8 +91,8 @@ func newHarness(t *testing.T) *harness {
 
 // seededGate is the gate, standing in for a real render.
 //
-// It reads the verdict out of the fake provider the harness already seeds --
-// `Check` for the state, the seeded gate comment for the report -- so a test
+// It reads the verdict out of the fake provider the harness already seeds,
+// `Check` for the state, the seeded gate comment for the report, so a test
 // still says "the gate was red and said this" in one place. Where the report
 // came from is the double's business; the agent's own code never goes looking
 // for one.
@@ -340,8 +340,8 @@ func TestTheModelIsShownTheGateReport(t *testing.T) {
 	}
 }
 
-// A version the model invented renders perfectly and breaks at runtime, so the
-// applier refuses it -- and a mechanical verdict that applies nothing escalates.
+// An invented version passes every render and fails on apply, so the applier
+// refuses it, and a mechanical verdict that applies nothing escalates.
 func TestAnInventedVersionIsRefusedAndEscalated(t *testing.T) {
 	h := newHarness(t)
 	h.model.Verdict = &llm.Verdict{
@@ -383,11 +383,11 @@ func equal(got, want []string) bool {
 // Every outcome must leave a verdict on the pull request, including the ones
 // that do nothing.
 //
-// Before commit statuses existed, four paths -- gate green, gate absent, gate
-// never settled, attempts spent -- wrote only to a pod log. From outside,
-// "the gate was green so I stopped", "I was never called" and "I crashed"
-// produced identical evidence: nothing. That is precisely how two defects in
-// this call path stayed invisible for a day.
+// Before commit statuses existed, four paths, gate green, gate absent, gate
+// never settled, attempts spent, wrote only to a pod log. From outside, "the
+// gate was green so I stopped", "I was never called" and "I crashed" produced
+// identical evidence: nothing. That is precisely how two defects in this call
+// path stayed invisible for a day.
 func TestEveryOutcomeLeavesAVerdict(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -437,7 +437,7 @@ func TestEveryOutcomeLeavesAVerdict(t *testing.T) {
 	}
 }
 
-// The agent says it is working BEFORE the wait that can take ten minutes, or a
+// The agent says it is working before the wait that can take ten minutes, or a
 // reader in that window cannot tell it apart from an agent that never ran.
 func TestSaysItIsWorkingBeforeTheWait(t *testing.T) {
 	h := newHarness(t)
@@ -469,9 +469,9 @@ func TestSaysItIsWorkingBeforeTheWait(t *testing.T) {
 
 // An error anywhere in triage must still resolve the status. Otherwise the
 // pending written on entry never clears, and "something broke" looks like "the
-// agent is still thinking" -- for ever.
+// agent is still thinking", for ever.
 //
-// Driven here through a checkout that fails, which is deliberately NOT the
+// Driven here through a checkout that fails, which is deliberately not the
 // gate: a broken gate has its own test, and the claim this one makes is about
 // every other way a run can end early.
 func TestAnErrorResolvesTheStatus(t *testing.T) {
@@ -515,11 +515,11 @@ func TestAFailingStatusDoesNotFailTriage(t *testing.T) {
 
 // A green gate is not the same as an uneventful change.
 //
-// The gate BLOCKS on structural things and REPORTS the rest -- a chart that
-// added four resources, moved a port, flipped a default. All of that renders
-// green and arrives as a pull request whose visible diff is one version number.
-// The agent used to stop here and say nothing, which is why a bump's real
-// content stayed invisible.
+// The gate blocks on structural things and reports the rest; a chart that added
+// four resources, moved a port, flipped a default. All of that renders green
+// and arrives as a pull request whose visible diff is one version number. The
+// agent used to stop here and say nothing, which is why a bump's real content
+// stayed invisible.
 func TestExplainsAGreenGateThatStillChangedSomething(t *testing.T) {
 	h := newHarness(t)
 	h.triage.Brand = "Bosun"
@@ -654,7 +654,7 @@ func (f *fakeUpstream) Notes(context.Context, string, string, string) (*upstream
 	return f.notes, f.err
 }
 
-// With release notes, the explanation can say WHY -- and the comment has to
+// With release notes, the explanation can say why, and the comment has to
 // show its working, because "grounded in the render" and "grounded in the
 // render plus what the maintainers wrote" are very different claims.
 func TestAnExplanationCitesItsUpstreamSource(t *testing.T) {
@@ -699,7 +699,7 @@ func TestAnExplanationCitesItsUpstreamSource(t *testing.T) {
 }
 
 // Upstream lookup is best-effort. A rate limit, an unreachable registry or an
-// artifact with no source label must degrade to the render-only explanation --
+// artifact with no source label must degrade to the render-only explanation,
 // which is exactly what this did before upstream notes existed, and is still
 // worth posting.
 func TestUpstreamFailureDegradesToRenderOnly(t *testing.T) {
@@ -741,11 +741,11 @@ func TestUpstreamFailureDegradesToRenderOnly(t *testing.T) {
 	}
 }
 
-// A green gate is a verdict on the RENDER, not on the bump. Measured against
+// A green gate is a verdict on the render, not on the bump. Measured against
 // four real held promotions: kyverno 3.2.8 -> 3.9.0 was escalated correctly and
 // precisely, but only because its PodDisruptionBudget migration turned the gate
-// red. external-secrets 0.10.3 -> 2.9.0 -- the more dangerous of the two --
-// rendered GREEN, and this path was pinned to no_action, so the same model
+// red. external-secrets 0.10.3 -> 2.9.0, the more dangerous of the two,
+// rendered green, and this path was pinned to no_action, so the same model
 // produced an accurate inventory and said nothing about the risk.
 func TestAGreenGateCanStillAskForAHuman(t *testing.T) {
 	h := newHarness(t)
@@ -794,7 +794,7 @@ func TestAGreenGateCanStillAskForAHuman(t *testing.T) {
 	}
 }
 
-// The other half of the same rule: a routine bump must NOT be flagged, or the
+// The other half of the same rule: a routine bump must not be flagged, or the
 // label stops meaning anything and people stop reading it.
 func TestARoutineGreenBumpIsNotFlagged(t *testing.T) {
 	h := newHarness(t)
@@ -822,7 +822,7 @@ func TestARoutineGreenBumpIsNotFlagged(t *testing.T) {
 
 // The prompt is also the evidence string edits.Policy.corroborated checks
 // proposed versions against, so a file silently skipped narrows what the
-// applier will accept -- invisibly, at the moment the model most needs the
+// applier will accept, invisibly, at the moment the model most needs the
 // value that was dropped.
 func TestThePromptNamesFilesItCouldNotRead(t *testing.T) {
 	root := t.TempDir()
@@ -862,7 +862,7 @@ func TestThePromptIsSilentWhenEveryFileWasRead(t *testing.T) {
 }
 
 // autoMerge is on the wire, sent by charts/kargo-pipelines, and this agent
-// deliberately does not act on it -- the Stage evaluates the same policy and
+// deliberately does not act on it, the Stage evaluates the same policy and
 // decides the merge. Decoding it is how "ignored on purpose" is visible.
 func TestThePromotionDecodesTheMergePolicyItDoesNotActOn(t *testing.T) {
 	var p Promotion
@@ -883,7 +883,7 @@ func TestThePromotionDecodesTheMergePolicyItDoesNotActOn(t *testing.T) {
 
 // Promotion.Files arrives in the request body, and this process holds the git
 // token, the LLM key and the App private key. What is read here goes into a
-// prompt, and a prompt is published -- so reading is not harmless.
+// prompt, and a prompt is published, so reading is not harmless.
 func TestThePromptRefusesAPathOutsideTheCheckout(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "ok.yaml"), []byte("k: v\n"), 0o644); err != nil {
@@ -930,7 +930,7 @@ func TestContainedPath(t *testing.T) {
 // The lexical containment test above passes `linked.yaml` whatever it points
 // at, and then os.ReadFile answers a different question than the one that was
 // asked. This process holds the git token, the LLM key and the App private
-// key, and it runs in a pod with a mounted service-account token -- so a
+// key, and it runs in a pod with a mounted service-account token, so a
 // tracked symlink at a permitted path is a read of any of them into a prompt
 // that gets published.
 func TestThePromptRefusesASymlinkOutOfTheCheckout(t *testing.T) {

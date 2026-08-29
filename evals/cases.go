@@ -1,9 +1,9 @@
 // Package evals holds the triage cases the prompt is measured against.
 //
 // Every case is a real incident from a production GitOps repository, not an
-// invented one. That matters: the failures worth catching are the ones where
-// a pull request renders perfectly and breaks at runtime, and those have a
-// particular shape that made-up examples do not reproduce.
+// invented one. That matters: the failures worth catching are the ones a
+// render cannot show and the apiserver rejects after the merge, and those have
+// a particular shape that made-up examples do not reproduce.
 package evals
 
 import (
@@ -19,7 +19,7 @@ import (
 // standing in front of it, which is precisely why the second needs measuring.
 const (
 	// PathTriage is the default: the red-gate classifier, scored on what the
-	// applier would actually have written.
+	// applier would have written.
 	PathTriage = ""
 	// PathExplain is the green-gate explanation, scored on grounding.
 	PathExplain = "explain"
@@ -40,13 +40,13 @@ type Case struct {
 	Path string
 
 	// Files are the repository fixture, path -> content. This is what the
-	// repository CONTAINS, not what the change touched.
+	// repository contains, not what the change touched.
 	Files map[string]string
 
-	// Changed are the files the promotion itself rewrote -- exactly what
-	// Kargo reports in its triage call, which is derived from the `updates:`
-	// block of that target. Empty means "all of Files", which is what every
-	// case assumed before the two were distinguished.
+	// Changed are the files the promotion itself rewrote; exactly what Kargo
+	// reports in its triage call, which is derived from the `updates:` block
+	// of that target. Empty means "all of Files", which is what every case
+	// assumed before the two were distinguished.
 	//
 	// They are not the same thing, and conflating them made the fixtures
 	// unable to model reality: a MetalLB bump rewrites the addon's version in
@@ -60,7 +60,7 @@ type Case struct {
 	//
 	// Rendered into the prompt by BuildPrompt, which the triage and explain
 	// paths use. The restructure path builds its prompt from structural.Prompt
-	// instead and never sees this -- the restructure cases still set it, as a
+	// instead and never sees this, the restructure cases still set it, as a
 	// one-line description for whoever reads the fixture, and that is all it
 	// is there.
 	Subject string
@@ -76,7 +76,7 @@ type Case struct {
 	//
 	// Grouped because they are disjoint. Flat on one struct, a field set on a
 	// case whose Path never reads it was silently ignored and there was nothing
-	// to notice -- which is how the restructure cases came to carry a Subject
+	// to notice, which is how the restructure cases came to carry a Subject
 	// that nothing renders.
 	Triage      triageWant
 	Explain     explainWant
@@ -98,12 +98,12 @@ type triageWant struct {
 type explainWant struct {
 	// Notes is the upstream testimony the explain path is given, rendered into
 	// the prompt by the same function the live agent uses. Nil is the case
-	// that matters most: with no maintainer account of WHY the render changed,
+	// that matters most: with no maintainer account of why the render changed,
 	// a model either says so or invents one, and inventing one is this path's
 	// whole failure mode.
 	Notes *upstream.Notes
 
-	// MustMention are strings the answer has to contain -- the grounded reason
+	// MustMention are strings the answer has to contain; the grounded reason
 	// it was given and should have cited. Matched case-insensitively as
 	// substrings.
 	//
@@ -116,9 +116,9 @@ type explainWant struct {
 	// distinctive noun of a reason the model was never shown, a component name
 	// nothing in the evidence names.
 	//
-	// Matched on WORD BOUNDARIES, and every entry must be a word that could
+	// Matched on word boundaries, and every entry must be a word that could
 	// only arrive by invention. Never a common word ("safe", "change"), never a
-	// version the report itself contains -- a probe that fires on the evidence
+	// version the report itself contains, a probe that fires on the evidence
 	// measures the fixture rather than the model.
 	MustNotMention []string
 }
@@ -127,11 +127,11 @@ type explainWant struct {
 // the deterministic pass leaves it, and the answer.
 type restructureWant struct {
 	// Document is the manifest to migrate, with its apiVersion already swapped
-	// to the target -- the state the deterministic pass leaves it in.
+	// to the target; the state the deterministic pass leaves it in.
 	Document string
 	// OldSchema and NewSchema are the two shapes, as JSON. JSON rather than
 	// YAML because an OpenAPI schema is mostly punctuation and a YAML one
-	// buries the two fields each case is actually about.
+	// buries the two fields each case is about.
 	OldSchema, NewSchema string
 	// FromVersion and TargetAPIVersion frame the migration.
 	FromVersion, TargetAPIVersion string
@@ -141,7 +141,7 @@ type restructureWant struct {
 	// Its absence is meaningful: a case with no WantDocument is a control that
 	// asserts the model is never called at all.
 	WantDocument string
-	// WantRefused says the correct outcome is a REFUSAL -- there is no honest
+	// WantRefused says the correct outcome is a refusal; there is no honest
 	// migration, so anything the model returns must be rejected before it is
 	// written.
 	//
@@ -175,8 +175,8 @@ const cpAddonsPath = "addons/cluster-roles/control-plane/addons/addons.yaml"
 // Cases is every case the suite runs, in one place.
 //
 // Assembled by declaration rather than by two init() functions appending to an
-// exported global. The ordering below is part of the fixture -- roughly by how
-// much judgement a case needs -- and an init() in another file extended it
+// exported global. The ordering below is part of the fixture, roughly by how
+// much judgement a case needs, and an init() in another file extended it
 // invisibly, from a function nothing calls and nothing can be read in order
 // with.
 var Cases = slices.Concat(triageCases, explainCases, restructureCases)
@@ -225,14 +225,14 @@ in any form.`,
 		// path ran against a live red gate, and it went the wrong way. The
 		// promotion moved a version; the pull request also moved the addon's
 		// destination namespace. The agent updated the store's token SecretRef
-		// to name the NEW namespace -- one scalar, in scope, correct
-		// `from`, every guard satisfied -- and so entrenched a change nobody
-		// had explained, spending the attempt a human needed.
+		// to name the new namespace, one scalar, in scope, correct `from`,
+		// every guard satisfied, and so entrenched a change nobody had
+		// explained, spending the attempt a human needed.
 		//
 		// The case is here because the rest of the suite cannot catch it.
-		// Every other mechanical case is an ACCOMMODATION: flip a default
+		// Every other mechanical case is an accommodation: flip a default
 		// back, move a coupled pin forward, make the render agree with the
-		// bump. None asks the agent to REJECT something, so a model that
+		// bump. None asks the agent to reject something, so a model that
 		// accommodates everything scores full marks on every other one.
 		Name:    "namespace-moved-under-a-bump",
 		Subject: "bump external-secrets chart 0.10.3 -> 0.11.0",
@@ -334,23 +334,23 @@ not a storage migration.`,
 		},
 	},
 	{
-		// This case USED to be scored as mechanical, and it was the only one
+		// This case used to be scored as mechanical, and it was the only one
 		// whose fix lands in a different file from the bump. It is an
 		// escalation now, for two reasons that are both about the live
 		// pipeline rather than about the model:
 		//
 		//  1. The MetalLB target rewrites `metallb.defaultVersion` in
-		//     addons.yaml and nothing else, so the NetworkPolicy is never in
-		//     the promotion's file list. The old fixture listed ONLY the
-		//     NetworkPolicy, which handed the agent an authority Kargo does
-		//     not grant -- the eval passed for a reason that could not
-		//     reproduce in production.
+		//  addons.yaml and nothing else, so the NetworkPolicy is never in
+		//  the promotion's file list. The old fixture listed only the
+		//  NetworkPolicy, which handed the agent an authority Kargo does
+		//  not grant, so the eval passed for a reason that could not
+		//  reproduce in production.
 		//
-		//  2. The value being written is a PORT. `versionish` matches version
-		//     shapes only, so the corroboration check does not cover it and
-		//     an invented port would be applied. This is the one edit in the
-		//     suite with neither guardrail, and it is also the one with the
-		//     quietest failure: scraping simply stops.
+		//  2. The value being written is a port. `versionish` matches version
+		//  shapes only, so the corroboration check does not cover it and
+		//  an invented port would be applied. This is the one edit in the
+		//  suite with neither guardrail, and it is also the one with the
+		//  quietest failure: scraping stops.
 		//
 		// Escalating is not a capability lost. It was never safely mechanical.
 		Name:    "metrics-port-moved-under-a-netpol",
@@ -413,7 +413,7 @@ No specific patch release of Gateway API is named anywhere in this report.`,
 		Name:    "authentik-illegal-version-skip",
 		Subject: "bump authentik chart 2025.12.4 -> 2026.8.0",
 		// authentik is pinned in the control-plane layer, so that is the
-		// file the promotion rewrites -- not the production one.
+		// file the promotion rewrites, not the production one.
 		Files: map[string]string{cpAddonsPath: `authentik:
   enabled: true
   namespace: authentik

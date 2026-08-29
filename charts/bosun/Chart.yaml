@@ -2,7 +2,7 @@ apiVersion: v2
 name: bosun
 description: In-cluster triage for automated dependency-bump pull requests, called by Kargo
 type: application
-version: 0.23.0
+version: 0.23.1
 appVersion: "0.23.0"
 keywords: [kargo, argocd, gitops, triage, llm]
 home: https://bosun.integratn.io
@@ -11,6 +11,6 @@ sources:
 annotations:
   # Kept as `delivery-kit/*` and matching the `app.kubernetes.io/part-of` label
   # the chart already writes. Bosun ships from its own repository now, but it is
-  # still a component of that kit -- and changing the label would churn it on
+  # still a component of that kit, and changing the label would churn it on
   # every live object for no gain.
   delivery-kit/requires: kargo; a git host token; an OpenAI- or Anthropic-compatible model endpoint

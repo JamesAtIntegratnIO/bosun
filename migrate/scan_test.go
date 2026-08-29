@@ -68,7 +68,7 @@ func tree(t *testing.T) string {
 	// ExternalSecret, and plural.group similarity must not blur that.
 	write(t, root, "platform/store.yaml",
 		"apiVersion: external-secrets.io/v1beta1\nkind: SecretStore\nmetadata:\n  name: s\n")
-	// A Helm template is a program, not a manifest -- even one that happens to
+	// A Helm template is a program, not a manifest; even one that happens to
 	// parse as YAML. The Chart.yaml beside its templates/ dir is what marks it.
 	write(t, root, "charts/x/Chart.yaml", "apiVersion: v2\nname: x\nversion: 0.1.0\n")
 	write(t, root, "charts/x/templates/es.yaml",
@@ -127,7 +127,7 @@ func TestMigrateRewritesOnlyTheDeclarations(t *testing.T) {
 		t.Errorf("a different kind was rewritten: %s", store)
 	}
 
-	// The whole point: after the migration, a re-scan finds nothing -- which
+	// The whole point: after the migration, a re-scan finds nothing, which
 	// is exactly the check the re-run gate performs to go green.
 	left, err := Scan(root, eso)
 	if err != nil {
@@ -139,7 +139,7 @@ func TestMigrateRewritesOnlyTheDeclarations(t *testing.T) {
 }
 
 // The policy answers for every file, including here. A denied consumer is
-// reported as refused -- loudly, because a silent skip would let the re-run
+// reported as refused, loudly, because a silent skip would let the re-run
 // gate stay red with no explanation on the pull request.
 func TestMigrateAnswersToThePathPolicy(t *testing.T) {
 	root := t.TempDir()
@@ -177,7 +177,7 @@ func TestMigrateWithoutATargetRefusesToRun(t *testing.T) {
 	}
 }
 
-// A GitOps repository embeds manifests inside chart values -- an extraObjects
+// A GitOps repository embeds manifests inside chart values, an extraObjects
 // list, or a whole manifest as a block-scalar string. Both render into real
 // objects that break at apply, so both are declarations: counted by Scan,
 // moved by Migrate.
@@ -223,7 +223,7 @@ var esoStores = Dropped{
 func TestEmbeddedManifestsAreDeclarationsToo(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "addons/values.yaml", embeddedConsumers)
-	// A string that merely MENTIONS a version is not a declaration: no kind,
+	// A string that only mentions a version is not a declaration: no kind,
 	// no manifest, no match.
 	write(t, root, "addons/notes.yaml",
 		"docs: |\n  upgrade note: external-secrets.io/v1beta1 is going away\n")
@@ -323,7 +323,7 @@ func TestTheScanDoesNotFollowSymlinksOutOfTheCheckout(t *testing.T) {
 	}
 }
 
-// A link at a DIRECTORY redirects everything under it.
+// A link at a directory redirects everything under it.
 func TestTheScanDoesNotDescendThroughALinkedDirectory(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()

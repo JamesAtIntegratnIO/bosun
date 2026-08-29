@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// GitHub implements Provider against the REST API.
+// GitHub implements Provider against the rest API.
 //
 // Deliberately hand-rolled over net/http rather than pulling a client library:
 // the surface used here is five endpoints, and a vendored SDK would be by far
@@ -28,14 +28,14 @@ type GitHub struct {
 	RepoURL string
 	Owner   string
 	Repo    string
-	// Token is a static credential -- a PAT, or a bot user's token.
+	// Token is a static credential, a PAT, or a bot user's token.
 	Token string
 	// TokenSource supersedes Token when set, and is how App authentication
 	// arrives: installation tokens live about an hour, so the credential has
 	// to be fetched per use rather than held. See AppAuth.
 	TokenSource func(ctx context.Context) (string, error)
 	// AuthorName and AuthorEmail identify the agent's commits. Worth setting
-	// to something recognisable -- these commits land on a bot branch and a
+	// to something recognisable, these commits land on a bot branch and a
 	// reviewer should be able to tell instantly who wrote them.
 	AuthorName  string
 	AuthorEmail string
@@ -206,20 +206,20 @@ func (g *GitHub) ListOpenPullRequests(ctx context.Context) ([]PullRequest, error
 
 // maxCommentPages bounds the walk at 100 comments a page. Reaching it means a
 // pull request with several thousand comments, which is not a thing this agent
-// is called about -- the bound exists so a paging bug cannot become an endless
+// is called about; the bound exists so a paging bug cannot become an endless
 // loop against somebody's API quota, not because the limit is expected.
 const maxCommentPages = 20
 
 // ListComments returns every comment on the pull request, oldest last.
 //
-// PAGED, and fetched NEWEST FIRST. Both halves of that are load-bearing.
+// Paged, and fetched newest first. Both halves of that are load-bearing.
 //
 // This asked for one page of a hundred and returned it. On a pull request past
-// that mark the gate's report was simply not in the list, and the agent --
-// which finds the report by scanning it -- reported that the gate had
-// published nothing. That reads as a broken gate and it is nothing of the
-// sort, which is the worst kind of wrong answer: confident, plausible, and
-// pointing at the wrong component.
+// that mark the gate's report was not in the list, and the agent, which
+// finds the report by scanning it, reported that the gate had published
+// nothing. That reads as a broken gate and it is nothing of the sort, which is
+// the worst kind of wrong answer: confident, plausible, and pointing at the
+// wrong component.
 //
 // Newest first, because a bound has to truncate somewhere and the direction is
 // a choice. The report the agent wants is minutes old; the comments it can
@@ -260,8 +260,8 @@ func (g *GitHub) ListComments(ctx context.Context, number int) ([]Comment, error
 // statuses, because a repository can use either and a gate reported through
 // the one you did not look at is indistinguishable from no gate at all.
 //
-// A check-runs failure is not fatal on its own -- the statuses surface is the
-// whole reason there are two -- but it is carried, and returned if the second
+// A check-runs failure is not fatal on its own, the statuses surface is the
+// whole reason there are two, but it is carried, and returned if the second
 // surface finds nothing either. Discarded, a token without Checks:read looked
 // exactly like a check that had not started: waitForGate polled for the full
 // GateWait and then reported an absent gate, once per pull request, with the
@@ -315,7 +315,7 @@ func (g *GitHub) CheckStatus(ctx context.Context, sha, checkName string) (CheckS
 		}
 	}
 	// Neither surface named the check. If one of them could not be read, that
-	// is why -- and "we could not look" must not be returned as "it is not
+	// is why, and "we could not look" must not be returned as "it is not
 	// there".
 	if runsErr != nil {
 		return CheckMissing, fmt.Errorf("reading check runs for %s: %w", sha, runsErr)
@@ -338,9 +338,9 @@ func (g *GitHub) UpdateComment(ctx context.Context, id int64, body string) error
 // SetCommitStatus posts a commit status. Never a failure state, and pending
 // until there is a verdict: see the interface.
 //
-// Needs the token's "Commit statuses" permission at read+WRITE. Read alone is
+// Needs the token's "Commit statuses" permission at read+write. Read alone is
 // enough to find the gate and not enough to answer beside it, and the failure
-// is a 403 on a call nothing waits for -- so it is logged by the caller rather
+// is a 403 on a call nothing waits for, so it is logged by the caller rather
 // than allowed to fail a triage.
 func (g *GitHub) SetCommitStatus(ctx context.Context, sha, name string, state CommitState, description string) error {
 	// GitHub truncates descriptions at 140 characters and rejects longer ones
@@ -381,12 +381,12 @@ func (g *GitHub) PushFix(ctx context.Context, pr *PullRequest, root, message str
 	}
 	email := g.AuthorEmail
 	if email == "" {
-		// NEVER a users.noreply.github.com address: that namespace belongs to
+		// Never a users.noreply.github.com address: that namespace belongs to
 		// GitHub accounts, and an email in it that is not yours attributes
-		// the commit -- avatar and all -- to whoever owns the name. The
-		// .invalid TLD (RFC 2606) can map to nobody. App auth replaces this
-		// with the bot's real identity at start-up; a token without a
-		// configured author gets an honest gray nobody instead of a stranger.
+		// the commit, avatar and all, to whoever owns the name. The.invalid
+		// TLD (RFC 2606) can map to nobody. App auth replaces this with the
+		// bot's real identity at start-up; a token without a configured
+		// author gets an honest gray nobody instead of a stranger.
 		email = "bosun@noreply.invalid"
 	}
 	// The push needs a credential too, and for an App that means a token
@@ -413,8 +413,8 @@ func (g *GitHub) PushFix(ctx context.Context, pr *PullRequest, root, message str
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
 			// Redact the token before this reaches a log or a PR comment.
-			// Redact the token that was actually used, not the configured
-			// one -- with an App they are different, and leaking a live
+			// Redact the token that was used, not the configured
+			// one; with an App they are different, and leaking a live
 			// installation token into a pull-request comment would be a poor
 			// way to learn that.
 			msg := redactErr(redactErr(stderr.String(), tok), g.Token)
@@ -428,12 +428,12 @@ func (g *GitHub) PushFix(ctx context.Context, pr *PullRequest, root, message str
 
 // pushRemote is where the fix is pushed, with a credential in it.
 //
-// Built from the CONFIGURED repository URL, not from github.com. APIBase has
+// Built from the configured repository URL, not from github.com. APIBase has
 // supported GitHub Enterprise since this provider was written, so an
 // Enterprise deployment read its pull requests from its own host and then
-// pushed to the public one -- failing outright if no such repository exists
-// and, if `owner/repo` happens to exist on github.com, pushing an unreviewed
-// commit and an installation token to a repository that is not the operator's.
+// pushed to the public one, failing outright if no such repository exists and,
+// if `owner/repo` happens to exist on github.com, pushing an unreviewed commit
+// and an installation token to a repository that is not the operator's.
 //
 // RepoURL is the same value the clones use, so the push cannot disagree with
 // what was checked out. Falling back to github.com keeps a deployment that
@@ -449,7 +449,7 @@ func (g *GitHub) pushRemote(token string) (string, error) {
 	}
 	if u.Scheme != "https" && u.Scheme != "http" {
 		// ssh:// and scp-style remotes carry their own credential and this
-		// one would be ignored rather than refused -- a push that silently
+		// one would be ignored rather than refused, a push that silently
 		// authenticates as somebody else.
 		return "", fmt.Errorf("GIT_REPO_URL %q must be an http(s) URL to push with a token", raw)
 	}
