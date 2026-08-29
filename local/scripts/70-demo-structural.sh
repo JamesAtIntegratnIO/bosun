@@ -174,13 +174,14 @@ ok "pull request #${PR}"
 printf '    %s/%s/%s/pulls/%s\n' "$GITEA_URL" "$GITEA_OWNER" "$SAMPLE_REPO_NAME" "$PR"
 
 say "3. the gate renders both versions and refuses"
-set +e
-bash "$ROOT/scripts/gate-run.sh" "$PR"
-GATE_EXIT=$?
-set -e
-[ "$GATE_EXIT" -eq 0 ] && { bad "the gate passed a change that deletes an API version in use"; exit 1; }
-ok "gate exit ${GATE_EXIT}"
-grep -E 'no longer serves|still declare' "/tmp/gate-report-${PR}.md" | sed 's/^/    /' | head -8
+# Nothing is run here. The agent sweeps the open pull requests and gates them
+# itself, so this waits for the verdict it publishes.
+SHA="$(head_sha "$PR")"
+step "waiting for the sweep to render ${SHA:0:8} at both versions"
+wait_for "the gate refused a change that deletes an API version in use" 300 \
+  status_is "$SHA" failure
+ok "blocked"
+gate_report "$PR" | grep -E 'no longer serves|still declare' | sed 's/^/    /' | head -8
 
 say "4. the agent repairs -- swapping one, reshaping the other"
 POD="$(agent_pod)"

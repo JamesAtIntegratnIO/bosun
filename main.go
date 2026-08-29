@@ -156,29 +156,27 @@ func main() {
 
 	t := &agent.Triage{
 		Git: git, LLM: model,
-		Brand:            cfg.Brand,
-		Policy:           edits.Policy{Allow: cfg.AllowPaths, Deny: cfg.DenyPaths},
-		CheckName:        cfg.CheckName,
-		GateReportAuthor: cfg.GateReportAuthor,
-		MaxAttempts:      cfg.MaxAttempts,
-		GateWait:         cfg.GateWait,
-		GatePoll:         cfg.GatePoll,
-		Explain:          cfg.Explain,
-		Migrate:          cfg.Migrate,
-		Structural:       cfg.Structural,
-		MaxRestructured:  cfg.MaxRestructured,
-		Upstream:         upstreamResolver(cfg, upstreamToken, egressPolicy),
-		Egress:           egressPolicy,
-		CloneRoot:        cfg.CloneRoot,
-		RepoURL:          cfg.GitRepoURL,
-		Log:              func(f string, a ...any) { logger.Printf(f, a...) },
+		Brand:           cfg.Brand,
+		Policy:          edits.Policy{Allow: cfg.AllowPaths, Deny: cfg.DenyPaths},
+		CheckName:       cfg.CheckName,
+		MaxAttempts:     cfg.MaxAttempts,
+		GatePoll:        cfg.GatePoll,
+		Explain:         cfg.Explain,
+		Migrate:         cfg.Migrate,
+		Structural:      cfg.Structural,
+		MaxRestructured: cfg.MaxRestructured,
+		Upstream:        upstreamResolver(cfg, upstreamToken, egressPolicy),
+		Egress:          egressPolicy,
+		CloneRoot:       cfg.CloneRoot,
+		RepoURL:         cfg.GitRepoURL,
+		Log:             func(f string, a ...any) { logger.Printf(f, a...) },
 	}
 
-	// One reader serves both features that look at the cluster: liveReads
-	// (facts for briefs) and the in-cluster gate (the inventory it renders
-	// against).
+	// The apiserver reader, for liveReads (facts for briefs) and for the
+	// pipeline sweep. The gate does not use it: the inventory it renders
+	// against comes from the ArgoCD API.
 	var reader *cluster.APIServer
-	if cfg.LiveReads || cfg.GateMode == GateInCluster {
+	if cfg.LiveReads || cfg.Supervise {
 		reader = &cluster.APIServer{ArgoCDNamespace: cfg.LiveReadsArgoCDNamespace}
 		// Fail at start-up, the same rule as the App's key -- and here it
 		// matters more, not less. Every failure inside this reader is
@@ -213,77 +211,53 @@ func main() {
 	runCtx, stopRun := context.WithCancel(context.Background())
 	defer stopRun()
 
-	if cfg.GateMode == GateInCluster {
-		// Where the inventory comes from. Both readers answer the same
-		// question and the gate cannot tell them apart -- gateservice takes
-		// the function, not the reader -- which is the whole reason the choice
-		// can be a value rather than a fork in the service.
-		inventory := reader.ClusterInventory
-		remedy := "the gate renders against the ArgoCD cluster Secrets, which needs get/list on " +
-			"Secrets in the ArgoCD namespace (the chart creates the Role when gate.mode is " +
-			"cluster). Set gate.mode to ci to keep running the gate in CI instead"
-		if cfg.InventorySource == InventoryFromArgoCD {
-			argo := &cluster.ArgoCD{
-				BaseURL:               cfg.ArgoCDBaseURL,
-				Token:                 cfg.ArgoCDToken,
-				CAFile:                cfg.ArgoCDCAFile,
-				InsecureSkipTLSVerify: cfg.ArgoCDInsecureSkipTLSVerify,
-			}
-			inventory = argo.ClusterInventory
-			// A timeout here is nearly always the NetworkPolicy, and the
-			// value it is nearly always wrong on is the port -- a ClusterIP
-			// is DNAT'd before policy is evaluated, so the rule has to name
-			// argocd-server's pod port and not the one in the URL above.
-			// Saying so here is the difference between this message and a
-			// message that only repeats what the operator already knows.
-			remedy = "the gate reads the inventory from the ArgoCD API, which needs a reachable " +
-				"argocd-server, a certificate this can verify (gate.argocd.caSecret or " +
-				"gate.argocd.insecureSkipTLSVerify), and an account token with `clusters, get`. " +
-				"If it timed out rather than being refused, check the NetworkPolicy ports at BOTH " +
-				"ends: gate.argocd.podPort is argocd-server's POD port (8080), not the port in " +
-				"gate.argocd.baseURL, and argocd-server's own ingress policy must admit this " +
-				"namespace on that same port. " +
-				"Set gate.inventorySource to secrets to read the cluster Secrets instead"
-		}
-
-		// Same fail-at-start-up rule as everything above: a ServiceAccount the
-		// RBAC does not let read the ArgoCD cluster Secrets would otherwise
-		// surface as an `error` status on every pull request -- a broken
-		// required check, discovered by whoever tries to merge next.
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		inv, err := inventory(ctx)
-		cancel()
-		if err != nil {
-			logger.Fatalf("gate.mode is cluster and the inventory could not be read: %v\n  %s", err, remedy)
-		}
-		gs := &gateservice.Service{
-			Git:       git,
-			Inventory: inventory,
-			CheckName: cfg.CheckName,
-			RepoURL:   cfg.GitRepoURL,
-			CloneRoot: cfg.CloneRoot,
-			ForkPRs:   cfg.GateForkPRs,
-			Poll:      cfg.GatePoll,
-			Log:       func(f string, a ...any) { logger.Printf(f, a...) },
-			Egress:    egressPolicy,
-		}
-		t.Gate = gs
-		go gs.Run(runCtx)
-		logger.Printf("gate: in-cluster, polling for open pull requests every %s (%d cluster(s) in the live inventory, read from %s)",
-			cfg.GatePoll, len(inv.Clusters), cfg.InventorySource)
-	} else {
-		logger.Printf("gate: ci -- waiting on the %s check and reading the report from comments", cfg.CheckName)
+	// Where the inventory comes from: ArgoCD's own API, which serves the four
+	// fields a generator can see with the credential block redacted.
+	argo := &cluster.ArgoCD{
+		BaseURL:               cfg.ArgoCDBaseURL,
+		Token:                 cfg.ArgoCDToken,
+		CAFile:                cfg.ArgoCDCAFile,
+		InsecureSkipTLSVerify: cfg.ArgoCDInsecureSkipTLSVerify,
 	}
 
-	// Said at start-up, because the alternative is a deployment that silently
-	// believes any comment carrying the gate's marker and nobody finding out
-	// until it matters.
-	if t.GateReportAuthor == "" || t.GateReportAuthor == "*" {
-		logger.Printf("gate reports are read from ANY author: set gate.reportAuthor " +
-			"to the account your gate comments as")
-	} else {
-		logger.Printf("gate reports are read only from %q", t.GateReportAuthor)
+	// Same fail-at-start-up rule as everything above: an inventory the gate
+	// cannot read would otherwise surface as an `error` status on every pull
+	// request -- a broken required check, discovered by whoever tries to merge
+	// next.
+	//
+	// A timeout here is nearly always the NetworkPolicy, and the value it is
+	// nearly always wrong on is the port -- a ClusterIP is DNAT'd before
+	// policy is evaluated, so the rule has to name argocd-server's pod port
+	// and not the one in the URL. Saying so here is the difference between
+	// this message and a message that only repeats what the operator already
+	// knows.
+	probeCtx, cancelProbe := context.WithTimeout(context.Background(), 30*time.Second)
+	inv, err := argo.ClusterInventory(probeCtx)
+	cancelProbe()
+	if err != nil {
+		logger.Fatalf("the cluster inventory could not be read: %v\n"+
+			"  the gate reads it from the ArgoCD API, which needs a reachable argocd-server, a "+
+			"certificate this can verify (gate.argocd.caSecret or gate.argocd.insecureSkipTLSVerify), "+
+			"and an account token with `clusters, get`. If it timed out rather than being refused, "+
+			"check the NetworkPolicy ports at BOTH ends: gate.argocd.podPort is argocd-server's POD "+
+			"port (8080), not the port in gate.argocd.baseURL, and argocd-server's own ingress policy "+
+			"must admit this namespace on that same port", err)
 	}
+	gs := &gateservice.Service{
+		Git:       git,
+		Inventory: argo.ClusterInventory,
+		CheckName: cfg.CheckName,
+		RepoURL:   cfg.GitRepoURL,
+		CloneRoot: cfg.CloneRoot,
+		ForkPRs:   cfg.GateForkPRs,
+		Poll:      cfg.GatePoll,
+		Log:       func(f string, a ...any) { logger.Printf(f, a...) },
+		Egress:    egressPolicy,
+	}
+	t.Gate = gs
+	go gs.Run(runCtx)
+	logger.Printf("gate: polling for open pull requests every %s (%d cluster(s) in the live inventory, read from the ArgoCD API at %s)",
+		cfg.GatePoll, len(inv.Clusters), cfg.ArgoCDBaseURL)
 
 	if len(cfg.EgressDeny) == 0 {
 		logger.Print("egress: open, and every outbound request is logged. " +
@@ -304,9 +278,8 @@ func main() {
 	// should exist being opened at all". Nothing about a promotion that never
 	// happened produces an event, so a timer is the only way to see it.
 	//
-	// The reader is guaranteed here: Config.validate refuses a deployment that
-	// turns supervision on without the apiserver access it needs, so there is
-	// no nil case left to log about.
+	// The reader is guaranteed here: it is built whenever supervision is on,
+	// so there is no nil case left to log about.
 	if cfg.Supervise {
 		sup := &supervisor.Supervisor{
 			Collector: &pipeline.Collector{Kargo: reader, PRs: git},

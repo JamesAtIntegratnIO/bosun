@@ -12,6 +12,10 @@ llm:
   provider: openai
   baseURL: http://model.example.svc:1234/v1
   model: example-model
+gate:
+  argocd:
+    baseURL: https://argocd-server.argocd.svc
+    existingSecret: bosun-argocd
 triage:
   allowPaths:
     - addons/**

@@ -21,7 +21,7 @@ exactly this.
 ```go
 // read a pull request
 GetPullRequest(ctx, number)          // title, branch, head SHA, labels
-ListOpenPullRequests(ctx)            // how cluster mode discovers work: no webhook, no CI event
+ListOpenPullRequests(ctx)            // how the gate discovers work: no webhook, no CI event
 
 // read what has been said on it
 ListComments(ctx, number)            // EVERY comment -- see below

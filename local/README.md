@@ -66,7 +66,7 @@ runs.
 |---|---|---|
 | `liveReads.enabled` | on, `groups` scope | "everything except the core group" is not expressible in Kubernetes RBAC, so the API groups this cluster ships CRDs for are named. Secrets stay unreadable. |
 | `networkPolicy.egress.apiServer` | discovered | read from the `kubernetes` Service's own endpoints. A ClusterIP is DNAT'd before policy evaluation, so an ipBlock naming it matches nothing. |
-| `gate.reportAuthor` | the account `gate-run.sh` posts as | Gitea has no fixed CI identity the chart could default to, and anyone who can comment can write the gate's marker. |
+| `gate.argocd` | an ArgoCD account minted here | The gate reads its inventory from ArgoCD's API, and the account gets `clusters, get` and nothing else — the same three steps the chart README asks an operator for. |
 | `networkPolicy.egress.allowPublicHTTPS` | on | the upstream lookup has to reach a registry at all. |
 | `triage.egressDeny` | one host | so the refusal path is exercised rather than described. |
 
@@ -117,21 +117,16 @@ make demo              # a green gate, promoted and merged
 make demo-cluster-gate # the gate with no CI anywhere: renders, blocks, re-gates
 make demo-triage       # a red gate the agent refuses to fix, and says why
 make demo-structural   # a red gate the swap alone cannot fix
-make demo-forged       # a gate report the agent refuses to believe
 make demo-egress       # a host the agent is told not to visit
-make scenarios         # the recorded incidents, replayed live
 ```
 
-The kit installs the agent with `gate.mode: ci` — deliberately not the chart's
-default. The replay acts feed the agent **recorded** gate reports, and
-replaying an incident means replaying its evidence: only ci mode reads a
-verdict off a comment, where an in-cluster gate would render the sample repo
-as it actually is and answer about the wrong world. `make demo-cluster-gate`
-flips the running deployment to the default mode, proves the three properties
-the CI shape could not have by construction — a comment-only change answered
-by a render rather than a paths guess, the report posted by the agent itself,
-and a pushed fix re-gated because the commit exists rather than because a
-token was minted right — and puts the mode back.
+No act runs a gate. Every one of them changes the sample repository, opens a
+pull request and waits for the **agent's own** verdict — the status and the
+report comment it publishes from its sweep. `make demo-cluster-gate` is the
+one that asserts that directly, on three properties a CI workflow could not
+have by construction: a comment-only change answered by a render rather than a
+paths guess, the report posted by the agent itself, and a pushed fix re-gated
+because the commit exists rather than because a token was minted right.
 
 `make demo-structural` is the one that needs the whole stack at once. It pins
 cert-manager `v1.5.5` with a `cert-manager.io/v1alpha2` Certificate that has
@@ -148,21 +143,18 @@ the chart at the target version), and asked to translate. Every proposal is then
 checked for identity, schema-validity and value provenance before a byte is
 written.
 
-`make demo-forged` posts a report carrying the gate's marker from an account
-that is not the gate — specifically, **the agent's own account**, which is the
-most privileged identity in the scenario short of the admin. The report says a
-CustomResourceDefinition stopped serving a version, which is the one red the
-agent repairs on its own by rewriting files. It asserts two things: that nothing
-is pushed, and that the agent *says whose report it ignored*. A silent refusal
-is indistinguishable from a crash, and the overwhelmingly likely cause of one in
-the field is not an attack but a gate that comments as somebody else.
-
 ## Where this is a stand-in rather than the real thing
 
-**The gate runs as a binary, not as CI.** idpbuilder ships no Actions runner, so
-[`scripts/gate-run.sh`](scripts/gate-run.sh) invokes the same binary with the
-same inputs and produces the same two artifacts a CI adapter would — the report
-comment and the commit status. Everything else is the real component.
+**The ArgoCD token is minted with `insecureSkipTLSVerify`.** idpbuilder's
+argocd-server serves a certificate signed by a CA that exists nowhere a pod can
+reach, so the agent is told to accept it. A real install gives the chart
+`gate.argocd.caSecret` instead. Everything else about that path — the account,
+its one RBAC line, the API it reads — is what an operator does.
+
+**The recorded incidents are not replayed here.** They were, through a verdict
+fed to the agent as a comment; the agent gates in-process now and reads no such
+comment, so there is nothing to feed. The fixtures are still scored by the eval
+suite in [`../evals`](../evals), against the same prompts.
 
 ## Things this turned up
 
@@ -179,13 +171,14 @@ Each of these is a real defect or a real gap, found by running the thing:
   is DNAT'd to a pod IP before policy evaluation, so the agent's egress rule
   matched nothing and the connection hung with zero bytes. The chart takes
   `networkPolicy.egress.namespaces` now.
-- **The demo was running a gate binary from before the feature it proved.**
-  `gate-run.sh` built the binary only when `/tmp/gitops-gate` did not exist. The
-  one sitting there predated `objectFrom` carrying the rendered body by eight
-  hours, so chart-diff produced body-less objects and the CRD-version detection
-  could not fire. Nothing errored: the gate rendered both versions, diffed them
-  and reported ten objects "changed" with no fields, which is indistinguishable
-  from a gate that looked and found nothing. It is built every run now.
+- **The demo was running a gate binary from before the feature it proved.** The
+  script that ran the gate built the binary only when `/tmp/gitops-gate` did not
+  exist. The one sitting there predated `objectFrom` carrying the rendered body
+  by eight hours, so chart-diff produced body-less objects and the CRD-version
+  detection could not fire. Nothing errored: the gate rendered both versions,
+  diffed them and reported ten objects "changed" with no fields, which is
+  indistinguishable from a gate that looked and found nothing. The same trap is
+  live for the agent image, which is why the kit forces a rollout restart.
 - **A wait loop that read the previous run's verdict.** `tail -n +$BEFORE`
   starts *at* line `$BEFORE`, and the last line of a previous run is reliably
   its own `triage done`. The triage demo declared "it pushed nothing" about a
@@ -206,22 +199,13 @@ Each of these is a real defect or a real gap, found by running the thing:
   message. `count(argocd_app_info)` went 0 -> 6 once one existed, and the
   verification query started returning 1.
 
-## Replaying the recorded incidents
+## `make demo-egress`
 
-`make scenarios` replays the **ten** recorded incidents from
-[`../evals`](../evals) as real pull requests against the live in-cluster
-agent, and prints a case-by-case table of what it did against what the case
-expects. The gate report each one posts is **recorded** — reproducing
-fourteen upstream chart versions locally would prove nothing extra — but the
-agent, the model, the reasoning and every commit it pushes are live. The
-scenarios read the same fixtures the eval suite scores, which is what stops
-the thing the eval measures and the thing you watch from drifting apart.
-
-`make demo-egress` covers the half of "egress is open, logged and deniable"
-that a working deployment never shows you: a deny rule only proves itself by
-stopping something that otherwise works. It forbids `*.docker.io`, opens a pull
-request the agent will escalate — the escalate path reaches for upstream notes,
-and reaching for them starts by asking the registry who publishes the artifact —
+This covers the half of "egress is open, logged and deniable" that a working
+deployment never shows you: a deny rule only proves itself by stopping
+something that otherwise works. It forbids `*.docker.io`, opens a pull request
+the agent will escalate — the escalate path reaches for upstream notes, and
+reaching for them starts by asking the registry who publishes the artifact —
 and asserts two things:
 
 ```
@@ -236,24 +220,6 @@ shorten the brief, not end the run. It changes the running deployment and puts
 it back, including on failure, and verifies the restore against the deployment's
 own spec rather than a log line — during a rollout there are two Running pods
 and `logs deploy/...` picks one of them.
-
-### What the replay cannot supply
-
-The eval fixtures record a gate report and a repository, not an artifact
-reference — so the replay passes the chart's bare name, the resolver maps it to
-Docker Hub the way a bare name is meant to be read, and gets a 401 because
-`library/kyverno` is not an official image. Nothing is guessed and no other
-project's notes leak in; the explanation degrades to render-only and **says so
-in its own footer**:
-
-> _Grounded in the gate's render diff ONLY —
-> `https://registry-1.docker.io/v2/library/trivy-operator-explorer/manifests/1.0.0`:
-> 401 Unauthorized. Nothing below is informed by what the maintainers wrote._
-
-So the replay proves the explain path, the lookup, the egress log and the
-honest degradation. It does not prove that release notes and commits *arrive*,
-because there is no real artifact here to resolve. That happens in production,
-against the real promotion pipeline's artifacts.
 
 ## What the agent will and will not fix
 

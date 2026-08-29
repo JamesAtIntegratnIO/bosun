@@ -3,18 +3,29 @@
    use; the docs pages are styled entirely by theme.css.
    --------------------------------------------------------------------------- */
 
-/* The splash template still renders the docs content column; widen it so the
-   landing sections are not squeezed into a reading measure. */
+/* The splash template still renders the docs content column. Rather than widen
+   that column to a fixed measure, open it to the whole pane and let each band
+   set its own: a section's background then runs edge to edge while its content
+   stays centred on --bo-shell (the hero) or --bo-measure (everything else).
+   Both carry fallbacks, because the hero also renders on Starlight's generated
+   404, and a structure change that stops this selector matching should cost a
+   little width rather than the entire layout. */
 .page > .main-frame .main-pane:has(.bo-hero) {
-  --sl-content-width: 68rem;
+  --sl-content-width: 100%;
+  --sl-content-pad-x: 0rem;
+  --bo-shell: 92rem;
+  --bo-measure: 78rem;
+  --bo-gutter: clamp(1.5rem, 5vw, 4rem);
+  overflow-x: clip;
 }
 
 /* --- hero ---------------------------------------------------------------- */
 
 .bo-hero {
   position: relative;
-  margin: -1.5rem -1.5rem 0;
-  padding: clamp(2rem, 5vw, 4.5rem) 1.5rem clamp(2rem, 4vw, 3.5rem);
+  margin: -1.5rem 0 0;
+  padding: clamp(2.5rem, 6vw, 5.5rem) var(--bo-gutter, 1.5rem) clamp(2.5rem, 5vw, 4rem);
+  border-bottom: 1px solid var(--bo-rule);
   overflow: hidden;
   isolation: isolate;
 }
@@ -37,6 +48,8 @@
 }
 
 .bo-hero__inner {
+  max-width: var(--bo-shell, 82rem);
+  margin-inline: auto;
   display: grid;
   gap: clamp(2rem, 4vw, 3.5rem);
   grid-template-columns: 1fr;
@@ -45,8 +58,14 @@
 
 @media (min-width: 60rem) {
   .bo-hero__inner {
-    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
   }
+}
+
+/* The copy column keeps its own measure inside the wider shell: the title is
+   set to break where the sentence does, not wherever the column ends. */
+.bo-hero__copy {
+  max-width: 44rem;
 }
 
 .bo-eyebrow {
@@ -75,7 +94,7 @@
 
 .bo-hero__title {
   font-family: var(--bo-font-display);
-  font-size: clamp(2.4rem, 6vw, 4rem);
+  font-size: clamp(2.4rem, 5.4vw, 4.5rem);
   line-height: 1.02;
   letter-spacing: -0.035em;
   margin: 0 0 1rem;
@@ -83,8 +102,18 @@
   text-wrap: balance;
 }
 
+/* `background-clip: text` paints only inside the inline box, and Space Grotesk
+   hangs the arm of an `r` past its advance width -- so an `r` ending a line of
+   "breaks the cluster" lost its arm to the clip. The padding widens the paint
+   area, the matching negative margin keeps the text where it was, and the
+   cloned decoration break gives every wrapped line the same room rather than
+   only the first and last. */
 .bo-hero__title em {
   font-style: normal;
+  padding-inline: 0.09em;
+  margin-inline: -0.09em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   background: linear-gradient(100deg, var(--bo-teal-300), var(--bo-coral-400));
   -webkit-background-clip: text;
   background-clip: text;
@@ -324,13 +353,36 @@
 
 /* --- landing body sections ----------------------------------------------- */
 
+/* Sections run the full width of the pane so their background can, and hold
+   their content to the reading measure themselves. The space between them is
+   padding rather than margin, so a band's tint reaches its neighbour's edge
+   instead of leaving a gap of page colour. */
 .bo-section {
-  margin-block: clamp(3rem, 7vw, 5rem);
+  margin-block: 0;
+  padding: clamp(3rem, 7vw, 5rem) var(--bo-gutter, 1.5rem);
+}
+
+.bo-section > * {
+  max-width: var(--bo-measure, 72rem);
+  margin-inline: auto;
+}
+
+/* Every other section is tinted, which is what tells the eye where one
+   argument ends and the next begins. The rules top and bottom carry the edge
+   where the tint alone is close to the page colour -- in light theme it is
+   nearly the same cream. */
+.bo-section:nth-of-type(even) {
+  background: var(--bo-band);
+  border-block: 1px solid var(--bo-rule);
 }
 
 .bo-section__head {
-  max-width: 46em;
   margin-bottom: 2rem;
+}
+
+.bo-section__head h2,
+.bo-section__head p {
+  max-width: 46em;
 }
 
 .bo-kicker {
@@ -370,6 +422,12 @@
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+/* Six tiles want three columns, not the four the measure would otherwise fit
+   and then two orphans on the second row. */
+.bo-grid--3up {
+  grid-template-columns: repeat(auto-fit, minmax(min(21rem, 100%), 1fr));
 }
 
 .bo-tile {

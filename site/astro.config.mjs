@@ -70,8 +70,6 @@ export default defineConfig({
             { label: '.gitops-gate.yaml reference', slug: 'gate/config-reference' },
             { label: 'Rendered manifests', slug: 'gate/rendered-manifests' },
             { label: 'render-diff.json schema', slug: 'gate/render-diff-schema' },
-            { label: 'CI adapters', slug: 'gate/ci-adapters' },
-            { label: 'Adding a CI provider', slug: 'gate/adding-a-ci-provider' },
           ],
         },
         {

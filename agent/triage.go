@@ -15,7 +15,6 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -50,7 +49,8 @@ const (
 	MergeNever MergePolicy = "never"
 )
 
-// InProcessGate is the gate, when it runs in this process rather than in CI.
+// InProcessGate is the gate. It runs in this process, against the live cluster
+// inventory, and hands back a verdict as a value.
 //
 // A consumer-defined interface, like every other seam the agent holds: the one
 // thing it wants is a verdict for a head commit, and everything else the
@@ -104,35 +104,14 @@ type Triage struct {
 	LLM       llm.Provider
 	Policy    edits.Policy
 	CheckName string
-	// GateReportAuthor is the only account whose gate report this will read.
-	//
-	// The gate's verdict arrives as a pull-request comment carrying a marker,
-	// and until this existed the marker was the whole of the check. Anyone who
-	// can comment on the pull request can write that marker, and the report
-	// under it is the evidence every other decision here is made from: which
-	// manifests the deterministic repair rewrites, which versions the applier
-	// will corroborate, what the model is told actually rendered. A forged
-	// report is not a wrong opinion, it is a wrong instruction with the gate's
-	// authority behind it.
-	//
-	// Empty or "*" trusts any author. That is what a host with no stable CI
-	// identity can express, and it is the behaviour that existed before -- but
-	// it is a choice now, made in a values file, rather than an omission.
-	GateReportAuthor string
 	// MaxAttempts caps self-fixes per pull request. Enforced through labels,
 	// so it survives a restart -- in-memory state would reset the cap every
 	// time the pod moved.
 	MaxAttempts int
-	// GateWait is how long to wait for the gate to reach a verdict before
-	// giving up on this run. CI mode only: an in-process gate is not waited
-	// for, it is run.
-	GateWait time.Duration
-	GatePoll time.Duration
-	// Gate, when set, is the in-process gate: the agent renders and diffs the
-	// pull request itself instead of polling a CI check and scraping the
-	// report back out of its own comment. The verdict arrives as a value, so
-	// the reportAuthor trust check has nothing to check -- the evidence never
-	// left the process.
+	GatePoll    time.Duration
+	// Gate is the gate: the agent renders and diffs the pull request itself.
+	// The verdict arrives as a value, so there is no report comment to find
+	// and no author to have to trust -- the evidence never left the process.
 	Gate InProcessGate
 	// Upstream, when set, fetches what the maintainers wrote between the two
 	// versions. Optional: without it the explanation is grounded in the render
@@ -250,9 +229,10 @@ func (t *Triage) say(ctx context.Context, pr *gitprovider.PullRequest, format st
 // The distinction is the whole of this pair. say() used to serve both, writing
 // success on entry, so from the first second a reader saw a green `bosun` and
 // no comment -- which is exactly what a finished run with nothing to report
-// looks like. On a green gate that window is `GateWait` plus a model call: ten
-// minutes of a status claiming to be done. Silence that reads as completion is
-// the failure this whole service exists to find, and it was doing it.
+// looks like. On a green gate that window is a render of both revisions plus a
+// model call: minutes of a status claiming to be done. Silence that reads as
+// completion is the failure this whole service exists to find, and it was
+// doing it.
 func (t *Triage) working(ctx context.Context, pr *gitprovider.PullRequest, format string, a ...any) {
 	t.status(ctx, pr, gitprovider.StatePending, format, a...)
 }
@@ -297,9 +277,10 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 		t.say(ctx, pr, "already escalated; leaving it to a human")
 		return nil
 	}
-	// Say so before the first thing that can block. waitForGate can sit for ten
-	// minutes, and a reader in that window should see the agent working rather
-	// than an absence they cannot distinguish from never having been called.
+	// Say so before the first thing that can block. A render of both revisions
+	// takes as long as it takes, and a reader in that window should see the
+	// agent working rather than an absence they cannot distinguish from never
+	// having been called.
 	t.working(ctx, pr, "reading %s", t.CheckName)
 
 	attempt := attemptsSoFar(pr.Labels, t.attemptPrefix()) + 1
@@ -310,42 +291,17 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 			"Reached the limit of %d automatic fix attempts without a green gate.", t.MaxAttempts), nil)
 	}
 
-	var state gitprovider.CheckState
-	var report string
-	if t.Gate != nil {
-		// The gate is in-process: run it (or read the run the poller already
-		// did) instead of waiting for CI. Missing and pending cannot happen --
-		// Ensure does not return until there is a verdict or a broken gate.
-		out := t.Gate.Ensure(ctx, pr)
-		if out.Err != nil {
-			return fmt.Errorf("the gate could not run: %w", out.Err)
-		}
-		state, report = out.State, out.Report
-	} else {
-		var err error
-		state, err = t.waitForGate(ctx, pr)
-		if err != nil {
-			return err
-		}
+	// Run the gate, or read the run the poller already did. Missing and
+	// pending cannot happen -- Ensure does not return until there is a verdict
+	// or a broken gate.
+	out := t.Gate.Ensure(ctx, pr)
+	if out.Err != nil {
+		return fmt.Errorf("the gate could not run: %w", out.Err)
 	}
-	switch state {
-	case gitprovider.CheckSuccess:
-		return t.explainGreen(ctx, pr, p, report)
-	case gitprovider.CheckMissing:
-		t.say(ctx, pr, "no %s check appeared within %s", t.CheckName, t.GateWait)
-		return nil
-	case gitprovider.CheckPending:
-		t.say(ctx, pr, "%s still had no verdict after %s", t.CheckName, t.GateWait)
-		return nil
+	if out.State == gitprovider.CheckSuccess {
+		return t.explainGreen(ctx, pr, p, out.Report)
 	}
-
-	if report == "" {
-		var err error
-		report, err = t.gateReport(ctx, pr)
-		if err != nil {
-			return err
-		}
-	}
+	report := out.Report
 
 	// What is actually running, gathered once and used by whichever path this
 	// run takes. Deterministic: every number here was counted by code against
@@ -674,134 +630,6 @@ func (t *Triage) attemptPrefix() string {
 	return fmt.Sprintf(labelAttemptFmt, strings.ToLower(t.Brand))
 }
 
-// waitForGate blocks until the gate reaches a verdict, the deadline passes, or
-// the context is cancelled.
-//
-// MISSING IS TREATED AS PENDING, and that is the whole subtlety. Kargo calls
-// this service from the promotion, immediately after opening the pull request
-// -- measured at THREE SECONDS after, in the first triage that ever reached
-// here. CI has not registered a check that early, so the check does not exist
-// rather than existing and being pending, and the first version of this
-// returned immediately and did nothing.
-//
-// From the caller's side those two states are the same thing: the gate has not
-// answered yet. The only honest distinction is time, and the deadline already
-// expresses it -- a check still missing after GateWait really is absent, and
-// gets reported as such.
-func (t *Triage) waitForGate(ctx context.Context, pr *gitprovider.PullRequest) (gitprovider.CheckState, error) {
-	deadline := time.Now().Add(t.GateWait)
-	for {
-		state, err := t.Git.CheckStatus(ctx, pr.HeadSHA, t.CheckName)
-		if err != nil {
-			return gitprovider.CheckMissing, err
-		}
-		settled := state != gitprovider.CheckPending && state != gitprovider.CheckMissing
-		if settled || time.Now().After(deadline) {
-			return state, nil
-		}
-		select {
-		case <-ctx.Done():
-			return gitprovider.CheckPending, ctx.Err()
-		case <-time.After(t.GatePoll):
-		}
-	}
-}
-
-// errNoGateReport is the gate having said nothing, as opposed to having said
-// something this agent would not believe. The two are different situations
-// with different answers -- one is a quiet gate, the other is a configuration
-// mistake or an attempt -- and a caller that treats every failure here as
-// "no report" turns the second into the first.
-var errNoGateReport = errors.New("no gate report")
-
-// gateReport finds the gate's own comment. A comment is the only artifact
-// surface every git host has, which is why the gate publishes there rather
-// than into a provider-specific artifact store.
-//
-// It is also, for the same reason, a surface anyone with write access can
-// publish to. So the marker is necessary and not sufficient: the comment has
-// to come from the account the operator named as the gate. Everything
-// downstream -- which files the deterministic repair rewrites, which version
-// strings the applier will corroborate, what the model is told rendered --
-// is read out of this string, so a report the gate did not write is an
-// instruction from a stranger wearing the gate's authority.
-//
-// The newest qualifying report wins. A gate that re-ran leaves two, and the
-// stale one describes a commit that is no longer the head.
-func (t *Triage) gateReport(ctx context.Context, pr *gitprovider.PullRequest) (string, error) {
-	comments, err := t.Git.ListComments(ctx, pr.Number)
-	if err != nil {
-		return "", err
-	}
-	best := -1
-	var untrusted []string
-	for i, c := range comments {
-		if !strings.Contains(c.Body, gate.ReportMarker) {
-			continue
-		}
-		if !t.trustsReportFrom(c.Author) {
-			untrusted = append(untrusted, c.Author)
-			continue
-		}
-		// Newest wins, and position breaks the tie -- a host that did not
-		// timestamp its comments leaves every CreatedAt zero, which is the
-		// order-is-recency reading this had before.
-		if best < 0 || !c.CreatedAt.Before(comments[best].CreatedAt) {
-			best = i
-		}
-	}
-	if best >= 0 {
-		return comments[best].Body, nil
-	}
-	if len(untrusted) > 0 {
-		// Named, because the overwhelmingly likely cause is not an attack but
-		// a gate that publishes as somebody else -- and a reader can only fix
-		// that if the message says whose name to put in the values file.
-		return "", fmt.Errorf(
-			"PR %d carries the gate's marker from %s, but %s is configured as the gate: "+
-				"ignoring it. Set gate.reportAuthor to the account your gate comments as, "+
-				"or to \"*\" to read the report whoever wrote it",
-			pr.Number, strings.Join(namedAuthors(untrusted), ", "), quoted(t.GateReportAuthor))
-	}
-	return "", fmt.Errorf("%w: the gate is red but published no report comment on PR %d",
-		errNoGateReport, pr.Number)
-}
-
-// trustsReportFrom is the whole of the check. Case-insensitive because git
-// hosts are about usernames, and unset means unchecked -- which is a
-// deployment saying it has no stable CI identity to name, not a bypass.
-func (t *Triage) trustsReportFrom(author string) bool {
-	want := strings.TrimSpace(t.GateReportAuthor)
-	if want == "" || want == "*" {
-		return true
-	}
-	return strings.EqualFold(strings.TrimSpace(author), want)
-}
-
-// namedAuthors renders a set of comment authors for a message, deduplicated
-// and in first-seen order.
-//
-// The empty author is a real case -- some hosts omit it -- and it becomes a
-// phrase rather than a gap in the list, because "carries the gate's marker
-// from , alice" reads as a bug in this agent rather than as a fact about the
-// pull request. Named for the substitution: `dedupe` said nothing about it,
-// and a caller reaching for a general-purpose deduplicator got a rewriter.
-func namedAuthors(in []string) []string {
-	const unnamed = "an account the host did not name"
-	seen := map[string]bool{}
-	out := make([]string, 0, len(in))
-	for _, s := range in {
-		if s == "" {
-			s = unnamed
-		}
-		if !seen[s] {
-			seen[s] = true
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
 func (t *Triage) clone(ctx context.Context, pr *gitprovider.PullRequest) (string, func(), error) {
 	root, err := os.MkdirTemp(t.CloneRoot, "pr")
 	if err != nil {
@@ -895,26 +723,6 @@ func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, 
 		return nil
 	}
 
-	// An in-process gate hands its report in; only the CI path has to go
-	// find one on the pull request.
-	if report == "" {
-		var err error
-		report, err = t.gateReport(ctx, pr)
-		switch {
-		case errors.Is(err, errNoGateReport):
-			// A green gate that published no report is normal on repositories where
-			// the gate only comments when it has something to say.
-			t.say(ctx, pr, "%s is green; no report to explain", t.CheckName)
-			return nil
-		case err != nil:
-			// Not the same thing, and it used to be reported as if it were. A
-			// report this agent refused to read -- wrong author -- or a comment
-			// list it could not finish is a fact about the deployment, and
-			// "nothing to explain" is exactly the sentence that hides it.
-			t.say(ctx, pr, "%s is green; %v", t.CheckName, err)
-			return nil
-		}
-	}
 	if gate.SaysNothingChanged(report) {
 		t.say(ctx, pr, "%s is green; the render is unchanged", t.CheckName)
 		return nil

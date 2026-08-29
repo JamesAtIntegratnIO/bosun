@@ -23,10 +23,9 @@ type Fake struct {
 	// CRDs are keyed by <plural>.<group>, same rule.
 	CRDs map[string]CRD
 
-	// Inventory is what ClusterInventory answers. Nil answers the way a
-	// cluster with no ArgoCD Secrets does -- an error -- because a fake that
-	// silently handed back an empty inventory would let a gate that renders
-	// against nothing pass its tests.
+	// Inventory is what ClusterInventory answers. Nil answers with an error,
+	// because a fake that silently handed back an empty inventory would let a
+	// gate that renders against nothing pass its tests.
 	Inventory    *gate.Inventory
 	InventoryErr error
 
@@ -42,7 +41,7 @@ func (f *Fake) ClusterInventory(_ context.Context) (*gate.Inventory, error) {
 		return nil, f.InventoryErr
 	}
 	if f.Inventory == nil {
-		return nil, fmt.Errorf("no ArgoCD cluster Secrets in namespace %q -- the gate cannot expand a generator against an empty inventory", "argocd")
+		return nil, fmt.Errorf("no clusters -- the gate cannot expand a generator against an empty inventory")
 	}
 	return f.Inventory, nil
 }

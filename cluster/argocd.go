@@ -16,35 +16,31 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/gate"
 )
 
-// ArgoCD reads the cluster inventory from the ArgoCD API server instead of
-// from the Secrets those clusters are stored in.
+// ArgoCD reads the cluster inventory from the ArgoCD API server. It is the
+// gate's only inventory source.
 //
-// WHY THIS EXISTS. Cluster mode's one uncomfortable grant is get/list on
-// Secrets in the ArgoCD namespace, and the reason it is uncomfortable is that
-// it cannot be made smaller. The gate wants four fields -- name, server,
-// labels, annotations -- and Kubernetes RBAC has no predicate that expresses
-// "the labels but not the data": there are no deny rules, `resourceNames`
-// does not apply to `list` (a list request carries no name for the authorizer
-// to match), and the label selector in the request URL is a filter the
-// apiserver applies AFTER authorising, so a token holding the Role can simply
-// drop it and read argocd-secret and every repository credential beside it.
+// WHY THE API AND NOT THE SECRETS those clusters are stored in. Reading them
+// needs get/list on Secrets in the ArgoCD namespace, and that grant cannot be
+// made smaller. The gate wants four fields -- name, server, labels,
+// annotations -- and Kubernetes RBAC has no predicate that expresses "the
+// labels but not the data": there are no deny rules, `resourceNames` does not
+// apply to `list` (a list request carries no name for the authorizer to
+// match), and the label selector in the request URL is a filter the apiserver
+// applies AFTER authorising, so a token holding the Role can simply drop it
+// and read argocd-secret and every repository credential beside it.
 //
 // ArgoCD already solved this for its own API: `GET /api/v1/clusters` serves
 // exactly those four fields and redacts the credential block, so the
-// authorisation happens somewhere that CAN express the distinction. Pointing
-// the gate at it deletes the Secret grant outright.
+// authorisation happens somewhere that CAN express the distinction.
 //
-// WHAT IT COSTS, stated as plainly as the grant it replaces. A second
-// credential to mint, store and rotate -- an ArgoCD account token, which is
+// WHAT IT COSTS, stated as plainly as the grant it replaces. A credential to
+// mint, store and rotate -- an ArgoCD account token, which is
 // bearer-equivalent for whatever that account's ArgoCD RBAC permits, so it
 // gets `clusters, get` and nothing else. A dependency on the ArgoCD API
-// server being up: the Secrets are readable whenever the apiserver is,
-// whereas this path adds a component that can be down on its own. And a
-// second TLS story, because argocd-server serves its own certificate rather
-// than the one the kubelet mounts into every pod.
-//
-// It is a genuine trade rather than a free win, which is why it is a value an
-// operator sets and not the default.
+// server being up: the apiserver is reachable whenever the cluster is,
+// whereas argocd-server can be down on its own. And its own TLS story,
+// because argocd-server serves its own certificate rather than the one the
+// kubelet mounts into every pod.
 type ArgoCD struct {
 	// BaseURL is the ArgoCD API server, e.g. https://argocd-server.argocd.svc.
 	BaseURL string
@@ -214,4 +210,22 @@ func (a *ArgoCD) get(ctx context.Context, path string, out any) error {
 		return nil
 	}
 	return json.Unmarshal(body, out)
+}
+
+// implicitLocalCluster is what an ArgoCD managing only the cluster it runs in
+// looks like: no Secret at all, because the local cluster is implicit.
+// ArgoCD's own clusters generator still includes it, as `in-cluster` with no
+// labels, so an inventory that mirrors ArgoCD says the same thing. No labels
+// is faithful, not lazy: a selector that matches on a label this entry lacks
+// excludes it in ArgoCD too, and the inventory validator will say so out loud.
+//
+// It is written here rather than read from anywhere because it is the one
+// entry the API does not return.
+func implicitLocalCluster() *gate.Inventory {
+	return &gate.Inventory{Clusters: []gate.Cluster{{
+		Name:        "in-cluster",
+		Server:      "https://kubernetes.default.svc",
+		Labels:      map[string]string{},
+		Annotations: map[string]string{},
+	}}}
 }

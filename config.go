@@ -52,47 +52,21 @@ type Config struct {
 
 	// Behaviour.
 	CheckName string
-	// GateMode is where the gate runs.
-	//
-	//   cluster (default) -- the agent IS the gate: it polls open pull
-	//     requests, renders base and head against the live cluster inventory,
-	//     and posts the CheckName status and report comment itself. No CI
-	//     adapter, no checked-in inventory, no report scraping.
-	//   ci -- the gate runs in CI (the original shape); the agent waits for
-	//     the check and reads the report out of a comment. The fallback for
-	//     public repositories taking fork pull requests, and for clusters
-	//     whose RBAC will not grant the ArgoCD Secret read.
-	GateMode GateMode
-	// GateForkPRs lets cluster mode render fork pull requests. Off by
+	// GateForkPRs lets the gate render fork pull requests. Off by
 	// default: rendering runs helm over the pull request's content, inside
 	// the cluster, and whose content that is should be an operator's call.
 	GateForkPRs bool
-	// GateReportAuthor is the only account whose gate report the agent will
-	// read. The gate publishes its verdict as a pull-request comment, and a
-	// comment is something anybody with write access can write -- including a
-	// comment carrying the gate's own marker and a report that says everything
-	// is fine. See Triage.GateReportAuthor.
+	// ArgoCDBaseURL is the ArgoCD API server the inventory is read from, e.g.
+	// https://argocd-server.argocd.svc. Required: there is no other source.
 	//
-	// "*" trusts any author, which is the behaviour that existed before this
-	// value and is still the only thing a host with no stable bot identity can
-	// express.
-	GateReportAuthor string
-	// InventorySource is where cluster mode reads the live inventory from.
-	//
-	//   secrets (default) -- the ArgoCD cluster Secrets, read straight from
-	//     the apiserver. One credential (the pod's own ServiceAccount), no
-	//     component in the path that can be down by itself, and a grant that
-	//     cannot be made smaller: RBAC has no way to say "the labels but not
-	//     the data", so the Role that reads them can read every Secret in the
-	//     ArgoCD namespace.
-	//   argocd -- the ArgoCD API, which serves the same four fields with the
-	//     credential block redacted. Deletes that grant, and pays for it with
-	//     a second credential and a second thing that can be down.
-	//
-	// Read only in cluster mode; CI mode renders against a snapshot.
-	InventorySource InventorySource
-	// ArgoCDBaseURL is the ArgoCD API server, e.g.
-	// https://argocd-server.argocd.svc. InventorySource argocd only.
+	// It is the ArgoCD API rather than the cluster Secrets those clusters are
+	// stored in because the Secret read cannot be made small enough. The gate
+	// wants four fields -- name, server, labels, annotations -- and RBAC has
+	// no predicate for "the labels but not the data": no deny rules,
+	// `resourceNames` does not apply to `list`, and the request's label
+	// selector is a filter the apiserver applies AFTER authorising. GET
+	// /api/v1/clusters serves the same four fields with the credential block
+	// redacted, so the authorisation happens somewhere that can draw the line.
 	ArgoCDBaseURL string
 	// ArgoCDToken authenticates to it: an ArgoCD account token, which needs
 	// `clusters, get` in ArgoCD's own RBAC and nothing else.
@@ -104,7 +78,6 @@ type Config struct {
 	// nobody can produce its CA.
 	ArgoCDInsecureSkipTLSVerify bool
 	MaxAttempts                 int
-	GateWait                    time.Duration
 	GatePoll                    time.Duration
 
 	// Supervise turns on the pipeline sweep: a periodic read of Kargo that
@@ -183,34 +156,16 @@ func LoadConfig() (*Config, error) {
 		LLMReasoningEffort: os.Getenv("LLM_REASONING_EFFORT"),
 
 		CheckName: env("GATE_CHECK_NAME", "addons-gate"),
-		GateMode:  GateMode(env("GATE_MODE", "cluster")),
 		CloneRoot: env("CLONE_ROOT", ""),
 	}
 	c.GateForkPRs = envBool("GATE_FORK_PRS", false)
-	c.InventorySource = InventorySource(env("INVENTORY_SOURCE", string(InventoryFromSecrets)))
 	c.ArgoCDBaseURL = os.Getenv("ARGOCD_BASE_URL")
 	c.ArgoCDToken = os.Getenv("ARGOCD_TOKEN")
 	c.ArgoCDCAFile = os.Getenv("ARGOCD_CA_FILE")
 	c.ArgoCDInsecureSkipTLSVerify = envBool("ARGOCD_INSECURE_SKIP_TLS_VERIFY", false)
 
-	// Defaulted per host rather than globally, because the answer is a fact
-	// about the host and not a preference. A gate running in GitHub Actions
-	// comments through `github.token` and therefore as `github-actions[bot]`,
-	// every time, on every repository -- so GitHub gets a default that is
-	// simply correct. Gitea Actions has no equivalent fixed identity: the
-	// report arrives as whichever user minted the CI token, which this cannot
-	// know. Defaulting that to a GitHub name would break every Gitea install
-	// on upgrade in the name of a check it could not perform.
-	c.GateReportAuthor = os.Getenv("GATE_REPORT_AUTHOR")
-	if c.GateReportAuthor == "" && c.GitProvider == GitGitHub {
-		c.GateReportAuthor = "github-actions[bot]"
-	}
-
 	var err error
 	if c.MaxAttempts, err = envInt("MAX_ATTEMPTS", 2); err != nil {
-		return nil, err
-	}
-	if c.GateWait, err = envDur("GATE_WAIT", 10*time.Minute); err != nil {
 		return nil, err
 	}
 	c.AppID = os.Getenv("GITHUB_APP_ID")
@@ -313,43 +268,17 @@ func (c *Config) validate() error {
 		return fmt.Errorf("GIT_PROVIDER %q is not implemented yet -- see docs/git-providers.md", c.GitProvider)
 	}
 
-	switch c.GateMode {
-	case GateInCluster, GateInCI:
-	default:
-		return fmt.Errorf("GATE_MODE %q is not a mode (cluster or ci)", c.GateMode)
+	// Checked here rather than left to the reader's start-up probe, because a
+	// missing URL or token is a values mistake with a one-line fix and this is
+	// where the other one-line fixes are named. The probe still runs: it
+	// catches the failures this cannot see, like a token ArgoCD rejects.
+	if c.ArgoCDBaseURL == "" {
+		return fmt.Errorf("ARGOCD_BASE_URL is empty: the gate reads the cluster inventory " +
+			"from the ArgoCD API and needs its address, e.g. https://argocd-server.argocd.svc")
 	}
-
-	switch c.InventorySource {
-	case InventoryFromSecrets:
-	case InventoryFromArgoCD:
-		// Checked here rather than left to the reader's start-up probe,
-		// because a missing URL or token is a values mistake with a one-line
-		// fix and this is where the other one-line fixes are named. The probe
-		// still runs: it catches the failures this cannot see, like a token
-		// ArgoCD rejects.
-		if c.GateMode == GateInCluster {
-			if c.ArgoCDBaseURL == "" {
-				return fmt.Errorf("INVENTORY_SOURCE is argocd but ARGOCD_BASE_URL is empty: " +
-					"the gate needs the ArgoCD API server, e.g. https://argocd-server.argocd.svc")
-			}
-			if c.ArgoCDToken == "" {
-				return fmt.Errorf("INVENTORY_SOURCE is argocd but ARGOCD_TOKEN is empty: " +
-					"mint one with `argocd account generate-token --account <account>`")
-			}
-		}
-	default:
-		return fmt.Errorf("INVENTORY_SOURCE %q is not a source (secrets or argocd)", c.InventorySource)
-	}
-
-	// Supervision needs the cluster reader, which is only built for live reads
-	// or cluster-mode gating. This defaults ON, so a GATE_MODE=ci deployment
-	// that never asked for supervision used to start healthy with /pipeline
-	// and /metrics answering 404 forever, behind one log line at boot. Every
-	// other cross-field rule here is a hard failure; this one was not, and it
-	// was the one nobody would notice.
-	if c.Supervise && !c.LiveReads && c.GateMode != "cluster" {
-		return fmt.Errorf("SUPERVISE_PIPELINE needs apiserver access: " +
-			"set LIVE_READS=true or GATE_MODE=cluster, or set SUPERVISE_PIPELINE=false")
+	if c.ArgoCDToken == "" {
+		return fmt.Errorf("ARGOCD_TOKEN is empty: mint one with " +
+			"`argocd account generate-token --account <account>`")
 	}
 
 	// An empty allowlist means the agent can write nothing. That is the safe
@@ -447,8 +376,8 @@ func envList(k string) []string {
 	return out
 }
 
-// GitProviderName, LLMProviderName and GateMode are the three settings whose
-// value selects a code path.
+// GitProviderName and LLMProviderName are the two settings whose value selects
+// a code path.
 //
 // Named types with const blocks rather than bare strings with a trailing
 // comment. Each is validated in one switch and dispatched in another, in a
@@ -467,23 +396,4 @@ type LLMProviderName string
 const (
 	LLMOpenAI    LLMProviderName = "openai"
 	LLMAnthropic LLMProviderName = "anthropic"
-)
-
-// GateMode is where the gate runs: in this process against the live cluster,
-// or in CI with the agent reading the report from a comment.
-type GateMode string
-
-const (
-	GateInCluster GateMode = "cluster"
-	GateInCI      GateMode = "ci"
-)
-
-// InventorySource is where cluster mode reads the live cluster inventory
-// from. Same rule as the three above: it selects a code path, so it is a named
-// type validated in one switch and dispatched in another.
-type InventorySource string
-
-const (
-	InventoryFromSecrets InventorySource = "secrets"
-	InventoryFromArgoCD  InventorySource = "argocd"
 )

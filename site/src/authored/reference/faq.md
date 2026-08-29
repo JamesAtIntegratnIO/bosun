@@ -70,33 +70,28 @@ against a vendor you did not choose.
 
 ## Do I have to give it my cluster credentials?
 
-Cluster mode needs **get/list on Secrets in the ArgoCD namespace** — those
-Secrets are the live inventory the gate renders against, and they also carry
-cluster credentials. The chart scopes that grant to a namespaced Role, in that
-namespace only, in cluster mode only.
+It needs an **ArgoCD account token with `clusters, get`** and nothing else. The
+gate reads four fields per cluster — name, server, labels, annotations — from
+`GET /api/v1/clusters`, which serves them with the credential block redacted.
 
-It is the one grant in the chart worth stopping on, and it cannot be made
-smaller: RBAC has no way to say "the labels but not the data". Two ways out if
-you will not make it. `gate.inventorySource: argocd` reads the same four fields
-from ArgoCD's own API, which redacts the credentials, and the Role stops being
-created — the cost is an ArgoCD account token with `clusters, get` and a second
-component that can be down. Or `gate.mode: ci` keeps the original shape whole:
-the gate runs as a container in your CI, and the agent reads the verdict from a
-comment.
+It is the API rather than the cluster Secrets those clusters are stored in
+because that Secret read could not be made small enough: RBAC has no way to say
+"the labels but not the data", so a Role that could read the labels could read
+`argocd-secret` beside them. The chart creates no Role over Secrets at all. The
+cost is a credential to mint and rotate, and a component that can be down on its
+own — argocd-server is not up whenever the apiserver is.
 
 Beyond that, live reads are **off by default**, and are `get` and `list` only —
 the ClusterRole has no `create`, `update`, `patch` or `delete` verb anywhere.
 
 ## Can it read my Secrets?
 
-**In one namespace, by default, yes** — and only there. `gate.mode: cluster`
-with `gate.inventorySource: secrets` (both defaults) binds a namespaced Role
-granting `get`/`list` on Secrets in the ArgoCD namespace, because the inventory
-the gate renders against *is* ArgoCD's cluster Secrets. That grant is the
-subject of the question above, and `gate.inventorySource: argocd` removes it.
+**No.** The chart creates no Role or ClusterRole granting `get`/`list` on
+Secrets anywhere. The one read that used to need it — the gate's cluster
+inventory — comes from ArgoCD's API instead, which is the question above.
 
-**Cluster-wide, no.** With `liveReads.scope: groups` (the default) the core API
-group is never granted beyond `pods, events`.
+With `liveReads.scope: groups` (the default) the core API group is never granted
+beyond `pods, events`.
 
 **Unless you set `scope: wide`**, which grants `apiGroups: ["*"]` and therefore
 **includes Secrets, everywhere**. RBAC has no deny rules and no way to subtract
@@ -115,29 +110,25 @@ inspection.
 
 ## What happens when the cluster is down?
 
-In cluster mode the gate is the agent, so a required `addons-gate` check will
-not report and merges block. That is the gate failing loudly, which is the
-correct behaviour — but it means the human override should exist *before* it is
-needed.
+The gate is the agent, so a required `addons-gate` check will not report and
+merges block. That is the gate failing loudly, which is the correct behaviour —
+but it means the human override should exist *before* it is needed.
 
 Leave yourself a bypass: with classic branch protection, *Include
 administrators* unticked; with rulesets, a bypass for your own account and
 **not** for the bot.
 
-If you need a gate that outlives the cluster, that is what `gate.mode: ci` is
-for.
-
 ## Does it work with GitLab or Bitbucket?
 
 Not yet. GitHub and Gitea are implemented and exercised; GitLab and Bitbucket
-are extension points behind a ten-method interface. The gate itself is
-host-agnostic — it is a container with an exit code — so the CI half already
-works anywhere. See [Git providers](/reference/git-providers/).
+are extension points behind a ten-method interface. See [Git
+providers](/reference/git-providers/).
 
 ## Do I need Kargo?
 
 For the **gate**, no. It renders and diffs a pull request; where the pull
-request came from is not its business, and it runs from any CI as a container.
+request came from is not its business, and the same engine runs from a
+workstation as a container.
 
 For the **agent's triage**, effectively yes — it wants the promotion context
 (artifact, from, to, the files the promotion touched) that arrives as a POST
@@ -146,16 +137,17 @@ when the promotion opens the pull request. Anything that can POST that shape to
 
 ## Do I need ArgoCD?
 
-For cluster mode, yes — the ArgoCD cluster Secrets *are* the inventory the gate
-expands ApplicationSets against, whether it reads them directly or through
-ArgoCD's API (`gate.inventorySource`). In CI mode that inventory is a
-checked-in snapshot instead, maintained by `gitops-gate clusters export`.
+Yes. ArgoCD's clusters *are* the inventory the gate expands ApplicationSets
+against, and the agent reads them from ArgoCD's API. The CLI works against a
+checked-in snapshot of the same thing, maintained by `gitops-gate clusters
+export`.
 
 ## Why are the gate and the agent in one repository?
 
-Because they are joined by contracts nothing else checks: the agent finds the
-gate's verdict by searching comments for a marker the gate emits, and any
-version it writes must appear verbatim in the gate's rendered report.
+Because they are joined by contracts nothing else checks: any version the agent
+writes must appear verbatim in the gate's rendered report, and the report's own
+vocabulary — the marker, the verdict stamp, the blocker breakdown — is read back
+by the code that publishes it.
 
 Both of those broke, silently, while the two halves were separate packages. A
 boundary is safe where its contract can be tested.
@@ -182,9 +174,8 @@ docker run --rm -v "$PWD:/repo" -w /repo \
   diff -base targets-base.json -head targets-head.json -repo . -report report.md
 ```
 
-Multi-arch, so it runs on an arm64 laptop as well as an amd64 runner — a gate
+Multi-arch, so it runs on an arm64 laptop as well as an amd64 machine — a gate
 you cannot reproduce locally is a gate nobody reproduces before pushing.
-Ready-made adapters are in [CI adapters](/gate/ci-adapters/).
 
 ## Can I redistribute it, fork it publicly, or run it for a client?
 

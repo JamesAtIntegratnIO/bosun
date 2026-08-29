@@ -102,22 +102,20 @@ for the document path.
 
 ## Where the gate runs
 
-Since [ADR 0008](/decisions/0008-the-gate-moves-in-cluster/) the default is
-`gate.mode: cluster`: the agent **is** the gate. It polls your open pull
-requests, renders base and head against the live ArgoCD cluster inventory, and
-posts the `addons-gate` status and report comment itself. There is no CI
-workflow to install, no checked-in cluster inventory to go stale, and no paths
-filter to hand-edit.
+Since [ADR 0008](/decisions/0008-the-gate-moves-in-cluster/) the agent **is**
+the gate. It polls your open pull requests, renders base and head against the
+live cluster inventory read from ArgoCD's API, and posts the `addons-gate`
+status and report comment itself. There is no CI workflow to install, no
+checked-in cluster inventory to go stale, and no paths filter to hand-edit.
 
-The same engine still ships as a container with an exit code, for local runs
-before pushing and for `gate.mode: ci` — fork pull requests, or a gate that must
-keep answering while the cluster is down. See [CI adapters](/gate/ci-adapters/).
+The same engine also ships as a container with an exit code, for a run from a
+workstation before pushing.
 
 ## What it needs
 
 - **Kargo** 1.11 or newer, or anything else that can POST a promotion event.
-- **ArgoCD**, whose cluster Secrets are the live inventory the gate renders
-  against.
+- **ArgoCD**, whose API serves the live cluster inventory the gate renders
+  against, on an account token with `clusters, get`.
 - A **git host** — `github` or `gitea` today, behind a small interface.
 - An **OpenAI- or Anthropic-compatible model endpoint**. There is no default, on
   purpose: a service that silently starts spending money against a vendor you

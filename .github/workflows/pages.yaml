@@ -23,7 +23,6 @@ on:
       - 'adr/**'
       - 'gate/README.md'
       - 'gate/docs/**'
-      - 'ci/README.md'
       - 'charts/*/README.md'
       - 'charts/*/docs/**'
       - 'local/README.md'

@@ -149,7 +149,7 @@ func TestAForeignReportIsNotRewritten(t *testing.T) {
 	ctx := context.Background()
 	f.Comments = []gitprovider.Comment{{
 		ID: 99, Author: "github-actions[bot]",
-		Body: gate.ReportMarker + "\nposted by a CI adapter, with no verdict stamp",
+		Body: gate.ReportMarker + "\nposted by somebody else, with no verdict stamp",
 	}}
 	gs.comment(ctx, &gitprovider.PullRequest{Number: 7, HeadSHA: "abcdef12"},
 		reportFor(true, "Blocking — 1 object whose own apiVersion moved", "x"))

@@ -125,14 +125,13 @@ helm install bosun oci://ghcr.io/jamesatintegratnio/charts/bosun \
 ```
 
 then protect the `addons-gate` check and commit a sources-only
-`.gitops-gate.yaml`. The agent gates its own pull requests by default
-(`gate.mode: cluster`): it renders every open pull request against the live
-ArgoCD cluster inventory and posts the status and report itself — no CI
-workflow, no checked-in inventory snapshot, no paths filter.
+`.gitops-gate.yaml`. The agent is the gate: it renders every open pull request
+against the live cluster inventory, read from ArgoCD's API, and posts the status
+and report itself — no CI workflow, no checked-in inventory snapshot, no paths
+filter.
 
-The same gate is still a container with an exit code, for local runs before
-pushing and for the CI fallback (`gate.mode: ci` — fork pull requests, or a
-gate that must outlive the cluster):
+The same gate is also a container with an exit code, for local runs before
+pushing:
 
 ```bash
 docker run --rm -v "$PWD:/repo" -w /repo \
@@ -140,9 +139,8 @@ docker run --rm -v "$PWD:/repo" -w /repo \
   diff -base targets-base.json -head targets-head.json -repo . -report report.md
 ```
 
-Ready-made CI adapters are in [`ci/`](ci). Multi-arch, so it runs on an arm64
-laptop as well as an amd64 runner — a gate you cannot reproduce locally is a
-gate nobody reproduces before pushing.
+Multi-arch, so it runs on an arm64 laptop as well as an amd64 machine — a gate
+you cannot reproduce locally is a gate nobody reproduces before pushing.
 
 The chart deploys the service, its RBAC and both halves of its NetworkPolicy.
 It consumes **existing Secrets by name** — bring your own secret manager. See
@@ -162,9 +160,8 @@ Then point Kargo's promotion at it:
 ## Requirements
 
 - **Kargo** 1.11 or newer, or anything else that can POST a promotion event.
-- **ArgoCD**, whose cluster Secrets are the live inventory the gate renders
-  against. (In `gate.mode: ci`, this becomes: a CI system running the gate
-  and posting its report comment and commit status.)
+- **ArgoCD**, whose API serves the live cluster inventory the gate renders
+  against. It needs an account token with `clusters, get` and nothing else.
 - A **git host** — `github` or `gitea` today, behind a small interface.
 - An **OpenAI- or Anthropic-compatible model endpoint**. There is no default,
   on purpose: a service that silently starts spending money against a vendor
@@ -190,7 +187,6 @@ Everything below is also published, cross-linked and searchable at
 | [`docs/git-providers.md`](docs/git-providers.md) | the `gitprovider.Provider` interface; adding one |
 | [`docs/supervisor.md`](docs/supervisor.md) | watching the promotion pipeline for what has silently stopped |
 | [`gate/README.md`](gate/README.md) | the gate: what it checks, and what it deliberately does not |
-| [`ci/`](ci) | CI adapters, and the contract an adapter must satisfy |
 | [`local/`](local) | a disposable cluster that runs the whole flow, and replays the ten recorded incidents against the live agent |
 | [`adr/`](adr) | why it is built this way, and what each decision cost |
 
@@ -208,15 +204,15 @@ verdict is the output of `helm template` — rendering locally with a different
 helm than production is a difference that looks like nothing at all. See
 [`CONTRIBUTING.md`](CONTRIBUTING.md#the-toolchain).
 
-The [local proving ground](local) builds a throwaway cluster and replays ten
-incidents that really happened to the platform this was built for — real pull
-requests, the live model, real commits pushed by the service:
+The [local proving ground](local) builds a throwaway cluster and runs the whole
+flow against it — real pull requests, the live model, real commits pushed by the
+service, and the gate answering from inside the cluster:
 
 ```bash
 cd local
 export LLM_BASE_URL=http://<your-host>:1234/v1
 make up
-make scenarios
+make demo
 ```
 
 ## License
@@ -239,12 +235,11 @@ image from the registry is *use*, not distribution.
 
 Developed inside [`gitops_homelab_2_0`](https://github.com/JamesAtIntegratnIO/gitops_homelab_2_0)
 as `delivery/`, and extracted here in two steps on 2026-08-23: the agent and
-its chart first, then the gate, both Kargo charts, the CI adapters and the
-proving ground. The agent was called `delivery-agent` until that day.
+its chart first, then the gate, both Kargo charts and the proving ground. The
+agent was called `delivery-agent` until that day.
 
-That platform repository is still the reference consumer — it runs the gate in
-CI and the agent in-cluster, and every incident in [`evals/`](evals) came from
-it.
+That platform repository is still the reference consumer — it runs the agent
+in-cluster, and every incident in [`evals/`](evals) came from it.
 
 **Not here:** `kargo-observability`, which turns Kargo's own state into
 Prometheus metrics and alerts. It shares no contract with the gate or the

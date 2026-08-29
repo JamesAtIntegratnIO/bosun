@@ -3,6 +3,68 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.22.0] - 2026-08-28
+
+The gate runs in one place and reads its inventory from one source.
+[ADR 0009](adr/0009-one-gate-one-inventory.md) is the argument; this is what
+moved.
+
+### Removed
+
+- **BREAKING: `GATE_MODE` / `gate.mode`.** The agent is the gate. The CI
+  placement kept its own half of the system alive — the verdict travelling
+  through a pull-request comment the agent scraped back off the host, the
+  `reportAuthor` trust check that existed because a comment is forgeable, the
+  `GATE_WAIT` poll loop, and `CheckMissing` treated as pending — all carried by
+  every reader of this codebase for a path the default install did not take.
+
+  Gone with it: `GATE_WAIT` / `gate.wait`, `GATE_REPORT_AUTHOR` /
+  `gate.reportAuthor`, the `waitForGate` and `gateReport` paths in the agent,
+  and the `ci/` adapter directory with `gate/docs/adding-a-ci-provider.md`. Two
+  of the three adapters were written against documentation and never run.
+
+  Branch protection does not change: the agent posts the same `gate.checkName`
+  status. A repository taking **fork** pull requests now has only `gate.forkPRs`
+  to decide with, since the render runs in-cluster.
+
+- **BREAKING: `INVENTORY_SOURCE` / `gate.inventorySource`.** The inventory comes
+  from `GET /api/v1/clusters` on the ArgoCD API, and from nowhere else.
+
+  Two decoders for the same facts was a defect waiting for a key one trimmed and
+  the other did not — which is not hypothetical: running both against a real
+  ArgoCD is what found that the API strips ArgoCD's own `managed-by` annotation
+  while the Secrets carry it. A selector matches on those maps, so a
+  disagreement is a different targeting verdict from the same cluster.
+
+- **The chart's Role over Secrets in the ArgoCD namespace.** Nothing this chart
+  renders now grants `get`/`list` on Secrets. That grant could not be made
+  smaller — RBAC has no predicate for "the labels but not the data",
+  `resourceNames` does not apply to `list`, and the label selector the gate sent
+  was a filter the apiserver applied *after* authorising — and leaving it as the
+  default meant every install that did not read the values file carefully got
+  it.
+
+- **`make scenarios` and `make demo-forged` in the proving ground.** The replay
+  fed the agent the recorded gate report from each incident in `evals/` as a
+  comment; the gate is in-process now and reads no such comment. The fixtures
+  are unchanged and still scored by `go test ./evals/...`. The forged-report act
+  had `gate.reportAuthor` as its whole subject.
+
+### Changed
+
+- **BREAKING: `ARGOCD_BASE_URL` and `ARGOCD_TOKEN` are required, and
+  `gate.argocd.baseURL` has no chart default.** A plausible-but-wrong address
+  does not fail where an operator would look for it — the connection hangs for
+  the full HTTP timeout and the pod dies at start-up saying argocd-server is
+  unreachable. A required value fails at `helm upgrade`, naming the value.
+
+- **The proving ground gates through the agent.** Every demo act changes the
+  sample repository, opens a pull request and waits for the verdict the agent
+  publishes from its sweep — no `gate-run.sh` standing in for a CI system, and
+  no seeded status or comment. `make demo-cluster-gate` no longer flips a mode;
+  it asserts the three properties directly. `30-kit.sh` mints an ArgoCD account
+  token with `clusters, get` the way the chart README asks an operator to.
+
 ## [0.21.0] - 2026-08-28
 
 ### Fixed

@@ -184,40 +184,24 @@
           "type": "string",
           "minLength": 1
         },
-        "wait": {
-          "type": "string",
-          "pattern": "^\\d+[smh]$|^\\d+[hm]\\d+[ms]$|^\\d+h\\d+m\\d+s$"
-        },
         "poll": {
           "type": "string",
           "pattern": "^\\d+[smh]$|^\\d+[hm]\\d+[ms]$|^\\d+h\\d+m\\d+s$"
         },
-        "reportAuthor": {
-          "type": "string"
-        },
-        "mode": {
-          "type": "string",
-          "enum": [
-            "cluster",
-            "ci"
-          ]
-        },
         "forkPRs": {
           "type": "boolean"
-        },
-        "inventorySource": {
-          "type": "string",
-          "enum": [
-            "secrets",
-            "argocd"
-          ]
         },
         "argocd": {
           "type": "object",
           "additionalProperties": false,
+          "required": [
+            "baseURL",
+            "existingSecret"
+          ],
           "properties": {
             "baseURL": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "podPort": {
               "type": "integer",
@@ -225,7 +209,8 @@
               "maximum": 65535
             },
             "existingSecret": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "tokenKey": {
               "type": "string",
@@ -244,40 +229,8 @@
           }
         }
       },
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "inventorySource": {
-                "const": "argocd"
-              }
-            },
-            "required": [
-              "inventorySource"
-            ]
-          },
-          "then": {
-            "properties": {
-              "argocd": {
-                "required": [
-                  "baseURL",
-                  "existingSecret"
-                ],
-                "properties": {
-                  "baseURL": {
-                    "minLength": 1
-                  },
-                  "existingSecret": {
-                    "minLength": 1
-                  }
-                }
-              }
-            },
-            "required": [
-              "argocd"
-            ]
-          }
-        }
+      "required": [
+        "argocd"
       ]
     },
     "triage": {

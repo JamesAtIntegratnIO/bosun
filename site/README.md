@@ -6,8 +6,8 @@ to GitHub Pages by [`.github/workflows/pages.yaml`](../.github/workflows/pages.y
 ## The one thing to understand
 
 **The markdown in this repository is the source of truth, and it does not live
-here.** `docs/`, `adr/`, `gate/docs/`, the chart READMEs and `ci/README.md` stay
-exactly where they are and stay readable on GitHub;
+here.** `docs/`, `adr/`, `gate/docs/` and the chart READMEs stay exactly where
+they are and stay readable on GitHub;
 [`scripts/sync-docs.mjs`](scripts/sync-docs.mjs) copies them into
 `src/content/docs/` at build time.
 
