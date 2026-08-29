@@ -1,9 +1,31 @@
 package gate
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
+
+// ErrFlagLike is a value helm would read as a flag rather than as itself.
+var ErrFlagLike = errors.New("begins with a dash, so helm reads it as a flag rather than as a value")
+
+// RefuseFlagLike rejects a value that is about to be placed in helm's argv as
+// a bare token.
+//
+// Helm's parser accepts flags interspersed with positionals, so a chart named
+// `--post-renderer=/tmp/x` is not a chart name at all: it is helm being told to
+// exec a binary. Execution here is argv and never a shell, so this is flag
+// injection rather than command injection, but the chart, the repository and
+// the version all reach argv from either the promotion payload or the pull
+// request's own `.gitops-gate.yaml`, and neither of those has a trust level
+// established anywhere in this program. Refusing the whole shape costs one
+// comparison and does not depend on knowing which flags helm happens to have.
+func RefuseFlagLike(what, v string) error {
+	if strings.HasPrefix(strings.TrimSpace(v), "-") {
+		return fmt.Errorf("%s %q %w", what, v, ErrFlagLike)
+	}
+	return nil
+}
 
 // HelmChartArgs turns a chart repository and chart name into the leading
 // arguments of a `helm template` invocation.
@@ -29,6 +51,13 @@ import (
 func HelmChartArgs(repo, chart string) ([]string, error) {
 	repo = strings.TrimSpace(repo)
 	chart = strings.TrimSpace(chart)
+
+	if err := RefuseFlagLike("chart repository", repo); err != nil {
+		return nil, err
+	}
+	if err := RefuseFlagLike("chart", chart); err != nil {
+		return nil, err
+	}
 
 	switch {
 	case strings.HasPrefix(repo, "https://") || strings.HasPrefix(repo, "http://"):

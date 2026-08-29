@@ -1,4 +1,15 @@
 {{- include "bosun.validate" . -}}
+{{- /*
+Credentials arrive one of two ways and never both.
+
+`credentials.mountAsFiles` projects each one into /etc/bosun/credentials and
+sets the _FILE variant; off, each one is a secretKeyRef into an environment
+variable, which is what this chart always did. Start-up fails when both forms
+of the same credential are set, so every block below is an if/else rather than
+an addition.
+*/ -}}
+{{- $files := .Values.credentials.mountAsFiles -}}
+{{- $credDir := "/etc/bosun/credentials" -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -46,12 +57,17 @@ spec:
               value: {{ .Values.branding.name | default "bosun" | quote }}
             - name: MAX_CONCURRENT_TRIAGE
               value: {{ .Values.maxConcurrentTriage | default 4 | quote }}
-            {{- with .Values.promotionAuth.existingSecret }}
+            {{- if .Values.promotionAuth.existingSecret }}
+            {{- if $files }}
+            - name: PROMOTION_TOKEN_FILE
+              value: {{ printf "%s/promotion-token" $credDir | quote }}
+            {{- else }}
             - name: PROMOTION_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ . }}
-                  key: {{ $.Values.promotionAuth.tokenKey | default "token" }}
+                  name: {{ .Values.promotionAuth.existingSecret }}
+                  key: {{ .Values.promotionAuth.tokenKey | default "token" }}
+            {{- end }}
             {{- end }}
             - name: GIT_PROVIDER
               value: {{ .Values.git.provider | quote }}
@@ -87,17 +103,27 @@ spec:
             - name: GITHUB_APP_INSTALLATION_ID
               value: {{ . | quote }}
             {{- end }}
+            {{- if $files }}
+            - name: GITHUB_APP_PRIVATE_KEY_FILE
+              value: {{ printf "%s/github-app-private-key" $credDir | quote }}
+            {{- else }}
             - name: GITHUB_APP_PRIVATE_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.git.app.existingSecret | default .Values.git.existingSecret }}
                   key: {{ .Values.git.app.privateKeyKey }}
+            {{- end }}
+            {{- else }}
+            {{- if $files }}
+            - name: GIT_TOKEN_FILE
+              value: {{ printf "%s/git-token" $credDir | quote }}
             {{- else }}
             - name: GIT_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.git.existingSecret }}
                   key: {{ .Values.git.tokenKey }}
+            {{- end }}
             {{- end }}
             - name: LLM_PROVIDER
               value: {{ .Values.llm.provider | quote }}
@@ -114,11 +140,16 @@ spec:
             - name: LLM_TIMEOUT
               value: {{ .Values.llm.timeout | quote }}
             {{- if .Values.llm.existingSecret }}
+            {{- if $files }}
+            - name: LLM_API_KEY_FILE
+              value: {{ printf "%s/llm-api-key" $credDir | quote }}
+            {{- else }}
             - name: LLM_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.llm.existingSecret }}
                   key: {{ .Values.llm.apiKeyKey }}
+            {{- end }}
             {{- end }}
             - name: GATE_FORK_PRS
               value: {{ .Values.gate.forkPRs | quote }}
@@ -136,11 +167,16 @@ spec:
             # empty string is a value the schema would accept.
             - name: ARGOCD_BASE_URL
               value: {{ required "gate.argocd.baseURL is required: the gate reads the cluster inventory from the ArgoCD API" .Values.gate.argocd.baseURL | quote }}
+            {{- if $files }}
+            - name: ARGOCD_TOKEN_FILE
+              value: {{ printf "%s/argocd-token" $credDir | quote }}
+            {{- else }}
             - name: ARGOCD_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ required "gate.argocd.existingSecret is required: it holds the ArgoCD account token the gate reads the inventory with" .Values.gate.argocd.existingSecret }}
                   key: {{ .Values.gate.argocd.tokenKey }}
+            {{- end }}
             {{- if .Values.gate.argocd.caSecret }}
             - name: ARGOCD_CA_FILE
               value: /etc/bosun/argocd-ca/{{ .Values.gate.argocd.caKey }}
@@ -153,6 +189,10 @@ spec:
               value: {{ .Values.triage.migrateDroppedVersions | quote }}
             {{- with .Values.triage.egressDeny }}
             - name: EGRESS_DENY
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.triage.egressAllowPrivate }}
+            - name: EGRESS_ALLOW_PRIVATE
               value: {{ join "," . | quote }}
             {{- end }}
             - name: STRUCTURAL_MIGRATION
@@ -208,6 +248,14 @@ spec:
             # had to think about it.
             - name: tmp
               mountPath: /tmp
+            {{- if $files }}
+            # The credentials, as files rather than as environment. Read once
+            # by the agent at start-up, and never inherited by the git or helm
+            # subprocess the way the whole environment is.
+            - name: credentials
+              mountPath: {{ $credDir }}
+              readOnly: true
+            {{- end }}
             {{- if .Values.gate.argocd.caSecret }}
             # The CA that verifies argocd-server. Nothing mounts one for it the
             # way the kubelet does for the apiserver, so it has to come from
@@ -232,6 +280,57 @@ spec:
           emptyDir: {}
         - name: tmp
           emptyDir: {}
+        {{- if $files }}
+        # Every credential the env vars would have carried, from the same
+        # Secrets and the same keys, projected into one directory.
+        #
+        # 0444 and not 0400, which is the mode this obviously wants. A secret
+        # volume's files are owned by root unless a pod fsGroup says otherwise,
+        # and this pod runs as 10001, so 0400 is a credential the process
+        # cannot open. That arrives at start-up as missing configuration, over
+        # a Secret an operator can see is correct, and points nowhere near the
+        # mode. Nothing else runs in this container.
+        #
+        # `projected` and not one volume per Secret: the credentials commonly
+        # live in one Secret and commonly do not, and a projected volume is the
+        # only shape where that difference changes nothing but this list.
+        - name: credentials
+          projected:
+            defaultMode: 0444
+            sources:
+              {{- if .Values.git.app.appId }}
+              - secret:
+                  name: {{ .Values.git.app.existingSecret | default .Values.git.existingSecret }}
+                  items:
+                    - key: {{ .Values.git.app.privateKeyKey }}
+                      path: github-app-private-key
+              {{- else }}
+              - secret:
+                  name: {{ .Values.git.existingSecret }}
+                  items:
+                    - key: {{ .Values.git.tokenKey }}
+                      path: git-token
+              {{- end }}
+              {{- if .Values.llm.existingSecret }}
+              - secret:
+                  name: {{ .Values.llm.existingSecret }}
+                  items:
+                    - key: {{ .Values.llm.apiKeyKey }}
+                      path: llm-api-key
+              {{- end }}
+              - secret:
+                  name: {{ required "gate.argocd.existingSecret is required: it holds the ArgoCD account token the gate reads the inventory with" .Values.gate.argocd.existingSecret }}
+                  items:
+                    - key: {{ .Values.gate.argocd.tokenKey }}
+                      path: argocd-token
+              {{- with .Values.promotionAuth.existingSecret }}
+              - secret:
+                  name: {{ . }}
+                  items:
+                    - key: {{ $.Values.promotionAuth.tokenKey | default "token" }}
+                      path: promotion-token
+              {{- end }}
+        {{- end }}
         {{- if .Values.gate.argocd.caSecret }}
         - name: argocd-ca
           secret:

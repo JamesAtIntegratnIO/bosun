@@ -105,8 +105,31 @@ That pin earns its keep. The gate's verdict *is* the output of `helm template`,
 so the helm that produced it is part of the answer: render with a different one
 and you get a verdict that is locally true and globally wrong, and nothing
 about the symptom points at a version. The Dockerfile already says this where
-it pins, and `hack/portability-test.sh` asserts the flake agrees with it,
-because two copies of a version number drift.
+it pins, and `hack/portability-test.sh` asserts the flake and CI agree with it,
+because three copies of a version number drift.
+
+**Bumping either one is not a one-line change.** The version is written in
+`flake.nix`, `Dockerfile` and `ci.yaml`, and the Dockerfile carries a
+per-architecture `sha256` beside it, because the tarballs differ per
+architecture and one digest would be right for exactly one of them.
+`flake.nix` has its own four hashes, one per platform the dev shell builds for.
+Move all of it together. `hack/portability-test.sh` asserts that all three
+agree on the version strings, so a forgotten copy fails a check rather than
+waiting to be noticed. It reads versions and not digests: a stale `sha256` is
+caught at build time by `sha256sum -c`, which is the other half of the same
+guarantee.
+
+The digests are checked in rather than fetched from beside the tarball. Both
+projects publish a checksum file served by the host that served the tarball, so
+verifying against it proves only that the two agree, which they would after a
+compromised release too.
+
+helm and kubeconform are **deliberately excluded from Dependabot**, and
+`.github/dependabot.yml` says so where it excludes them. Dependabot bumps one
+copy of one thing: a bumped version beside a stale checksum is a green-looking
+pull request handed to whoever has to reconcile the rest. Left out, a hand bump
+that forgets a digest fails on `sha256sum -c` at build time, loudly, which is
+the safe direction to be wrong in.
 
 Two tools stay outside the shell, because they manage host state a second copy
 would fight over: **colima** (a VM with state in `~/.colima`) and
@@ -119,6 +142,7 @@ with brew, and the shell says so if they are missing.
 go test ./...              # both commands, unit tests and the eval suite
 gofmt -l .                 # must print nothing
 go vet ./...
+go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 hack/lint.sh               # helm lint + values.schema.json validation
 hack/portability-test.sh   # no environment assumptions; everything renders
 
@@ -130,6 +154,15 @@ npm run check:links        # after a build
 The site build is a required check and it is in the dev shell, so run it
 before pushing anything that renames a heading or moves a published file.
 Those break the site rather than the doc, and only at build time.
+
+`govulncheck` runs in CI on every pull request. It is not a general scanner: it
+reports only what this code actually reaches, so a vulnerability in a package
+nothing calls does not fail the build and one in a path the gate takes on every
+pull request does. A service whose product is telling other people their
+dependencies moved should know when its own did. It runs through `go run` at a
+pinned version rather than an action, because the module proxy checksums it
+against `go.sum`'s database, which is a stronger pin than a commit sha and one
+fewer third party holding a token in that job.
 
 `hack/portability-test.sh` is the successor to an extraction test that enforced
 a one-way link rule while this package still lived inside the platform

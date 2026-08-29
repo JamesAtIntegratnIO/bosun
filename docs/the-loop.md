@@ -75,9 +75,12 @@ tell *working* from *done with nothing to say*.
 The gate is red. Five things can happen, in strict order of preference.
 
 **The deterministic repair.** If the only blocking finding is dropped served
-versions, no judgement is needed: the report names the consumer kind, the
-dropped versions, the destination, and the rule for finding the declaring
-manifests. Bosun rewrites every one of them, apiVersion values only, preserving
+versions, no judgement is needed: the gate already computed the consumer kind,
+the dropped versions and the destination, and it publishes them twice — as the
+bullet a person reads, and as a `<!-- gitops-gate:dropped … -->` block the
+repair reads. Two spellings because half of a bullet is the name of an object a
+chart rendered, and a chart must not be able to write the instruction. Bosun
+rewrites every declaring manifest, apiVersion values only, preserving
 quoting and comments, deny-list and allowlist consulted for every file, and
 pushes the migration to the pull request's branch. **No model is involved.**
 The gate re-runs on the new commit, counts the consumers again, finds none, and

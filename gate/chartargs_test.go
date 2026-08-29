@@ -1,6 +1,7 @@
 package gate
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -58,6 +59,16 @@ func TestHelmChartArgs(t *testing.T) {
 			repo: "ghcr.io/org", chart: "bosun",
 			want: []string{"oci://ghcr.io/org/bosun"},
 		},
+		{
+			name: "a chart beginning with a dash is a flag, not a chart",
+			repo: "", chart: "--post-renderer=/tmp/x",
+			wantErr: "helm reads it as a flag",
+		},
+		{
+			name: "so is a repository beginning with a dash",
+			repo: "--repo=http://attacker.example", chart: "thing",
+			wantErr: "helm reads it as a flag",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := HelmChartArgs(tc.repo, tc.chart)
@@ -89,5 +100,44 @@ func TestAClassicRepositoryNeverGetsAnOCIScheme(t *testing.T) {
 		if strings.HasPrefix(a, "oci://https://") || strings.HasPrefix(a, "oci://http://") {
 			t.Fatalf("a classic repository was given an OCI scheme: %v", got)
 		}
+	}
+}
+
+// Helm's parser accepts flags interspersed with positionals, so a chart name
+// beginning with a dash is not a chart name: --post-renderer makes helm exec an
+// external binary. Execution here is argv and never a shell, so the whole class
+// is flag injection, and the cheapest defence is refusing the shape.
+func TestFlagLikeValuesAreRefusedWhereverTheyReachArgv(t *testing.T) {
+	if err := RefuseFlagLike("chart version", "--post-renderer=/tmp/x"); err == nil {
+		t.Error("a version beginning with a dash must be refused")
+	}
+	if err := RefuseFlagLike("chart version", "  -v1.2.3"); err == nil {
+		t.Error("leading whitespace must not smuggle a dash past the check")
+	}
+	if err := RefuseFlagLike("chart version", "1.2.3-rc1"); err != nil {
+		t.Errorf("a dash inside a version is ordinary: %v", err)
+	}
+}
+
+// The chart-diff path builds helm arguments from a Row the pull request wrote.
+func TestRenderChartVersionRefusesAFlagLikeVersion(t *testing.T) {
+	_, err := renderChartVersion(context.Background(), t.TempDir(), Row{
+		App: "thing", Chart: "thing", ChartRepo: "https://charts.example.com",
+		Version: "--post-renderer=/tmp/x",
+	})
+	if err == nil || !strings.Contains(err.Error(), "helm reads it as a flag") {
+		t.Fatalf("want the version refused, got %v", err)
+	}
+}
+
+// `helm show` is the one helm invocation that does not go through
+// HelmChartArgs, so it carries the same check itself.
+func TestHelmShowRefusesAFlagLikeVersion(t *testing.T) {
+	_, err := helmShow(context.Background(), t.TempDir(), "values", Row{
+		Chart: "thing", ChartRepo: "https://charts.example.com",
+		Version: "--post-renderer=/tmp/x",
+	})
+	if err == nil || !strings.Contains(err.Error(), "helm reads it as a flag") {
+		t.Fatalf("want the version refused, got %v", err)
 	}
 }

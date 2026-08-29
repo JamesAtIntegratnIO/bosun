@@ -15,6 +15,7 @@ package gitprovider
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -219,6 +220,45 @@ func headSHA(ctx context.Context, root, fallback string) string {
 		return sha
 	}
 	return fallback
+}
+
+// gitStep is one git command in a push, and the environment it needs.
+//
+// Shared by both providers because both run the same short list and only the
+// last entry in it, the push, has any business holding a credential.
+type gitStep struct {
+	args []string
+	env  []string
+}
+
+// pushAuthEnv hands git the push credential through the environment rather
+// than the command line.
+//
+// Both providers used to spell the credential into the remote URL,
+// https://x-access-token:<token>@host/owner/repo.git, and pass that to
+// `git push` as an argument. Nothing persisted it and the error text was
+// redacted, but /proc/<pid>/cmdline is world-readable: for as long as the push
+// ran, a live installation token was there for `ps`, for every other process
+// in the namespace, and for anything that logs a command line.
+//
+// `git -c http.<url>.extraHeader=...` is the obvious repair and it is the trap
+// in it: -c is argv, so that moves the token from one argument to another one.
+// The GIT_CONFIG_COUNT/KEY/VALUE triple sets the same config from the
+// environment instead, and /proc/<pid>/environ is readable only by the process
+// owner.
+//
+// The key is scoped to the remote's URL, never the bare `http.extraHeader`.
+// An unscoped one attaches the header to whatever host git ends up talking to,
+// and this header is a bearer credential for exactly one of them. A redirect
+// away from that host does not carry it either: curl drops an Authorization
+// header when the origin changes.
+func pushAuthEnv(remote, user, token string) []string {
+	cred := base64.StdEncoding.EncodeToString([]byte(user + ":" + token))
+	return []string{
+		"GIT_CONFIG_COUNT=1",
+		"GIT_CONFIG_KEY_0=http." + remote + ".extraHeader",
+		"GIT_CONFIG_VALUE_0=Authorization: Basic " + cred,
+	}
 }
 
 // hexSHA is a git object name and nothing else. Checked before a SHA reaches

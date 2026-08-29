@@ -1,9 +1,9 @@
 package gate
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -53,10 +53,10 @@ const (
 // are optional. A helm-docs README table documents the optional ones and does
 // not exist for every chart. A key found in either is known; a key in neither
 // is what this check is looking for.
-func valuesSurface(repoRoot string, r Row) (map[string]bool, error) {
+func valuesSurface(ctx context.Context, repoRoot string, r Row) (map[string]bool, error) {
 	out := map[string]bool{}
 
-	defaults, err := helmShow(repoRoot, "values", r)
+	defaults, err := helmShow(ctx, repoRoot, "values", r)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +70,7 @@ func valuesSurface(repoRoot string, r Row) (map[string]bool, error) {
 
 	// Best-effort: a chart without a README, or with one helm-docs did not
 	// write, contributes nothing here.
-	if readme, err := helmShow(repoRoot, "readme", r); err == nil {
+	if readme, err := helmShow(ctx, repoRoot, "readme", r); err == nil {
 		for _, k := range helmDocsKeys(string(readme)) {
 			out[k] = true
 		}
@@ -78,12 +78,25 @@ func valuesSurface(repoRoot string, r Row) (map[string]bool, error) {
 	return out, nil
 }
 
-func helmShow(repoRoot, what string, r Row) ([]byte, error) {
+func helmShow(ctx context.Context, repoRoot, what string, r Row) ([]byte, error) {
+	// The same argv-position argument HelmChartArgs makes, for the one helm
+	// invocation that does not go through it: chartRef, the repository and the
+	// version all come off a Row the pull request wrote, and helm would read
+	// any of them as a flag.
+	for _, tok := range []struct{ kind, value string }{
+		{"chart", chartRef(r)},
+		{"chart repository", r.ChartRepo},
+		{"chart version", r.Version},
+	} {
+		if err := RefuseFlagLike(tok.kind, tok.value); err != nil {
+			return nil, err
+		}
+	}
 	args := []string{"show", what, chartRef(r), "--version", r.Version}
 	if !strings.HasPrefix(r.ChartRepo, "oci://") && r.ChartRepo != "" {
 		args = append(args, "--repo", r.ChartRepo)
 	}
-	return run(repoRoot, "helm", args...)
+	return run(ctx, repoRoot, "helm", args...)
 }
 
 // helmDocsRow matches a values row in a helm-docs table: the key is the first
@@ -155,11 +168,15 @@ func repoValues(repoRoot string, r Row) (map[string]any, error) {
 		return nil
 	}
 	for _, vf := range r.ValueFiles {
-		clean := vf
-		if i := strings.Index(clean, "/"); strings.HasPrefix(clean, "$") && i > 0 {
-			clean = clean[i+1:]
+		clean := stripValuesRef(vf)
+		full, err := containedPath(repoRoot, clean)
+		if err != nil {
+			// Reported, not skipped. This reads the same head-controlled list
+			// the render does, and what it reads is compared against the
+			// chart's declared surface and named in the report, so an escape
+			// here publishes the key names of whatever it reached.
+			return nil, fmt.Errorf("value file %q: %w", vf, err)
 		}
-		full := filepath.Join(repoRoot, clean)
 		raw, err := os.ReadFile(full)
 		if err != nil {
 			// Missing is normal, exactly as it is for the render.
@@ -216,7 +233,7 @@ func pathCovered(path string, surface map[string]bool) bool {
 //
 // Returns nothing, not an error, when the old chart's surface does not
 // account for what the repository already sets. See minCoverage.
-func droppedValues(repoRoot string, before, after Row) ([]string, error) {
+func droppedValues(ctx context.Context, repoRoot string, before, after Row) ([]string, error) {
 	vals, err := repoValues(repoRoot, after)
 	if err != nil {
 		return nil, err
@@ -225,11 +242,11 @@ func droppedValues(repoRoot string, before, after Row) ([]string, error) {
 	if len(set) == 0 {
 		return nil, nil
 	}
-	oldSurface, err := valuesSurface(repoRoot, before)
+	oldSurface, err := valuesSurface(ctx, repoRoot, before)
 	if err != nil {
 		return nil, err
 	}
-	newSurface, err := valuesSurface(repoRoot, after)
+	newSurface, err := valuesSurface(ctx, repoRoot, after)
 	if err != nil {
 		return nil, err
 	}

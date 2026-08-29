@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -96,8 +97,9 @@ func (g *Gitea) do(ctx context.Context, method, path string, body any, out any) 
 		// Wrapped, like GitHub's. The token travels in the Authorization
 		// header, not the URL, so a transport error's text cannot carry it,
 		// redacting here bought nothing and cost the Unwrap chain, which is
-		// what errors.Is and errors.As need. Redaction belongs where the
-		// credential is embedded: the push remote, in PushFix.
+		// what errors.Is and errors.As need. Redaction belongs where a
+		// credential could reach the text: what git prints on a failed push,
+		// in PushFix.
 		return fmt.Errorf("%s %s: %w", method, path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -397,9 +399,10 @@ func (g *Gitea) AddLabel(ctx context.Context, number int, label string) error {
 // PushFix commits and pushes the working tree onto the pull request's branch.
 //
 // Same shape as the GitHub implementation and for the same reason: git over
-// HTTPS produces an ordinary commit and needs no blob/tree API. The push
-// target is always the pull request's own branch; nothing here writes to the
-// default branch.
+// HTTPS produces an ordinary commit and needs no blob/tree API. The token
+// authenticates through the environment, see pushAuthEnv, and appears in no
+// argument. The push target is always the pull request's own branch; nothing
+// here writes to the default branch.
 func (g *Gitea) PushFix(ctx context.Context, pr *PullRequest, root, message string) error {
 	if pr.Branch == "" {
 		return fmt.Errorf("pull request has no head branch")
@@ -422,39 +425,70 @@ func (g *Gitea) PushFix(ctx context.Context, pr *PullRequest, root, message stri
 		user = "bosun"
 	}
 
-	u, err := url.Parse(strings.TrimRight(g.BaseURL, "/"))
+	remote, err := g.pushRemote()
 	if err != nil {
-		return fmt.Errorf("BaseURL %q is not a URL: %w", g.BaseURL, err)
+		return err
 	}
-	u.User = url.UserPassword(user, g.Token)
-	remote := fmt.Sprintf("%s/%s/%s.git", u.String(), g.Owner, g.Repo)
 
-	steps := [][]string{
-		{"git", "-C", root, "config", "user.name", name},
-		{"git", "-C", root, "config", "user.email", email},
+	steps := []gitStep{
+		{args: []string{"git", "-C", root, "config", "user.name", name}},
+		{args: []string{"git", "-C", root, "config", "user.email", email}},
 	}
 	if g.InsecureSkipTLSVerify {
 		// Scoped to this repository's config, never `--global`: the agent
 		// runs in a container it shares with nothing, but a global setting
 		// would still outlive the one push that needs it.
-		steps = append(steps, []string{"git", "-C", root, "config", "http.sslVerify", "false"})
+		steps = append(steps, gitStep{args: []string{"git", "-C", root, "config", "http.sslVerify", "false"}})
 	}
 	steps = append(steps,
-		[]string{"git", "-C", root, "add", "-A"},
-		[]string{"git", "-C", root, "commit", "-m", message},
-		[]string{"git", "-C", root, "push", remote, "HEAD:" + pr.Branch},
+		gitStep{args: []string{"git", "-C", root, "add", "-A"}},
+		gitStep{args: []string{"git", "-C", root, "commit", "-m", message}},
+		// Gitea takes the token as the password for any real user, so the
+		// same Basic header serves here as on GitHub with a different name in
+		// front of it.
+		gitStep{
+			args: []string{"git", "-C", root, "push", remote, "HEAD:" + pr.Branch},
+			env:  pushAuthEnv(remote, user, g.Token),
+		},
 	)
 
 	for _, s := range steps {
-		cmd := exec.CommandContext(ctx, s[0], s[1:]...)
+		cmd := exec.CommandContext(ctx, s.args[0], s.args[1:]...)
+		if s.env != nil {
+			cmd.Env = append(os.Environ(), s.env...)
+		}
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("%s: %w: %s", s[1], err,
+			return fmt.Errorf("%s: %w: %s", s.args[1], err,
 				snippet([]byte(redactErr(stderr.String(), g.Token))))
 		}
 	}
 	// The branch head moved; tell the caller so its statuses land on it.
 	pr.HeadSHA = headSHA(ctx, root, pr.HeadSHA)
 	return nil
+}
+
+// pushRemote is where the fix is pushed. No credential in it: the token
+// travels in the environment, see pushAuthEnv.
+//
+// Built from BaseURL, the same value the API calls and the clone use, so the
+// push cannot end up at a different instance from the one whose pull request
+// is being answered.
+func (g *Gitea) pushRemote() (string, error) {
+	u, err := url.Parse(strings.TrimRight(g.BaseURL, "/"))
+	if err != nil {
+		return "", fmt.Errorf("BaseURL %q is not a URL: %w", g.BaseURL, err)
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		// An Authorization header is an http-only mechanism: over ssh it
+		// would be ignored rather than refused, and the push would silently
+		// authenticate as whatever key the pod happens to hold.
+		return "", fmt.Errorf("BaseURL %q must be an http(s) URL to push with a token", g.BaseURL)
+	}
+	// A user:password written into BaseURL would be a credential in argv,
+	// and it would also stop the scoped config key matching, since git
+	// compares the user as part of the URL.
+	u.User = nil
+	return fmt.Sprintf("%s/%s/%s.git", u.String(), g.Owner, g.Repo), nil
 }

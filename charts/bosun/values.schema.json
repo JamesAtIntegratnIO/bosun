@@ -2,7 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "bosun values",
   "type": "object",
-  "additionalProperties": true,
+  "description": "Strict at the top level as well as inside every object. A key this chart does not know is a typo, and the typo that matters is the one that silently leaves a default-on feature on or an egress rule unapplied: `livereads` validates cleanly and disables nothing.",
+  "additionalProperties": false,
   "required": [
     "image",
     "git",
@@ -10,6 +11,25 @@
     "triage"
   ],
   "properties": {
+    "global": {
+      "type": "object",
+      "description": "Helm injects this into every chart in a release. Never read here; enumerated so a parent chart's global values still validate."
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "Not read by this chart. A parent chart with `condition: bosun.enabled` sets it, and the key arrives here."
+    },
+    "credentials": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How the credentials reach the process.",
+      "properties": {
+        "mountAsFiles": {
+          "type": "boolean",
+          "description": "Project each credential into a read-only file and set the _FILE variant, instead of a secretKeyRef into an environment variable that kubectl exec, /proc, a crash dump and every child process can read. Needs an image whose agent reads the _FILE variants."
+        }
+      }
+    },
     "replicaCount": {
       "type": "integer",
       "minimum": 1
@@ -307,6 +327,13 @@
             "type": "string"
           },
           "description": "Hosts the agent must not contact. Exact host or *.suffix; a pattern also forbids the apex."
+        },
+        "egressAllowPrivate": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Private networks the agent may reach after all, as a CIDR or a single address. Loopback, link-local, RFC1918, CGNAT and the IPv6 equivalents are refused at the dial whatever the NetworkPolicy permits; this is how a chart repository or registry on your own network is named."
         }
       }
     },
@@ -366,12 +393,26 @@
           "type": "string",
           "minLength": 1
         },
+        "kargoPodSelector": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Labels the Kargo controller's pods carry, ANDed with the namespace on the ingress rule. Empty admits every pod in that namespace, which is what a namespaceSelector alone means."
+        },
         "egress": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "dnsNamespace": {
               "type": "string"
+            },
+            "dnsPodSelector": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Labels the cluster resolver's pods carry, ANDed with dnsNamespace. This is the only rule that opens 53, and it is what keeps a chart's `getHostByName` inside a resolver you run. Wrong labels drop every name lookup."
             },
             "ipBlocks": {
               "type": "array",
@@ -463,7 +504,27 @@
       }
     },
     "metrics": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "serviceMonitor": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "interval": {
+              "type": "string",
+              "pattern": "^\\d+[smh]$|^\\d+[hm]\\d+[ms]$|^\\d+h\\d+m\\d+s$"
+            },
+            "namespace": {
+              "type": "string",
+              "description": "The namespace Prometheus scrapes from. Required with networkPolicy.enabled: the scrape's ingress rule is otherwise a pod label alone, and a pod label is chosen by whoever creates the pod."
+            }
+          }
+        }
+      }
     },
     "branding": {
       "type": "object",

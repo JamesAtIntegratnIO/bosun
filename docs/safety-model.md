@@ -46,11 +46,25 @@ corroboration.
 ## The deterministic repair involves no model at all
 
 Migrating manifests off a CRD version a bump stopped serving takes no
-judgement: the gate's report names the consumer kind, the dropped versions and
-the surviving destination, all computed from the rendered CRDs. The `migrate`
-package parses that line back, the same package that wrote it, and rewrites
-nothing but apiVersion values matching it, only when that finding is the gate's
-only blocking one.
+judgement: the consumer kind, the dropped versions and the surviving
+destination are all computed from the rendered CRDs. The `migrate` package
+reads them back, the same package that wrote them, and rewrites nothing but
+apiVersion values matching them, only when that finding is the gate's only
+blocking one.
+
+It does not read them out of the prose, and it used to. Half of a report
+bullet is a sentence the gate composes and half is the name of an object some
+chart rendered, so a chart putting a backtick or a newline in `metadata.name`
+writes a whole finding line of its own — and a finding line was the contract
+the migrator executed, against policy-allowed manifests, to whatever
+destination the chart named. The gate now emits a
+`<!-- gitops-gate:dropped … -->` block built from its own structured findings
+and `migrate.ParseReport` reads that instead. Every field in it is anchored to
+a shape that cannot spell a space or a `>`, so no value can end the comment
+early or forge a second entry, and a report carrying the marker is never
+scraped for prose as well: a fallback "just in case" would reopen the way in.
+The report a person reads and the instruction a repair runs are the same facts
+and deliberately not the same bytes.
 
 The guarantees below still hold where they apply: the deny-list and the
 allowlist answer for every file, the rewrite is a value replacement on the
@@ -65,7 +79,7 @@ named them rather than a model.
 |---|---|
 | Cannot edit CI config, the gate, or the merge policy | `edits.DefaultDeny`, checked before any write and not overridable by configuration |
 | Cannot edit outside the configured area | `Policy.Allow`; an empty allowlist refuses everything, and the process refuses to start with one |
-| Cannot edit a file this change did not touch | `Policy.Scope`, set per request from the promotion's own file list. `Allow` is a standing grant and deliberately coarse; `Scope` is what *this* pull request is about. Without it the prompt asks for the files this pull request may change while the applier accepts anything under the standing grant, which makes a guarantee into an instruction |
+| Cannot edit a file this change did not touch | `Policy.Scope`, the paths `git diff` reports between the fetched base branch and this head. `Allow` is a standing grant and deliberately coarse; `Scope` is what *this* pull request is about. Without it the prompt asks for the files this pull request may change while the applier accepts anything under the standing grant, which makes a guarantee into an instruction. It used to be the promotion body's own `files` array, which is a claim about the pull request rather than a fact about it: an empty one turned the narrowing off entirely, since `Scope` is enforced only when it is non-empty, and any other one widened it back to whatever the standing grant permits. The body still carries `files` and the prompt still asks the model for those; nothing is enforced from it. A pull request whose base cannot be read, or that changes no file at all, escalates without writing, because the alternative on that path is the unscoped applier this replaced |
 | Cannot overwrite a value it misread | the edit's `from` must equal what the file holds, compared unconditionally: an empty `from` matches an empty scalar and nothing else |
 | Cannot rewrite a neighbouring token | the replacement is anchored to the scalar's own line **and column**, so `b` in `{a: old, b: old}` and the value in `version: version` are the tokens that change |
 | Cannot invent a version | version-shaped values must appear in the evidence the model was shown |
@@ -74,13 +88,16 @@ named them rather than a model.
 | Cannot retry forever | attempt cap, tracked by pull-request label. The label is written **before** the push and the push is refused if it cannot be written, so a token that may push and may not label escalates instead of looping |
 | Cannot write to the default branch | the only push path targets the pull request's own branch |
 | Cannot block a merge | its commit status is never a failure state, whatever the verdict. A red status here would make the agent a second gate; the description carries the meaning instead of the colour. It is `pending` while triage runs and `success` once there is a verdict. Pending on a check nobody requires blocks nothing, and it is what stops "still thinking" reading as "nothing to say" |
-| Cannot reach anything it was not given | upstream lookup talks to `api.github.com` and to the registries named in `networkPolicy.egress.fqdns`, and nothing else. Every failure degrades to a render-only explanation that says so |
+| Cannot reach an internal network | `egress.DefaultDenyNetworks`, applied on the dialler: loopback, link-local (169.254/16, and so the cloud metadata service), RFC1918, CGNAT and the IPv6 equivalents. Not a default with an override — the same shape as `edits.DefaultDeny` — and an operator opens one network at a time by naming it in `triage.egressAllowPrivate`. Because it is checked where the address is known rather than on the host string, it holds for a name whose owner points it into that space after the string was read, for `http://2852039166/`, and for `[::ffff:a9fe:a9fe]`. Three things it does not cover, and the two sections below say which |
+| Cannot reach a public host an operator forbade | `triage.egressDeny`, matched on the host, with every outbound request logged and every refusal logged with the rule that stopped it. This is accountability after the fact, not permission before it: the public default is open, on purpose, and the paragraphs below are the honest version of what a NetworkPolicy adds to it |
+| Cannot be aimed at a host this repository does not name | a promotion's `artifact` field becomes an outbound request, and its host is the caller's string verbatim. Before one is made, the checkout is searched for that host; nothing in the repository naming it means no request at all and a note saying so. Both sinks ask it: the upstream lookup, and the schema probe that runs `helm template` against the version being promoted to. The second matters more than it looks, because it is the one that downloads an archive, and because helm resolves and dials for itself where an `http.Client` guard cannot follow. A substring search rather than a parse of a named field, because `repoURL` is Argo CD's spelling and `spec.url` is Flux's and picking one would be an assumption about repository layout. Without it the endpoint fetches whatever it is told to and publishes the outcome on a pull request. Every other failure degrades the same way: a render-only explanation that says what it could not read |
 | Cannot present a guess as a source | the upstream repository comes from the publisher's own `org.opencontainers.image.source` label, never from parsing a registry path. A guessed repository returns another project's notes, which a reader cannot distinguish from the right ones |
 | Cannot turn testimony into evidence for a write | release notes and upstream commits are fetched **only** on the paths that produce prose, the green-gate explanation and an escalation. The mechanical path, the one that writes files, does not fetch them, so they are not in the evidence string the applier corroborates against. Without that, a commit message containing `v1.5.0` would make `v1.5.0` a corroborated value to write |
 | Cannot choose its own supporting evidence | `migrate.Subjects` decides which upstream commits are shown, from the kinds and resource names in the gate's own findings, matched by string against commit messages and diff paths. If the model picked the commits that support its conclusion, the check and the claim would come from the same source |
 | Cannot compare a range it cannot establish | a chart version and the git tags of the project it packages frequently use different numbering. Refs come from the project's own release tags or from the publisher's recorded build revision; when neither meets the promotion's versions, no comparison is made and the note says why. Two refs picked out of the wrong numbering return real commits from a range that is not this one |
 | Cannot mutate the cluster | live reads are `get` and `list` only, and the chart's ClusterRole has no `create`, `update`, `patch` or `delete` verb anywhere. They are off by default: everything else the agent reads is public or already in the pull request, and this reads the operator's cluster |
-| Cannot read a Secret | with `liveReads.scope: groups` the core API group is never granted beyond `pods, events`, and the chart creates no Role over Secrets anywhere. `liveReads.scope: wide` grants `apiGroups: ["*"]` cluster-wide and **can** read Secrets everywhere. RBAC has no deny rules and no way to subtract the core group, which is why "everything except Secrets" is not a setting |
+| Cannot send its own credentials to the model | the git token, the GitHub App private key, the ArgoCD token, the promotion token and the model API key are read once at start-up by `config.go` and handed to one client each. `prompt/` names none of them, and nothing that builds a prompt has a reference to reach. The API key is the only one that touches the provider at all, as the `Authorization` header of the call; it is not in the body. The model is sent the pull request, the gate's report and the rendered output, and it returns a verdict and a proposal |
+| Cannot read a Secret | with `liveReads.enabled: false` the core API group is not granted at all, and with `liveReads.scope: groups` it is granted no further than `pods, events`. The chart creates no Role over Secrets anywhere. `liveReads.scope: wide` grants `apiGroups: ["*"]` cluster-wide and **can** read Secrets everywhere. RBAC has no deny rules and no way to subtract the core group, which is why "everything except Secrets" is not a setting |
 | Cannot be given a Secret read it does not need | the gate's cluster inventory comes from ArgoCD's API, not from the cluster Secrets those clusters are stored in. That read could not be made small enough: the gate wants four fields, and RBAC has no predicate for "the labels but not the data". There are no deny rules, `resourceNames` does not apply to `list`, and the apiserver applies the request's label selector *after* authorising. `GET /api/v1/clusters` serves the same four fields with the credential block redacted, which draws that line. The trade is real: an ArgoCD account token to mint and rotate, and a component that can be down on its own |
 | Cannot present "nobody looked" as "nothing found" | `cluster.Count` carries a `Known` flag and its rendering prefers the note over the number. A refusal, an unreachable apiserver, or a count where one version answered and another did not all say what was *not* checked. The prompt tells the model in those words that "not permitted to check" is neither zero nor evidence of safety |
 | Cannot invent data when it reshapes a document | the harness refuses a proposed document migration unless every scalar value in it appears in the original document or is dictated by the target schema itself: a default, an enum member, a const. Field names come from the schema; data comes only from the document. This is the document-level analogue of "cannot invent a version", and it keeps the model translating the document rather than adding to it |
@@ -88,7 +105,71 @@ named them rather than a model.
 | Cannot propose a document that still does not fit | the proposal is walked against the target schema by the same code that found the problem, so the apiserver's objection is raised before the apply |
 | Cannot half-migrate a pull request | if any document in a pass is refused, **nothing** is pushed, including the plain swaps that were fine. The swap alone turns the gate green, because no manifest declares a dropped version any more, while a document the target schema rejects waits to be pruned. A partial push hides a broken change behind a green gate |
 | Cannot drop a value silently | values present in the original and absent from the proposal are listed in the comment. Some are correct, because a field the target no longer accepts has to go somewhere and sometimes nowhere, and all are visible |
+| Cannot forge a marker in what it publishes | both halves find their own comments by substring-matching an HTML comment: `<!-- gitops-gate -->` for the report, `<!-- gitops-gate:head <sha> -->` for "this commit already has a verdict", `<!-- bosun:explanation -->` for "this pull request has already been explained". The model's summary, reasoning and notes are the one place a pull request's own words are reproduced verbatim, so `<!--` and `-->` are escaped there and each field is capped, with the truncation said out loud. A forged head stamp would not produce a wrong verdict; it would make the gate's own duplicate-suppression swallow the next one, so the commit ends with no verdict on it and nothing saying so. **The rest of the comment is not escaped.** Paths, values, table cells and the folded diffs come from the repository rather than the model, and escaping a diff would misreport the file, so a repository file containing a stamp can still forge that same suppression |
 | Cannot act without saying so | every exit path publishes a commit status, including the ones that do nothing and the ones that error. Without one, "nothing needed triage", "never called" and "crashed" are the same observation from outside |
+
+## What the NetworkPolicy enforces depends on your CNI
+
+The egress rows above are the agent's own guarantees, in Go, on its own
+dialler. The chart's NetworkPolicy is the second layer, and it is weaker than
+its values file reads:
+
+- `networkPolicy.egress.fqdns` and `networkPolicy.egress.fqdnPatterns` render
+  **only** under `networkPolicy.flavor: cilium`, inside a
+  `CiliumNetworkPolicy`. The default is `flavor: standard`, and a standard
+  NetworkPolicy has no way to name a host at all, so with the default flavor
+  those two keys are read by nothing.
+- On `standard`, `networkPolicy.egress.allowPublicHTTPS: true` renders
+  `cidr: 0.0.0.0/0` on port 443, excepting the RFC1918 blocks, link-local
+  (169.254/16) and CGNAT (100.64/10) — the same space
+  `egress.DefaultDenyNetworks` closes. That is any public host, not a named
+  list. It is worth having anyway: this layer governs helm and git too, which
+  are subprocesses the agent's own dialler never sees.
+- `triage.egressDeny` is a list the agent applies to itself and logs. It is a
+  record of where it went and a way to forbid a destination by name, not a
+  boundary a compromised process is held inside.
+
+So "it talks to the registries you named and nothing else" is true on Cilium
+and false on standard, and this document said it flatly for both. Where the
+cluster can express an FQDN allow-list, prefer it. Where it cannot, the honest
+description is: any public host on 443, with a logged record of which ones,
+and the internal networks closed underneath by `egress.DefaultDenyNetworks`
+whatever the policy says.
+[ADR 0011](../adr/0011-public-is-open-internal-is-closed.md) records why that
+split is the trade rather than an oversight, and what it costs.
+
+## helm is a subprocess, and no Go code contains it
+
+The gate deletes `env`, `expandenv` and `getHostByName` from the sprig function
+map before it renders an ApplicationSet. That template comes from the pull
+request under review, while the process holds the git token, the model key and
+the App private key, and the rendered output is published into a comment:
+`{{ env "GIT_TOKEN" }}` left in is a credential read with a publishing
+side-channel.
+
+That strip covers the **in-process** renderer only. `helm template` runs as a
+child process and Helm removes `env` and `expandenv` and nothing else, so a
+chart committed by a pull request can call `{{ getHostByName "…" }}` and the
+address it resolves renders into the published report. The address helm
+connects to is outside the dialler too: `egress` checks a chart reference's
+host and logs it, and then helm resolves and dials on its own. Two smaller
+cases sit beside it — behind a proxy the address checked is the proxy's, and a
+caller supplying its own `RoundTripper` keeps its own dialler.
+
+Which chart helm is pointed at is a different question from what that chart
+does once it renders, and only the first one is answered. The schema probe
+refuses an artifact the checkout does not name, so the subprocess is not a way
+to reach a host of the caller's choosing. A chart the repository legitimately
+tracks is still rendered, and the function is still in its function map.
+
+None of the three is closed here, and the honest thing is to say so rather than
+describe the boundary as if it held. A Go process cannot portably put its child
+in a network namespace or behind a captive resolver; containment for the helm
+subprocess is a NetworkPolicy question. That is the one place the second layer
+is doing work the first cannot: an `allowPublicHTTPS` rule excepts the same
+internal space at the pod, where helm and git are inside it too. What it does
+not do is stop `getHostByName` from putting a resolved public address into the
+report, and nothing here does.
 
 ## Why the deny-list is not configurable
 
@@ -127,8 +208,13 @@ to a human with that reason.
 
 ## Who may call the promotion endpoint
 
-`POST /v1/promotion-opened` takes a pull-request number and the list of files
-the agent may edit and will read into the prompt it publishes. The chart's
+`POST /v1/promotion-opened` takes a pull-request number, the artifact and the
+versions it moved between, and the list of files the promotion rewrote. That
+list is read into the prompt the agent publishes; it is no longer what bounds
+the applier, which reads the pull request's own diff instead, so a caller
+naming a wider set than the branch holds buys nothing by it. The artifact is
+still a string that decides where an outbound request goes, which is why the
+checkout has to name its host before one is made. The chart's
 NetworkPolicy limits callers to the namespace, which is the granularity a
 NetworkPolicy has, so every workload in it qualifies.
 

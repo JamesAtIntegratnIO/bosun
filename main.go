@@ -151,11 +151,14 @@ func main() {
 		git = gh
 	}
 
-	// Where it may go, and the record of where it went. Open with a deny-list:
-	// see the egress package for why that replaced an allow-list.
+	// Where it may go, and the record of where it went. Open to the public
+	// internet with a deny-list, closed to internal address space whatever the
+	// deny-list says: see the egress package for why that replaced an
+	// allow-list, and for why the internal half is not configurable away.
 	egressPolicy := egress.Policy{
-		Deny: cfg.EgressDeny,
-		Log:  func(f string, a ...any) { logger.Printf(f, a...) },
+		Deny:         cfg.EgressDeny,
+		AllowPrivate: cfg.EgressAllowPrivate,
+		Log:          func(f string, a ...any) { logger.Printf(f, a...) },
 	}
 
 	t := &agent.Triage{
@@ -263,11 +266,21 @@ func main() {
 	logger.Printf("gate: polling for open pull requests every %s (%d cluster(s) in the live inventory, read from the ArgoCD API at %s)",
 		cfg.GatePoll, len(inv.Clusters), cfg.ArgoCDBaseURL)
 
+	// Two sentences because they are two different guarantees, and a reader
+	// who takes the first for the whole answer is the reason DOC-01 existed:
+	// the public half is a deny-list an operator maintains, the internal half
+	// is closed by the package and only widened by name.
 	if len(cfg.EgressDeny) == 0 {
-		logger.Print("egress: open, and every outbound request is logged. " +
-			"Set triage.egressDeny to forbid a host.")
+		logger.Print("egress: every public host is permitted, and every outbound request is logged. " +
+			"Set triage.egressDeny to forbid one.")
 	} else {
-		logger.Printf("egress: open except %v, and every outbound request is logged", cfg.EgressDeny)
+		logger.Printf("egress: every public host except %v is permitted, and every outbound request is logged", cfg.EgressDeny)
+	}
+	if len(cfg.EgressAllowPrivate) == 0 {
+		logger.Print("egress: internal networks are refused at the dial. " +
+			"Set triage.egressAllowPrivate to name one an internal registry or proxy sits on.")
+	} else {
+		logger.Printf("egress: internal networks are refused at the dial, except %v", cfg.EgressAllowPrivate)
 	}
 
 	srv := &Server{

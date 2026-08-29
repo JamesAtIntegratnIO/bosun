@@ -23,6 +23,38 @@ chart value. `missing required configuration: GIT_TOKEN` means `git.tokenKey`
 does not match a key in `git.existingSecret`.
 :::
 
+## Credentials as files, not environment
+
+Both forms are read once at start-up by the binary's configuration loader,
+before anything is served. Each value goes to exactly one client: the git host,
+the model provider, ArgoCD. None of them reaches a prompt, and nothing the
+model returns is consulted about them. This section is about how the process is
+handed a credential, which is a different question from what can see it.
+
+Every credential below reads from either its variable or a `_FILE` variant
+holding a path: `GIT_TOKEN_FILE`, `GITHUB_APP_PRIVATE_KEY_FILE`,
+`LLM_API_KEY_FILE`, `ARGOCD_TOKEN_FILE`, `PROMOTION_TOKEN_FILE`. A trailing
+newline is trimmed, so a mounted Secret file works as it is.
+
+`credentials.mountAsFiles` (default `false`) makes the chart do this for you: a
+projected volume at `/etc/bosun/credentials`, mounted read-only, and the `_FILE`
+variants set in place of every `secretKeyRef`. An environment variable is
+visible to `kubectl exec env`, to `/proc`, and to every child process, and this
+service shells out to `git` and `helm`, so the App private key was riding along
+in their environment. With a path there instead, a child inherits a path.
+
+It defaults off because `_FILE` is a convention rather than a Kubernetes
+feature. The kubelet mounts the file and sets the variable to a path; opening
+that path is code in the binary. `image.tag` follows `appVersion`, so an image
+older than the release that added that code sees a path it does not act on and
+starts with every credential empty. Turn it on once you are running an image
+that supports it.
+
+Setting both forms for one credential is a start-up error, not a precedence
+rule, and so is a path that cannot be read or a file that is empty. Two answers
+where the loader wants one is a question with no right answer, and guessing
+wrong surfaces as a rejected token, the symptom of a dozen unrelated mistakes.
+
 ## Git host
 
 | Value | Env | Default | |
@@ -176,7 +208,8 @@ rather than a required check that never reports.
 | `triage.migrateDroppedVersions` | `MIGRATE_DROPPED_VERSIONS` | `true` | The deterministic apiVersion repair. **No model involved** |
 | `triage.structuralMigration` | `STRUCTURAL_MIGRATION` | `true` | The document-reshape path, for bumps where swapping the version is not the whole job |
 | `triage.migrateMaxDocs` | `MIGRATE_MAX_DOCS` | `5` | Cap on documents reshaped in one pass |
-| `triage.egressDeny` | `EGRESS_DENY` | `[]` | Hosts the upstream lookup must never reach |
+| `triage.egressDeny` | `EGRESS_DENY` | `[]` | Public hosts the upstream lookup must never reach |
+| `triage.egressAllowPrivate` | `EGRESS_ALLOW_PRIVATE` | `[]` | Internal networks it may reach after all. See below |
 | `triage.upstreamNotes.enabled` | `UPSTREAM_NOTES` | `true` | Fetch publisher release notes for the explain and escalate paths |
 | `triage.upstreamNotes.maxReleases` | `UPSTREAM_MAX_RELEASES` | `5` | |
 | `triage.upstreamNotes.maxCommits` | `UPSTREAM_MAX_COMMITS` | `10` | |
@@ -189,8 +222,37 @@ one. A service that can write nowhere and does not say so looks broken later,
 for a reason nobody will find.
 
 Set it to the tree the agent may repair, typically `[addons/**]`. It is a
-standing grant and deliberately coarse; the per-request bound is `Scope`, set
-from the promotion's own file list, and both must pass.
+standing grant and deliberately coarse; the per-request bound is `Scope`, read
+from the pull request's own diff against its base, and both must pass. The
+promotion body still carries a `files` list, and it reaches the prompt rather
+than the applier — a caller cannot widen what it may edit by claiming to have
+touched more.
+
+### `triage.egressAllowPrivate` is the only way past a closed network
+
+Egress is open to the public internet and closed to internal address space, and
+the second half is not a default that configuration turns off. Loopback,
+link-local (`169.254.0.0/16`), the RFC1918 blocks, CGNAT (`100.64.0.0/10`) and
+the IPv6 equivalents are refused at the dial, where the address is finally
+known, so a name that resolves into one of them is refused too.
+
+That is right for reading public chart indexes and registries, which is what
+this reaches. It is wrong if yours are internal, and this is where you say so:
+
+```yaml
+triage:
+  egressAllowPrivate:
+    - 10.42.0.0/16    # the internal chart museum
+```
+
+An entry is a CIDR or a single address. Naming one network opens that network
+and nothing else, and an entry that parses as neither opens nothing. Without
+the entry the pod runs and the symptom is a refusal in the log naming the
+network it stopped, with the brief degrading to "no evidence".
+
+This governs the chart-repository and registry lookups. The model, git, ArgoCD
+and apiserver clients do not go through it, so a model endpoint on a private
+address is not what this setting is for.
 
 ### The deny-list cannot be shrunk
 
@@ -251,6 +313,7 @@ a setting this chart can offer.
 | `supervise.enabled` | `SUPERVISE_PIPELINE` | `true` | |
 | `supervise.interval` | `SUPERVISE_INTERVAL` | `10m` | |
 | `metrics.serviceMonitor.enabled` | n/a | `false` | Scrape `/metrics` |
+| `metrics.serviceMonitor.namespace` | n/a | n/a | **Required when the ServiceMonitor is on and `networkPolicy.enabled`.** The namespace Prometheus runs in. The port serves the whole HTTP surface, not only `/metrics`, so the ingress rule needs a namespace as well as a pod label — a pod label alone is chosen by whoever creates the pod |
 
 Read-only: three LISTs and a shallow clone, using the Kargo read the ClusterRole
 already grants. Both `/pipeline` and `/metrics` answer `503` before the first
@@ -268,7 +331,9 @@ supervisor *itself* goes quiet.
 | `networkPolicy.enabled` | `true` | |
 | `networkPolicy.flavor` | `standard` | |
 | `networkPolicy.kargoNamespace` | `kargo` | Which namespace may call the triage hook |
+| `networkPolicy.kargoPodSelector` | `{}` | Which pods *in* it may. Empty admits the whole namespace, which is every workload in it, not only the Kargo controller |
 | `networkPolicy.egress.dnsNamespace` | `kube-system` | |
+| `networkPolicy.egress.dnsPodSelector` | `{}` | Narrows DNS egress to the resolver pods. Empty opens 53 to the whole namespace |
 | `networkPolicy.egress.namespaces` | `[]` | |
 | `networkPolicy.egress.ipBlocks` | `[]` | Your model endpoint goes here |
 | `networkPolicy.egress.apiServer.ipBlocks` | `[]` | The apiserver's **real** endpoints |

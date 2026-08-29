@@ -2,14 +2,19 @@ package gate
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"sigs.k8s.io/yaml"
+
+	"github.com/JamesAtIntegratnIO/bosun/safepath"
 )
 
 // docs is a batch of manifests obtained from one source, tagged with the
@@ -36,7 +41,7 @@ type docs struct {
 // routinely has ApplicationSets committed as YAML *and* a chart that renders
 // more of them, which is why this is a list of strategies rather than a mode
 // switch.
-func collect(repoRoot string, cfg *Config, inv *Inventory, s Source) ([]docs, error) {
+func collect(ctx context.Context, repoRoot string, cfg *Config, inv *Inventory, s Source) ([]docs, error) {
 	switch s.Type {
 	case SourceRendered:
 		objs, err := readGlobs(repoRoot, s.Paths)
@@ -64,13 +69,13 @@ func collect(repoRoot string, cfg *Config, inv *Inventory, s Source) ([]docs, er
 				"`kubectl` is on PATH -- the gate's image ships neither, so this source can only "+
 				"be rendered where one is installed", s.Name)
 		}
-		out, kErr := run(repoRoot, "kustomize", "build", s.Path)
+		out, kErr := run(ctx, repoRoot, "kustomize", "build", s.Path)
 		if kErr != nil {
 			// `kubectl kustomize` is the same builder and is far more often
 			// present; falling back costs nothing and removes a dependency
 			// most clusters' operators already have another copy of.
 			var fallbackErr error
-			out, fallbackErr = run(repoRoot, "kubectl", "kustomize", s.Path)
+			out, fallbackErr = run(ctx, repoRoot, "kubectl", "kustomize", s.Path)
 			if fallbackErr != nil {
 				// Both failures, because with only the second a kustomization
 				// that `kustomize` explained is reported through
@@ -86,21 +91,21 @@ func collect(repoRoot string, cfg *Config, inv *Inventory, s Source) ([]docs, er
 		return []docs{{source: s.Name, objects: objs}}, nil
 
 	case SourceHelm:
-		return collectHelm(repoRoot, inv, s)
+		return collectHelm(ctx, repoRoot, inv, s)
 
 	case SourceArgoCDBootstrap:
-		return collectBootstrap(repoRoot, cfg, inv, s)
+		return collectBootstrap(ctx, repoRoot, cfg, inv, s)
 	}
 	return nil, fmt.Errorf("source %q: unhandled type %q", s.Name, s.Type)
 }
 
 // collectHelm renders a chart, once per cluster in scope when the chart or its
 // value files are templated on cluster metadata, otherwise once.
-func collectHelm(repoRoot string, inv *Inventory, s Source) ([]docs, error) {
+func collectHelm(ctx context.Context, repoRoot string, inv *Inventory, s Source) ([]docs, error) {
 	perCluster := templated(s.Chart) || anyTemplated(s.ValueFiles)
 
 	if !perCluster && s.Selector == nil && s.ArgoCD == "" {
-		objs, err := helmRender(repoRoot, s.Chart, resolveAll(s.ValueFiles, nil))
+		objs, err := helmRender(ctx, repoRoot, s.Chart, resolveAll(s.ValueFiles, nil))
 		if err != nil {
 			return nil, fmt.Errorf("source %q: %w", s.Name, err)
 		}
@@ -118,7 +123,7 @@ func collectHelm(repoRoot string, inv *Inventory, s Source) ([]docs, error) {
 		if err != nil {
 			return nil, fmt.Errorf("source %q chart for cluster %s: %w", s.Name, c.Name, err)
 		}
-		objs, err := helmRender(repoRoot, chart, resolveAll(s.ValueFiles, data))
+		objs, err := helmRender(ctx, repoRoot, chart, resolveAll(s.ValueFiles, data))
 		if err != nil {
 			return nil, fmt.Errorf("source %q (cluster %s): %w", s.Name, c.Name, err)
 		}
@@ -161,6 +166,24 @@ func anyTemplated(ss []string) bool {
 	return false
 }
 
+// containedPath resolves a repository-relative path inside the checkout, or
+// says which containment rule it broke.
+//
+// Every path this package joins to a checkout arrives from the pull request
+// under review: `helm.valueFiles` off an Application, `chart`, `path` and
+// `paths` off the head revision's `.gitops-gate.yaml`. filepath.Join cleans a
+// path, which is not the same as containing one, so `../../../../etc/x.yaml`
+// reached helm as `-f`, and anything that parsed as a YAML mapping merged into
+// the values and rendered into the report comment the gate publishes: a
+// file-read primitive aimed at whatever the pod has mounted.
+//
+// safepath is this repository's one answer to that question, and it asks the
+// filesystem rather than the string, which is the half that catches a tracked
+// symlink standing where a legitimate path is expected.
+func containedPath(repoRoot, rel string) (string, error) {
+	return safepath.Resolve(repoRoot, rel)
+}
+
 func readGlobs(repoRoot string, patterns []string) ([]map[string]any, error) {
 	var files []string
 	for _, p := range patterns {
@@ -179,6 +202,17 @@ func readGlobs(repoRoot string, patterns []string) ([]map[string]any, error) {
 	// this pull request.
 	var out []map[string]any
 	for _, f := range files {
+		// Containment is asked of the match, not of the pattern. A pattern
+		// says nothing about what a `*` expanded to, and nothing at all about
+		// a tracked symlink standing where the match landed.
+		rel, err := filepath.Rel(repoRoot, f)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", f, err)
+		}
+		if _, err := containedPath(repoRoot, filepath.ToSlash(rel)); err != nil {
+			return nil, err
+		}
+
 		// A glob can match a directory, `paths: [apps]` rather than
 		// `apps/*.yaml`. Not a manifest, and not an error either: skipped
 		// explicitly so it does not arrive at ReadFile and become one.
@@ -212,13 +246,37 @@ func parseStream(b []byte) ([]map[string]any, error) {
 	return out, nil
 }
 
-func run(dir, name string, args ...string) ([]byte, error) {
-	cmd := exec.Command(name, args...)
+// toolTimeout bounds one helm, kustomize or kubectl invocation.
+//
+// Generous, because a chart render pulls from a registry over somebody else's
+// network; bounded, because a gate run that never returns is worse than one
+// that says it could not look. The agent side has always had this
+// (agent.helmTimeout); the gate did not, and its own request-level
+// context.WithTimeout could not help, because a context cancels nothing for a
+// process started with exec.Command. A `helm template` stalling on a slow or
+// hostile upstream therefore outlived the gate timeout that was supposed to
+// bound it and held a chart-diff worker slot for as long as it liked.
+const toolTimeout = 3 * time.Minute
+
+func run(ctx context.Context, dir, name string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, toolTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		// The kill arrives as "signal: killed", which reads like a crash and
+		// sends a reader looking at the chart instead of at the clock.
+		switch {
+		case errors.Is(ctx.Err(), context.DeadlineExceeded):
+			return nil, fmt.Errorf("%s ran past a deadline (%s per invocation, and the gate run has its own): %w",
+				name, toolTimeout, ctx.Err())
+		case ctx.Err() != nil:
+			return nil, fmt.Errorf("%s was stopped before it finished: %w", name, ctx.Err())
+		}
 		return nil, fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.Bytes(), nil

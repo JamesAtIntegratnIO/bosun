@@ -9,10 +9,12 @@ import "strings"
 // came to differ: gitea called this, github inlined two ReplaceAll calls, and
 // only one of them was reviewed the last time the rules changed.
 //
-// Only needed where the credential is in the text. A git push
-// embeds it in the remote URL and git echoes that back on failure; an HTTP
-// transport error carries a URL whose token lives in a header instead, so
-// wrapping the error is both safe and more useful there.
+// Only needed where the credential could be in the text. No push embeds one
+// in its remote URL any more, it travels in the environment now, but git
+// quotes back whatever the server says and a misconfigured host can echo a
+// credential it was sent, so what git prints on a failed push is still not
+// safe to forward unread. An HTTP transport error carries only a URL, the
+// token being in a header, so wrapping it is both safe and more useful there.
 func redactErr(s, token string) string {
 	if token == "" {
 		return s

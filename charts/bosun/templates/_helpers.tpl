@@ -53,4 +53,11 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- if not .Values.llm.model }}{{ fail "bosun: llm.model is required" }}{{ end -}}
 {{- if and (eq .Values.llm.provider "openai") (not .Values.llm.baseURL) }}{{ fail "bosun: llm.baseURL is required for the openai provider" }}{{ end -}}
 {{- if not .Values.triage.allowPaths }}{{ fail "bosun: triage.allowPaths is empty, so the agent could never apply a fix" }}{{ end -}}
+{{/* The scrape's ingress rule is a pod label and a namespace, and a pod label
+     on its own is chosen by whoever creates the pod. Without the namespace,
+     enabling the ServiceMonitor opens the service's whole HTTP surface to
+     anything in the cluster that labels itself prometheus, which is wider than
+     the rule it sits beside and reads exactly like it is not. Refused rather
+     than rendered, because nothing about the running install would show it. */}}
+{{- if and .Values.metrics.serviceMonitor.enabled .Values.networkPolicy.enabled (not .Values.metrics.serviceMonitor.namespace) }}{{ fail "bosun: metrics.serviceMonitor.namespace is required when the ServiceMonitor and the NetworkPolicy are both enabled; without it the scrape rule admits any pod labelled prometheus, in any namespace" }}{{ end -}}
 {{- end -}}

@@ -1,9 +1,9 @@
 package gate
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -30,7 +30,7 @@ import (
 // The results are named because two of them are adjacent same-typed slices,
 // "the third return" only tells a reader which one to count to, and swapping
 // before and after at a call site would compile and silently invert the diff.
-func ChartDiff(repoRoot string, cfg *Config, base, head *Table) (
+func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Table) (
 	before, after []Object, valuesDropped []ObjectChange, warnings []string) {
 	type pair struct{ before, after Row }
 
@@ -99,8 +99,8 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) (
 				}
 			}
 
-			b, errB := renderChartVersion(repoRoot, p.before)
-			a, errA := renderChartVersion(repoRoot, p.after)
+			b, errB := renderChartVersion(ctx, repoRoot, p.before)
+			a, errA := renderChartVersion(ctx, repoRoot, p.after)
 
 			// A chart that cannot be pulled is reported, never silently
 			// skipped: "no resource changes" and "we could not look" must not
@@ -120,7 +120,7 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) (
 			// A settings drop is reported even though the render succeeded;
 			// it is invisible in the render by definition, because helm
 			// ignores a value it does not know rather than failing on it.
-			gone, err := droppedValues(repoRoot, p.before, p.after)
+			gone, err := droppedValues(ctx, repoRoot, p.before, p.after)
 			switch {
 			case err != nil:
 				res.warnings = append(res.warnings, fmt.Sprintf(
@@ -153,9 +153,12 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) (
 
 // renderChartVersion renders one Application's chart at its pinned version,
 // with the value files and inline values that Application uses.
-func renderChartVersion(repoRoot string, r Row) ([]Object, error) {
+func renderChartVersion(ctx context.Context, repoRoot string, r Row) ([]Object, error) {
 	chartArgs, err := HelmChartArgs(r.ChartRepo, r.Chart)
 	if err != nil {
+		return nil, err
+	}
+	if err := RefuseFlagLike("chart version", r.Version); err != nil {
 		return nil, err
 	}
 	args := append([]string{"template", releaseNameFor(r)}, chartArgs...)
@@ -165,11 +168,17 @@ func renderChartVersion(repoRoot string, r Row) ([]Object, error) {
 		// `$values/x` refers to the multi-source values ref, which is this
 		// repository. A file that does not exist for this Application is
 		// normal, ArgoCD's ignoreMissingValueFiles behaves the same way.
-		clean := vf
-		if i := strings.Index(clean, "/"); strings.HasPrefix(clean, "$") && i > 0 {
-			clean = clean[i+1:]
+		clean := stripValuesRef(vf)
+		full, err := containedPath(repoRoot, clean)
+		if err != nil {
+			// The list is `helm.valueFiles` off an Application in the pull
+			// request, so this is the head choosing what helm reads. A path
+			// that leaves the checkout is reported rather than skipped: the
+			// existence check above it used to be the only gate, and a file
+			// that existed and parsed merged into the values and rendered
+			// into the published comment.
+			return nil, fmt.Errorf("%s: value file %q: %w", r.App, vf, err)
 		}
-		full := filepath.Join(repoRoot, clean)
 		if _, err := os.Stat(full); err == nil {
 			args = append(args, "-f", full)
 		}
@@ -204,7 +213,7 @@ func renderChartVersion(repoRoot string, r Row) ([]Object, error) {
 	// stops shipping one is exactly what a version bump hides.
 	args = append(args, "--include-crds")
 
-	out, err := run(repoRoot, "helm", args...)
+	out, err := run(ctx, repoRoot, "helm", args...)
 	if err != nil {
 		return nil, err
 	}
@@ -220,6 +229,21 @@ func renderChartVersion(repoRoot string, r Row) ([]Object, error) {
 		}
 	}
 	return result, nil
+}
+
+// stripValuesRef turns `$values/charts/x/values.yaml` into
+// `charts/x/values.yaml`.
+//
+// A multi-source Application names its values source with `ref:` and then
+// refers to it by `$<ref>/`. Both readers of a Row's value files, the render
+// and the values-surface comparison, have to strip it the same way, or one of
+// them looks for a file whose name starts with a dollar sign and quietly finds
+// nothing.
+func stripValuesRef(vf string) string {
+	if i := strings.Index(vf, "/"); strings.HasPrefix(vf, "$") && i > 0 {
+		return vf[i+1:]
+	}
+	return vf
 }
 
 // chartRef builds what `helm template` needs: an OCI URL renders directly, a

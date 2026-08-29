@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -365,9 +366,10 @@ func (g *GitHub) AddLabel(ctx context.Context, number int, label string) error {
 
 // PushFix commits and pushes the working tree onto the pull request's branch.
 //
-// Uses git over HTTPS with the token in the remote URL rather than the API's
-// blob/tree endpoints: it is a handful of commands, it produces an ordinary
-// commit, and it works identically for any host once the URL changes.
+// Uses git over HTTPS rather than the API's blob/tree endpoints: it is a
+// handful of commands, it produces an ordinary commit, and it works
+// identically for any host once the URL changes. The token authenticates the
+// push through the environment, see pushAuthEnv, and appears in no argument.
 //
 // The push target is always the pull request's own branch. There is no code
 // path here that writes to the default branch.
@@ -395,20 +397,28 @@ func (g *GitHub) PushFix(ctx context.Context, pr *PullRequest, root, message str
 	if err != nil {
 		return err
 	}
-	remote, err := g.pushRemote(tok)
+	remote, err := g.pushRemote()
 	if err != nil {
 		return err
 	}
 
-	steps := [][]string{
-		{"git", "-C", root, "config", "user.name", name},
-		{"git", "-C", root, "config", "user.email", email},
-		{"git", "-C", root, "add", "-A"},
-		{"git", "-C", root, "commit", "-m", message},
-		{"git", "-C", root, "push", remote, "HEAD:" + pr.Branch},
+	steps := []gitStep{
+		{args: []string{"git", "-C", root, "config", "user.name", name}},
+		{args: []string{"git", "-C", root, "config", "user.email", email}},
+		{args: []string{"git", "-C", root, "add", "-A"}},
+		{args: []string{"git", "-C", root, "commit", "-m", message}},
+		// x-access-token is the username GitHub expects for an installation
+		// token; the token is the password.
+		{
+			args: []string{"git", "-C", root, "push", remote, "HEAD:" + pr.Branch},
+			env:  pushAuthEnv(remote, "x-access-token", tok),
+		},
 	}
 	for _, s := range steps {
-		cmd := exec.CommandContext(ctx, s[0], s[1:]...)
+		cmd := exec.CommandContext(ctx, s.args[0], s.args[1:]...)
+		if s.env != nil {
+			cmd.Env = append(os.Environ(), s.env...)
+		}
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
@@ -418,7 +428,7 @@ func (g *GitHub) PushFix(ctx context.Context, pr *PullRequest, root, message str
 			// installation token into a pull-request comment would be a poor
 			// way to learn that.
 			msg := redactErr(redactErr(stderr.String(), tok), g.Token)
-			return fmt.Errorf("%s: %w: %s", s[1], err, snippet([]byte(msg)))
+			return fmt.Errorf("%s: %w: %s", s.args[1], err, snippet([]byte(msg)))
 		}
 	}
 	// The branch head moved; tell the caller so its statuses land on it.
@@ -426,7 +436,8 @@ func (g *GitHub) PushFix(ctx context.Context, pr *PullRequest, root, message str
 	return nil
 }
 
-// pushRemote is where the fix is pushed, with a credential in it.
+// pushRemote is where the fix is pushed. No credential in it: the token
+// travels in the environment, see pushAuthEnv.
 //
 // Built from the configured repository URL, not from github.com. APIBase has
 // supported GitHub Enterprise since this provider was written, so an
@@ -438,10 +449,10 @@ func (g *GitHub) PushFix(ctx context.Context, pr *PullRequest, root, message str
 // RepoURL is the same value the clones use, so the push cannot disagree with
 // what was checked out. Falling back to github.com keeps a deployment that
 // never set it working, which is every non-Enterprise one.
-func (g *GitHub) pushRemote(token string) (string, error) {
+func (g *GitHub) pushRemote() (string, error) {
 	raw := strings.TrimSpace(g.RepoURL)
 	if raw == "" {
-		return fmt.Sprintf("https://x-access-token:%s@github.com/%s/%s.git", token, g.Owner, g.Repo), nil
+		return fmt.Sprintf("https://github.com/%s/%s.git", g.Owner, g.Repo), nil
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -453,7 +464,11 @@ func (g *GitHub) pushRemote(token string) (string, error) {
 		// authenticates as somebody else.
 		return "", fmt.Errorf("GIT_REPO_URL %q must be an http(s) URL to push with a token", raw)
 	}
-	u.User = url.UserPassword("x-access-token", token)
+	// A user:password already written into GIT_REPO_URL would otherwise be
+	// the credential in argv that this stopped putting there, and it would
+	// also stop the scoped config key matching, since git compares the user
+	// as part of the URL.
+	u.User = nil
 	return u.String(), nil
 }
 

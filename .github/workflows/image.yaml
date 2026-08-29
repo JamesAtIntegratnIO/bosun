@@ -27,6 +27,13 @@ on:
         required: true
         type: string
 
+# Least privilege at the top, the way ci.yaml and release.yaml already do it.
+# Without this the workflow runs with whatever the repository default is, which
+# on classic settings is write-all; the publish job below re-widens to exactly
+# what it needs.
+permissions:
+  contents: read
+
 env:
   REGISTRY: ghcr.io
 
@@ -37,10 +44,23 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # The keyless cosign signature below. `id-token: write` mints the OIDC
+      # token Fulcio exchanges for a short-lived certificate naming this
+      # workflow at this commit; no private key exists to leak or rotate.
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      # Every third-party action is pinned to a commit, with the tag it had in
+      # a comment. A tag is a pointer the author can move, and a moved tag runs
+      # its new contents in a job holding `packages: write`; that is the
+      # tj-actions/changed-files incident, and Dependabot moves these
+      # deliberately instead.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      # Installed before the build, not after it: a cosign that fails to
+      # install after `push: true` has already run leaves an unsigned image
+      # published, which is the one outcome this step exists to prevent.
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -48,7 +68,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ env.REGISTRY }}/jamesatintegratnio/bosun
           # No 'latest'. An unpinned tag is how an image silently changes
@@ -72,7 +92,8 @@ jobs:
             type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: Dockerfile
@@ -82,5 +103,27 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # What went into the image, and what built it. A consumer pinning by
+          # digest already knows the bytes cannot change underneath them; this
+          # is what lets them ask whether those bytes came from this repository
+          # and what is inside them. mode=max records every build stage, not
+          # only the final one, which is where the downloaded helm and
+          # kubeconform show up.
+          provenance: mode=max
+          sbom: true
           cache-to: type=gha,mode=max,scope=bosun
           cache-from: type=gha,scope=bosun
+
+      # Signed by digest, never by tag. A tag is a pointer and signing one
+      # would say nothing about what it points at tomorrow, the same reason
+      # `latest=false` is set above. `--yes` skips the confirmation prompt
+      # cosign asks about publishing to the public transparency log, which a
+      # runner has no way to answer.
+      - name: Sign the digest
+        env:
+          IMAGE: ${{ env.REGISTRY }}/jamesatintegratnio/bosun
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          echo "::notice::signed ${IMAGE}@${DIGEST}"

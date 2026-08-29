@@ -11,6 +11,105 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.24.0]
+
+A security review of the chart. `appVersion` stays at 0.23.0: nothing here cuts
+a release.
+
+### Added
+
+- **`triage.egressAllowPrivate`.** Private address space is now closed in the
+  agent itself, at the dial, whatever the NetworkPolicy permits: loopback,
+  link-local, the RFC1918 blocks, CGNAT and the IPv6 equivalents. Nothing
+  removes that list, so this is how an operator whose chart repository,
+  registry or proxy sits on their own network names it. Without the entry the
+  request is refused, the log names the network, and the brief says it had no
+  evidence. Rendered as `EGRESS_ALLOW_PRIVATE`, joined with commas, beside the
+  `triage.egressDeny` it complements.
+
+- **`credentials.mountAsFiles`** (default `false`). Projects the git token, the
+  GitHub App private key, the model API key, the ArgoCD token and the promotion
+  token out of the same Secrets they already name into read-only files under
+  `/etc/bosun/credentials`, and sets `GIT_TOKEN_FILE` and friends instead of the
+  environment variables. An environment variable is readable through
+  `kubectl exec -- env`, `/proc/<pid>/environ` and a crash dump, and every child
+  process inherits it; this agent shells out to git and to helm.
+
+  Exactly one form is rendered per credential. The agent refuses to start when
+  both are set, so there is no upgrade window where the two disagree.
+
+  Off by default because of the image rather than the risk: the `_FILE`
+  variants are read by the agent, so an image without them treats every
+  credential as unset and the pod refuses to start over configuration that
+  looks present. Turn it on once your `image.tag` reads them.
+
+  The volume is mode `0444`, not `0400`. A secret volume's files are owned by
+  root unless a pod `fsGroup` says otherwise and this pod runs as 10001, so
+  `0400` would be a credential the process cannot open.
+
+- **`networkPolicy.kargoPodSelector`** (default `{}`, today's behaviour). The
+  ingress rule admitted every pod in `kargoNamespace`, not the Kargo
+  controller, because a peer with only a `namespaceSelector` means the
+  namespace. Set the controller's labels to narrow it; both selectors go in one
+  peer so they are ANDed. `promotionAuth` answers the same question at the
+  application layer, and neither replaces the other.
+
+- **`networkPolicy.egress.dnsPodSelector`** (default `{}`, today's behaviour).
+  The same narrowing for the DNS rule, from `dnsNamespace` to the resolver's
+  own pods.
+
+- **`metrics.serviceMonitor.namespace`.** The namespace Prometheus scrapes
+  from. **Required when the ServiceMonitor and the NetworkPolicy are both
+  enabled**, and refused at render time when it is missing.
+
+### Changed
+
+- **The scrape's ingress rule names a namespace.** It was
+  `namespaceSelector: {}` with `app.kubernetes.io/name: prometheus`, and a pod
+  label is chosen by whoever creates the pod: any workload in any namespace
+  could label itself that way and reach the port. The port serves the whole
+  HTTP surface, `POST /v1/promotion-opened` included, so the rule admitted
+  exactly what the rule above it exists to restrict. Serving `/metrics` on a
+  container port of its own would make the question smaller, and that is a
+  change in the service rather than in this chart.
+
+  **Breaking for an install with `metrics.serviceMonitor.enabled` and no
+  `namespace`**: the render fails naming the value. One line to fix, and it
+  fails loudly rather than continuing to admit the cluster.
+
+- **`allowPublicHTTPS` excepts link-local and CGNAT** as well as the three
+  RFC1918 blocks: `169.254.0.0/16`, which contains the cloud metadata service
+  at 169.254.169.254, and `100.64.0.0/10`, which is pod or node addressing on
+  more than one managed platform. The list now matches
+  `egress.DefaultDenyNetworks` in the service.
+
+- **The pods, events and apps-workload reads are tied to `liveReads`.** They
+  were unconditional under `rbac.create`, so an install with `liveReads` and
+  `supervise` off still granted cluster-wide read of every pod spec, and
+  third-party pod specs routinely carry secret material as literal env values.
+  No code path reads them with `liveReads` off: the supervisor uses the Kargo
+  reads, and `CountLive` only ever visits the `<plural>.<group>` coordinates the
+  gate's report names, which are never the core group. The Kargo and argoproj
+  reads stay unconditional; they are what the chart is for.
+
+  Not breaking: nothing that reads them runs with the feature off.
+
+- **`values.schema.json` is strict at the top level.** `additionalProperties`
+  was true there, so `livereads` for `liveReads` or `networkpolicy` for
+  `networkPolicy` validated cleanly and silently left a default-on feature on.
+  Helm's own injected keys (`global`, and the `enabled` a parent chart's
+  `condition` sets) are enumerated, and `metrics` gets the properties it never
+  had.
+
+- **The DNS egress rule says why it is there.** helm runs as a subprocess over
+  pull-request content and a chart can call sprig's `getHostByName`; helm
+  resolves it and the answer renders into the published report, which makes an
+  arbitrary name lookup an exfiltration channel out of a pod holding a git
+  token, a model key and an App key. No Go process can portably impose a
+  resolver on a child, so this rule is the only place it can be pointed
+  somewhere accountable. Nothing else in the file opens 53. What remains is the
+  cluster resolver's own forwarding, which is a policy in your DNS release.
+
 ## [0.23.2]
 
 ### Changed

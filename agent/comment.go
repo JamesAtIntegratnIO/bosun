@@ -91,7 +91,7 @@ func renderRestructured(rr *restructureResult) string {
 		for _, a := range rr.Applied {
 			fmt.Fprintf(&b, "<details><summary><code>%s</code> — %s/%s", a.Path, a.Kind, a.Name)
 			if a.Notes != "" {
-				fmt.Fprintf(&b, " — %s", a.Notes)
+				fmt.Fprintf(&b, " — %s", modelProse(a.Notes))
 			}
 			b.WriteString("</summary>\n\n")
 			for _, f := range a.Reasons {
@@ -139,6 +139,55 @@ func renderRestructured(rr *restructureResult) string {
 	return b.String()
 }
 
+// modelProseCap bounds one model-authored field. The prompt asks for a
+// sentence and gets a paragraph; 4000 runes is an order of magnitude above the
+// longest verdict anything in the eval corpus has produced, so it never cuts a
+// real one, and a model talked into writing forever cannot fill the comment
+// box on its own.
+const modelProseCap = 4000
+
+// modelProse is how model-authored text reaches a published comment: with the
+// HTML-comment delimiters escaped and a length it cannot exceed.
+//
+// Both halves of this repository find their own comments by searching every
+// comment body for an HTML-comment marker: `<!-- gitops-gate -->` for the
+// report, `<!-- gitops-gate:head <sha> -->` for "this commit already has a
+// verdict", `<!-- gitops-gate:verdict ` for "this is the comment I may
+// rewrite", `<!-- bosun:explanation -->` for "this pull request has already
+// been explained". Every one is a substring match (Rule 1a) over a body a
+// person on the pull request can influence, and the summary and the reasoning
+// are the one place their words are reproduced verbatim. A pull request that
+// talks the model into echoing the head stamp does not get a wrong verdict; it
+// gets the gate's own duplicate-suppression to swallow the next one, and the
+// commit ends up with no verdict on it at all and nothing saying so.
+//
+// The delimiters are escaped rather than the markers listed. A blocklist of
+// the markers that exist today is one new marker away from being wrong, and
+// there is no marker without `<!--`. `&lt;!--` renders as those literal
+// characters, so an attempt shows up in the comment as itself rather than
+// vanishing into an HTML comment nobody sees.
+//
+// It deliberately does not cover the rest of the comment. Paths, values and
+// the folded diffs come from the repository, not the model, and escaping a
+// diff would misreport the file; the whole-body question belongs where the
+// comment is assembled, not here. Rule 2: the prompt already asks for short
+// prose, and this is the part that holds when the prompt does not.
+func modelProse(s string) string {
+	s = strings.ReplaceAll(s, "<!--", "&lt;!--")
+	s = strings.ReplaceAll(s, "-->", "--&gt;")
+	r := []rune(s)
+	if len(r) <= modelProseCap {
+		return s
+	}
+	// Said out loud, because a comment that silently drops the second half of
+	// an escalation is worse than a long one: the reader is looking at a
+	// handoff with no way to tell there was more of it. On one line and with
+	// no newline of its own, because one caller renders prose inside a
+	// <summary>, where a blank line ends the heading and strands the rest.
+	return string(r[:modelProseCap]) +
+		fmt.Sprintf(" _[truncated: %d of %d characters shown]_", modelProseCap, len(r))
+}
+
 // countOf is "1 file" / "27 files".
 func countOf(n int, noun string) string {
 	if n == 1 {
@@ -184,7 +233,7 @@ func render(brand, model string, v *llm.Verdict, res *edits.Result, headline str
 	// The footer still records the provenance, which is the half a reader
 	// needs and the host cannot supply.
 	fmt.Fprintf(&b, "%s\n\n", headline)
-	fmt.Fprintf(&b, "**%s**\n\n%s\n", v.Summary, v.Reasoning)
+	fmt.Fprintf(&b, "**%s**\n\n%s\n", modelProse(v.Summary), modelProse(v.Reasoning))
 
 	if res != nil && len(res.Applied) > 0 {
 		b.WriteString("\n**Applied**\n\n| File | Key | From | To |\n|---|---|---|---|\n")
@@ -217,7 +266,7 @@ func renderExplanation(model string, v *llm.Verdict, notes *upstream.Notes) stri
 		// printing both was the agent announcing itself twice.
 		b.WriteString("**Worth a look before merging.**\n\n")
 	}
-	fmt.Fprintf(&b, "**%s**\n\n%s\n\n", v.Summary, v.Reasoning)
+	fmt.Fprintf(&b, "**%s**\n\n%s\n\n", modelProse(v.Summary), modelProse(v.Reasoning))
 	// Provenance, always. A reader deciding how much to trust this needs to
 	// know whether it had the maintainers' own words or only the render.
 	b.WriteString("---\n")

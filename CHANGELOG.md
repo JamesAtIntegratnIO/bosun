@@ -5,6 +5,161 @@ All notable changes to `bosun`. Format follows
 
 ## [Unreleased]
 
+### Security
+
+A round of remediation against an OWASP-framed source review. No finding was
+critical, and the write path held throughout: every scalar edit still re-checks
+the deny-list, the allow-list, the scope and the `from` value independently of
+the model. What follows is the edges the design never claimed.
+
+- **Internal address space is closed to the agent, whatever the deny-list
+  says.** `egress` was an open-by-default list of host strings, and a host
+  string is not an address: `169.254.169.254` is also `http://2852039166/`,
+  also `[::ffff:a9fe:a9fe]`, and also any name whose owner repoints it a moment
+  after the string was checked. Loopback, link-local, RFC1918, CGNAT and the
+  IPv6 equivalents are now in a `DefaultDenyNetworks` list no configuration
+  removes, checked on the dialler where the address is finally known, so
+  rebinding and alternate spellings are caught after resolution rather than
+  guessed at beforehand.
+
+  **This is a breaking default.** A deployment whose chart repository,
+  registry or proxy sits on a private address is refused until that network is
+  named in `triage.egressAllowPrivate` (`EGRESS_ALLOW_PRIVATE`), and the
+  refusal says which network to name. Three gaps stay open and are stated in
+  the package doc rather than implied away: helm is a subprocess and dials on
+  its own, a proxy means the address checked is the proxy's, and a caller
+  supplying its own RoundTripper keeps its own dialler.
+
+- **The edit scope is read from the pull request, not asserted by the
+  caller.** `policy.Scope` came from the promotion body's `files`, and an empty
+  array disabled scope narrowing altogether, since it is only enforced when
+  non-empty. It is now derived from `git diff --name-only` against the fetched
+  base in the checkout the agent already has. A promotion whose base branch
+  cannot be read escalates without writing rather than proceeding unscoped, and
+  an empty diff is an error rather than a licence. The body still carries
+  `files`; nothing trusts it.
+
+- **Upstream lookups and the schema probe refuse an artifact the repository
+  does not name.** `Artifact`, `From` and `To` reached the resolver and
+  `helm template` unvalidated, so a caller could aim either at
+  `169.254.169.254` or `argocd-server.argocd.svc` and read the result off the
+  pull request comment. Both sinks now require the checkout itself to name the
+  host the artifact resolves to. A reference with no host of its own, `redis`
+  and the like, still resolves by convention rather than by the caller's
+  choice.
+
+- **Every path the gate joins to a checkout goes through `safepath`.** Six
+  sites, including head-controlled `helm.valueFiles`, joined with
+  `filepath.Join` and gated on nothing but an existence check, so
+  `../../../../etc/….yaml` resolved outside the checkout and, if it parsed as a
+  mapping, merged into values and rendered into the public comment.
+  `readGlobs` now asks containment of each match rather than of the pattern.
+  A value file that escapes is an error where it used to be a silent skip.
+
+- **The repair contract travels in a machine block, not in prose.** The agent
+  regex-parsed the human report to build the migration contract, and part of
+  that report was rendered object names. A chart could name an object so the
+  bullet reproduced the parser's line exactly and forge a `Dropped{…}` the
+  deterministic migrator would then execute. The gate emits
+  `<!-- gitops-gate:dropped … -->`, `migrate.ParseReport` reads that and never
+  falls back to prose when the marker is present, and object names, values and
+  paths are escaped where the report renders them. `metadata.name` is
+  deliberately not validated against RFC1123: Kubernetes has no single name
+  rule, and a subdomain check would drop objects real clusters accept.
+
+- **Model prose cannot forge a published marker.** Summary, Reasoning and
+  Notes are escaped at `<!--`/`-->` and length-bounded before they reach a pull
+  request comment. Seven markers were forgeable, and the sharpest was not the
+  report marker: `gateservice` returns early when it finds its own head stamp,
+  so echoed text could have made the gate silently skip a verdict. The
+  delimiters are escaped rather than today's markers blocklisted, because a
+  blocklist is one new marker away from being wrong. File-derived text in
+  folded diffs and table cells is still unescaped.
+
+- **Gate subprocesses can be cancelled.** `helm`, `kubectl` and `kubeconform`
+  ran under `exec.Command`, so `gateservice`'s context deadline cancelled
+  nothing and a stalled render held a chart-diff slot indefinitely. One choke
+  point now runs them under `exec.CommandContext` with a three-minute
+  per-invocation bound, and the context threads through `Render`, `ChartDiff`,
+  `ValidateManifests`, `Assemble` and `ExportClusters`, which all take a
+  leading `context.Context`.
+
+- **A chart, repository or version beginning with `-` is refused.** Helm's
+  parser reads an interspersed `-…` as a flag wherever it appears, and
+  `--post-renderer` makes helm exec a binary. The tokens that arrive from a
+  promotion payload are checked before they land in argv.
+
+- **The git push credential left the command line.** It was a positional
+  `https://x-access-token:{tok}@…` remote, visible in `/proc/<pid>/cmdline` and
+  to `ps` for the push's lifetime. It now travels as a URL-scoped
+  `http.<remote>.extraHeader` supplied through `GIT_CONFIG_*` in the
+  environment, on both the GitHub and Gitea providers. Not `-c`, which would
+  put it straight back into argv.
+
+- **Credentials can be mounted as files.** `GIT_TOKEN`,
+  `GITHUB_APP_PRIVATE_KEY`, `LLM_API_KEY`, `ARGOCD_TOKEN` and
+  `PROMOTION_TOKEN` each take a `_FILE` variant holding a path. Trailing
+  newline trimmed, so a Secret mount works as-is; setting both forms for one
+  credential is a start-up error, as is a path that cannot be read or a file
+  that is empty. The plain form still works, so an upgrade is not forced.
+
+- **The supply chain is pinned, verified and signed.** Every third-party
+  Action moves to a full commit SHA with a version comment; helm and
+  kubeconform are checked against per-architecture sha256 digests before
+  extraction, in both Dockerfiles and in CI; base images are digest-pinned and
+  alpine moves 3.21 to 3.24; images and charts are signed with keyless cosign
+  and publish provenance and SBOM attestations; `image.yaml` gains a
+  least-privilege top-level `permissions` block. `.github/dependabot.yml`
+  covers github-actions, gomod, docker and npm, and `govulncheck ./...` runs in
+  CI.
+
+- **`go.mod` moves to Go 1.26.6.** Five standard-library advisories were
+  reachable from this code on 1.26.5 and are fixed there, so this is what makes
+  the new `govulncheck` step pass. `GOTOOLCHAIN` is `auto`, so the dev shell
+  fetches it rather than refusing to build.
+
+- **The chart narrows what may reach the agent, and what the agent may
+  resolve.** `charts/bosun` 0.24.0 adds `networkPolicy.kargoPodSelector` so the
+  triage hook can be restricted to the Kargo controller rather than to every
+  workload in its namespace, `networkPolicy.egress.dnsPodSelector` so DNS
+  egress can be narrowed to the resolver pods, and the two blocks missing from
+  the `allowPublicHTTPS` except list, `169.254.0.0/16` and `100.64.0.0/10`.
+  Both selectors default to today's behaviour. `metrics.serviceMonitor` now
+  requires a `namespace`, which is breaking for the installs that turned it on;
+  see the chart's own changelog for why an optional value would have left the
+  hole open. The baseline `pods`/`events`/`apps` grants move inside
+  `liveReads.enabled`, where the only code that reads them lives, and both
+  schemas set top-level `additionalProperties: false` so a misspelled
+  `livereads` is a render error rather than a silently defaulted feature.
+
+- **The safety model says what it enforces.** Its FQDN egress guarantee held
+  only on the Cilium flavor: `fqdns` and `fqdnPatterns` render inside
+  `{{- if eq $np.flavor "cilium" }}`, so on the default `standard` flavor they
+  were silently ignored while `allowPublicHTTPS` permitted any public host on
+  443. The row is replaced by three that each name what is actually enforced,
+  plus a section on what the NetworkPolicy can and cannot do per CNI and a
+  section stating that `helm template` is a subprocess no Go code contains.
+  [ADR 0011](adr/0011-public-is-open-internal-is-closed.md) records the egress
+  decision.
+
+- **`hack/portability-test.sh` checks CI's tool pins too.** Its own comment in
+  `ci.yaml` claimed the versions there were already checked against
+  `flake.nix`; `check_pin` read the Dockerfile and stopped, so CI's copy was
+  asserted by nothing. A CI that lints with a helm no image ships is the same
+  locally-true, globally-wrong verdict from the other direction.
+
+- **Not closed, and said rather than implied.** `helm template` runs as a
+  subprocess and Helm strips only `env` and `expandenv` from sprig, so a chart
+  committed to a pull request can call `{{ getHostByName "…" }}` and the
+  address it resolves renders into the published report. `gate/template.go`
+  removes that function from the in-process ApplicationSet renderer only. A Go
+  process cannot portably put its child in a network namespace or behind a
+  captive resolver, so containment for this is a NetworkPolicy question, and
+  `networkPolicy.egress.dnsPodSelector` is as far as a chart can take it: the
+  cluster resolver still forwards what it cannot answer. Which chart helm
+  renders is bounded, because the schema probe refuses an artifact the checkout
+  does not name; what that chart does once rendered is not.
+
 ### Added
 
 - **Node 22 in the dev shell.** The site is a required check and its build was

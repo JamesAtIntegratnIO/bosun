@@ -1,0 +1,64 @@
+# What moves the pins in this repository.
+#
+# Every third-party action is a commit sha, every FROM is a digest, and both
+# are deliberately unreadable to a human deciding whether an update is safe. A
+# pin nobody can move is not a security control, it is an old dependency: the
+# tj-actions/changed-files retag is the reason for the shas, and Log4Shell is
+# the reason a pin that never moves is its own incident. This file is the other
+# half of both, and it opens a pull request rather than applying anything, so
+# CI runs and a person reads the diff.
+#
+# What is deliberately not here: helm and kubeconform. Those are pinned in
+# three places at once -- flake.nix, Dockerfile and gate/Dockerfile -- with
+# hack/portability-test.sh asserting the three agree, plus a per-architecture
+# sha256 in each Dockerfile. Dependabot would bump one copy of one of them and
+# hand a green-looking pull request to whoever had to reconcile the rest.
+# Those move by hand, together, or the gate renders with a helm the dev shell
+# does not have.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # Actions move in lockstep more often than not, and five separate pull
+    # requests to re-read the same five shas is how a person stops reading
+    # them -- the argument image.yaml already makes about gate bumps.
+    groups:
+      actions:
+        patterns: ['*']
+
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    # One module, two binaries, so there is exactly one manifest to watch and
+    # a bump reaches both halves at once. ci.yaml's govulncheck step is what
+    # says whether any of this is urgent.
+    groups:
+      go:
+        patterns: ['*']
+
+  # Two Dockerfiles, two entries: Dependabot scans a directory, and the gate's
+  # image is not in the root one. Both pin the same golang and alpine digests
+  # on purpose, so expect these two to open matching pull requests.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: /gate
+    schedule:
+      interval: weekly
+
+  # The documentation site, which is built by ci.yaml on every pull request and
+  # published by pages.yaml. `npm ci` means the lockfile is the pin, so this is
+  # the only thing that moves it.
+  - package-ecosystem: npm
+    directory: /site
+    schedule:
+      interval: weekly
+    groups:
+      site:
+        patterns: ['*']

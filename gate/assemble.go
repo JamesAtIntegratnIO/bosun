@@ -1,6 +1,9 @@
 package gate
 
-import "sort"
+import (
+	"context"
+	"sort"
+)
 
 // Assemble is the gate's verdict, start to finish: render the charts on both
 // sides, diff the tables, fold in the settings a bump stops reading, and trace
@@ -22,10 +25,10 @@ import "sort"
 //
 // base and head are mutated: the rendered objects and the render warnings are
 // spliced into them, which is what makes them visible to Diff.
-func Assemble(repoRoot string, cfg *Config, base, head *Table) *DiffResult {
+func Assemble(ctx context.Context, repoRoot string, cfg *Config, base, head *Table) *DiffResult {
 	var valueDrops []ObjectChange
 	if repoRoot != "" {
-		beforeOb, afterOb, drops, warns := ChartDiff(repoRoot, cfg, base, head)
+		beforeOb, afterOb, drops, warns := ChartDiff(ctx, repoRoot, cfg, base, head)
 		base.Objects = append(base.Objects, beforeOb...)
 		head.Objects = append(head.Objects, afterOb...)
 		// On base, not head: Diff dedupes the union of both sides' warnings,

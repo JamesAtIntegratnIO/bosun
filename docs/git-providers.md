@@ -61,6 +61,18 @@ Enterprise deployment pushes where it read. Deriving the remote from
 `owner/repo` against `github.com` sends the fix, and a live installation token
 with it, to whatever repository happens to hold that name on the public host.
 
+**The push credential never reaches git's argv.** Both providers used to spell
+it into the remote URL, `https://x-access-token:<token>@host/...`, and hand
+that to `git push` as an argument. Nothing persisted it and the error text was
+redacted, but `/proc/<pid>/cmdline` is world-readable, so for the length of the
+push a live token was there for `ps` and for every other process in the
+namespace. `git -c http.<url>.extraHeader=…` is the obvious repair and is the
+same mistake, because `-c` is argv too; the credential goes through
+`GIT_CONFIG_COUNT`/`KEY`/`VALUE` instead, where `/proc/<pid>/environ` is
+readable only by the process owner. The key is scoped to the remote's own URL
+and never the bare `http.extraHeader`, which would attach a bearer credential
+for one host to whatever host git ended up talking to.
+
 ## Things a new implementation has to get right
 
 **The gate's report is a comment.** A comment is the only artifact surface

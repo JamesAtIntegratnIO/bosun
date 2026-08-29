@@ -14,12 +14,22 @@ on:
 permissions:
   contents: read
 
+# Every third-party action in this repository is a commit sha with the version
+# it was in a comment. A tag is a mutable pointer the action's owner can move,
+# so `@v4` is a promise to run whatever that account decides `v4` means at the
+# moment the job starts. tj-actions/changed-files was retagged that way across
+# every version it had ever published, and the replacement dumped runner memory
+# into the logs of thousands of repositories. A sha is the one reference GitHub
+# cannot repoint.
+#
+# .github/dependabot.yml is what moves them, as a pull request a person reads.
+
 jobs:
   go:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
@@ -29,13 +39,27 @@ jobs:
       # run reports exactly the same green as one that passed. Versions are
       # pinned to the image's, which hack/portability-test.sh already checks
       # against flake.nix.
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
         with:
           version: v3.19.0
+      # Checked before it is extracted, and against a digest that lives here
+      # rather than one fetched beside the tarball: a CHECKSUMS file served by
+      # the host that served the tarball proves only that the two agree. This
+      # is the job that decides whether a chart renders, so a swapped
+      # kubeconform is a swapped verdict. The digest is
+      # kubeconform-linux-amd64.tar.gz from the v0.7.0 release; bump it with
+      # the version or the build stops, which is the intended way to notice.
       - name: kubeconform
+        env:
+          KUBECONFORM_VERSION: v0.7.0
+          KUBECONFORM_SHA256: c31518ddd122663b3f3aa874cfe8178cb0988de944f29c74a0b9260920d115d3
         run: |
-          wget -qO- https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz \
-            | tar -xz -C /usr/local/bin kubeconform
+          set -euo pipefail
+          wget -qO /tmp/kubeconform.tar.gz \
+            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          echo "${KUBECONFORM_SHA256}  /tmp/kubeconform.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/kubeconform.tar.gz -C /usr/local/bin kubeconform
+          rm -f /tmp/kubeconform.tar.gz
       - name: gofmt
         run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "run gofmt"; exit 1; }
       - run: go vet ./...
@@ -55,15 +79,27 @@ jobs:
       # here.
       - run: REQUIRE_TOOLS=1 go test -race ./...
 
+      # A service whose product is telling other people their dependencies
+      # moved should know when its own did. govulncheck reports only what this
+      # code actually reaches, so a vulnerability in a package nothing calls
+      # does not fail the build and a vulnerability the gate calls on every
+      # pull request does.
+      #
+      # `go run` at a pinned version rather than an action: the module proxy
+      # checksums it against go.sum's database, which is a stronger pin than a
+      # commit sha, and it is one fewer third party with a token in this job.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+
   chart:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # The published-version guard diffs against the base commit, which a
           # depth-1 checkout does not have.
           fetch-depth: 0
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
       # helm lint, plus `helm template` against values.schema.json: a schema
       # that has drifted from the chart is worse than no schema at all.
       - run: hack/lint.sh
@@ -105,8 +141,8 @@ jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm

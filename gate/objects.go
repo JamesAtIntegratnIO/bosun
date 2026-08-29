@@ -88,6 +88,13 @@ func isTestHook(meta map[string]any) bool {
 // all varies between versions of the same chart. podinfo 6.7.0 omits it and
 // 6.14.1 sets it, which made every object in the chart read as one removal
 // plus one addition rather than a change.
+//
+// The name is taken as the chart wrote it, and deliberately not checked
+// against RFC1123. Kubernetes has no single name rule: Role and ClusterRole
+// names are path segments, `system:controller:node-controller` among them, so
+// a subdomain check here would drop objects every cluster accepts and report a
+// removal that never happened. A hostile name does its damage in the report,
+// which is markdown, and that is where diff.go escapes it.
 func objectFrom(source, cluster, defaultNS string, obj map[string]any) (Object, bool) {
 	kind, _ := obj["kind"].(string)
 	apiVersion, _ := obj["apiVersion"].(string)

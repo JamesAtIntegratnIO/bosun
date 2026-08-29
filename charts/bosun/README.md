@@ -33,6 +33,10 @@ gate:
     existingSecret: bosun-argocd               # the account token
 triage:
   allowPaths: [addons/**]     # empty means it can fix nothing
+  # Only if a chart repository or registry it reads sits on a private
+  # address; those go through a dialler that refuses RFC1918, link-local and
+  # CGNAT whatever the NetworkPolicy permits. e.g. [10.42.0.0/16]
+  egressAllowPrivate: []
 networkPolicy:
   kargoNamespace: kargo
   egress:
@@ -226,7 +230,7 @@ which contains Secrets.
 
 | `scope` | Grants | Secrets |
 |---|---|---|
-| `groups` (default) | `get`/`list` on the API groups you list | unreadable; the core group is never granted |
+| `groups` (default) | `get`/`list` on the API groups you list | unreadable; the core group is granted nothing beyond the pods and events this feature brings |
 | `wide` | `get`/`list` on everything | **readable** |
 
 With `groups`, an unlisted group shows up in the brief as *"not permitted to
@@ -304,12 +308,92 @@ spec:
           port: 8080
 ```
 
+## Narrowing what this install grants
+
+Five settings, all of them defaulting to what the chart did before 0.24.0
+except the last. Each closes something a default install grants and does not
+use.
+
+**Credentials as files rather than environment.** An environment variable is
+readable through `kubectl exec -- env`, `/proc/<pid>/environ` and a crash dump,
+and every child process inherits the whole environment; this service shells out
+to git and to helm.
+
+```yaml
+credentials:
+  mountAsFiles: true
+```
+
+The same Secrets and the same keys, projected read-only into
+`/etc/bosun/credentials`, with `GIT_TOKEN_FILE` and its four siblings set
+instead of the variables. A child process then inherits a path rather than a
+secret. Exactly one form is rendered per credential, and start-up fails if both
+are set.
+
+Either way the values are loaded once at start-up by the binary's
+configuration loader and go only to the git host, the model provider and
+ArgoCD, each over its own client. No credential is part of a prompt or of
+anything published.
+
+**Your image has to support the `_FILE` variants**: `_FILE` is a convention,
+not a Kubernetes feature, so the kubelet mounts the file and sets the variable
+to a path while opening that path is the binary's own code. Under an older
+image every credential is unset, and the pod refuses to start over
+configuration you can see is present.
+
+**Which pods may call this, not which namespace.** A NetworkPolicy peer with
+only a `namespaceSelector` admits every pod in that namespace, so the ingress
+rule means "anything sharing Kargo's namespace" rather than "Kargo". The labels
+are a fact about your Kargo release:
+
+```yaml
+networkPolicy:
+  kargoPodSelector:
+    app.kubernetes.io/name: kargo
+    app.kubernetes.io/component: controller
+  egress:
+    dnsPodSelector:
+      k8s-app: kube-dns
+```
+
+`dnsPodSelector` does the same for DNS, and DNS is the rule that matters most
+here: helm runs as a subprocess over pull-request content, a chart in a pull
+request can call sprig's `getHostByName`, and helm resolves it and renders the
+answer into the report the agent publishes. Nothing in the service can stop
+that, because a Go process cannot portably impose a resolver on a child. This
+rule is the only place that lookup is held to a resolver you run. Wrong labels
+drop every name lookup, which looks like a git host that is down.
+
+**Where the scrape comes from.** With `metrics.serviceMonitor.enabled` and
+`networkPolicy.enabled`, `metrics.serviceMonitor.namespace` is required and the
+render fails without it. The rule used to be a pod label alone, and a pod label
+is chosen by whoever creates the pod: anything in any namespace could label
+itself `app.kubernetes.io/name: prometheus` and reach a port that serves the
+whole HTTP surface, `POST /v1/promotion-opened` included.
+
+**A registry or chart repository on your own network.** The agent refuses
+private address space at the dial, whatever the NetworkPolicy permits, and no
+configuration removes that list. Name your network to open it:
+
+```yaml
+triage:
+  egressAllowPrivate: [10.42.0.0/16]
+```
+
+Without the entry the request is refused, the log names the network, and the
+brief degrades to saying it had no evidence.
+
+**Cluster-wide pod read follows `liveReads`.** See below.
+
 ## Shape
 
 - **Read-only RBAC.** `get`/`list`/`watch` on Kargo CRDs, ArgoCD Applications
-  and AnalysisRuns, pods and events. No `create`, `update`, `patch` or `delete`
-  anywhere. The agent observes the cluster and writes to pull requests, never
-  to the cluster.
+  and AnalysisRuns. Pods, events and the apps workloads come with
+  `liveReads.enabled` and are not granted without it: nothing reads them with
+  the feature off, and a third-party pod spec routinely carries secret material
+  as a literal env value. No `create`, `update`, `patch` or `delete` anywhere.
+  The agent observes the cluster and writes to pull requests, never to the
+  cluster.
 - **Not exposed.** No Ingress or HTTPRoute. Only Kargo calls it, in-cluster.
   Publishing it would be gratuitous exposure of something that can spend money
   and write to your repository.

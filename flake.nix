@@ -96,7 +96,12 @@
 
           devShells.default = pkgs.mkShell {
             packages = with pkgs; [
-              # The module. go.mod requires 1.26.0; nixpkgs is at 1.26.x.
+              # The module. go.mod requires 1.26.6, which is where the standard
+              # library's currently-reachable advisories are fixed and therefore
+              # what CI's govulncheck step needs to pass. nixpkgs is at 1.26.x
+              # and may be behind that; GOTOOLCHAIN is `auto`, so the go here
+              # fetches the newer toolchain rather than refusing to build. If
+              # that ever has to become `local`, this pin moves to nixpkgs.
               go
               gopls
 

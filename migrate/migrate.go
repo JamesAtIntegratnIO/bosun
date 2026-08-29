@@ -4,11 +4,17 @@
 // It is shared by the gate and the agent on purpose, and that sharing is the
 // safety argument. The gate uses Scan to decide whether a dropped version
 // blocks, it blocks exactly while manifests in the repository still declare
-// it, and Line to write the report. The agent uses ParseReport to read that
-// line back and Migrate to rewrite the declaring manifests. One scanner, one
-// line format, two callers: the inspection and the repair cannot disagree
-// about what a consumer is, and the re-run gate independently verifies the
-// repair by counting again.
+// it, Line to write the finding a person reads and DroppedBlock to write the
+// instruction the repair runs on. The agent uses ParseReport to read that
+// block back and Migrate to rewrite the declaring manifests. One scanner, one
+// format, two callers: the inspection and the repair cannot disagree about
+// what a consumer is, and the re-run gate independently verifies the repair by
+// counting again.
+//
+// The report a person reads and the instruction a repair executes are the same
+// facts and deliberately not the same bytes. See DroppedMarker for why: part
+// of every bullet is a name a rendered chart chose, and a chart must not be
+// able to spell a migration.
 //
 // The agent side involves no model. Everything it needs, the kind, the
 // dropped versions, the version that remains, is computed by the gate and
@@ -16,7 +22,8 @@
 // evidence, not a proposal to be corroborated.
 //
 // By extension this package owns reading the gate's report, not only the
-// repair: Line writes a finding, ParseReport reads it back, and Subjects names
+// repair: Line and DroppedBlock write a finding, ParseReport reads it back,
+// and Subjects names
 // what a whole report is about so an upstream search can be aimed at it. They
 // live together because they are one format, and two files that each believe
 // they know it is how a change to the report becomes a silent no-op somewhere
@@ -91,11 +98,15 @@ func OtherBlockers(report string) bool {
 // Line renders one dropped-version finding as the report bullet.
 //
 // When the consumer kind and the surviving version are known the line carries
-// them, and that suffix is what makes the finding repairable: the agent's
-// parser accepts nothing less. A known kind with no survivor is a CRD removed
-// outright; there is nowhere to move, so the line says so and the parser
-// deliberately cannot act on it. Without either it falls back to the plain
-// statement.
+// them, and that suffix is what a repair needs: an agent reading a report from
+// a gate too old to write DroppedBlock accepts nothing less. A known kind with
+// no survivor is a CRD removed outright; there is nowhere to move, so the line
+// says so and the parser deliberately cannot act on it. Without either it
+// falls back to the plain statement.
+//
+// The line is prose, and prose is where the repair contract used to live. It
+// no longer does, because part of every bullet is a name a chart chose. See
+// DroppedMarker.
 func Line(object, dropped, kind, target string) string {
 	switch {
 	case kind != "" && target != "":
@@ -123,8 +134,142 @@ var reportLine = regexp.MustCompile(
 	"^- `CustomResourceDefinition/([a-z0-9][a-z0-9.-]*\\.[a-z0-9.-]+)(?: in [^`]+)?`: " +
 		"no longer serves `([^`]+)` — `([A-Za-z][A-Za-z0-9]*)` manifests must move to `(v[0-9][A-Za-z0-9]*)`$")
 
+// DroppedMarker opens the repair contract: one entry per repairable finding,
+// terminated by the comment's own `-->`, the same shape and the same argument
+// as BlockersMarker.
+//
+// It exists because the prose above it is not the gate's alone to write. Half
+// of a report bullet is a sentence the gate composes and half is the name of
+// an object some chart rendered, and a chart that puts a backtick or a newline
+// in metadata.name writes a whole finding line itself. What that line says is
+// a contract Migrate executes against policy-allowed manifests, so a report
+// red for one genuine dropped version could be made to carry a second,
+// invented one, to any destination the chart chose. Prose is for a person; the
+// instruction is built from the gate's own structured findings instead.
+//
+// The marker's presence is the version signal, so it is emitted even with
+// nothing to say. A gate that writes this block writes every repairable
+// finding into it, which is what lets ParseReport refuse to read prose the
+// moment it sees one.
+const DroppedMarker = "<!-- gitops-gate:dropped"
+
+// The shapes the contract accepts, anchored the way reportLine anchors: a CRD
+// name is plural.group, a kind is a bare identifier, a destination is
+// version-shaped. Nothing here can spell a space or a `>`, so no field value
+// can end the comment early or forge a second entry, and a field that drifts
+// parses as nothing rather than as almost the right migration.
+//
+// Dropped versions are looser than the destination because they are read, not
+// written: a chart may serve a version this package would never pick as a
+// target, and refusing to name it would lose the finding.
+var (
+	contractCRD     = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]*\.[a-z0-9.-]+$`)
+	contractKind    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`)
+	contractVersion = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.-]*$`)
+	contractTarget  = regexp.MustCompile(`^v[0-9][A-Za-z0-9]*$`)
+)
+
+// DroppedBlock renders the repair contract for a whole report.
+//
+// A finding whose fields do not hold their shape is left out rather than
+// written and hoped for: the reader validates with the same patterns, so an
+// entry it would refuse is one the writer must not claim to have made.
+func DroppedBlock(drops []Dropped) string {
+	var b strings.Builder
+	b.WriteString(DroppedMarker)
+	for _, d := range drops {
+		if entry, ok := droppedEntry(d); ok {
+			b.WriteString("\n")
+			b.WriteString(entry)
+		}
+	}
+	b.WriteString("\n-->\n")
+	return b.String()
+}
+
+// droppedEntry is one line of the contract, and the single definition of what
+// a well-formed one looks like. DroppedBlock writes through it and
+// parseDroppedBlock validates through it, so the writer cannot emit an entry
+// the reader would refuse, which is the whole reason the two are not two
+// functions.
+func droppedEntry(d Dropped) (string, bool) {
+	if !contractCRD.MatchString(d.CRD) || !contractKind.MatchString(d.Kind) ||
+		!contractTarget.MatchString(d.Target) || len(d.Versions) == 0 {
+		return "", false
+	}
+	for _, v := range d.Versions {
+		if !contractVersion.MatchString(v) {
+			return "", false
+		}
+	}
+	return fmt.Sprintf("crd=%s kind=%s versions=%s target=%s",
+		d.CRD, d.Kind, strings.Join(d.Versions, ","), d.Target), true
+}
+
 // ParseReport extracts every repairable dropped-version finding from a gate
 // report.
+//
+// The contract block is authoritative, and exclusive: a report carrying
+// DroppedMarker is from a gate that puts every repairable finding there, so
+// the prose below it is never read. That is the point of the block, and
+// falling back to the prose "just in case" would hand the forgery it exists to
+// stop a second way in.
+//
+// The prose scrape is what remains for a report from a gate old enough to
+// predate the block. It reads a finding a chart could have written, which is
+// exactly the exposure such a deployment already has; a newer gate closes it,
+// and an agent paired with an older one repairs nothing it cannot corroborate
+// only because there is nothing to corroborate against.
+func ParseReport(report string) []Dropped {
+	if i := strings.Index(report, DroppedMarker); i >= 0 {
+		return parseDroppedBlock(report[i+len(DroppedMarker):])
+	}
+	return parseDroppedProse(report)
+}
+
+func parseDroppedBlock(rest string) []Dropped {
+	if j := strings.Index(rest, "-->"); j >= 0 {
+		rest = rest[:j]
+	}
+	var out []Dropped
+	for _, line := range strings.Split(rest, "\n") {
+		var d Dropped
+		bare := false
+		for _, field := range strings.Fields(line) {
+			k, v, ok := strings.Cut(field, "=")
+			if !ok {
+				// Every field the writer emits is key=value, so a bare word is
+				// a line this package did not write. Unknown keys are ignored
+				// rather than refused, which is what lets a later gate carry
+				// one more fact without an older agent dropping the migration.
+				bare = true
+				break
+			}
+			switch k {
+			case "crd":
+				d.CRD = v
+			case "kind":
+				d.Kind = v
+			case "target":
+				d.Target = v
+			case "versions":
+				for _, s := range strings.Split(v, ",") {
+					if s != "" {
+						d.Versions = append(d.Versions, s)
+					}
+				}
+			}
+		}
+		if _, ok := droppedEntry(d); bare || !ok {
+			continue
+		}
+		d.Group = d.CRD[strings.Index(d.CRD, ".")+1:]
+		out = append(out, d)
+	}
+	return out
+}
+
+// parseDroppedProse reads findings out of the report bullets themselves.
 //
 // The suffix-less line, `X: no longer serves Y`, with no consumer kind and no
 // destination, is deliberately not returned. It names a problem without naming
@@ -135,7 +280,7 @@ var reportLine = regexp.MustCompile(
 // but not what declares it or what survives, a finding built from a bodiless
 // table. It is the unrepairable case, not a legacy one, and reading it as
 // legacy invites somebody to delete the branch that produces it.
-func ParseReport(report string) []Dropped {
+func parseDroppedProse(report string) []Dropped {
 	var out []Dropped
 	for _, raw := range strings.Split(report, "\n") {
 		m := reportLine.FindStringSubmatch(strings.TrimRight(raw, "\r"))

@@ -15,8 +15,11 @@ type EgressPolicy interface {
 }
 
 // egressCheck is the gate's half of the accountability trade the egress package
-// documents: reach anything, but say where you went, and let an operator forbid
-// a destination by name.
+// documents: reach anything public, but say where you went, and let an
+// operator forbid a destination by name. Internal address space is not part of
+// that trade -- egress.Policy.Denied answers its closed networks whatever the
+// operator's list says -- but only for a reference written as an address. helm
+// resolves a name itself, and the resolution is invisible from here.
 //
 // helm is a subprocess, so an HTTP transport cannot see inside it and the
 // destination has to be checked and recorded here. It was not: the in-cluster

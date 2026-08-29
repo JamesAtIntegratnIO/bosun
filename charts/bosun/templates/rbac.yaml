@@ -22,13 +22,23 @@ rules:
   - apiGroups: [argoproj.io]
     resources: [applications, analysisruns, analysistemplates]
     verbs: [get, list, watch]
+{{- if .Values.liveReads.enabled }}
+{{- /*
+The core and apps reads, which only this feature can consume.
+
+They were unconditional until 0.24.0, so an install with liveReads off still
+granted cluster-wide read of every pod spec, and third-party pod specs
+routinely carry secret material as literal env values. That is a standing
+information-disclosure grant paid for by installs that never used it. The
+Kargo and argoproj reads above stay unconditional: they are what the chart is
+for.
+*/ -}}
   - apiGroups: [""]
     resources: [pods, events]
     verbs: [get, list, watch]
   - apiGroups: [apps]
     resources: [deployments, statefulsets, daemonsets]
     verbs: [get, list, watch]
-{{- if .Values.liveReads.enabled }}
 {{- /*
 Live reads. Which custom resources the agent may count is the one
 interesting access question in this chart, and Kubernetes RBAC constrains the
