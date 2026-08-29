@@ -2,10 +2,10 @@ package gate
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -21,7 +21,7 @@ import (
 //	 -> renders the factory chart with that cluster's values layers
 //	 -> N ApplicationSets
 //	 -> one Application each per matching cluster <- what we return
-func Render(repoRoot string, cfg *Config, inv *Inventory) (*Table, error) {
+func Render(ctx context.Context, repoRoot string, cfg *Config, inv *Inventory) (*Table, error) {
 	// Collect every source concurrently. On a fleet this is the difference
 	// between a gate that runs inside a pull request and one nobody waits for:
 	// fifty clusters is fifty chart renders, and they do not depend on each
@@ -41,7 +41,7 @@ func Render(repoRoot string, cfg *Config, inv *Inventory) (*Table, error) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			b, err := collect(repoRoot, cfg, inv, src)
+			b, err := collect(ctx, repoRoot, cfg, inv, src)
 			results <- result{idx: i, batch: b, err: err}
 		}(i, cfg.Sources[i])
 	}
@@ -251,24 +251,32 @@ func bootstrapSource(bs map[string]any, p Param, cfg *Config) (string, []string,
 // stream. Missing value files are skipped, matching the
 // ignoreMissingValueFiles the bootstraps set; a values layer that does not
 // exist for a given cluster is normal, not an error.
-func helmTemplateRaw(repoRoot, chartPath string, valueFiles []string) ([]byte, error) {
-	args := []string{"template", "gate", filepath.Join(repoRoot, chartPath)}
+func helmTemplateRaw(ctx context.Context, repoRoot, chartPath string, valueFiles []string) ([]byte, error) {
+	chartFull, err := containedPath(repoRoot, chartPath)
+	if err != nil {
+		return nil, fmt.Errorf("chart path %q: %w", chartPath, err)
+	}
+	args := []string{"template", "gate", chartFull}
 	for _, vf := range valueFiles {
-		full := filepath.Join(repoRoot, vf)
+		full, err := containedPath(repoRoot, vf)
+		if err != nil {
+			// Not folded into the skip below. "this cluster has no such
+			// values layer" is routine and silent; "this path leaves the
+			// checkout" is the finding, and swallowing it as absence would
+			// hide the one case worth seeing.
+			return nil, fmt.Errorf("value file %q: %w", vf, err)
+		}
 		if _, err := os.Stat(full); err != nil {
 			continue // ignoreMissingValueFiles: true
 		}
 		args = append(args, "-f", full)
 	}
 
-	cmd := exec.Command("helm", args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("helm template %s: %w\n%s", chartPath, err, stderr.String())
+	out, err := run(ctx, repoRoot, "helm", args...)
+	if err != nil {
+		return nil, fmt.Errorf("helm template %s: %w", chartPath, err)
 	}
-	return stdout.Bytes(), nil
+	return out, nil
 }
 
 func splitYAML(b []byte) [][]byte {
@@ -349,8 +357,8 @@ func bootstrapRow(bs map[string]any, p Param, appsetName, chartPath string) (Row
 }
 
 // helmRender renders a chart and returns every object in the output.
-func helmRender(repoRoot, chartPath string, valueFiles []string) ([]map[string]any, error) {
-	stream, err := helmTemplateRaw(repoRoot, chartPath, valueFiles)
+func helmRender(ctx context.Context, repoRoot, chartPath string, valueFiles []string) ([]map[string]any, error) {
+	stream, err := helmTemplateRaw(ctx, repoRoot, chartPath, valueFiles)
 	if err != nil {
 		return nil, err
 	}
@@ -365,8 +373,12 @@ func helmRender(repoRoot, chartPath string, valueFiles []string) ([]map[string]a
 // have no such layer, but where it exists it is doing real work, and reading
 // it is how the gate learns which values each cluster is rendered with without
 // being told twice.
-func collectBootstrap(repoRoot string, cfg *Config, inv *Inventory, s Source) ([]docs, error) {
-	raw, err := os.ReadFile(filepath.Join(repoRoot, s.Path))
+func collectBootstrap(ctx context.Context, repoRoot string, cfg *Config, inv *Inventory, s Source) ([]docs, error) {
+	full, err := containedPath(repoRoot, s.Path)
+	if err != nil {
+		return nil, fmt.Errorf("source %q: %w", s.Name, err)
+	}
+	raw, err := os.ReadFile(full)
 	if err != nil {
 		return nil, fmt.Errorf("source %q: reading %s: %w", s.Name, s.Path, err)
 	}
@@ -408,7 +420,7 @@ func collectBootstrap(repoRoot string, cfg *Config, inv *Inventory, s Source) ([
 		// Assuming a chart made the gate blind to that entire pattern, which
 		// is the one most people using this run. Detect by looking
 		// for Chart.yaml, exactly as ArgoCD decides.
-		objs, err := renderBootstrapPath(repoRoot, chartPath, valueFiles)
+		objs, err := renderBootstrapPath(ctx, repoRoot, chartPath, valueFiles)
 		if err != nil {
 			return nil, fmt.Errorf("source %q (cluster %s): %w", s.Name, p.Cluster.Name, err)
 		}
@@ -429,10 +441,13 @@ func collectBootstrap(repoRoot string, cfg *Config, inv *Inventory, s Source) ([
 // renderBootstrapPath resolves a bootstrap's source path the way ArgoCD does:
 // a directory containing Chart.yaml is a chart, anything else is a directory of
 // manifests to be read recursively.
-func renderBootstrapPath(repoRoot, path string, valueFiles []string) ([]map[string]any, error) {
-	full := filepath.Join(repoRoot, path)
+func renderBootstrapPath(ctx context.Context, repoRoot, path string, valueFiles []string) ([]map[string]any, error) {
+	full, err := containedPath(repoRoot, path)
+	if err != nil {
+		return nil, fmt.Errorf("source path %q: %w", path, err)
+	}
 	if _, err := os.Stat(filepath.Join(full, "Chart.yaml")); err == nil {
-		return helmRender(repoRoot, path, valueFiles)
+		return helmRender(ctx, repoRoot, path, valueFiles)
 	}
 	info, err := os.Stat(full)
 	if err != nil {

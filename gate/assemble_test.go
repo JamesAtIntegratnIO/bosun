@@ -1,6 +1,9 @@
 package gate
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 // Assemble exists so the in-cluster service and the CLI cannot reach different
 // verdicts on one commit. Without a worktree it must still produce the table
@@ -16,7 +19,7 @@ func TestAssembleWithoutAWorktreeStillDiffsTheTables(t *testing.T) {
 			ChartRepo: "https://example.test", Version: "2.0.0", SourceType: "helm"},
 	}}
 
-	res := Assemble("", nil, base, head)
+	res := Assemble(context.Background(), "", nil, base, head)
 	if len(res.Versions) != 1 {
 		t.Fatalf("want the version change, got %+v", res.Versions)
 	}

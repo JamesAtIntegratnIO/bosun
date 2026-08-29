@@ -2,6 +2,7 @@ package gate
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,19 +19,19 @@ import (
 // CRDs outside the big projects are in no published catalogue, and without it
 // one unknown kind fails a run that had nothing wrong with it. The cost is
 // real and worth stating; those kinds are not checked.
-func ValidateManifests(repoRoot string, cfg *Config, inv *Inventory, w io.Writer) (int, error) {
+func ValidateManifests(ctx context.Context, repoRoot string, cfg *Config, inv *Inventory, w io.Writer) (int, error) {
 	if _, err := exec.LookPath("kubeconform"); err != nil {
 		return 0, fmt.Errorf("kubeconform is not on PATH: %w", err)
 	}
 
-	streams, err := renderStreams(repoRoot, cfg, inv)
+	streams, err := renderStreams(ctx, repoRoot, cfg, inv)
 	if err != nil {
 		return 0, err
 	}
 
 	var failures int
 	for name, doc := range streams {
-		out, err := runKubeconform(cfg, doc)
+		out, err := runKubeconform(ctx, cfg, doc)
 		if err != nil {
 			return 0, fmt.Errorf("running kubeconform on %s: %w", name, err)
 		}
@@ -56,7 +57,7 @@ type kubeconformResult struct {
 	Msg  string `json:"msg"`
 }
 
-func runKubeconform(cfg *Config, doc []byte) ([]kubeconformResult, error) {
+func runKubeconform(ctx context.Context, cfg *Config, doc []byte) ([]kubeconformResult, error) {
 	args := []string{"-strict", "-output", "json", "-summary=false"}
 	if cfg.Validate.IgnoreMissingSchemas {
 		args = append(args, "-ignore-missing-schemas")
@@ -69,14 +70,27 @@ func runKubeconform(cfg *Config, doc []byte) ([]kubeconformResult, error) {
 	}
 	args = append(args, "-")
 
-	cmd := exec.Command("kubeconform", args...)
+	// Bounded like every other subprocess the gate starts. Not through `run`,
+	// because that one reads a non-zero exit as a failure and this one must
+	// not: kubeconform exits non-zero when a manifest is invalid, which is a
+	// result rather than an execution failure, so the output is parsed either
+	// way.
+	ctx, cancel := context.WithTimeout(ctx, toolTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "kubeconform", args...)
 	cmd.Stdin = bytes.NewReader(doc)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	// kubeconform exits non-zero when a manifest is invalid, which is a result
-	// rather than an execution failure, so parse the output either way.
 	_ = cmd.Run()
+
+	// A killed kubeconform writes nothing, and the parse below would then
+	// blame the empty stdout on kubeconform's output format. Say the deadline
+	// expired instead.
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("kubeconform did not finish within %s: %w", toolTimeout, err)
+	}
 
 	var parsed struct {
 		Resources []struct {
@@ -101,10 +115,10 @@ func runKubeconform(cfg *Config, doc []byte) ([]kubeconformResult, error) {
 
 // renderStreams re-collects every source and returns the raw manifests for
 // each, keyed by a human-readable name.
-func renderStreams(repoRoot string, cfg *Config, inv *Inventory) (map[string][]byte, error) {
+func renderStreams(ctx context.Context, repoRoot string, cfg *Config, inv *Inventory) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	for _, src := range cfg.Sources {
-		batch, err := collect(repoRoot, cfg, inv, src)
+		batch, err := collect(ctx, repoRoot, cfg, inv, src)
 		if err != nil {
 			return nil, err
 		}

@@ -21,17 +21,43 @@ spec:
       {{- include "bosun.selectorLabels" . | nindent 6 }}
   policyTypes: [Ingress, Egress]
   ingress:
-    # Only Kargo calls this. Nothing else has any reason to.
+    {{- /* Only Kargo calls this. Nothing else has any reason to.
+
+           The namespace is as narrow as this gets by default, and it is wider
+           than the sentence above: a peer with only a namespaceSelector admits
+           every pod in that namespace, not the controller. `kargoPodSelector`
+           narrows it to the controller's own labels, which this chart cannot
+           assert on an operator's behalf. Both selectors sit in one peer so
+           they are ANDed; two list entries would be a union and would widen
+           the rule while looking like it narrowed it. */}}
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ $np.kargoNamespace }}
+          {{- with $np.kargoPodSelector }}
+          podSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+          {{- end }}
       ports:
         - protocol: TCP
           port: {{ .Values.service.port }}
     {{- if .Values.metrics.serviceMonitor.enabled }}
+    {{- /* The scrape. Both halves are required, and the namespace half is the
+           one that was missing: a pod label is chosen by whoever creates the
+           pod, so `namespaceSelector: {}` with a prometheus label admitted any
+           workload in any namespace that labelled itself that way. What it
+           reaches is not a metrics port but the service's whole HTTP surface,
+           POST /v1/promotion-opened included, so this admitted the endpoint
+           the rule above exists to restrict.
+
+           Serving /metrics on a container port of its own would shrink the
+           question to a port nobody else answers on. That is a change in the
+           service, not in this chart. */}}
     - from:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.metrics.serviceMonitor.namespace }}
           podSelector:
             matchLabels:
               app.kubernetes.io/name: prometheus
@@ -40,10 +66,36 @@ spec:
           port: {{ .Values.service.port }}
     {{- end }}
   egress:
+    {{- /* DNS, to the cluster resolver and nowhere else. This is the only rule
+           this chart writes that opens 53, and it is a containment rule rather
+           than a convenience one. Naming 53 under `egress.ipBlocks` or
+           `egress.namespaces` adds another, and nothing here can tell a second
+           resolver from a way out.
+
+           helm runs as a subprocess over pull-request content, and a chart in
+           a pull request can call sprig's `getHostByName`. helm resolves it
+           and the answer renders into the report the agent publishes, which
+           makes an arbitrary name lookup an exfiltration channel out of a pod
+           holding a git token, a model key and an App key. helm strips `env`
+           and `expandenv` and nothing else, and a Go process cannot portably
+           impose a resolver on a child it starts, so no amount of code in this
+           repository closes it. A network rule can, and this is the one.
+
+           What it does not close: the cluster resolver forwards what it cannot
+           answer, so the query still reaches the name's own nameserver by way
+           of CoreDNS. That is a resolver policy in somebody else's release.
+
+           `dnsPodSelector` narrows this from the namespace to the resolver
+           pods; empty is the namespace, which is what this rule always was. */}}
     - to:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ $np.egress.dnsNamespace }}
+          {{- with $np.egress.dnsPodSelector }}
+          podSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+          {{- end }}
       ports:
         - protocol: UDP
           port: 53
@@ -110,6 +162,16 @@ spec:
           port: {{ .port | default 6443 }}
     {{- end }}
     {{- if $np.egress.allowPublicHTTPS }}
+    {{- /* Public, and the except list is what decides whether that word is
+           true. The three RFC1918 blocks are the obvious half; the two below
+           them are the half this rule was missing, and both are reachable
+           address space inside a cluster rather than theoretical.
+
+           This is the IPv4 half of egress.DefaultDenyNetworks in the service,
+           which refuses the same space at the dial; an IPv4 ipBlock cannot
+           carry the IPv6 entries. Two layers rather than one, because this
+           layer also governs the helm and git subprocesses, which do their own
+           dialling and never reach the service's transport. */}}
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -117,6 +179,12 @@ spec:
               - 10.0.0.0/8
               - 172.16.0.0/12
               - 192.168.0.0/16
+              # Link-local, and the cloud metadata service at 169.254.169.254,
+              # which answers instance credentials to anything that asks.
+              - 169.254.0.0/16
+              # RFC6598. CGNAT on paper, and pod or node addressing on more
+              # than one managed platform.
+              - 100.64.0.0/10
       ports:
         - protocol: TCP
           port: 443

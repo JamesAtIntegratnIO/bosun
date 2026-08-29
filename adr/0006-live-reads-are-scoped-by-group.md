@@ -45,8 +45,11 @@ chart has made a decision that was not its to make.
 
 - `groups` (default when enabled) — `get` and `list` on the API groups the
   operator lists, plus `get`/`list` on `customresourcedefinitions`. The core
-  group is never granted beyond the `pods, events` the chart already had, so
-  Secrets stay unreadable *by construction* rather than by intent. A group
+  group is never granted beyond `pods, events`, so Secrets stay unreadable *by
+  construction* rather than by intent. Those two moved inside this feature's
+  block in chart 0.24.0: they read as "the chart already had them" here because
+  at the time of this decision the baseline granted them whether the feature was
+  on or not, and nothing ever read them with it off. A group
   nobody listed degrades to **"not permitted to check"** in the brief.
 - `wide` — `apiGroups: ["*"]`, `resources: ["*"]`, `get` and `list`. Answers
   everything, **can read Secret contents**, and the values file says so in those

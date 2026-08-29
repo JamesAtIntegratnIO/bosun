@@ -11,7 +11,11 @@ import (
 )
 
 // Config is the agent's whole configuration, read from the environment so a
-// chart can supply it and a Secret can supply the two values that matter.
+// chart can supply it and a Secret can supply the values that matter.
+//
+// Every credential also reads from a file, named by the same variable with a
+// _FILE suffix, and that is the form to prefer: see envSecret for what an
+// environment variable is visible to and who inherits it.
 //
 // There is no default model provider on purpose. A component that installs
 // cleanly and then quietly starts spending money against a vendor the operator
@@ -110,10 +114,21 @@ type Config struct {
 	// MaxRestructured caps document migrations per pull request.
 	MaxRestructured int
 
-	// EgressDeny are hosts the agent must not contact. Empty permits
-	// everything, which is the default: the agent reads public metadata about
+	// EgressDeny are hosts the agent must not contact. Empty permits every
+	// public host, which is the default: the agent reads public metadata about
 	// public artifacts, and every outbound request is logged.
 	EgressDeny []string
+
+	// EgressAllowPrivate are internal networks the agent may reach after all,
+	// as a CIDR or a single address.
+	//
+	// Empty is the safe default and the common case, because nothing this
+	// reads lives on the cluster's own network. It is not the only case: an
+	// internal chart museum or a proxy on an RFC1918 address is a real
+	// deployment, and without this there is no way to say so, since
+	// egress.DefaultDenyNetworks is closed whatever EgressDeny says. The
+	// symptom of a missing entry is a refusal that names the network.
+	EgressAllowPrivate []string
 
 	// LiveReads turns on reading the cluster the agent runs in: how many
 	// objects are stored on a version a chart is about to stop serving, and
@@ -152,6 +167,16 @@ func LoadConfig() (*Config, error) {
 		}
 		return v
 	}
+	// Same trick for the credentials, which can fail on a file that is not
+	// there.
+	var secretErr error
+	secret := func(k string) string {
+		v, err := envSecret(k)
+		if err != nil && secretErr == nil {
+			secretErr = err
+		}
+		return v
+	}
 	c := &Config{
 		Addr:                     env("AGENT_ADDR", ":8080"),
 		Brand:                    env("AGENT_BRAND", "Bosun"),
@@ -161,7 +186,7 @@ func LoadConfig() (*Config, error) {
 		GitOwner:                 os.Getenv("GIT_OWNER"),
 		GitRepo:                  os.Getenv("GIT_REPO"),
 		GitRepoURL:               os.Getenv("GIT_REPO_URL"),
-		GitToken:                 os.Getenv("GIT_TOKEN"),
+		GitToken:                 secret("GIT_TOKEN"),
 		// No defaults. Empty means "derive": as a GitHub App, the bot's own
 		// identity; otherwise the provider's collision-proof fallback. The old
 		// default email lived in the `<username>@users.noreply.github.com`
@@ -173,7 +198,7 @@ func LoadConfig() (*Config, error) {
 		LLMProvider:        LLMProviderName(os.Getenv("LLM_PROVIDER")),
 		LLMBaseURL:         os.Getenv("LLM_BASE_URL"),
 		LLMModel:           os.Getenv("LLM_MODEL"),
-		LLMKey:             os.Getenv("LLM_API_KEY"),
+		LLMKey:             secret("LLM_API_KEY"),
 		LLMReasoningEffort: os.Getenv("LLM_REASONING_EFFORT"),
 
 		CheckName: env("GATE_CHECK_NAME", "addons-gate"),
@@ -181,7 +206,7 @@ func LoadConfig() (*Config, error) {
 	}
 	c.GateForkPRs = b("GATE_FORK_PRS", false)
 	c.ArgoCDBaseURL = os.Getenv("ARGOCD_BASE_URL")
-	c.ArgoCDToken = os.Getenv("ARGOCD_TOKEN")
+	c.ArgoCDToken = secret("ARGOCD_TOKEN")
 	c.ArgoCDCAFile = os.Getenv("ARGOCD_CA_FILE")
 	c.ArgoCDInsecureSkipTLSVerify = b("ARGOCD_INSECURE_SKIP_TLS_VERIFY", false)
 
@@ -190,7 +215,7 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 	c.AppID = os.Getenv("GITHUB_APP_ID")
-	c.AppPrivateKey = os.Getenv("GITHUB_APP_PRIVATE_KEY")
+	c.AppPrivateKey = secret("GITHUB_APP_PRIVATE_KEY")
 	c.AppInstallID = os.Getenv("GITHUB_APP_INSTALLATION_ID")
 	// Default on. The agent's whole complaint about itself was that it only
 	// spoke when something was wrong, and a green gate on a chart bump still
@@ -233,11 +258,12 @@ func LoadConfig() (*Config, error) {
 	c.LiveReads = b("LIVE_READS", false)
 	c.LiveReadsArgoCDNamespace = env("LIVE_READS_ARGOCD_NS", "argocd")
 	c.EgressDeny = envList("EGRESS_DENY")
+	c.EgressAllowPrivate = envList("EGRESS_ALLOW_PRIVATE")
 	c.AllowPaths = envList("ALLOW_PATHS")
 	c.DenyPaths = envList("DENY_PATHS")
 
 	// The shared secret the promotion endpoint requires, when there is one.
-	c.PromotionToken = strings.TrimSpace(os.Getenv("PROMOTION_TOKEN"))
+	c.PromotionToken = strings.TrimSpace(secret("PROMOTION_TOKEN"))
 	if c.MaxConcurrentTriage, err = envInt("MAX_CONCURRENT_TRIAGE", 4); err != nil {
 		return nil, err
 	}
@@ -245,6 +271,9 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("MAX_CONCURRENT_TRIAGE must be positive, got %d", c.MaxConcurrentTriage)
 	}
 
+	if secretErr != nil {
+		return nil, secretErr
+	}
 	if boolErr != nil {
 		return nil, boolErr
 	}
@@ -355,6 +384,47 @@ func env(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// envSecret reads a credential from K, or from the file named by K_FILE, and
+// is the only way this file reads one.
+//
+// The file form exists because an environment variable is not a private place.
+// `kubectl exec -- env` prints it, /proc/<pid>/environ holds it, a crash dump
+// carries it, and every child process inherits the whole environment: this
+// agent shells out to git and to helm, so a GitHub App private key delivered
+// as GITHUB_APP_PRIVATE_KEY is in the environment of binaries that have no
+// business seeing it. A file mounted from the same Secret is read once, here.
+//
+// Setting both forms is an error rather than a documented precedence. Two
+// credentials where the code wants one is a question with no right answer, and
+// picking the wrong one fails as a rejected token, which is the symptom of a
+// dozen unrelated mistakes and points at none of them.
+//
+// The trailing newline goes. A Secret mounted as a file ends in one, `echo -n
+// > key` does not, and a token carrying a stray \n is refused by every host in
+// exactly the way a wrong token is.
+func envSecret(k string) (string, error) {
+	path := strings.TrimSpace(os.Getenv(k + "_FILE"))
+	if path == "" {
+		return os.Getenv(k), nil
+	}
+	if os.Getenv(k) != "" {
+		return "", fmt.Errorf("%s and %s_FILE are both set: unset one, they cannot both be the credential", k, k)
+	}
+	blob, err := os.ReadFile(path)
+	if err != nil {
+		// Here, loudly, rather than as an empty string. An unreadable mount
+		// that falls back to empty arrives at validate() as "missing required
+		// configuration", which sends an operator to check a Secret key that
+		// is fine and never at the volume that is not.
+		return "", fmt.Errorf("%s_FILE: %w", k, err)
+	}
+	v := strings.TrimRight(string(blob), "\r\n")
+	if strings.TrimSpace(v) == "" {
+		return "", fmt.Errorf("%s_FILE %s is empty: a credential that reads as \"not configured\" is worse than one that is missing", k, path)
+	}
+	return v, nil
 }
 
 // envBool reads a boolean with a default, and is the only way this file reads

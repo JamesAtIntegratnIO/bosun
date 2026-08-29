@@ -145,13 +145,24 @@ fi
 # different helm than the image gets a verdict that is locally true and
 # globally wrong, and nothing about it looks like a version problem. The
 # Dockerfile already pins helm and kubeconform and says why; this asserts the
-# flake pins the same strings, because two copies of a version number is
-# exactly the shape that drifts.
+# flake and CI pin the same strings, because three copies of a version number
+# is exactly the shape that drifts.
+#
+# CI is the copy that was going unchecked. `ci.yaml` installs both tools to run
+# the chart lint and the seam tests, its comment said this script already
+# checked those pins against the flake, and it did not: it read the Dockerfile
+# and stopped. A CI that lints with a helm no image ships is the
+# same locally-true, globally-wrong verdict from the other direction, and the
+# comment asserting otherwise is how it would have stayed unnoticed.
 # ---------------------------------------------------------------------------
-echo "==> the dev shell and the images agree on what renders"
+echo "==> the dev shell, the image and CI agree on what renders"
 if [ -f flake.nix ]; then
-  check_pin() { # <flake attribute> <Dockerfile ARG>
-    local attr="$1" arg="$2" fv dv
+  # CI spells the versions two ways, `version: v3.19.0` for the setup action
+  # and an `env:` entry for the download, so the third argument names which key
+  # to read and the match is on the value rather than on a shape either one
+  # owns.
+  check_pin() { # <flake attribute> <Dockerfile ARG> <ci.yaml key>
+    local attr="$1" arg="$2" ci="$3" fv dv mismatch=0
     fv="$(sed -n "s/^ *${attr} = \"\([^\"]*\)\";.*/\1/p" flake.nix | head -1)"
     if [ -z "$fv" ]; then
       bad "flake.nix does not pin ${attr}"
@@ -160,13 +171,21 @@ if [ -f flake.nix ]; then
     dv="$(sed -n "s/^ARG ${arg}=v\{0,1\}\(.*\)/\1/p" Dockerfile | head -1)"
     if [ "$dv" != "$fv" ]; then
       bad "Dockerfile builds with ${arg}=${dv:-<unset>}, the dev shell with ${attr}=${fv}"
-    else
-      ok "${attr} ${fv} matches the image"
+      mismatch=1
     fi
+    if [ -f .github/workflows/ci.yaml ]; then
+      local cv
+      cv="$(sed -n "s/^ *${ci}: *v\{0,1\}\(.*\)/\1/p" .github/workflows/ci.yaml | head -1)"
+      if [ "$cv" != "$fv" ]; then
+        bad ".github/workflows/ci.yaml runs ${ci}=${cv:-<unset>}, the dev shell with ${attr}=${fv}"
+        mismatch=1
+      fi
+    fi
+    if [ "$mismatch" -eq 0 ]; then ok "${attr} ${fv} matches the image and CI"; fi
     return 0
   }
-  check_pin helmVersion HELM_VERSION
-  check_pin kubeconformVersion KUBECONFORM_VERSION
+  check_pin helmVersion HELM_VERSION version
+  check_pin kubeconformVersion KUBECONFORM_VERSION KUBECONFORM_VERSION
 else
   echo "  skip  no flake.nix"
 fi

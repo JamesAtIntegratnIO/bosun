@@ -1,6 +1,7 @@
 package gate
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -139,11 +140,11 @@ spec: {revisionHistoryLimit: 10}
 	}}
 	inv := fleet(t, before, []Cluster{{Name: "prod"}})
 
-	b, err := Render(before, cfg, inv)
+	b, err := Render(context.Background(), before, cfg, inv)
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := Render(after, cfg, inv)
+	h, err := Render(context.Background(), after, cfg, inv)
 	if err != nil {
 		t.Fatal(err)
 	}

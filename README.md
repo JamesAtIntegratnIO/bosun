@@ -130,6 +130,41 @@ status and report itself. No CI workflow, no checked-in inventory snapshot, no
 paths filter, and no second way to run the gate
 ([ADR 0010](adr/0010-the-cli-goes-too.md)).
 
+### Verifying what you pulled
+
+Every image and every chart digest is signed with keyless
+[cosign](https://docs.sigstore.dev/): no private key exists to leak or rotate,
+and the certificate names the workflow and the commit that produced the bytes.
+A signature nobody checks is a build step, so here is the command:
+
+```bash
+# the images
+cosign verify \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/JamesAtIntegratnIO/bosun/\.github/workflows/image\.yaml@' \
+  ghcr.io/jamesatintegratnio/gitops-gate:main
+
+# the charts
+cosign verify \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/JamesAtIntegratnIO/bosun/\.github/workflows/chart\.yaml@' \
+  ghcr.io/jamesatintegratnio/charts/bosun:0.23.2
+```
+
+The identity is a pattern rather than a literal because the ref is part of it:
+`…/image.yaml@refs/heads/main` for a branch build and `…@refs/tags/v0.23.0` for
+a tagged one. Pin the ref in the pattern if you only accept one of those.
+
+Two honest notes. **Signing is by digest, never by tag**, for the same reason
+this repository publishes no `latest`: a tag is a pointer and signing one says
+nothing about what it points at tomorrow. Verifying a tag resolves it first, so
+verify the digest you are actually going to run if you want the stronger
+statement. And the **SBOM and provenance are buildx attestations riding in the
+image index**, not separately signed objects; read them with `docker buildx
+imagetools inspect --format '{{ json .Provenance }}'`. What makes them
+tamper-evident is that the index digest references them and the signature
+covers that digest.
+
 The chart deploys the service, its RBAC and both halves of its NetworkPolicy.
 It consumes **existing Secrets by name**, so bring your own secret manager. See
 [`charts/bosun/README.md`](charts/bosun/README.md) for the values contract, and

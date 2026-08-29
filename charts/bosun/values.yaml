@@ -53,6 +53,31 @@ branding:
   # usefully, says whether a model was involved.
   mark: ""
 
+# How the credentials below reach the process.
+#
+# An environment variable is not a private place. `kubectl exec -- env` prints
+# it, /proc/<pid>/environ holds it, a crash dump carries it, and every child
+# process inherits the whole environment. This agent shells out to git and to
+# helm, so a GitHub App private key delivered as GITHUB_APP_PRIVATE_KEY sits in
+# the environment of binaries that have no business seeing it.
+#
+# On, every credential is projected from the same Secret it already names into
+# a read-only file, and the process is handed the path instead:
+# GIT_TOKEN_FILE, GITHUB_APP_PRIVATE_KEY_FILE, LLM_API_KEY_FILE,
+# ARGOCD_TOKEN_FILE, PROMOTION_TOKEN_FILE. Exactly one form is ever rendered
+# per credential; the agent refuses to start when it finds both, because two
+# credentials where the code wants one has no right answer and guessing fails
+# as a rejected token, which is the symptom of a dozen unrelated mistakes.
+#
+# Off by default, and the reason is the image rather than the risk. The file
+# form is read by the agent, not by Kubernetes, so it only works against an
+# image that has it. Turn it on under an older tag and every credential is
+# unset: the pod refuses to start naming configuration you can see is present,
+# and nothing points at this line. Confirm your image reads the _FILE variants
+# before setting this.
+credentials:
+  mountAsFiles: false
+
 git:
   # github, gitea (implemented) | gitlab | bitbucket (extension points)
   provider: github
@@ -376,6 +401,31 @@ triage:
   # says what it could not read.
   egressDeny: []
 
+  # Private networks the agent may reach after all.
+  #
+  # Private address space is closed in the agent itself, whatever the
+  # NetworkPolicy permits: loopback, link-local (169.254.0.0/16, and the cloud
+  # metadata service inside it), the RFC1918 blocks, CGNAT and the IPv6
+  # equivalents are refused at the dial, where the address is known rather than
+  # where a name was checked. Nothing removes that list. An entry here opens
+  # one of those networks back up by naming it.
+  #
+  # This is what a chart repository, a registry or a proxy on your own network
+  # needs. Without the entry the request is refused, the log line names the
+  # network that refused it, and the brief degrades to saying it had no
+  # evidence, the same way any unreachable host degrades.
+  #
+  # What goes through that dialler is the reading of public metadata about
+  # artifacts: chart indexes, registry manifests, release notes. The git host,
+  # the model endpoint, argocd-server and the apiserver do not, so an
+  # in-cluster or lan address for any of those needs a NetworkPolicy rule and
+  # nothing here.
+  #
+  # A CIDR or a single address. A hostname is not an address and allows
+  # nothing, which is the safe direction: the refusal keeps naming the network.
+  # e.g. [10.42.0.0/16, 192.168.10.20]
+  egressAllowPrivate: []
+
 resources:
   requests:
     cpu: 25m
@@ -420,6 +470,12 @@ rbac:
 # Read-only, structurally: get and list, no watch, and no create, update, patch
 # or delete anywhere in this chart.
 #
+# It also carries its own cluster-wide read of pods, events and the apps
+# workloads. Those grants used to be unconditional, so an install with this off
+# still handed the agent every pod spec in the cluster, and third-party pod
+# specs routinely carry secret material as literal env values. Nothing reads
+# them with this off, so they are no longer written.
+#
 # Network. This is the one feature that needs egress the chart cannot infer. The
 # apiserver is reached at `kubernetes.default.svc`, and a ClusterIP cannot be
 # expressed as an ipBlock; it is DNAT'd to a real endpoint before policy is
@@ -441,7 +497,8 @@ liveReads:
   #
   #   groups  (default): the API groups you list, and nothing else. Secrets
   #                        stay unreadable because the core group is never
-  #                        granted beyond the pods/events above. An unlisted
+  #                        granted beyond the pods and events this feature
+  #                        brings with it. An unlisted
   #                        group shows up in the brief as "not permitted to
   #                        check", which is honest and fixable.
   #   wide: apiGroups ["*"], resources ["*"], get + list. Answers
@@ -470,17 +527,79 @@ networkPolicy:
   # Namespace running the Kargo controller, the only thing allowed to call
   # this service.
   kargoNamespace: kargo
+  # Which pods in that namespace, if not all of them.
+  #
+  # A peer with only a namespaceSelector admits every pod in the namespace, so
+  # "Kargo may call this" means "anything sharing Kargo's namespace may call
+  # this", and what it reaches is the endpoint that names the pull request
+  # the agent edits and the files it reads into a prompt it publishes.
+  # `promotionAuth` answers that at the application layer and this answers it
+  # at the network layer; neither replaces the other.
+  #
+  # Empty admits the namespace, which is what every install before 0.24.0 did.
+  # The labels to put here are a fact about your Kargo release rather than
+  # something this chart can assert:
+  #
+  #   kubectl -n kargo get pods --show-labels
+  #
+  # e.g. {app.kubernetes.io/name: kargo, app.kubernetes.io/component: controller}
+  #
+  # A ServiceAccount cannot be named here. NetworkPolicy has no peer for one;
+  # identity-based selection is a CNI feature, and the cilium flavor below does
+  # not write an ingress rule at all.
+  kargoPodSelector: {}
   # Egress the agent needs: the git host and the model endpoint.
   # For `standard`, give CIDRs; for `cilium`, FQDNs are also honoured.
   egress:
+    # The cluster resolver, and the only destination this pod may reach on 53.
+    #
+    # It is a containment rule, not a convenience one. helm runs as a
+    # subprocess over pull-request content, and a chart in a pull request can
+    # call sprig's `getHostByName`; helm resolves it and the answer renders
+    # into the published report. Helm strips `env` and `expandenv` and nothing
+    # else, and no Go process can portably impose a resolver on a child, so
+    # this rule is the only place that name lookup can be pointed somewhere
+    # accountable. Everything else about the pod, the git token, the model key
+    # and the App key, is what that lookup would be carrying.
+    #
+    # What it still does not stop: the cluster resolver forwards what it cannot
+    # answer, so a query for an attacker-controlled name reaches that name's
+    # nameserver through CoreDNS rather than directly. Closing that is a
+    # resolver policy in your DNS release, not a rule this chart can write.
+    #
+    # Nothing else in this file opens 53. Naming port 53 under `ipBlocks` or
+    # `namespaces` below reopens it, and the chart cannot tell a second
+    # resolver from an exfiltration path.
     dnsNamespace: kube-system
+    # Which pods in that namespace, if not all of them. Same reasoning as
+    # `kargoPodSelector`: a namespaceSelector alone admits everything in
+    # kube-system, and the rule means the resolver.
+    #
+    # Empty admits the namespace, which is what every install before 0.24.0
+    # did. `{k8s-app: kube-dns}` is the label CoreDNS carries on a kubeadm
+    # cluster and the one the cilium flavor already asserts, but the label on
+    # your resolver is a fact about your cluster:
+    #
+    #   kubectl -n kube-system get pods -l k8s-app=kube-dns
+    #
+    # Wrong labels here are the worst failure in this file: every name lookup
+    # is dropped, and a pod that cannot resolve anything looks like a pod whose
+    # git host is down.
+    dnsPodSelector: {}
     # In-cluster destinations, a self-hosted git host or a model endpoint
     # running in this cluster. These cannot be expressed as ipBlocks: a
     # ClusterIP is DNAT'd to a pod IP before policy evaluation, so a rule
     # naming it matches nothing and the connection hangs with zero bytes.
     # e.g. [{name: gitea, ports: [3000]}]
     namespaces: []
-    # e.g. [{cidr: 10.1.2.3/32, port: 8000}] for a model endpoint on your lan
+    # e.g. [{cidr: 10.1.2.3/32, port: 8000}] for a model endpoint on your lan.
+    #
+    # A chart repository or registry on a private address needs naming twice:
+    # here, so the packet leaves, and in `triage.egressAllowPrivate`, because
+    # the agent refuses private address space at the dial whatever this
+    # permits. A rule here on its own reads as a network problem rather than as
+    # the refusal it is. The model endpoint and the git host are not dialled
+    # through that check and need only this rule.
     ipBlocks: []
     # The Kubernetes apiserver, needed when liveReads is enabled or the
     # pipeline sweep is on, both read it, and both are on by default. (The
@@ -514,8 +633,14 @@ networkPolicy:
     # means the label lookup hangs until it times out, which reads as a slow
     # model rather than a blocked connection.
     fqdnPatterns: []
-    # Allow outbound 443 to everything except private ranges. Convenient for
-    # reaching a public git host; unnecessary if you list FQDNs.
+    # Allow outbound 443 to everything except private address space:
+    # the three RFC1918 blocks, 169.254.0.0/16 (link-local, and the cloud
+    # metadata service at 169.254.169.254) and 100.64.0.0/10 (CGNAT, which is
+    # pod and node addressing on more than one managed platform). Excepting
+    # only RFC1918, which is what this rule did before 0.24.0, left a rule
+    # named "public" that reached the node's own metadata endpoint.
+    #
+    # Convenient for reaching a public git host; unnecessary if you list FQDNs.
     allowPublicHTTPS: false
 
     # Let the agent reach the internet on 443, and hold it to account in the
@@ -588,3 +713,17 @@ metrics:
     # exactly like a pipeline with nothing wrong.
     enabled: false
     interval: 30s
+    # The namespace Prometheus scrapes from.
+    #
+    # Required whenever this and `networkPolicy.enabled` are both on, because
+    # the ingress rule that lets a scrape through is otherwise written against
+    # a pod label alone. Pod labels are chosen by whoever creates the pod, so
+    # `app.kubernetes.io/name: prometheus` on a pod in any namespace at all
+    # reached this port, and the port serves the whole HTTP surface,
+    # POST /v1/promotion-opened included, not only /metrics.
+    #
+    # Naming the namespace restores what the rule was meant to say: a scrape
+    # from your monitoring namespace, and nothing else. Serving /metrics on a
+    # container port of its own would make the question smaller, and that is a
+    # change in the service rather than in this chart.
+    namespace: ""

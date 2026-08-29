@@ -1,6 +1,7 @@
 package gate
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,7 +71,7 @@ func TestValidateManifestsPassesAValidStream(t *testing.T) {
 	}
 
 	var out strings.Builder
-	failures, err := ValidateManifests(root, cfg, &Inventory{}, &out)
+	failures, err := ValidateManifests(context.Background(), root, cfg, &Inventory{}, &out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +94,7 @@ func TestValidateManifestsCountsAndNamesAFailure(t *testing.T) {
 	}
 
 	var out strings.Builder
-	failures, err := ValidateManifests(root, cfg, &Inventory{}, &out)
+	failures, err := ValidateManifests(context.Background(), root, cfg, &Inventory{}, &out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +125,7 @@ func TestSkipKindsSuppressesTheFailure(t *testing.T) {
 	}
 
 	var out strings.Builder
-	failures, err := ValidateManifests(root, cfg, &Inventory{}, &out)
+	failures, err := ValidateManifests(context.Background(), root, cfg, &Inventory{}, &out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +146,7 @@ func TestValidateManifestsSurfacesAnUnreadableSource(t *testing.T) {
 	root := repoWith(t, map[string]string{"apps/broken.yaml": "{{ not: yaml"})
 
 	var out strings.Builder
-	if _, err := ValidateManifests(root, cfg, &Inventory{}, &out); err == nil {
+	if _, err := ValidateManifests(context.Background(), root, cfg, &Inventory{}, &out); err == nil {
 		t.Fatal("an unparseable manifest must not read as zero failures")
 	}
 }

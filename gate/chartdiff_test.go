@@ -1,6 +1,7 @@
 package gate
 
 import (
+	"context"
 	"reflect"
 	"strings"
 	"testing"
@@ -30,7 +31,7 @@ func TestChartDiffOnlyConsidersVersionChanges(t *testing.T) {
 	// No helm on PATH in this test; what matters is which pairs it selects,
 	// which is observable through the warnings it emits for failed renders.
 	cfg := &Config{Concurrency: 2}
-	_, _, _, warns := ChartDiff(t.TempDir(), cfg, base, head)
+	_, _, _, warns := ChartDiff(context.Background(), t.TempDir(), cfg, base, head)
 
 	joined := strings.Join(warns, "\n")
 	if strings.Contains(joined, "same") {
@@ -53,7 +54,7 @@ func TestChartDiffReportsWhatItCouldNotRender(t *testing.T) {
 	base := &Table{Rows: []Row{row("1.0.0")}}
 	head := &Table{Rows: []Row{row("2.0.0")}}
 
-	before, after, _, warns := ChartDiff(t.TempDir(), &Config{Concurrency: 1}, base, head)
+	before, after, _, warns := ChartDiff(context.Background(), t.TempDir(), &Config{Concurrency: 1}, base, head)
 	if len(before) != 0 || len(after) != 0 {
 		t.Fatal("a failed render must contribute no objects")
 	}

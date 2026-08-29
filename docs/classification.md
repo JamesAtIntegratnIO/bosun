@@ -68,16 +68,18 @@ change behind a `failurePolicy: Fail` webhook.
 **A fix that lives outside the files the promotion touched.** MetalLB 0.16.0
 moves metrics from 7472 to 9120 while a NetworkPolicy still names the old port,
 and scraping stops without an error anywhere. The fix is one number, in a file
-the bump never opened, and the promotion's own file list is what bounds the
+the bump never opened, and the pull request's own diff is what bounds the
 agent.
 
 Two things make this an escalation rather than a mechanical fix, and neither
 is about the model:
 
 - The MetalLB target rewrites `metallb.defaultVersion` and nothing else, so the
-  NetworkPolicy is never in the promotion's file list. An eval fixture that
-  lists the NetworkPolicy grants an authority the live pipeline does not, and
-  passes for a reason that cannot reproduce.
+  NetworkPolicy is never in the branch's diff. An eval fixture that lists the
+  NetworkPolicy grants an authority the live pipeline does not, and passes for
+  a reason that cannot reproduce. The suite has no git repository to diff, so
+  it sets `Scope` from the fixture's own file list; in the cluster the applier
+  reads the diff itself and a promotion body claiming more is ignored.
 - The value is a **port**, and corroboration only covers version shapes. An
   invented port would be written. This is the one edit with neither guardrail.
 

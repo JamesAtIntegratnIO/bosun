@@ -28,10 +28,25 @@ keep fresh, and no paths filter to hand-edit.
   server-side guarantee rather than a policy the agent is asked to respect.
 - **A model endpoint**, anything OpenAI- or Anthropic-compatible, hosted or
   local. There is no default; the values file must name one.
-- **Two Secrets in the agent's namespace**, created by whatever secret manager
-  you already run. The chart consumes existing Secrets by name and creates
-  none. One holds the git credential (token, or App private key), one the model
-  API key.
+- **Three Secrets in the agent's namespace**, created by whatever secret
+  manager you already run. The chart consumes existing Secrets by name and
+  creates none. One holds the git credential (token, or App private key), one
+  the model API key, one the ArgoCD account token the gate reads the inventory
+  with.
+
+  Each of them reaches the process one of two ways. By default they arrive as
+  environment variables, which is not a private place: `kubectl exec -- env`
+  prints them, `/proc/<pid>/environ` holds them, and every child process
+  inherits the whole environment — and this agent shells out to git and to
+  helm, so a GitHub App private key sits in the environment of binaries with no
+  business seeing it. `credentials.mountAsFiles: true` projects each one into a
+  read-only file from the same Secret it already names and hands the process
+  the path instead (`GIT_TOKEN_FILE`, `GITHUB_APP_PRIVATE_KEY_FILE`,
+  `LLM_API_KEY_FILE`, `ARGOCD_TOKEN_FILE`, `PROMOTION_TOKEN_FILE`). It is off
+  by default because of the image, not the risk: the file form is read by the
+  agent rather than by Kubernetes, so turning it on under a tag that predates
+  it leaves every credential unset and the pod refuses to start naming
+  configuration you can see is present. Check your image reads it, then set it.
 
 ## 2. Install the agent
 
@@ -80,6 +95,27 @@ Two things to know at this step, both loud rather than silent:
   *other* half is the **Kargo controller's** egress policy, which must permit
   this namespace and port. Missing it shows up as a hang with zero bytes rather
   than an error.
+- **How tight the outbound half can be is your CNI's answer, not the chart's.**
+  On Cilium, name the hosts:
+
+  ```yaml
+  networkPolicy:
+    flavor: cilium
+    egress:
+      fqdns: [api.github.com, ghcr.io, charts.example.com]
+      fqdnPatterns: ["*.githubusercontent.com", "*.quay.io"]
+  ```
+
+  A registry serves manifests from its own host and blobs from a CDN whose
+  names are a set, which is what `fqdnPatterns` is for, and a name you leave
+  out fails as a two-minute timeout rather than a refusal. On the default
+  `flavor: standard` those two keys render into nothing — a standard
+  NetworkPolicy cannot name a host — and the reachable answer is
+  `egress.allowPublicHTTPS: true`, which is any public host on 443. Choose it
+  knowingly: `triage.egressDeny` then forbids destinations by name and the
+  agent logs every request it makes, and the internal networks stay closed
+  underneath either flavor. [The safety
+  model](safety-model.md) has the full version.
 
 **Verify:** the pod starts, refusing to start if it cannot read the apiserver
 or the inventory rather than running degraded, and the log says `gate:
@@ -134,8 +170,11 @@ pushed fix is a new head commit, and the sweep gates it because it is there.
 
 The gate now runs on every pull request. Triage, which reads a red gate,
 repairs what is provable and escalates the rest, still wants Kargo's context:
-artifact, from, to, and the files the promotion touched. That arrives as a POST
-when the promotion opens the pull request:
+artifact, from, to, and the files the promotion touched. Those files go into
+the prompt and no further — what a fix may write is read from the pull
+request's own diff, not from the body — but the context is what turns a
+generic escalation into one naming the chart and the versions. It arrives as a
+POST when the promotion opens the pull request:
 
 ```yaml
 # charts/kargo-pipelines values; the half that is off by default:

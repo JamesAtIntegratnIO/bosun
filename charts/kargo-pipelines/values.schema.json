@@ -2,11 +2,20 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "kargo-pipelines values",
   "type": "object",
-  "additionalProperties": true,
+  "description": "Strict at the top level as well as inside every object. A key this chart does not know is a typo, and a typo that validates cleanly is a setting that silently did nothing.",
+  "additionalProperties": false,
   "required": [
     "git"
   ],
   "properties": {
+    "global": {
+      "type": "object",
+      "description": "Helm injects this into every chart in a release. Never read here; enumerated so a parent chart's global values still validate."
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "Not read by this chart. A parent chart with `condition: kargo-pipelines.enabled` sets it, and the key arrives here."
+    },
     "nameLabel": {
       "type": "string"
     },

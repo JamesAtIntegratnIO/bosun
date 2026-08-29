@@ -35,7 +35,7 @@ jobs:
       version: ${{ steps.check.outputs.version }}
       needed: ${{ steps.check.outputs.needed }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0   # tags, to know what is already released
       - id: check
@@ -61,7 +61,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Create the tag
         env:
           V: ${{ needs.version.outputs.version }}
@@ -82,6 +82,10 @@ jobs:
     uses: ./.github/workflows/image.yaml
     with:
       version: ${{ needs.version.outputs.version }}
+    # A called workflow cannot hold more than its caller grants it, so
+    # `id-token: write` has to be repeated here or the cosign step in
+    # image.yaml fails on exactly the builds that matter most: the tagged ones.
     permissions:
       contents: read
       packages: write
+      id-token: write

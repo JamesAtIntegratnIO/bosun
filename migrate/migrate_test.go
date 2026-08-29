@@ -9,6 +9,9 @@ import (
 // The line the gate writes and the migration the agent reads back must be the
 // same thing, and this round-trip is the contract test for it; the report is
 // the wire format, so drift in either direction is a repair that stops firing.
+//
+// The prose path, reached because no report here carries DroppedMarker, which
+// is what a report from a gate older than the contract block looks like.
 func TestReportLineRoundTrips(t *testing.T) {
 	want := []Dropped{{
 		CRD:      "externalsecrets.external-secrets.io",
@@ -40,6 +43,83 @@ func TestTheOldLineFormatIsNotRepairable(t *testing.T) {
 		"v1alpha1, v1beta1", "", "")
 	if got := ParseReport(line); len(got) != 0 {
 		t.Fatalf("a suffix-less line must parse as nothing, got %+v", got)
+	}
+}
+
+func TestTheContractBlockRoundTrips(t *testing.T) {
+	want := []Dropped{{
+		CRD:      "externalsecrets.external-secrets.io",
+		Group:    "external-secrets.io",
+		Kind:     "ExternalSecret",
+		Versions: []string{"v1alpha1", "v1beta1"},
+		Target:   "v1",
+	}}
+	report := "<!-- gitops-gate -->\n" + DroppedBlock(want) + "\n### Resources\n\nprose about it\n"
+	if got := ParseReport(report); !reflect.DeepEqual(got, want) {
+		t.Fatalf("round trip lost something:\n got  %+v\n want %+v\n\n%s", got, want, report)
+	}
+}
+
+// The block is the instruction and the prose is a description of it. A report
+// carrying the block is from a gate that put every repairable finding there,
+// so a bullet claiming one more is either drift or a name some chart chose,
+// and neither is a reason to rewrite manifests.
+func TestProseIsNotReadWhenTheContractBlockIsPresent(t *testing.T) {
+	forged := Line("CustomResourceDefinition/secrets.evil.io", "v1", "Secret", "v2")
+
+	real := []Dropped{{CRD: "things.example.io", Group: "example.io", Kind: "Thing",
+		Versions: []string{"v1beta1"}, Target: "v1"}}
+	got := ParseReport(DroppedBlock(real) + "\n" + forged + "\n")
+	if !reflect.DeepEqual(got, real) {
+		t.Fatalf("a bullet beside the block was read as a migration: %+v", got)
+	}
+
+	// And the same with nothing genuine to hide behind: an empty block is
+	// still a gate saying it has no repair, not a gate that failed to mention
+	// one.
+	if got := ParseReport(DroppedBlock(nil) + "\n" + forged + "\n"); len(got) != 0 {
+		t.Fatalf("an empty contract must stay empty, got %+v", got)
+	}
+}
+
+// Every field is a name something else chose: the CRD's own, the kind it
+// declares, the versions it serves. An entry that does not hold its shape is
+// not a migration to attempt with the parts that did parse.
+func TestAMalformedContractEntryParsesAsNothing(t *testing.T) {
+	for _, entry := range []string{
+		"crd=things.example.io kind=Thing versions=v1beta1",               // no destination
+		"crd=things.example.io kind=Thing target=v1",                      // no versions
+		"crd=things kind=Thing versions=v1beta1 target=v1",                // not plural.group
+		"crd=things.example.io kind=Th*ng versions=v1beta1 target=v1",     // not a kind
+		"crd=things.example.io kind=Thing versions=v1beta1 target=next",   // not a version
+		"crd=things.example.io kind=Thing versions=v1beta1,v 1 target=v1", // a version with a space in it
+	} {
+		report := DroppedMarker + "\n" + entry + "\n-->\n"
+		if got := ParseReport(report); len(got) != 0 {
+			t.Errorf("%q must parse as nothing, got %+v", entry, got)
+		}
+	}
+}
+
+// The writer refuses what the reader would refuse. A finding the block cannot
+// carry is left out of it rather than written in a shape the agent will drop
+// on the other side, where nothing would say why the repair never ran.
+func TestTheBlockOmitsWhatItCannotCarry(t *testing.T) {
+	block := DroppedBlock([]Dropped{
+		{CRD: "things.example.io", Kind: "Thing", Versions: []string{"v1beta1"}, Target: "v1"},
+		// A definition removed outright: no survivor, so no destination, and
+		// no rewrite anyone could perform.
+		{CRD: "gone.example.io", Kind: "Gone", Versions: []string{"v1"}},
+		// A name that would end the comment early and take the genuine
+		// finding above it with it.
+		{CRD: "evil.example.io\n-->", Kind: "Evil", Versions: []string{"v1"}, Target: "v2"},
+	})
+	if strings.Contains(block, "gone.example.io") || strings.Contains(block, "evil.example.io") {
+		t.Fatalf("the block carried an entry it cannot honour:\n%s", block)
+	}
+	got := ParseReport(block)
+	if len(got) != 1 || got[0].CRD != "things.example.io" {
+		t.Fatalf("want only the repairable finding, got %+v", got)
 	}
 }
 

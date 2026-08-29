@@ -1,6 +1,7 @@
 package gate
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -111,7 +112,7 @@ spec:
 		{Name: "lab", Labels: map[string]string{"environment": "lab"}},
 	})
 
-	table, err := Render(root, cfg, inv)
+	table, err := Render(context.Background(), root, cfg, inv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +173,7 @@ spec:
 		{Name: "prod-us", Server: "https://prod-us.example.com"},
 	})
 
-	table, err := Render(root, cfg, inv)
+	table, err := Render(context.Background(), root, cfg, inv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +237,7 @@ spec:
 		{Name: "lab", Labels: map[string]string{"environment": "lab"}},
 	})
 
-	table, err := Render(root, cfg, inv)
+	table, err := Render(context.Background(), root, cfg, inv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +289,7 @@ spec:
 	// deliberate rather than accidental: instance scoping applies to source
 	// selection, and an ApplicationSet still expands against the whole
 	// inventory unless its own selector says otherwise.
-	table, err := Render(root, cfg, inv)
+	table, err := Render(context.Background(), root, cfg, inv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +334,7 @@ spec:
 	}}
 	inv := fleet(t, root, []Cluster{{Name: "only"}})
 
-	table, err := Render(root, cfg, inv)
+	table, err := Render(context.Background(), root, cfg, inv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -483,7 +484,7 @@ spec:
 		},
 	})
 
-	table, err := Render(root, cfg, inv)
+	table, err := Render(context.Background(), root, cfg, inv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -546,7 +547,7 @@ spec:
 	inv := fleet(t, root, clusters)
 
 	start := time.Now()
-	table, err := Render(root, cfg, inv)
+	table, err := Render(context.Background(), root, cfg, inv)
 	if err != nil {
 		t.Fatal(err)
 	}

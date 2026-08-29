@@ -302,11 +302,11 @@ func writeFields(w io.Writer, o ObjectChange) {
 	for _, f := range o.Fields {
 		switch {
 		case f.From == "":
-			fmt.Fprintf(w, "  - `%s`: set to `%s`\n", f.Path, f.To)
+			fmt.Fprintf(w, "  - `%s`: set to `%s`\n", inline(f.Path), inline(f.To))
 		case f.To == "":
-			fmt.Fprintf(w, "  - `%s`: removed (was `%s`)\n", f.Path, f.From)
+			fmt.Fprintf(w, "  - `%s`: removed (was `%s`)\n", inline(f.Path), inline(f.From))
 		default:
-			fmt.Fprintf(w, "  - `%s`: `%s` → `%s`\n", f.Path, f.From, f.To)
+			fmt.Fprintf(w, "  - `%s`: `%s` → `%s`\n", inline(f.Path), inline(f.From), inline(f.To))
 		}
 	}
 	fmt.Fprintf(w, "\n  </details>\n")
@@ -382,6 +382,30 @@ func (d *DiffResult) Blockers() migrate.Blockers {
 	return b
 }
 
+// droppedContract is every dropped-version finding a repair can act on, in the
+// form the agent executes: the kind consumers declare, the versions that are
+// gone, and the one they must move to.
+//
+// Built from the findings themselves through droppedFromChange, the same
+// function AnnotateConsumers scans with, so what the report instructs and what
+// the gate counted are one derivation rather than two.
+//
+// A definition removed outright is left out. It has no surviving version, so
+// there is nowhere to move and no rewrite to perform; the prose says so, and
+// the contract deliberately cannot express it.
+func (d *DiffResult) droppedContract() []migrate.Dropped {
+	var out []migrate.Dropped
+	for _, o := range d.Objects {
+		if o.Kind != ObjectCRDVersionRemoved {
+			continue
+		}
+		if dr, ok := droppedFromChange(o); ok && dr.Target != "" {
+			out = append(out, dr)
+		}
+	}
+	return out
+}
+
 // Verdict is the report's own answer, in one line, so a reader knows what they
 // are looking at before they read anything else.
 //
@@ -450,6 +474,37 @@ func plural(n int, noun string) string {
 	return fmt.Sprintf("%d %ss", n, noun)
 }
 
+// inline neutralises a value the gate did not write before it goes into the
+// report. Object names, field paths, field values and cluster names are all
+// chosen by whatever chart or repository produced them, and the report is
+// markdown: a backtick closes the code span the value sits in, and a newline
+// starts a line of its own. A name holding either writes report structure, and
+// a name that writes structure can write a finding, including one the agent
+// reads back as an instruction to rewrite manifests.
+//
+// Escaped rather than dropped, and visibly. `\x60` is a name doing something
+// strange, which is worth a reader's eyes; a silently trimmed name is one
+// nobody can look up in the chart that produced it.
+func inline(s string) string {
+	if strings.IndexFunc(s, unwritable) < 0 {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		if unwritable(r) {
+			fmt.Fprintf(&b, "\\x%02x", r)
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// unwritable is what the report's own syntax uses: the backtick that ends a
+// code span, and every control character, the newline and the carriage return
+// among them, that ends a line or a table row.
+func unwritable(r rune) bool { return r == '`' || r < 0x20 || r == 0x7f }
+
 // joinAnd is an English list. Same name and shape as pipeline.joinAnd, two
 // packages that never import each other, each rendering findings for a human,
 // and a shared helper package for one function would cost more than the
@@ -488,6 +543,14 @@ func (d *DiffResult) Report(w io.Writer) {
 	b := d.Blockers()
 	fmt.Fprintf(w, "%stargeting=%d source=%d apiVersion=%d consumers=%d unscanned=%d valuesDropped=%d schema=%d -->\n",
 		migrate.BlockersMarker, b.Targeting, b.Source, b.APIVersion, b.Consumers, b.Unscanned, b.ValuesDropped, b.Schema)
+	// The repair contract, from the structured findings rather than from the
+	// prose that describes them. The prose cannot carry it: half of a bullet
+	// is a rendered object's name, the chart chooses that name, and a name
+	// carrying a backtick or a newline writes a whole finding of its own. What
+	// it writes is an instruction to rewrite manifests to a version the chart
+	// picked. Written even when there is nothing to say, because its presence
+	// is what tells the reader this gate does not keep the contract in prose.
+	fmt.Fprint(w, migrate.DroppedBlock(d.droppedContract()))
 	mark := "✅"
 	if blocking {
 		mark = "🔴"
@@ -503,14 +566,14 @@ func (d *DiffResult) Report(w io.Writer) {
 		fmt.Fprintf(w, "A values-layer edit can do this without the text diff showing it.\n\n")
 		fmt.Fprintf(w, "| Application | Change |\n|---|---|\n")
 		for _, c := range d.Targeting {
-			fmt.Fprintf(w, "| `%s` | %s |\n", c.App, c.Detail)
+			fmt.Fprintf(w, "| `%s` | %s |\n", inline(c.App), inline(c.Detail))
 		}
 		fmt.Fprintln(w)
 	}
 	if len(d.Other) > 0 {
 		fmt.Fprintf(w, "%s\n\n| Application | Cluster | From | To |\n|---|---|---|---|\n", migrate.HeadingSource)
 		for _, c := range d.Other {
-			fmt.Fprintf(w, "| `%s` | %s | `%s` | `%s` |\n", c.App, c.Cluster, c.From, c.To)
+			fmt.Fprintf(w, "| `%s` | %s | `%s` | `%s` |\n", inline(c.App), inline(c.Cluster), inline(c.From), inline(c.To))
 		}
 		fmt.Fprintln(w)
 	}
@@ -519,7 +582,7 @@ func (d *DiffResult) Report(w io.Writer) {
 		fmt.Fprintf(w, "First appearance, so nothing changed underneath them. Listed for review, not blocking.\n\n")
 		fmt.Fprintf(w, "| Application | Cluster | Source |\n|---|---|---|\n")
 		for _, c := range d.Introduced {
-			fmt.Fprintf(w, "| `%s` | %s | `%s` |\n", c.App, c.Cluster, c.To)
+			fmt.Fprintf(w, "| `%s` | %s | `%s` |\n", inline(c.App), inline(c.Cluster), inline(c.To))
 		}
 		fmt.Fprintln(w)
 	}
@@ -551,17 +614,17 @@ func (d *DiffResult) Report(w io.Writer) {
 				"know rather than failing on it. Each one silently stops applying, and the render looks "+
 				"identical either way.\n\n")
 			for _, o := range vdrop {
-				fmt.Fprintf(w, "- `%s`", o.Object)
+				fmt.Fprintf(w, "- `%s`", inline(o.Object))
 				if o.Cluster != "" {
-					fmt.Fprintf(w, " on %s", o.Cluster)
+					fmt.Fprintf(w, " on %s", inline(o.Cluster))
 				}
-				fmt.Fprintf(w, " — `%s` → `%s`, %s no longer read:\n", o.From, o.To, plural(len(o.Keys), "setting"))
+				fmt.Fprintf(w, " — `%s` → `%s`, %s no longer read:\n", inline(o.From), inline(o.To), plural(len(o.Keys), "setting"))
 				shown := o.Keys
 				if len(shown) > maxDroppedListed {
 					shown = shown[:maxDroppedListed]
 				}
 				for _, k := range shown {
-					fmt.Fprintf(w, "  - `%s`\n", k)
+					fmt.Fprintf(w, "  - `%s`\n", inline(k))
 				}
 				if n := len(o.Keys) - len(shown); n > 0 {
 					fmt.Fprintf(w, "  - …and %d more\n", n)
@@ -575,21 +638,22 @@ func (d *DiffResult) Report(w io.Writer) {
 			for _, o := range api {
 				if o.PartOfMigration {
 					fmt.Fprintf(w, "- `%s`: `%s` → `%s` — the move the finding below requires; the repair, not a new migration, so not blocking\n",
-						o.Object, o.From, o.To)
+						inline(o.Object), inline(o.From), inline(o.To))
 					continue
 				}
-				fmt.Fprintf(w, "- `%s`: `%s` → `%s`\n", o.Object, o.From, o.To)
+				fmt.Fprintf(w, "- `%s`: `%s` → `%s`\n", inline(o.Object), inline(o.From), inline(o.To))
 			}
 			fmt.Fprintln(w)
 		}
 		if len(crd) > 0 {
 			fmt.Fprintf(w, "**A CustomResourceDefinition stopped serving a version** — anything still declaring it breaks on apply.\n\n")
 			for _, o := range crd {
-				// The line is the repair contract: the agent parses the kind
-				// and the destination version back out of it, so it is
-				// rendered by the shared package rather than by one more
-				// format string that could drift.
-				fmt.Fprintf(w, "%s\n", migrate.Line(o.Object, o.From, o.Resource, o.To))
+				// The finding a person reads. It says the same thing the
+				// contract block above says, and it is still rendered by the
+				// shared package rather than by one more format string that
+				// could drift: the agent falls back to reading this shape
+				// from a gate too old to have written a block.
+				fmt.Fprintf(w, "%s\n", migrate.Line(inline(o.Object), inline(o.From), inline(o.Resource), inline(o.To)))
 				blocking, clear := "blocking until they move", "no manifest in this repository declares a dropped version, so this alone does not block"
 				if o.To == "" {
 					blocking = "blocking until they are removed or replaced"
@@ -603,7 +667,7 @@ func (d *DiffResult) Report(w io.Writer) {
 							fmt.Fprintf(w, "    - …and %d more\n", len(o.ConsumerFiles)-maxListed)
 							break
 						}
-						fmt.Fprintf(w, "    - `%s`\n", f)
+						fmt.Fprintf(w, "    - `%s`\n", inline(f))
 					}
 				case o.ConsumersKnown:
 					fmt.Fprintf(w, "  - %s\n", clear)
@@ -628,9 +692,9 @@ func (d *DiffResult) Report(w io.Writer) {
 					fmt.Fprintf(w, "- …and %d more\n", len(g.items)-maxListed)
 					break
 				}
-				fmt.Fprintf(w, "- `%s`\n", o.Object)
+				fmt.Fprintf(w, "- `%s`\n", inline(o.Object))
 				if o.Note != "" {
-					fmt.Fprintf(w, "  - %s\n", o.Note)
+					fmt.Fprintf(w, "  - %s\n", inline(o.Note))
 				}
 				// The whole point of rendering both versions is knowing which
 				// fields moved. Reporting only that an object "changed" hands
@@ -645,7 +709,7 @@ func (d *DiffResult) Report(w io.Writer) {
 	if len(d.Versions) > 0 {
 		fmt.Fprintf(w, "### Versions\n\n| Application | Cluster | From | To |\n|---|---|---|---|\n")
 		for _, c := range d.Versions {
-			fmt.Fprintf(w, "| `%s` | %s | `%s` | `%s` |\n", c.App, c.Cluster, c.From, c.To)
+			fmt.Fprintf(w, "| `%s` | %s | `%s` | `%s` |\n", inline(c.App), inline(c.Cluster), inline(c.From), inline(c.To))
 		}
 		fmt.Fprintln(w)
 	}
@@ -658,7 +722,7 @@ func (d *DiffResult) Report(w io.Writer) {
 		fmt.Fprintf(w, "The gate reads `.gitops-gate.yaml` from the head revision, so a change can "+
 			"switch a check off. These did not run:\n\n")
 		for _, sup := range d.Suppressed {
-			fmt.Fprintf(w, "- %s\n", strings.TrimSpace(sup))
+			fmt.Fprintf(w, "- %s\n", inline(strings.TrimSpace(sup)))
 		}
 		fmt.Fprintln(w)
 	}
@@ -666,7 +730,7 @@ func (d *DiffResult) Report(w io.Writer) {
 		fmt.Fprintf(w, "### Not covered\n\n")
 		fmt.Fprintf(w, "The gate could not expand the following, so the Applications they generate are **not** checked:\n\n")
 		for _, warn := range d.Warnings {
-			fmt.Fprintf(w, "- %s\n", strings.TrimSpace(warn))
+			fmt.Fprintf(w, "- %s\n", inline(strings.TrimSpace(warn)))
 		}
 		fmt.Fprintln(w)
 	}

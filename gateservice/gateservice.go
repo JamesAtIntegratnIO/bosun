@@ -319,11 +319,11 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 		return g.broke(ctx, pr, err)
 	}
 
-	baseTable, err := gate.Render(base, cfg, inv)
+	baseTable, err := gate.Render(ctx, base, cfg, inv)
 	if err != nil {
 		return g.broke(ctx, pr, fmt.Errorf("rendering %s: %w", refName(pr.BaseBranch), err))
 	}
-	headTable, err := gate.Render(head, cfg, inv)
+	headTable, err := gate.Render(ctx, head, cfg, inv)
 	if err != nil {
 		return g.broke(ctx, pr, fmt.Errorf("rendering %s: %w", refName(pr.Branch), err))
 	}
@@ -332,7 +332,7 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 	// the one under judgement. gate.Assemble owns the order of the four steps
 	// so this surface and the CLI cannot reach different verdicts on one
 	// commit, which they had already started to do.
-	res := gate.Assemble(head, cfg, baseTable, headTable)
+	res := gate.Assemble(ctx, head, cfg, baseTable, headTable)
 	res.Suppressed = suppressedChecks(base, head, cfg)
 
 	// Validation runs before the report is written, and its count goes onto
@@ -343,7 +343,7 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 	// status, and the triage agent read the marker.
 	var schemaDetail strings.Builder
 	if cfg.Validate.Enabled {
-		res.SchemaFailures, err = gate.ValidateManifests(head, cfg, inv, &schemaDetail)
+		res.SchemaFailures, err = gate.ValidateManifests(ctx, head, cfg, inv, &schemaDetail)
 		if err != nil {
 			return g.broke(ctx, pr, fmt.Errorf("schema validation: %w", err))
 		}

@@ -14,10 +14,14 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -350,7 +354,7 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	// faster.
 	if b, ok := migrate.ParseBlockers(report); ok && b.Any() && !b.RepoSideRemedy() {
 		t.say(ctx, pr, "escalated: nothing in this repository can change what blocks this")
-		return t.escalateInformed(ctx, pr, noRemedyReason(b), nil, nil, t.upstreamFor(ctx, p, report), live)
+		return t.escalateInformed(ctx, pr, noRemedyReason(b), nil, nil, t.upstreamFor(ctx, p, report, root), live)
 	}
 
 	userPrompt := buildUserPrompt(p, pr, report, root)
@@ -387,7 +391,7 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 		// Upstream is read here and not earlier: a mechanical verdict never
 		// pays for it, and the evidence an edit is corroborated against must
 		// stay the gate report alone.
-		return t.escalateInformed(ctx, pr, "", verdict, nil, t.upstreamFor(ctx, p, report), live)
+		return t.escalateInformed(ctx, pr, "", verdict, nil, t.upstreamFor(ctx, p, report, root), live)
 	}
 
 	// Mechanical. The applier is what decides whether any of it happens.
@@ -396,11 +400,23 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	// triages cannot see each other's scope.
 	policy := t.Policy
 	policy.Evidence = userPrompt
-	// The promotion already reports which files it rewrote, and the prompt
-	// above already tells the model those are the files it may change. This is
-	// what makes that true rather than stated: an edit to anything else
-	// is refused, however well the standing allowlist would have permitted it.
-	policy.Scope = p.Files
+	// The prompt above tells the model the promotion's own file list is what it
+	// may change. This is what makes that true rather than stated, and it does
+	// not use the same list: the prompt is a request and the scope is a
+	// guarantee, so the guarantee is the diff git reports for this pull
+	// request. An edit to anything else is refused, however well the standing
+	// allowlist would have permitted it, and a promotion body that names a
+	// wider set than the branch actually holds now buys nothing.
+	scope, err := scopeFor(ctx, root, pr)
+	if err != nil {
+		// Fail closed. The alternative on this path is an unscoped applier,
+		// which is the state this replaced.
+		t.say(ctx, pr, "escalated: could not establish which files this pull request changes")
+		return t.escalate(ctx, pr, fmt.Sprintf(
+			"Nothing was written: %v. The files a fix may touch are read from the branch, "+
+				"and the promotion body's own list is not a substitute for them.", err), verdict)
+	}
+	policy.Scope = scope
 	in := make([]edits.Edit, 0, len(verdict.Edits))
 	for _, e := range verdict.Edits {
 		in = append(in, edits.Edit{Path: e.Path, Key: e.Key, From: e.From, To: e.To, Rationale: e.Rationale})
@@ -428,7 +444,7 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 			len(res.Rejected))
 		return t.escalateInformed(ctx, pr,
 			"The proposed fix was rejected before anything was written.", verdict, res,
-			t.upstreamFor(ctx, p, report), live)
+			t.upstreamFor(ctx, p, report, root), live)
 	}
 
 	msg := fmt.Sprintf("fix(%s): %s\n\nProposed by %s, applied by bosun.\n",
@@ -515,7 +531,7 @@ func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider
 	var rr *restructureResult
 	if t.Structural && len(total.Applied) > 0 {
 		rr = t.restructureAll(ctx, root, drops,
-			t.schemasFor(ctx, p, drops), migratedPaths(total), t.maxRestructured())
+			t.schemasFor(ctx, root, p, drops), migratedPaths(total), t.maxRestructured())
 	}
 	if rr != nil && len(rr.Refused) > 0 {
 		// Nothing is pushed, including the swaps that were fine.
@@ -542,7 +558,7 @@ func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider
 			t.say(ctx, pr, "escalated: every consumer the gate named was refused by policy")
 			return t.escalateInformed(ctx, pr, renderMigration(t.brand(), t.LLM.Name(), drops, total, nil,
 				"**Needs a human.** The gate names manifests that must move off a dropped API version, but policy refuses every one of them.",
-				live), nil, nil, t.upstreamFor(ctx, p, report), live)
+				live), nil, nil, t.upstreamFor(ctx, p, report, root), live)
 		}
 		// The gate counted consumers; this checkout has none. Fixing nothing
 		// and saying so beats guessing which of the two is stale.
@@ -783,7 +799,7 @@ func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, 
 	live := t.liveFor(ctx, p, report)
 	userPrompt += promptLive(live)
 
-	notes := t.upstreamFor(ctx, p, report)
+	notes := t.upstreamFor(ctx, p, report, root)
 	userPrompt += upstream.Render(notes)
 
 	v, err := t.LLM.Classify(ctx, prompt.Explain, userPrompt)
@@ -851,9 +867,17 @@ const explanationMarker = "<!-- bosun:explanation -->"
 //
 // The commits are aimed by migrate.Subjects: the kinds and names the gate's own
 // findings are about. No model chooses its own evidence here.
-func (t *Triage) upstreamFor(ctx context.Context, p Promotion, report string) *upstream.Notes {
+func (t *Triage) upstreamFor(ctx context.Context, p Promotion, report, root string) *upstream.Notes {
 	if t.Upstream == nil {
 		return &upstream.Notes{Note: "upstream lookup is not configured"}
+	}
+	// Where this fetches from is the promotion body's artifact string, so the
+	// question in front of every other one is whether this repository has
+	// anything to do with that host. See repoReaches.
+	if !repoReaches(root, p.Artifact) {
+		return &upstream.Notes{Note: fmt.Sprintf(
+			"upstream lookup was skipped: nothing in this repository names %s, "+
+				"and that is where the lookup would have gone", artifactHost(p.Artifact))}
 	}
 	n, err := t.Upstream.Notes(ctx, p.Artifact, p.From, p.To)
 	if err != nil || n == nil {
@@ -886,6 +910,171 @@ func (t *Triage) checkout(ctx context.Context, pr *gitprovider.PullRequest) (str
 		return t.Checkout(ctx, pr)
 	}
 	return t.clone(ctx, pr)
+}
+
+// scopeFor is the exact set of paths a fix may write on this pull request, or
+// the reason there is none.
+//
+// This is the applier's Scope, the guarantee behind "cannot edit a file this
+// change did not touch". It was `p.Files` straight off the wire: an empty array
+// turned scope narrowing off entirely, since edits.Policy only enforces Scope
+// when it is non-empty, and any other array widened it to whatever the standing
+// allowlist happens to permit. DefaultDeny, Allow and the corroboration rule
+// still held, so this was never arbitrary write, but the per-request tightening
+// was worth exactly as much as the caller's honesty. The diff is a fact about
+// the pull request; the body is a claim about it.
+//
+// A pull request that changed nothing is a real answer and it must not come
+// back as an empty list, because empty is what edits.Policy reads as unscoped:
+// handing one back would turn the guarantee off in exactly the case with the
+// least justification for it. It fails closed instead.
+//
+// Only the path that writes asks for this. The escalations and the
+// deterministic migration have nothing to scope, and fetching the base branch
+// is not free.
+func scopeFor(ctx context.Context, root string, pr *gitprovider.PullRequest) ([]string, error) {
+	paths, err := changedFiles(ctx, root, pr)
+	if err != nil {
+		return nil, err
+	}
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("this pull request changes no file, so there is nothing a fix may write")
+	}
+	return paths, nil
+}
+
+// repoReaches reports whether the checkout names the host a promotion's
+// artifact would send this process to.
+//
+// The `artifact` field of a promotion body becomes an outbound request:
+// `{repoURL}/index.yaml` for a classic Helm repository, a token and manifest
+// fetch for an OCI reference. The host is the caller's string verbatim, so
+// without this the endpoint fetches whatever it is told to, including
+// 169.254.169.254 and anything answering on `.svc`, and the outcome comes back
+// on the pull request comment: a port scanner with a published result. The
+// bearer token in front of the endpoint raises the bar and does not change
+// what a legitimate caller may name.
+//
+// egress.Transport refuses private and link-local addresses, and that is the
+// layer below this one. This is the layer above: is this an artifact the
+// repository has anything to do with? A repository that deploys a chart names
+// the place it comes from, in an Argo CD Application, a Flux HelmRepository,
+// a values file, somewhere, because something has to pull it.
+//
+// A substring search over the checkout rather than a parse of a named field,
+// and deliberately: `repoURL` is Argo CD's and Kargo's spelling, `spec.url` is
+// Flux's, and picking one would be an assumption about a repository layout,
+// which Rule 1 does not allow. What they have in common is that the host is in
+// the file.
+//
+// A reference with no host of its own is allowed through. `redis` and
+// `linuxserver/sonarr` are real entries in a real target list, and the only
+// place they can resolve to is Docker Hub, which is a destination the
+// convention chose rather than the caller.
+func repoReaches(root, artifact string) bool {
+	host := artifactHost(artifact)
+	if host == "" {
+		return true
+	}
+	found := false
+	needle := []byte(host)
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		switch {
+		case err != nil:
+			return nil
+		case found:
+			return fs.SkipAll
+		case d.IsDir():
+			// The object store is not the repository. It holds compressed
+			// copies of everything the working tree already has, and packfiles
+			// are where a substring search goes to spend a minute finding
+			// nothing.
+			if d.Name() == ".git" {
+				return fs.SkipDir
+			}
+			return nil
+		case !d.Type().IsRegular():
+			// Symlinks included: this reads the checkout to decide where the
+			// process may connect, and a tracked link at a permitted path
+			// points wherever whoever wrote it wanted.
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil || info.Size() > maxSearchedBytes {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err == nil && bytes.Contains(data, needle) {
+			found = true
+			return fs.SkipAll
+		}
+		return nil
+	})
+	return found
+}
+
+// artifactHost is where a promotion's artifact sends this process, or "" when
+// it names no host of its own.
+func artifactHost(artifact string) string {
+	ref, _ := upstream.ParseArtifact(artifact)
+	return egress.HostOf(ref)
+}
+
+// maxSearchedBytes caps one file read while looking for a host. A GitOps
+// repository is manifests, and a file larger than this is a vendored blob that
+// declares nothing.
+const maxSearchedBytes = 1 << 20
+
+// gitRef is a branch name and nothing else, checked before it reaches git's
+// argv. The same guard EnsureHead makes on a SHA, for the same reason: a value
+// beginning with "-" is read as an option, and this one arrives in a git
+// host's JSON.
+var gitRef = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)
+
+// changedFiles is the diff between what this pull request merges into and what
+// it contains.
+//
+// The base is fetched by name and compared as a tree, which is how the gate
+// renders the same pair: both sides shallow, no shared history required, and
+// no dependence on the host serving arbitrary commits by SHA. `-z` because git
+// quotes a path with a space in it, and a quoted path is one that silently
+// matches nothing when the applier compares it.
+func changedFiles(ctx context.Context, root string, pr *gitprovider.PullRequest) ([]string, error) {
+	base := pr.BaseBranch
+	if base == "" {
+		base = pr.BaseSHA
+	}
+	if base == "" {
+		return nil, fmt.Errorf("the pull request names no base branch or base commit to diff against")
+	}
+	if !gitRef.MatchString(base) {
+		return nil, fmt.Errorf("base %q is not a git ref name", base)
+	}
+
+	fetch := exec.CommandContext(ctx, "git", "-C", root, "fetch", "--quiet", "--depth", "1", "origin", base)
+	var stderr strings.Builder
+	fetch.Stderr = &stderr
+	if err := fetch.Run(); err != nil {
+		return nil, fmt.Errorf("fetching %s to see what this pull request changes: %w: %s",
+			base, err, strings.TrimSpace(stderr.String()))
+	}
+
+	diff := exec.CommandContext(ctx, "git", "-C", root, "diff", "--name-only", "-z", "FETCH_HEAD", "HEAD")
+	stderr.Reset()
+	diff.Stderr = &stderr
+	out, err := diff.Output()
+	if err != nil {
+		return nil, fmt.Errorf("diffing %s against this branch: %w: %s",
+			base, err, strings.TrimSpace(stderr.String()))
+	}
+
+	var paths []string
+	for _, p := range strings.Split(string(out), "\x00") {
+		if p != "" {
+			paths = append(paths, p)
+		}
+	}
+	return paths, nil
 }
 
 // appliedPaths is the files an edits.Result wrote, deduplicated in

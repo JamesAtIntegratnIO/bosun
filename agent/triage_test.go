@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -23,7 +24,32 @@ const valuesPath = "addons/values.yaml"
 const valuesBefore = `# MetalLB, L2 only.
 metallb:
   enabled: true
+  image: quay.io/metallb/controller
   defaultVersion: 0.16.0
+`
+
+// valuesBase is the same file on the branch this pull request merges into.
+//
+// It exists because the applier's scope is now the diff between the two, read
+// from git, rather than the file list in the promotion body. A harness whose
+// checkout was a bare directory could not tell a scope derived from the branch
+// from one asserted by the caller, which is the whole of what changed.
+const valuesBase = `# MetalLB, L2 only.
+metallb:
+  enabled: true
+  image: quay.io/metallb/controller
+  defaultVersion: 0.15.9
+`
+
+// otherPath is a file the repository has and this promotion did not touch. It
+// is inside the standing allowlist, so what keeps a fix off it is the scope,
+// and the scope is the diff.
+const otherPath = "addons/other.yaml"
+
+const otherValues = `# CoreDNS, untouched by this promotion.
+coredns:
+  enabled: true
+  defaultVersion: 1.11.1
 `
 
 // The gate's report, in the shape triage looks for: the marker is how the
@@ -43,26 +69,21 @@ type harness struct {
 	root   string
 }
 
-// newHarness wires the workflow to a real directory on disk, so a permitted
-// edit rewrites a file and a refused one leaves it alone.
+// newHarness wires the workflow to a real pull request on disk, so a permitted
+// edit rewrites a file, a refused one leaves it alone, and "which files did
+// this pull request change" has a git answer rather than a supplied one.
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 
-	root := t.TempDir()
-	full := filepath.Join(root, valuesPath)
-	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(full, []byte(valuesBefore), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	root := checkoutOfAPullRequest(t)
 
 	git := &gitprovider.Fake{
 		PR: &gitprovider.PullRequest{
-			Number:  42,
-			Title:   "chore(deps): metallb 0.16.0 -> 0.16.1",
-			Branch:  "kargo/metallb",
-			HeadSHA: "c0ffee",
+			Number:     42,
+			Title:      "chore(deps): metallb 0.16.0 -> 0.16.1",
+			Branch:     "kargo/metallb",
+			BaseBranch: "main",
+			HeadSHA:    "c0ffee",
 		},
 		Comments: []gitprovider.Comment{{Author: "gitops-gate", Body: gateReport}},
 		Check:    gitprovider.CheckFailure,
@@ -89,6 +110,57 @@ func newHarness(t *testing.T) *harness {
 	}
 }
 
+// checkoutOfAPullRequest builds the thing the agent actually works on: a
+// repository with a base branch, a promotion branch that rewrote one file, and
+// a clone of the second that can still fetch the first.
+//
+// It is a clone rather than a single repository because that is what the
+// service has in front of it, and the derivation being tested, fetch the base
+// by name and diff it as a tree, is the one the gate already uses. A directory
+// with the right files in it would pass a test that asserts nothing about
+// where the answer came from.
+func checkoutOfAPullRequest(t *testing.T) string {
+	t.Helper()
+
+	origin := t.TempDir()
+	run := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+		}
+	}
+	write := func(rel, body string) {
+		t.Helper()
+		full := filepath.Join(origin, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	run(origin, "init", "--quiet", "-b", "main")
+	run(origin, "config", "user.email", "harness@example.invalid")
+	run(origin, "config", "user.name", "harness")
+	write(valuesPath, valuesBase)
+	write(otherPath, otherValues)
+	run(origin, "add", "-A")
+	run(origin, "commit", "--quiet", "-m", "base")
+	run(origin, "checkout", "--quiet", "-b", "kargo/metallb")
+	write(valuesPath, valuesBefore)
+	run(origin, "add", "-A")
+	run(origin, "commit", "--quiet", "-m", "chore(deps): metallb 0.15.9 -> 0.16.0")
+
+	root := filepath.Join(t.TempDir(), "checkout")
+	cmd := exec.Command("git", "clone", "--quiet", "--branch", "kargo/metallb", origin, root)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git clone: %v: %s", err, out)
+	}
+	return root
+}
+
 // seededGate is the gate, standing in for a real render.
 //
 // It reads the verdict out of the fake provider the harness already seeds,
@@ -111,6 +183,16 @@ func (g seededGate) Ensure(context.Context, *gitprovider.PullRequest) *gateservi
 func (h *harness) values(t *testing.T) string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(h.root, valuesPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// other is the file this promotion did not touch, as it stands after the run.
+func (h *harness) other(t *testing.T) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(h.root, otherPath))
 	if err != nil {
 		t.Fatal(err)
 	}

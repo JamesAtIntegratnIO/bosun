@@ -32,17 +32,32 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Keyless cosign, for the charts as well as the images: this workflow is
+      # the only thing that publishes them, and a consumer resolving
+      # `oci://.../bosun --version 0.4.0` should be able to ask who produced
+      # the bytes behind that version, not only that they have not moved.
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
 
       - name: Lint before publishing
         run: hack/lint.sh
 
+      # Twice, because the two tools do not share a credential store: helm
+      # writes its own registry config under ~/.config/helm, and cosign reads
+      # ~/.docker/config.json like every other go-containerregistry client.
+      # Logging in only the first way pushes the chart and then fails to sign
+      # it, after the push has already happened.
       - name: Log in to GHCR
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" \
-            | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          set -euo pipefail
+          echo "$TOKEN" | helm registry login ghcr.io -u "$ACTOR" --password-stdin
+          echo "$TOKEN" | cosign login ghcr.io -u "$ACTOR" --password-stdin
 
       - name: Package and push each chart at its own version
         run: |
@@ -62,8 +77,16 @@ jobs:
             fi
 
             helm package "$chart" -d dist
-            helm push "dist/${name}-${version}.tgz" "oci://${CHART_REPO}"
-            echo "::notice::published ${name} ${version}"
+            # helm push reports the digest it wrote on stderr and offers no
+            # way to ask for it afterwards, so it is read here rather than
+            # looked up: a second lookup could resolve the version tag to
+            # something other than what this run just pushed, which is the
+            # whole class of problem the signature exists to close.
+            helm push "dist/${name}-${version}.tgz" "oci://${CHART_REPO}" 2>&1 | tee /tmp/push.log
+            digest=$(awk '/^Digest: /{print $2}' /tmp/push.log)
+            [ -n "$digest" ] || { echo "::error::helm push printed no digest for ${name} ${version}"; exit 1; }
+            cosign sign --yes "${CHART_REPO}/${name}@${digest}"
+            echo "::notice::published and signed ${name} ${version} (${digest})"
             published=$((published + 1))
           done
           echo "published ${published}, skipped ${skipped}"

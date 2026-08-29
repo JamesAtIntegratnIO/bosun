@@ -3,6 +3,16 @@
 All notable changes to `kargo-pipelines`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.2.3]
+
+### Changed
+
+- **`values.schema.json` is strict at the top level.** `additionalProperties`
+  was true there, so a misspelled top-level key validated cleanly and fell back
+  to its default, which is the failure a schema exists to catch. Helm's own
+  injected keys (`global`, and the `enabled` a parent chart's `condition` sets)
+  are enumerated. No template, value or default changed.
+
 ## [0.2.2] - 2026-08-28
 
 ### Changed

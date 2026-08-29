@@ -56,7 +56,7 @@ const helmTimeout = 3 * time.Minute
 // Soft in every direction. No cluster reader, no helm on PATH, an artifact that
 // is not a chart, a chart that ships no CRDs, all produce an incomplete pair
 // and a note, and the caller falls back to the swap alone.
-func (t *Triage) schemasFor(ctx context.Context, p Promotion, drops []migrate.Dropped) map[string]schemaPair {
+func (t *Triage) schemasFor(ctx context.Context, root string, p Promotion, drops []migrate.Dropped) map[string]schemaPair {
 	out := map[string]schemaPair{}
 	if t.Cluster == nil {
 		return out
@@ -65,7 +65,7 @@ func (t *Triage) schemasFor(ctx context.Context, p Promotion, drops []migrate.Dr
 	// Rendered once for the whole promotion: one helm invocation can answer
 	// for every CRD the chart ships, and running it per kind would multiply a
 	// registry pull by the number of findings.
-	rendered, renderNote := t.renderTargetCRDs(ctx, p)
+	rendered, renderNote := t.renderTargetCRDs(ctx, root, p)
 
 	for _, d := range drops {
 		live := t.Cluster.CRD(ctx, d.CRD)
@@ -114,7 +114,7 @@ func (t *Triage) schemasFor(ctx context.Context, p Promotion, drops []migrate.Dr
 // library, for the reason the gate's image already states: rendering has to
 // match what the cluster's own Helm does, and the only thing guaranteed to do
 // that is Helm.
-func (t *Triage) renderTargetCRDs(ctx context.Context, p Promotion) (map[string]map[string]structural.Schema, string) {
+func (t *Triage) renderTargetCRDs(ctx context.Context, root string, p Promotion) (map[string]map[string]structural.Schema, string) {
 	if strings.TrimSpace(p.Artifact) == "" || strings.TrimSpace(p.To) == "" {
 		return nil, "the promotion names no chart to render"
 	}
@@ -132,8 +132,25 @@ func (t *Triage) renderTargetCRDs(ctx context.Context, p Promotion) (map[string]
 	if err != nil {
 		return nil, err.Error()
 	}
+	// The version is the other token that lands in helm's argv from the
+	// promotion payload. HelmChartArgs covers the chart and the repository;
+	// nothing covered this one, and helm reads an interspersed `-…` as a flag
+	// wherever it appears.
+	if err := gate.RefuseFlagLike("promotion target version", p.To); err != nil {
+		return nil, err.Error()
+	}
 	args := append([]string{"template", "schema-probe"}, chartArgs...)
 	args = append(args, "--version", p.To, "--include-crds", "--skip-tests")
+
+	// The checkout has to name the host this artifact reaches, the same test
+	// the upstream lookup makes before it fetches. helm is the other sink for
+	// the same unvalidated string, and it is the one that downloads an
+	// archive. The egress check below does not cover this: it answers whether
+	// the agent may talk to a host, not whether this is an artifact the
+	// repository tracks.
+	if !repoReaches(root, p.Artifact) {
+		return nil, "the target schema was not read: the repository does not name the host this artifact would reach"
+	}
 
 	// helm is a subprocess. The egress transport cannot see inside it, so the
 	// destination is checked and recorded here instead, otherwise the one
