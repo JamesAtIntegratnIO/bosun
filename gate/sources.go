@@ -32,6 +32,11 @@ type docs struct {
 	// bootstrapRow is the app-of-apps Application itself, when this batch came
 	// from one.
 	bootstrapRow *Row
+	// fromLive marks a batch that came from what ArgoCD has applied rather
+	// than from either revision of the repository. It is the same content on
+	// both sides of the diff by construction, so it can never itself be a
+	// finding; it is carried so the report can say which rows rest on it.
+	fromLive bool
 }
 
 // collect turns one source into manifests.
@@ -90,6 +95,23 @@ func collect(ctx context.Context, repoRoot string, cfg *Config, inv *Inventory, 
 		}
 		return []docs{{source: s.Name, objects: objs}}, nil
 
+	case SourceDirectory:
+		full, err := containedPath(repoRoot, s.Path)
+		if err != nil {
+			return nil, fmt.Errorf("source %q: %w", s.Name, err)
+		}
+		objs, err := readArgoDirectory(full, s.Recurse, s.Include, s.Exclude)
+		if err != nil {
+			return nil, fmt.Errorf("source %q: %w", s.Name, err)
+		}
+		return []docs{{source: s.Name, objects: objs}}, nil
+
+	case SourceLive:
+		// Nothing is read. These objects came from the caller, which for the
+		// only producer means the spec ArgoCD has applied, and the report
+		// says so wherever one of these contributes a row.
+		return []docs{{source: s.Name, objects: s.Objects, fromLive: true}}, nil
+
 	case SourceHelm:
 		return collectHelm(ctx, repoRoot, inv, s)
 
@@ -105,7 +127,7 @@ func collectHelm(ctx context.Context, repoRoot string, inv *Inventory, s Source)
 	perCluster := templated(s.Chart) || anyTemplated(s.ValueFiles)
 
 	if !perCluster && s.Selector == nil {
-		objs, err := helmRender(ctx, repoRoot, s.Chart, resolveAll(s.ValueFiles, nil))
+		objs, err := helmRender(ctx, repoRoot, s.Chart, resolveAll(s.ValueFiles, nil), s.ValuesInline)
 		if err != nil {
 			return nil, fmt.Errorf("source %q: %w", s.Name, err)
 		}
@@ -123,7 +145,7 @@ func collectHelm(ctx context.Context, repoRoot string, inv *Inventory, s Source)
 		if err != nil {
 			return nil, fmt.Errorf("source %q chart for cluster %s: %w", s.Name, c.Name, err)
 		}
-		objs, err := helmRender(ctx, repoRoot, chart, resolveAll(s.ValueFiles, data))
+		objs, err := helmRender(ctx, repoRoot, chart, resolveAll(s.ValueFiles, data), s.ValuesInline)
 		if err != nil {
 			return nil, fmt.Errorf("source %q (cluster %s): %w", s.Name, c.Name, err)
 		}

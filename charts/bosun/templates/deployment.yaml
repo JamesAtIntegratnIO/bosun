@@ -161,6 +161,34 @@ spec:
               value: {{ .Values.supervise.interval | quote }}
             - name: GATE_POLL
               value: {{ .Values.gate.poll | quote }}
+            {{- /*
+              The host's half of the gate's policy. Emitted only when set, and
+              the agent reads an absent variable as "leave the gated
+              repository's own config file alone" -- so an install that
+              configured either in its .gitops-gate.yaml keeps what it had.
+              An empty-string default here would read as "false" and silently
+              turn validation off for exactly those installs.
+            */}}
+            {{- with .Values.gate.concurrency }}
+            - name: GATE_CONCURRENCY
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if not (kindIs "invalid" .Values.gate.validate.enabled) }}
+            - name: GATE_VALIDATE_ENABLED
+              value: {{ .Values.gate.validate.enabled | quote }}
+            {{- end }}
+            {{- if not (kindIs "invalid" .Values.gate.validate.ignoreMissingSchemas) }}
+            - name: GATE_VALIDATE_IGNORE_MISSING_SCHEMAS
+              value: {{ .Values.gate.validate.ignoreMissingSchemas | quote }}
+            {{- end }}
+            {{- with .Values.gate.validate.schemaLocations }}
+            - name: GATE_VALIDATE_SCHEMA_LOCATIONS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.gate.validate.skipKinds }}
+            - name: GATE_VALIDATE_SKIP_KINDS
+              value: {{ join "," . | quote }}
+            {{- end }}
             # The cluster inventory, which the gate reads from ArgoCD's own
             # API. Both halves are required: `required` here rather than in the
             # schema, because a missing value should name the value, and an

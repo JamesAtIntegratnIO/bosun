@@ -211,6 +211,45 @@
         "forkPRs": {
           "type": "boolean"
         },
+        "concurrency": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "validate": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "ignoreMissingSchemas": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "schemaLocations": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "skipKinds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
         "argocd": {
           "type": "object",
           "additionalProperties": false,

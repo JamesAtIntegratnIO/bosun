@@ -50,6 +50,15 @@ type Service struct {
 	// cluster.ArgoCD.ClusterInventory; there is no snapshot fallback in here,
 	// because a snapshot can go stale and this service can look.
 	Inventory func(ctx context.Context) (*gate.Inventory, error)
+	// Derive reads what ArgoCD says this repository deploys: the sources to
+	// render, and the ApplicationSets nothing in ArgoCD created. In
+	// production this is cluster.ArgoCD.Derive.
+	//
+	// Nil means "do not derive", and the config file is then the whole scope,
+	// exactly as it was before ADR 0012. A refused or unreachable read is an
+	// error rather than an empty derivation, for the same reason an unreadable
+	// inventory is: a smaller world produces a confident "no change" in it.
+	Derive func(ctx context.Context, repoURL string) (*gate.Derivation, error)
 	// CheckName is the commit-status context branch protection requires;
 	// the same name the gate reported under when it ran in CI, so moving it
 	// in-cluster changed nothing about protection rules.
@@ -67,6 +76,22 @@ type Service struct {
 	Timeout time.Duration
 	Log     func(string, ...any)
 
+	// Concurrency caps parallel renders, and is the host's answer rather than
+	// the gated repository's.
+	//
+	// Same reasoning as Egress, and the same shape: the renders run in this
+	// pod, against this pod's memory limit, beside every other open pull
+	// request's. How hard to work is the operator's decision about their own
+	// cluster. Zero leaves the config file's value in force, which is what
+	// keeps an install that set it working; non-zero wins outright.
+	Concurrency int
+
+	// Validate is the operator's schema-validation policy, for the same
+	// reason. Every field is optional, and an unset one leaves the config
+	// file's value alone: an install that had `validate:` in its file keeps
+	// exactly what it had until somebody sets the value.
+	Validate ValidatePolicy
+
 	// Egress is the operator's outbound deny-list. The gate pulls remote
 	// charts to render them, and helm is a subprocess the egress transport
 	// cannot see inside, so the policy has to reach the gate explicitly or
@@ -82,6 +107,44 @@ type Service struct {
 	mu       sync.Mutex
 	results  map[string]*Outcome
 	inflight map[string]chan struct{}
+}
+
+// ValidatePolicy is the host's schema-validation settings, each optional.
+//
+// Pointers rather than plain values because "false" and "not set" are
+// different answers here. A chart that defaulted `enabled` to false would turn
+// validation off for every install that had switched it on in its own file,
+// and the only symptom would be a report no longer mentioning schemas.
+type ValidatePolicy struct {
+	Enabled              *bool
+	IgnoreMissingSchemas *bool
+	SchemaLocations      []string
+	SkipKinds            []string
+}
+
+// applyHostPolicy overlays the operator's settings onto the config the
+// repository supplied.
+//
+// The direction is the point. The gated repository is the thing under
+// judgement, so anything it can say about how hard the gate works or what it
+// checks is a request, and the host has the last word. Nothing here widens
+// what the repository asked for by accident: an unset field is left alone.
+func (g *Service) applyHostPolicy(cfg *gate.Config) {
+	if g.Concurrency > 0 {
+		cfg.Concurrency = g.Concurrency
+	}
+	if g.Validate.Enabled != nil {
+		cfg.Validate.Enabled = *g.Validate.Enabled
+	}
+	if g.Validate.IgnoreMissingSchemas != nil {
+		cfg.Validate.IgnoreMissingSchemas = *g.Validate.IgnoreMissingSchemas
+	}
+	if len(g.Validate.SchemaLocations) > 0 {
+		cfg.Validate.SchemaLocations = g.Validate.SchemaLocations
+	}
+	if len(g.Validate.SkipKinds) > 0 {
+		cfg.Validate.SkipKinds = g.Validate.SkipKinds
+	}
 }
 
 // Outcome is one head commit's verdict, kept so the triage can read it
@@ -300,24 +363,39 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 
 	// The config comes from the HEAD at both revisions. It describes how to
 	// render, not what to render, and the base may predate it entirely,
-	// notably on the pull request that introduces the gate.
-	cfgRaw, err := os.ReadFile(filepath.Join(head, ".gitops-gate.yaml"))
-	if err != nil {
-		return g.broke(ctx, pr, fmt.Errorf("no .gitops-gate.yaml at the head revision: %w", err))
-	}
-	cfg, err := gate.ParseConfig(cfgRaw, ".gitops-gate.yaml")
-	if err == nil {
-		// The host's egress policy, attached after parsing so a pull request
-		// cannot widen its own. helm is a subprocess and the egress transport
-		// cannot see inside it, so without this the in-cluster gate, the
-		// default deployment, pulled remote charts with no policy check and
-		// no log line, while the start-up banner promised otherwise.
-		cfg.Egress = g.Egress
-		cfg.Log = g.Log
-	}
+	// notably on the pull request that introduces the gate. Since ADR 0012 it
+	// is also optional: ArgoCD says what this repository deploys, and most
+	// repositories need no file at all.
+	fileCfg, cfgName, err := readConfig(head)
 	if err != nil {
 		return g.broke(ctx, pr, err)
 	}
+
+	// Derivation is a live read, and it refuses like the inventory does. An
+	// ArgoCD that cannot be read produces a smaller scope, not a poorer one,
+	// and a smaller scope reports no change with total confidence.
+	var derived *gate.Derivation
+	if g.Derive != nil {
+		derived, err = g.Derive(ctx, g.RepoURL)
+		if err != nil {
+			return g.broke(ctx, pr, fmt.Errorf("deriving what this repository deploys: %w", err))
+		}
+	}
+
+	p, err := buildPlan(head, fileCfg, cfgName, derived)
+	if err != nil {
+		return g.broke(ctx, pr, err)
+	}
+	cfg := p.cfg
+
+	// The host's policy, attached after parsing so a pull request cannot widen
+	// its own. helm is a subprocess and the egress transport cannot see inside
+	// it, so without this the in-cluster gate, the default deployment, pulled
+	// remote charts with no policy check and no log line, while the start-up
+	// banner promised otherwise.
+	cfg.Egress = g.Egress
+	cfg.Log = g.Log
+	g.applyHostPolicy(cfg)
 
 	baseTable, err := gate.Render(ctx, base, cfg, inv)
 	if err != nil {
@@ -333,7 +411,8 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 	// so this surface and the CLI cannot reach different verdicts on one
 	// commit, which they had already started to do.
 	res := gate.Assemble(ctx, head, cfg, baseTable, headTable)
-	res.Suppressed = suppressedChecks(base, head, cfg)
+	res.Suppressed = suppressedChecks(base, head, cfg, cfgName)
+	res.Scope = p.scope
 
 	// Validation runs before the report is written, and its count goes onto
 	// the result rather than beside it. Written after, the headline and the
@@ -597,7 +676,7 @@ func shortSHA8(s string) string {
 //
 // So the rule stays and the suppression becomes visible, which is what the
 // project's own "cannot act without saying so" line requires.
-func suppressedChecks(base, head string, cfg *gate.Config) []string {
+func suppressedChecks(base, head string, cfg *gate.Config, name string) []string {
 	var out []string
 	if !cfg.Validate.Enabled {
 		out = append(out, "**Schema validation** — `validate.enabled` is false, so no rendered manifest "+
@@ -611,19 +690,46 @@ func suppressedChecks(base, head string, cfg *gate.Config) []string {
 	// Whether the config itself moved in this pull request. Read as bytes
 	// rather than compared field by field: any difference is worth one line,
 	// and a reader with the line can go and look.
-	headRaw, headErr := os.ReadFile(filepath.Join(head, ".gitops-gate.yaml"))
-	baseRaw, baseErr := os.ReadFile(filepath.Join(base, ".gitops-gate.yaml"))
+	//
+	// Both filenames are checked, not just the one in force at head: a pull
+	// request that renames `.gitops-gate.yaml` to `.bosun.yaml` changes the
+	// configuration in exactly the way this line exists to report, and
+	// comparing one name against itself would find nothing on either side.
+	headRaw, headErr := anyConfigBytes(head)
+	baseRaw, baseErr := anyConfigBytes(base)
+	shown := name
+	if shown == "" {
+		shown = configNames[0]
+	}
 	switch {
 	case headErr != nil:
-		// The gate would not have got this far without it.
+		// No file at head. The scope was derived, and there is nothing this
+		// pull request could have turned off in a file it does not have.
 	case baseErr != nil:
-		out = append(out, "**This pull request introduces `.gitops-gate.yaml`.** Everything above was "+
-			"checked under a configuration that did not exist on the base branch.")
+		out = append(out, fmt.Sprintf("**This pull request introduces `%s`.** Everything above was "+
+			"checked under a configuration that did not exist on the base branch.", shown))
 	case !bytes.Equal(headRaw, baseRaw):
-		out = append(out, "**`.gitops-gate.yaml` changed in this pull request**, and the gate read the "+
-			"head revision's copy. Everything above was checked under the new configuration.")
+		out = append(out, fmt.Sprintf("**`%s` changed in this pull request**, and the gate read the "+
+			"head revision's copy. Everything above was checked under the new configuration.", shown))
 	}
 	return out
+}
+
+// anyConfigBytes reads whichever config file a revision has.
+//
+// Deliberately indifferent to which name it found: the comparison above is
+// "did this pull request change how the gate is configured", and a rename from
+// one name to the other is a change of exactly that kind.
+func anyConfigBytes(dir string) ([]byte, error) {
+	var lastErr error
+	for _, n := range configNames {
+		raw, err := os.ReadFile(filepath.Join(dir, n))
+		if err == nil {
+			return raw, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
 }
 
 // plural is "1 kind" / "3 kinds".

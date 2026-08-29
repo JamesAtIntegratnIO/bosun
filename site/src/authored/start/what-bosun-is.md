@@ -116,7 +116,8 @@ workstation before pushing.
 
 - **Kargo** 1.11 or newer, or anything else that can POST a promotion event.
 - **ArgoCD**, whose API serves the live cluster inventory the gate renders
-  against, on an account token with `clusters, get`.
+  against, and which Applications and ApplicationSets exist, on one account
+  token holding three reads: `clusters, get`, `applications, get` and `applicationsets, get`.
 - A **git host**: `github` or `gitea` today, behind a small interface.
 - An **OpenAI- or Anthropic-compatible model endpoint**. There is no default, on
   purpose: a service that silently starts spending money against a vendor you

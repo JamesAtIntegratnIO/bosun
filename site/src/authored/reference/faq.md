@@ -71,7 +71,8 @@ against a vendor you did not choose.
 
 ## Do I have to give it my cluster credentials?
 
-It needs an **ArgoCD account token with `clusters, get`** and nothing else. The
+It needs an **ArgoCD account token with three reads**, `clusters, get`, `applications, get` and `applicationsets, get`, and
+nothing else. The
 gate reads four fields per cluster, name, server, labels and annotations, from
 `GET /api/v1/clusters`, which serves them with the credential block redacted.
 
