@@ -50,6 +50,12 @@ All notable changes to `bosun`. Format follows
   page now says so.
 - **The link-preview card and the landing hero disagreed.** Both now lead on
   the same finding, and `og.png` is regenerated from the pinned Node.
+- **`charts/kargo-pipelines/CHANGELOG.md` filed 0.1.0 under `[Unreleased]`.**
+  `f6ef4de` created the chart at `version: 0.1.0` and wrote that section;
+  `86af473` cut 0.1.1 and left the earlier one labelled. 0.1.0 has been in the
+  registry since 2026-08-23, so the file said "unreleased" about a published
+  version. Its two `0.2.x` dates were also a day ahead, written from UTC where
+  every other entry in the file uses local time.
 
 ## [0.23.0] - 2026-08-28
 
