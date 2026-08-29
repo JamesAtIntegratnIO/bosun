@@ -1,0 +1,116 @@
+{
+  "metadata": {"resourceVersion": "1"},
+  "items": [
+    {
+      "metadata": {
+        "name": "cert-manager-hub",
+        "namespace": "argocd",
+        "annotations": {"argocd.argoproj.io/tracking-id": "addons:argoproj.io/ApplicationSet:argocd/addons"}
+      },
+      "spec": {
+        "project": "default",
+        "sources": [
+          {
+            "repoURL": "https://charts.jetstack.example",
+            "chart": "cert-manager",
+            "targetRevision": "v1.15.0",
+            "helm": {"valueFiles": ["$values/charts/cert-manager/values.yaml"]}
+          },
+          {
+            "repoURL": "https://github.com/example-org/homelab.git",
+            "targetRevision": "main",
+            "ref": "values"
+          }
+        ],
+        "destination": {"server": "https://hub.example:6443", "namespace": "cert-manager"}
+      }
+    },
+    {
+      "metadata": {
+        "name": "media",
+        "namespace": "argocd",
+        "annotations": {"argocd.argoproj.io/tracking-id": "apps:argoproj.io/ApplicationSet:argocd/apps"}
+      },
+      "spec": {
+        "project": "default",
+        "source": {
+          "repoURL": "https://github.com/example-org/homelab",
+          "path": "apps/media",
+          "targetRevision": "main",
+          "directory": {"recurse": true}
+        },
+        "destination": {"server": "https://hub.example:6443", "namespace": "media"}
+      }
+    },
+    {
+      "metadata": {
+        "name": "monitoring",
+        "namespace": "argocd",
+        "annotations": {"argocd.argoproj.io/tracking-id": "apps:argoproj.io/ApplicationSet:argocd/apps"}
+      },
+      "spec": {
+        "project": "default",
+        "source": {
+          "repoURL": "https://github.com/Example-Org/Homelab.git",
+          "path": "charts/monitoring",
+          "targetRevision": "main",
+          "helm": {
+            "valuesObject": {"grafana": {"replicas": 2}, "retention": "30d"}
+          }
+        },
+        "destination": {"server": "https://hub.example:6443", "namespace": "monitoring"}
+      }
+    },
+    {
+      "metadata": {
+        "name": "ingress",
+        "namespace": "argocd",
+        "annotations": {"argocd.argoproj.io/tracking-id": "apps:argoproj.io/ApplicationSet:argocd/apps"}
+      },
+      "spec": {
+        "project": "default",
+        "source": {
+          "repoURL": "git@github.com:example-org/homelab.git",
+          "path": "apps/ingress",
+          "targetRevision": "main"
+        },
+        "destination": {"server": "https://spoke.example:6443", "namespace": "ingress"}
+      }
+    },
+    {
+      "metadata": {
+        "name": "hydrated-platform",
+        "namespace": "argocd",
+        "annotations": {"argocd.argoproj.io/tracking-id": "apps:argoproj.io/ApplicationSet:argocd/apps"}
+      },
+      "spec": {
+        "project": "default",
+        "sourceHydrator": {
+          "drySource": {
+            "repoURL": "https://github.com/example-org/homelab",
+            "path": "platform",
+            "targetRevision": "main"
+          },
+          "syncSource": {"targetBranch": "environments/prod", "path": "platform"}
+        },
+        "destination": {"server": "https://hub.example:6443", "namespace": "platform"}
+      }
+    },
+    {
+      "metadata": {
+        "name": "vendor-thing",
+        "namespace": "argocd",
+        "annotations": {"argocd.argoproj.io/tracking-id": "apps:argoproj.io/ApplicationSet:argocd/apps"}
+      },
+      "spec": {
+        "project": "default",
+        "source": {
+          "repoURL": "https://github.com/other-org/vendor-config",
+          "path": "clusters/hub",
+          "targetRevision": "main"
+        },
+        "destination": {"server": "https://hub.example:6443", "namespace": "vendor"}
+      }
+    }
+  ]
+}

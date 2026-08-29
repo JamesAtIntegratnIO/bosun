@@ -16,8 +16,10 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/gate"
 )
 
-// ArgoCD reads the cluster inventory from the ArgoCD API server. It is the
-// gate's only inventory source.
+// ArgoCD reads from the ArgoCD API server. It is the gate's only inventory
+// source, and since ADR 0012 it is also where the gate learns which
+// Applications and ApplicationSets exist; those two reads live in
+// argocdapps.go and are not on any code path yet.
 //
 // Why the API and not the secrets those clusters are stored in. Reading them
 // needs get/list on Secrets in the ArgoCD namespace, and that grant cannot be
@@ -36,7 +38,10 @@ import (
 // What it costs, stated as plainly as the grant it replaces. A credential to
 // mint, store and rotate, an ArgoCD account token, which is
 // bearer-equivalent for whatever that account's ArgoCD RBAC permits, so it
-// gets `clusters, get` and nothing else. A dependency on the ArgoCD API
+// gets exactly the reads this type makes and no more. Today that is
+// `clusters, get`; deriving sources adds `applications, get` and
+// `applicationsets, get`, and the chart asks for those only once something
+// reads them. A dependency on the ArgoCD API
 // server being up: the apiserver is reachable whenever the cluster is,
 // whereas argocd-server can be down on its own. And its own TLS story,
 // because argocd-server serves its own certificate rather than the one the
@@ -90,7 +95,7 @@ func (a *ArgoCD) ClusterInventory(ctx context.Context) (*gate.Inventory, error) 
 	var out struct {
 		Items []argoCluster `json:"items"`
 	}
-	if err := a.get(ctx, "/api/v1/clusters", &out); err != nil {
+	if err := a.get(ctx, "/api/v1/clusters", needClusters, &out); err != nil {
 		return nil, fmt.Errorf("reading clusters from the ArgoCD API at %s: %w", a.base(), err)
 	}
 
@@ -171,7 +176,26 @@ func (a *ArgoCD) client() (*http.Client, error) {
 	return a.cl, a.err
 }
 
-func (a *ArgoCD) get(ctx context.Context, path string, out any) error {
+// grant is the ArgoCD RBAC an endpoint needs, so a 403 can name the exact line
+// an operator has to add rather than the resource it was refused.
+//
+// Written out per endpoint rather than derived from the path: the object
+// pattern differs by resource (`clusters` matches on the cluster, the other two
+// on `<project>/<name>`), and a message that guessed it would send somebody to
+// paste a line that does not work.
+type grant struct{ resource, object string }
+
+func (g grant) line() string {
+	return fmt.Sprintf("p, <account>, %s, get, %s, allow", g.resource, g.object)
+}
+
+var (
+	needClusters        = grant{"clusters", "*"}
+	needApplications    = grant{"applications", "*/*"}
+	needApplicationSets = grant{"applicationsets", "*/*"}
+)
+
+func (a *ArgoCD) get(ctx context.Context, path string, need grant, out any) error {
 	cl, err := a.client()
 	if err != nil {
 		return err
@@ -198,7 +222,8 @@ func (a *ArgoCD) get(ctx context.Context, path string, out any) error {
 		case http.StatusUnauthorized:
 			return fmt.Errorf("%s: the ArgoCD token was rejected (expired, or minted in another ArgoCD)", resp.Status)
 		case http.StatusForbidden:
-			return fmt.Errorf("%s: the ArgoCD account may not list clusters -- it needs `p, <account>, clusters, get, *, allow`", resp.Status)
+			return fmt.Errorf("%s: the ArgoCD account may not read %s -- it needs `%s`",
+				resp.Status, need.resource, need.line())
 		}
 		return &statusError{Path: path, Code: resp.StatusCode, Status: resp.Status}
 	}
