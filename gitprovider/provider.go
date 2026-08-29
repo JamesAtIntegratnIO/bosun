@@ -13,8 +13,11 @@
 package gitprovider
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -216,4 +219,66 @@ func headSHA(ctx context.Context, root, fallback string) string {
 		return sha
 	}
 	return fallback
+}
+
+// hexSHA is a git object name and nothing else. Checked before a SHA reaches
+// git's argv: a value beginning with "-" would be read as an option rather
+// than a revision, and these arrive from a host's JSON.
+var hexSHA = regexp.MustCompile(`^[0-9a-fA-F]{7,64}$`)
+
+// EnsureHead pins a fresh checkout to the commit the caller believes it is
+// looking at.
+//
+// Every checkout in this service clones a branch, `--branch <pr.Branch>`,
+// while every verdict it produces is published, cached and keyed by the head
+// SHA the host reported moments earlier. Those are the same commit almost
+// always and not by construction: a push between reading the pull request and
+// cloning it means the gate renders commit B, the agent edits commit B, and
+// the result is written to commit A's status and stored in commit A's cache
+// entry. A green verdict then stands against a commit nothing ever inspected,
+// which is the one outcome a merge gate may not produce.
+//
+// Preferring the exact commit over failing: hosts that serve unadvertised
+// objects let the run continue on the right revision. Where that is refused
+// the run stops, because the alternative is publishing an answer about the
+// wrong thing.
+//
+// An empty want is not an error. Some hosts, and every fake, hand back a pull
+// request with no head SHA; there is nothing to pin to and nothing to betray.
+func EnsureHead(ctx context.Context, dir, want string) error {
+	if want == "" {
+		return nil
+	}
+	if !hexSHA.MatchString(want) {
+		return fmt.Errorf("head SHA %q is not a git object name", want)
+	}
+	got := headSHA(ctx, dir, "")
+	if got == "" {
+		return fmt.Errorf("could not read HEAD of the checkout to confirm it is %s", shortSHA(want))
+	}
+	if strings.EqualFold(got, want) || strings.HasPrefix(strings.ToLower(got), strings.ToLower(want)) {
+		return nil
+	}
+	for _, args := range [][]string{
+		{"-C", dir, "fetch", "--quiet", "--depth", "1", "origin", want},
+		{"-C", dir, "checkout", "--quiet", "--detach", "FETCH_HEAD"},
+	} {
+		cmd := exec.CommandContext(ctx, "git", args...)
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf(
+				"the branch moved to %s while it was being checked out, and %s could not be fetched: "+
+					"refusing to answer for a commit that was not inspected: %w: %s",
+				shortSHA(got), shortSHA(want), err, snippet(stderr.Bytes()))
+		}
+	}
+	return nil
+}
+
+func shortSHA(s string) string {
+	if len(s) > 8 {
+		return s[:8]
+	}
+	return s
 }

@@ -139,7 +139,7 @@ func InventoryFromClusters(cs []Cluster, filter ExportFilter) *Inventory {
 	for _, c := range cs {
 		labels := filter.strip(c.Labels)
 		annotations := dropManagedBy(filter.strip(c.Annotations))
-		// Every ArgoCD cluster Secret carries this label, it is the one the
+		// Every ArgoCD cluster Secret carries this label; it is the one the
 		// Secrets are found by, and generators in the wild routinely select
 		// on it. LoadInventory adds it for snapshots that omitted it; a live
 		// read never passes through LoadInventory, so it is added here too.

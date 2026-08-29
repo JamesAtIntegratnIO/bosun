@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 )
 
@@ -96,7 +98,13 @@ func TestEveryTriageCasePassesWhenTheModelIsRight(t *testing.T) {
 		var edits []llm.Edit
 		for key, to := range c.Triage.WantEdits {
 			edits = append(edits, llm.Edit{
-				Path: c.Triage.EditFile, Key: key, To: to,
+				Path: c.Triage.EditFile, Key: key,
+				// The value the fixture holds. A verdict without it is not
+				// "the expected answer": `from` is half the contract the
+				// applier enforces, and omitting it here made the suite score
+				// a model that never read the file it was editing.
+				From:      currentScalar(t, c.Files[c.Triage.EditFile], key),
+				To:        to,
 				Rationale: "because the fixture says so",
 			})
 		}
@@ -115,4 +123,32 @@ func TestEveryTriageCasePassesWhenTheModelIsRight(t *testing.T) {
 				c.Name, res.ClassOK, res.EditsOK, res.Grounded, res.Notes)
 		}
 	}
+}
+
+// currentScalar reads the value a fixture holds at a dotted key, so a test can
+// state the edit the way a correct model would: with the file's own value in
+// `from`.
+func currentScalar(t *testing.T, doc, key string) string {
+	t.Helper()
+	var node yaml.Node
+	if err := yaml.Unmarshal([]byte(doc), &node); err != nil {
+		t.Fatalf("fixture is not YAML: %v", err)
+	}
+	cur := &node
+	if cur.Kind == yaml.DocumentNode && len(cur.Content) > 0 {
+		cur = cur.Content[0]
+	}
+	for _, part := range strings.Split(key, ".") {
+		found := false
+		for i := 0; i+1 < len(cur.Content); i += 2 {
+			if cur.Content[i].Value == part {
+				cur, found = cur.Content[i+1], true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("fixture has no key %q (at %q)", key, part)
+		}
+	}
+	return cur.Value
 }

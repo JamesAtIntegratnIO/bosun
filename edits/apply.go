@@ -33,6 +33,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/JamesAtIntegratnIO/bosun/safepath"
 )
 
 // Policy decides which files may be touched.
@@ -141,16 +143,15 @@ func Apply(root string, policy Policy, in []Edit) (*Result, error) {
 			continue
 		}
 
-		// Join, not Join(root, Clean("/"+path)). Rooting the path at "/" first
-		// resolved every ".." before Join ever saw it, so the containment test
-		// below could not fail, a guard that read as the traversal defence and
-		// was in fact dead code, with the confinement happening silently one
-		// line earlier. Now Rel is the real test and rejects what it says it
-		// rejects.
-		full := filepath.Join(root, e.Path)
-		rel, err := filepath.Rel(root, full)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			res.Rejected = append(res.Rejected, Rejected{e.Path, e.Key, "path escapes the repository"})
+		// Containment is safepath's job, and it is a filesystem question
+		// rather than a string one. The lexical test that used to live here
+		// passed `charts/app/values.yaml` whether that was a file or a link
+		// to `.github/workflows/gate.yml`, so the deny-list above, the rule
+		// that stops this agent editing the gate that judges it, held only
+		// for repositories that happened not to track symlinks.
+		full, err := safepath.Resolve(root, e.Path)
+		if err != nil {
+			res.Rejected = append(res.Rejected, Rejected{e.Path, e.Key, err.Error()})
 			continue
 		}
 
@@ -264,9 +265,17 @@ func setScalar(data []byte, key, want, to string) ([]byte, error) {
 	if node.Kind != yaml.ScalarNode {
 		return nil, fmt.Errorf("key %q is not a scalar", key)
 	}
-	if want != "" && node.Value != want {
+	if node.Value != want {
 		// The optimistic-concurrency check. A mismatch means the model was
 		// working from something other than this file as it stands.
+		//
+		// Compared unconditionally. This used to skip the comparison when
+		// `want` was empty, which made `"from": ""` a universal skeleton key:
+		// the model could overwrite any scalar in any permitted file without
+		// having read it, while the schema, the prompt and this package's own
+		// documentation all promised the current value was checked first. An
+		// actually-empty scalar is not a special case; it matches "" exactly
+		// and always did.
 		return nil, fmt.Errorf("key %q holds %q, not the expected %q -- refusing to overwrite", key, node.Value, want)
 	}
 
@@ -276,7 +285,7 @@ func setScalar(data []byte, key, want, to string) ([]byte, error) {
 		return nil, fmt.Errorf("key %q resolved to line %d, outside the file", key, node.Line)
 	}
 
-	replaced, err := replaceValueOnLine(lines[idx], node.Value, to)
+	replaced, err := replaceValueOnLine(lines[idx], node, to)
 	if err != nil {
 		return nil, fmt.Errorf("key %q: %w", key, err)
 	}
@@ -286,12 +295,92 @@ func setScalar(data []byte, key, want, to string) ([]byte, error) {
 
 // replaceValueOnLine swaps the value while preserving indentation, the key,
 // the quoting style already in use, and any trailing comment.
-func replaceValueOnLine(line, old, to string) (string, error) {
-	i := strings.Index(line, old)
-	if i < 0 {
-		return "", fmt.Errorf("value %q not found on its own line (%q)", old, strings.TrimSpace(line))
+//
+// It rewrites the token at the node'S column, not the first text on the line
+// that happens to look like the old value. The difference is the whole point:
+// searching found the wrong token whenever the old value appeared more than
+// once on its line, and the two shapes where that happens are both ordinary.
+// In the flow mapping `{a: old, b: old}` an edit to `b` rewrote `a`. In
+// `version: version` an edit to the value rewrote the key, producing a
+// document that no longer has the key the edit claimed to change. yaml.Node
+// carries the source column precisely so this does not have to guess.
+func replaceValueOnLine(line string, node *yaml.Node, to string) (string, error) {
+	start, end, quote, err := valueExtent(line, node)
+	if err != nil {
+		return "", err
 	}
-	return line[:i] + to + line[i+len(old):], nil
+	return line[:start] + quote(to) + line[end:], nil
+}
+
+// valueExtent locates the scalar's source text on its line and returns the
+// half-open range it occupies, plus the escaping its quoting style requires.
+//
+// The range is the region inside any quotes, so `image: "1.2.3"` stays quoted
+// after the swap, the file's own style survives a change to its value, which
+// is the difference between a one-line diff and an argument in review.
+func valueExtent(line string, node *yaml.Node) (int, int, func(string) string, error) {
+	plain := func(s string) string { return s }
+
+	switch node.Style {
+	case yaml.LiteralStyle, yaml.FoldedStyle:
+		// `|` and `>` put the value on the lines below node.Line, so there is
+		// nothing here to replace and any match would be a coincidence.
+		return 0, 0, nil, fmt.Errorf("value is a block scalar; this package rewrites single-line values only")
+	}
+
+	start := node.Column - 1
+	if start < 0 || start > len(line) {
+		return 0, 0, nil, fmt.Errorf("value is at column %d, outside its line (%q)", node.Column, strings.TrimSpace(line))
+	}
+
+	switch node.Style {
+	case yaml.SingleQuotedStyle:
+		end, err := closingQuote(line, start, '\'')
+		if err != nil {
+			return 0, 0, nil, err
+		}
+		return start + 1, end, func(s string) string { return strings.ReplaceAll(s, "'", "''") }, nil
+	case yaml.DoubleQuotedStyle:
+		end, err := closingQuote(line, start, '"')
+		if err != nil {
+			return 0, 0, nil, err
+		}
+		return start + 1, end, func(s string) string {
+			return strings.ReplaceAll(strings.ReplaceAll(s, `\`, `\\`), `"`, `\"`)
+		}, nil
+	}
+
+	// Plain scalar: the source text is the value itself, at the column the
+	// parser reported. Verified rather than assumed, a value the parser
+	// folded across lines, or one whose source spelling differs from its
+	// decoded form, must be refused rather than half-rewritten.
+	if start+len(node.Value) > len(line) || line[start:start+len(node.Value)] != node.Value {
+		return 0, 0, nil, fmt.Errorf("value %q is not at column %d of its line (%q) -- refusing to guess",
+			node.Value, node.Column, strings.TrimSpace(line))
+	}
+	return start, start + len(node.Value), plain, nil
+}
+
+// closingQuote finds the quote that closes the one at start, honouring each
+// style's own escape: a doubled quote inside single quotes, a backslashed one
+// inside double.
+func closingQuote(line string, start int, q byte) (int, error) {
+	if start >= len(line) || line[start] != q {
+		return 0, fmt.Errorf("expected %c at column %d of its line (%q)", q, start+1, strings.TrimSpace(line))
+	}
+	for i := start + 1; i < len(line); i++ {
+		switch {
+		case q == '"' && line[i] == '\\':
+			i++
+		case line[i] == q:
+			if q == '\'' && i+1 < len(line) && line[i+1] == '\'' {
+				i++
+				continue
+			}
+			return i, nil
+		}
+	}
+	return 0, fmt.Errorf("value's closing %c is not on its line (%q)", q, strings.TrimSpace(line))
 }
 
 func lookup(node *yaml.Node, path []string) (*yaml.Node, error) {

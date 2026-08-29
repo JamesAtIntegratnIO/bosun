@@ -132,7 +132,7 @@ func TestWarehouseFallsBackToAnImageTag(t *testing.T) {
 	}
 }
 
-// A Pending promotion has no StartedAt, it has not begun, so its age comes
+// A Pending promotion has no StartedAt because it has not begun, so its age comes
 // from creation, and that age is what separates a moving queue from a stopped
 // one.
 func TestPromotionsCarryBothTimestamps(t *testing.T) {

@@ -39,7 +39,7 @@ const (
 // is broken in production by lunchtime. The GitHub client already learned this
 // with App installation tokens; this is the same shape and the same answer.
 //
-// The CA is cached, because that one does not rotate under a running pod.
+// The ca is cached, because that one does not rotate under a running pod.
 type APIServer struct {
 	// Host is the apiserver. Defaults to the in-cluster Service DNS name.
 	Host string
@@ -104,7 +104,7 @@ func (a *APIServer) client() (*http.Client, error) {
 			a.err = fmt.Errorf("the mounted cluster CA is not a certificate")
 			return
 		}
-		// No InsecureSkipVerify escape hatch, deliberately. The CA is mounted
+		// No InsecureSkipVerify escape hatch, deliberately. The ca is mounted
 		// into every pod by the kubelet; a deployment that cannot verify the
 		// apiserver with it has a problem that skipping verification hides.
 		a.cl = &http.Client{

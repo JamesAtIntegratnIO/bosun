@@ -9,7 +9,7 @@ import (
 
 // AnnotateConsumers counts, for every dropped served version, the manifests in
 // the repository that still declare it. Those manifests are the actual blast
-// radius, they are what breaks at apply, so Blocking() keys on them: consumers
+// radius, because they are what breaks at apply, so Blocking() keys on them: consumers
 // present blocks, consumers counted at zero reports.
 //
 // Only possible with a worktree, which is why it runs from the diff command's

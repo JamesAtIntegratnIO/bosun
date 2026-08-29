@@ -518,6 +518,22 @@
           "pattern": "^\\d+[smh]$|^\\d+[hm]\\d+[ms]$|^\\d+h\\d+m\\d+s$"
         }
       }
+    },
+    "promotionAuth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "existingSecret": {
+          "type": "string"
+        },
+        "tokenKey": {
+          "type": "string"
+        }
+      }
+    },
+    "maxConcurrentTriage": {
+      "type": "integer",
+      "minimum": 1
     }
   }
 }

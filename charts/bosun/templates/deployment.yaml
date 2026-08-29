@@ -44,6 +44,15 @@ spec:
               value: ":{{ .Values.service.port }}"
             - name: AGENT_BRAND
               value: {{ .Values.branding.name | default "bosun" | quote }}
+            - name: MAX_CONCURRENT_TRIAGE
+              value: {{ .Values.maxConcurrentTriage | default 4 | quote }}
+            {{- with .Values.promotionAuth.existingSecret }}
+            - name: PROMOTION_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.promotionAuth.tokenKey | default "token" }}
+            {{- end }}
             - name: GIT_PROVIDER
               value: {{ .Values.git.provider | quote }}
             - name: GIT_INSECURE_SKIP_TLS_VERIFY

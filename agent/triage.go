@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -31,6 +30,7 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
 	"github.com/JamesAtIntegratnIO/bosun/prompt"
+	"github.com/JamesAtIntegratnIO/bosun/safepath"
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
 
@@ -433,13 +433,13 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 
 	msg := fmt.Sprintf("fix(%s): %s\n\nProposed by %s, applied by bosun.\n",
 		p.Stage, verdict.Summary, t.LLM.Name())
+	if err := t.reserveAttempt(ctx, pr, attempt); err != nil {
+		return t.escalate(ctx, pr, err.Error(), verdict)
+	}
 	if err := t.Git.PushFix(ctx, pr, root, msg); err != nil {
 		return t.escalate(ctx, pr, fmt.Sprintf("Could not push the fix: %v", err), verdict)
 	}
 
-	if err := t.Git.AddLabel(ctx, pr.Number, fmt.Sprintf("%s%d", t.attemptPrefix(), attempt)); err != nil {
-		t.logf("PR %d: could not label attempt %d: %v", pr.Number, attempt, err)
-	}
 	t.say(ctx, pr, "pushed a fix (attempt %d of %d): %s", attempt, t.MaxAttempts, verdict.Summary)
 	return t.Git.Comment(ctx, pr.Number, render(t.brand(), t.LLM.Name(), verdict, res, fmt.Sprintf(
 		"Pushed a fix to `%s` (attempt %d of %d). The gate will re-run.",
@@ -568,11 +568,11 @@ func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider
 	}
 	msg := fmt.Sprintf("fix(%s): migrate %d manifest(s) off dropped API version(s)\n\n"+
 		"The chart stopped serving them; destinations from the gate's report.\n%s", p.Stage, files, how)
+	if err := t.reserveAttempt(ctx, pr, attempt); err != nil {
+		return t.escalate(ctx, pr, err.Error(), nil)
+	}
 	if err := t.Git.PushFix(ctx, pr, root, msg); err != nil {
 		return t.escalate(ctx, pr, fmt.Sprintf("Could not push the migration: %v", err), nil)
-	}
-	if err := t.Git.AddLabel(ctx, pr.Number, fmt.Sprintf("%s%d", t.attemptPrefix(), attempt)); err != nil {
-		t.logf("PR %d: could not label attempt %d: %v", pr.Number, attempt, err)
 	}
 	t.say(ctx, pr, "migrated %d manifest(s) off dropped API version(s)%s", files, t.attemptSuffix(attempt))
 	return t.Git.Comment(ctx, pr.Number, renderMigration(t.brand(), t.LLM.Name(), drops, total, rr, fmt.Sprintf(
@@ -620,6 +620,32 @@ func (t *Triage) attemptSuffix(attempt int) string {
 	return fmt.Sprintf(" (attempt %d of %d)", attempt, t.MaxAttempts)
 }
 
+// reserveAttempt records this attempt before anything is pushed, and refuses
+// the push if it cannot.
+//
+// The cap has exactly one memory, a label on the pull request, and both repair
+// paths used to push first and label afterwards, logging a label failure and
+// carrying on. That is a cap that fails open, and it does not take an attacker
+// to reach: a token with `contents: write` and no `issues: write` pushes the
+// fix, fails to label, and every later run counts zero attempts and repairs
+// again. The gate re-runs on each push, so the loop is a model call and a
+// commit per iteration against somebody's repository, indefinitely.
+//
+// Reserving first inverts every failure. A label that cannot be written is a
+// pull request that gets a human instead of a commit.
+func (t *Triage) reserveAttempt(ctx context.Context, pr *gitprovider.PullRequest, attempt int) error {
+	label := fmt.Sprintf("%s%d", t.attemptPrefix(), attempt)
+	if err := t.Git.AddLabel(ctx, pr.Number, label); err != nil {
+		t.logf("PR %d: could not record attempt %d as %q, so nothing was pushed: %v",
+			pr.Number, attempt, label, err)
+		return fmt.Errorf("Could not record attempt %d of %d as the label %q, which is how the "+
+			"attempt cap remembers across restarts. Nothing was pushed: an unrecorded attempt "+
+			"would let this repeat without limit. The token needs permission to label issues. (%v)",
+			attempt, t.MaxAttempts, label, err)
+	}
+	return nil
+}
+
 // attemptPrefix is the label prefix the attempt cap counts. It follows the
 // brand: a renamed agent must not keep writing labels under its old name, or
 // the cap silently resets on the rename.
@@ -643,6 +669,16 @@ func (t *Triage) clone(ctx context.Context, pr *gitprovider.PullRequest) (string
 	if err := cmd.Run(); err != nil {
 		cleanup()
 		return "", func() {}, fmt.Errorf("%w: %s", err, out.String())
+	}
+	// The clone asked for a branch; everything downstream is about a commit.
+	// The gate's verdict, the report this reads, the status this writes and
+	// the attempt label that caps it are all keyed to pr.HeadSHA, so a push
+	// that landed between reading the pull request and cloning it would have
+	// this agent repair a commit it never triaged and report the result
+	// against one it never saw.
+	if err := gitprovider.EnsureHead(ctx, root, pr.HeadSHA); err != nil {
+		cleanup()
+		return "", func() {}, err
 	}
 	return root, cleanup, nil
 }
@@ -873,11 +909,11 @@ func appliedPaths(res *edits.Result) []string {
 // The same test edits.Apply makes before writing, for the same reason and on
 // input from the same place. Reading is not harmless here: what is read goes
 // into a prompt, and a prompt is published.
+//
+// It was a lexical test until it was a real one. `charts/app/values.yaml` is
+// contained by every string comparison and is not contained at all if the
+// checkout holds it as a link to the pod's service-account token, which this
+// path would then read and render into a prompt.
 func containedPath(root, rel string) (string, error) {
-	full := filepath.Join(root, filepath.FromSlash(rel))
-	within, err := filepath.Rel(root, full)
-	if err != nil || within == ".." || strings.HasPrefix(within, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("path escapes the checkout")
-	}
-	return full, nil
+	return safepath.Resolve(root, rel)
 }

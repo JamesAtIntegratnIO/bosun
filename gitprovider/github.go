@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"strings"
 	"time"
@@ -21,6 +22,10 @@ import (
 type GitHub struct {
 	// APIBase allows GitHub Enterprise. Defaults to the public API.
 	APIBase string
+	// RepoURL is the clone URL, and therefore the push URL. Reading and
+	// writing must name the same host: without it the push went to
+	// github.com whatever APIBase said.
+	RepoURL string
 	Owner   string
 	Repo    string
 	// Token is a static credential, a PAT, or a bot user's token.
@@ -390,7 +395,10 @@ func (g *GitHub) PushFix(ctx context.Context, pr *PullRequest, root, message str
 	if err != nil {
 		return err
 	}
-	remote := fmt.Sprintf("https://x-access-token:%s@github.com/%s/%s.git", tok, g.Owner, g.Repo)
+	remote, err := g.pushRemote(tok)
+	if err != nil {
+		return err
+	}
 
 	steps := [][]string{
 		{"git", "-C", root, "config", "user.name", name},
@@ -416,6 +424,37 @@ func (g *GitHub) PushFix(ctx context.Context, pr *PullRequest, root, message str
 	// The branch head moved; tell the caller so its statuses land on it.
 	pr.HeadSHA = headSHA(ctx, root, pr.HeadSHA)
 	return nil
+}
+
+// pushRemote is where the fix is pushed, with a credential in it.
+//
+// Built from the configured repository URL, not from github.com. APIBase has
+// supported GitHub Enterprise since this provider was written, so an
+// Enterprise deployment read its pull requests from its own host and then
+// pushed to the public one, failing outright if no such repository exists and,
+// if `owner/repo` happens to exist on github.com, pushing an unreviewed commit
+// and an installation token to a repository that is not the operator's.
+//
+// RepoURL is the same value the clones use, so the push cannot disagree with
+// what was checked out. Falling back to github.com keeps a deployment that
+// never set it working, which is every non-Enterprise one.
+func (g *GitHub) pushRemote(token string) (string, error) {
+	raw := strings.TrimSpace(g.RepoURL)
+	if raw == "" {
+		return fmt.Sprintf("https://x-access-token:%s@github.com/%s/%s.git", token, g.Owner, g.Repo), nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("GIT_REPO_URL %q is not a URL: %w", raw, err)
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		// ssh:// and scp-style remotes carry their own credential and this
+		// one would be ignored rather than refused, a push that silently
+		// authenticates as somebody else.
+		return "", fmt.Errorf("GIT_REPO_URL %q must be an http(s) URL to push with a token", raw)
+	}
+	u.User = url.UserPassword("x-access-token", token)
+	return u.String(), nil
 }
 
 func snippet(b []byte) string {

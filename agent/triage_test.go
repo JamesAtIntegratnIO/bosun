@@ -926,3 +926,34 @@ func TestContainedPath(t *testing.T) {
 		}
 	}
 }
+
+// The lexical containment test above passes `linked.yaml` whatever it points
+// at, and then os.ReadFile answers a different question than the one that was
+// asked. This process holds the git token, the LLM key and the App private
+// key, and it runs in a pod with a mounted service-account token, so a
+// tracked symlink at a permitted path is a read of any of them into a prompt
+// that gets published.
+func TestThePromptRefusesASymlinkOutOfTheCheckout(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "ok.yaml"), []byte("k: v\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(secret, []byte("token: SHOULD-NOT-APPEAR\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, filepath.Join(root, "linked.yaml")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	got := buildUserPrompt(
+		Promotion{Files: []string{"ok.yaml", "linked.yaml"}},
+		&gitprovider.PullRequest{Number: 7, Title: "bump"}, "the gate is RED", root)
+
+	if strings.Contains(got, "SHOULD-NOT-APPEAR") {
+		t.Fatalf("a symlinked file reached the prompt:\n%s", got)
+	}
+	if !strings.Contains(got, "could not be read") {
+		t.Errorf("the refusal must be visible in the prompt:\n%s", got)
+	}
+}

@@ -286,3 +286,58 @@ func TestAForeignEmbeddedKindRefusesTheWholeFile(t *testing.T) {
 		t.Error("the refused file was edited anyway")
 	}
 }
+
+// A walk reports a symbolic link as an ordinary entry, and reading it leaves
+// the checkout. What this walk finds is rewritten and sent to a model, and
+// neither belongs to a file that is not in this repository.
+func TestTheScanDoesNotFollowSymlinksOutOfTheCheckout(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	write(t, outside, "elsewhere.yaml",
+		"apiVersion: external-secrets.io/v1beta1\nkind: ExternalSecret\nmetadata:\n  name: leaked\n")
+
+	if err := os.Symlink(filepath.Join(outside, "elsewhere.yaml"),
+		filepath.Join(root, "linked.yaml")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	hits, err := Scan(root, eso)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("the scan followed a link out of the checkout: %+v", hits)
+	}
+
+	// And the rewrite cannot reach it either, whatever names it.
+	res, err := Migrate(root, []Dropped{eso}, func(string) string { return "" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Applied) != 0 {
+		t.Fatalf("the migration rewrote through a link: %+v", res.Applied)
+	}
+	got, _ := os.ReadFile(filepath.Join(outside, "elsewhere.yaml"))
+	if !strings.Contains(string(got), "v1beta1") {
+		t.Error("the file outside the checkout was rewritten")
+	}
+}
+
+// A link at a directory redirects everything under it.
+func TestTheScanDoesNotDescendThroughALinkedDirectory(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	write(t, outside, "deep/es.yaml",
+		"apiVersion: external-secrets.io/v1beta1\nkind: ExternalSecret\nmetadata:\n  name: leaked\n")
+
+	if err := os.Symlink(outside, filepath.Join(root, "platform")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	hits, err := Scan(root, eso)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("the scan descended through a linked directory: %+v", hits)
+	}
+}

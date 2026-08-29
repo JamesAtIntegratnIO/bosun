@@ -74,6 +74,20 @@ triage:
   # off couples your delivery pipeline to your triage service's uptime.
   continueOnError: true
   timeout: 30s
+  # The Authorization header the triage service requires, verbatim.
+  #
+  # bosun's `promotionAuth.existingSecret` is the other half: without it the
+  # endpoint trusts every caller the namespace's NetworkPolicy admits, and the
+  # payload names the pull request the agent edits and the files it reads into
+  # a published prompt.
+  #
+  # Prefer a Kargo expression over a literal, so the secret stays in a Secret:
+  #
+  #   authorization: '${{ "Bearer " + secrets.bosun.token }}'
+  #
+  # which needs the Project to grant access to that Secret. A literal works and
+  # puts the token in your values file and in the rendered Stage.
+  authorization: ""
 
 defaults:
   # autoMerge: what the Stage may merge on its own. Anything it may not merge

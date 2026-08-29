@@ -3,17 +3,57 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
-## [0.22.1] - 2026-08-28
+## [0.23.0]
+
+### Added
+
+- **`promotionAuth.existingSecret` / `promotionAuth.tokenKey`.** The bearer
+  token `POST /v1/promotion-opened` requires. That endpoint's payload names the
+  pull request the agent edits and the files it reads into a prompt it
+  publishes, and the NetworkPolicy admits the whole namespace — which is as
+  narrow as a NetworkPolicy gets.
+
+  Opt-in, so an upgrade does not stop answering Kargo. Left unset the endpoint
+  is open and the pod logs a warning saying so at every start-up. Set the same
+  value on the promotion side with kargo-pipelines `triage.authorization`:
+
+  ```yaml
+  # bosun
+  promotionAuth:
+    existingSecret: bosun-promotion
+    tokenKey: token
+  ```
+
+- **`maxConcurrentTriage`** (default `4`). Bounds simultaneous triages. Each is
+  a clone, a helm render and a model call, so the ceiling is about the pod's
+  memory and your git host's rate limit rather than throughput.
 
 ### Changed
 
-- **Documentation only.** `README.md` and the comments in `values.yaml` and the
-  templates are edited for the repository's documentation voice: no em dashes,
-  no emphasis capitals, no filler adverbs. Two corrections came out of the
-  reading. The `liveReads` brief sample now matches what `agent/live.go` emits,
-  and the `git.app` note no longer opens on a dash fragment. No template, value
-  or default changed; the version moves because the README and values ship
-  inside the published chart.
+- **BREAKING (agent, not values): `git.apiBase` is required for `gitea`.** There
+  is no public Gitea to default to, so an empty value was a pod that started
+  healthy and could not read a pull request. The process now refuses to start
+  and names the setting.
+
+- **BREAKING (agent, not values): an invalid boolean is a configuration error.**
+  `explainGreen: treu` read as `false`, so a setting somebody deliberately
+  turned on was silently off. Accepted words are unchanged
+  (`true/false`, `yes/no`, `on/off`, `1/0`); anything else fails at start-up.
+
+- **BREAKING (agent, not values): `gate.poll` must be positive.** `0` is not a
+  faster poll but no wait at all, and it spun the sweep against the git host's
+  API as fast as it answered.
+
+  No values file needs editing for any of the three unless it already carries
+  one of those mistakes, in which case it was not doing what it looked like.
+
+### Changed
+
+- **Documentation, throughout.** `README.md` and the comments in `values.yaml`
+  and the templates lose the em dashes, emphasis capitals and filler adverbs.
+  Two corrections came out of the reading: the `liveReads` brief sample now
+  matches what `agent/live.go` emits, and the `git.app` note no longer opens on
+  a dash fragment. No template, value or default changed by that pass.
 
 ## [0.22.0]
 

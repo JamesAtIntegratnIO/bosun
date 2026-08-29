@@ -3,15 +3,34 @@
 All notable changes to `kargo-pipelines`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
-## [0.1.4] - 2026-08-28
+## [0.2.0] - 2026-08-28
+
+### Added
+
+- **`triage.authorization`.** The `Authorization` header, verbatim, on the http
+  step that calls the triage service. It is the other half of bosun's
+  `promotionAuth.existingSecret`: without a token that endpoint trusts every
+  caller the namespace's NetworkPolicy admits, and its payload names the pull
+  request the agent edits and the files it reads into a published prompt.
+
+  Prefer a Kargo expression over a literal, so the token stays in a Secret:
+
+  ```yaml
+  triage:
+    authorization: '${{ "Bearer " + secrets.bosun.token }}'
+  ```
+
+  which needs the Project to grant access to that Secret. A literal works and
+  puts the token in your values file and in the rendered Stage. Empty renders no
+  header, which is the previous behaviour.
 
 ### Changed
 
-- **Documentation only.** `README.md`, `docs/chaining.md`, `docs/targets.md`
-  and the comments in `values.yaml` and the templates lose the em dashes,
-  emphasis capitals and filler adverbs the voice rules cut. The `yaml-update`
-  rules and the merge-policy table keep their reasoning. No template, value or
-  default changed.
+- **Documentation, throughout.** `README.md`, `docs/chaining.md`,
+  `docs/targets.md` and the comments in `values.yaml` and the templates lose
+  the em dashes, emphasis capitals and filler adverbs. The `yaml-update` rules
+  and the merge-policy table keep their reasoning. No template, value or
+  default changed by that pass.
 
 ## [0.1.3] - 2026-08-28
 

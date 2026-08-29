@@ -309,7 +309,7 @@ func commitProvenance(c *upstream.Compare) string {
 //
 // Rendered only where a human is about to spend time: an escalation, and a
 // green gate flagged for a second look. An ordinary green-gate explanation
-// Fetches the commits, they are what it is grounded in, and does not print
+// Fetches the commits, which are what it is grounded in, and does not print
 // them, because a comment nobody needed to act on is how this agent becomes
 // something people collapse.
 //

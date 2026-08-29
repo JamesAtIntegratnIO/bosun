@@ -128,14 +128,35 @@ type Config struct {
 	LiveReads bool
 	// LiveReadsArgoCDNamespace is where Applications live.
 	LiveReadsArgoCDNamespace string
+
+	// PromotionToken is the bearer token POST /v1/promotion-opened requires.
+	//
+	// Empty means unauthenticated, which is what every deployment before this
+	// setting existed was, so it cannot become an error without breaking
+	// them. It is announced at start-up instead: the endpoint's payload names
+	// the pull request the agent will edit and the files it will read into a
+	// published prompt, and a NetworkPolicy admits a whole namespace.
+	PromotionToken string
+	// MaxConcurrentTriage bounds simultaneous triages.
+	MaxConcurrentTriage int
 }
 
 func LoadConfig() (*Config, error) {
+	// Collected so one bad boolean names itself rather than reaching a struct
+	// literal that cannot return an error.
+	var boolErr error
+	b := func(k string, def bool) bool {
+		v, err := envBool(k, def)
+		if err != nil && boolErr == nil {
+			boolErr = err
+		}
+		return v
+	}
 	c := &Config{
 		Addr:                     env("AGENT_ADDR", ":8080"),
 		Brand:                    env("AGENT_BRAND", "Bosun"),
 		GitProvider:              GitProviderName(env("GIT_PROVIDER", "github")),
-		GitInsecureSkipTLSVerify: envBool("GIT_INSECURE_SKIP_TLS_VERIFY", false),
+		GitInsecureSkipTLSVerify: b("GIT_INSECURE_SKIP_TLS_VERIFY", false),
 		GitAPIBase:               os.Getenv("GIT_API_BASE"),
 		GitOwner:                 os.Getenv("GIT_OWNER"),
 		GitRepo:                  os.Getenv("GIT_REPO"),
@@ -158,11 +179,11 @@ func LoadConfig() (*Config, error) {
 		CheckName: env("GATE_CHECK_NAME", "addons-gate"),
 		CloneRoot: env("CLONE_ROOT", ""),
 	}
-	c.GateForkPRs = envBool("GATE_FORK_PRS", false)
+	c.GateForkPRs = b("GATE_FORK_PRS", false)
 	c.ArgoCDBaseURL = os.Getenv("ARGOCD_BASE_URL")
 	c.ArgoCDToken = os.Getenv("ARGOCD_TOKEN")
 	c.ArgoCDCAFile = os.Getenv("ARGOCD_CA_FILE")
-	c.ArgoCDInsecureSkipTLSVerify = envBool("ARGOCD_INSECURE_SKIP_TLS_VERIFY", false)
+	c.ArgoCDInsecureSkipTLSVerify = b("ARGOCD_INSECURE_SKIP_TLS_VERIFY", false)
 
 	var err error
 	if c.MaxAttempts, err = envInt("MAX_ATTEMPTS", 2); err != nil {
@@ -174,14 +195,14 @@ func LoadConfig() (*Config, error) {
 	// Default on. The agent's whole complaint about itself was that it only
 	// spoke when something was wrong, and a green gate on a chart bump still
 	// changed something worth reading.
-	c.Explain = envBool("EXPLAIN_GREEN", true)
+	c.Explain = b("EXPLAIN_GREEN", true)
 	// Default on. The repair is deterministic, answers to the same deny-list
 	// and allowlist as every other write, and the re-run gate re-counts what
 	// it did, the reasons to switch it off are operational, not safety.
-	c.Migrate = envBool("MIGRATE_DROPPED_VERSIONS", true)
+	c.Migrate = b("MIGRATE_DROPPED_VERSIONS", true)
 	// Default on, and soft: everything it needs can fail without consequence
 	// beyond a less-informed explanation that says it is less informed.
-	c.Upstream = envBool("UPSTREAM_NOTES", true)
+	c.Upstream = b("UPSTREAM_NOTES", true)
 	if c.UpstreamMaxReleases, err = envInt("UPSTREAM_MAX_RELEASES", 5); err != nil {
 		return nil, err
 	}
@@ -191,7 +212,7 @@ func LoadConfig() (*Config, error) {
 	if c.UpstreamMaxCommits, err = envInt("UPSTREAM_MAX_COMMITS", upstream.MaxCompareCommits); err != nil {
 		return nil, err
 	}
-	c.Supervise = envBool("SUPERVISE_PIPELINE", true)
+	c.Supervise = b("SUPERVISE_PIPELINE", true)
 	if c.SuperviseEvery, err = envDur("SUPERVISE_INTERVAL", 10*time.Minute); err != nil {
 		return nil, err
 	}
@@ -205,16 +226,28 @@ func LoadConfig() (*Config, error) {
 	// authority, over files policy already permitted, and the checks in front
 	// of it are stricter than anywhere else in this service, so the reasons
 	// to switch it off are operational rather than about safety.
-	c.Structural = envBool("STRUCTURAL_MIGRATION", true)
+	c.Structural = b("STRUCTURAL_MIGRATION", true)
 	if c.MaxRestructured, err = envInt("MIGRATE_MAX_DOCS", 5); err != nil {
 		return nil, err
 	}
-	c.LiveReads = envBool("LIVE_READS", false)
+	c.LiveReads = b("LIVE_READS", false)
 	c.LiveReadsArgoCDNamespace = env("LIVE_READS_ARGOCD_NS", "argocd")
 	c.EgressDeny = envList("EGRESS_DENY")
 	c.AllowPaths = envList("ALLOW_PATHS")
 	c.DenyPaths = envList("DENY_PATHS")
 
+	// The shared secret the promotion endpoint requires, when there is one.
+	c.PromotionToken = strings.TrimSpace(os.Getenv("PROMOTION_TOKEN"))
+	if c.MaxConcurrentTriage, err = envInt("MAX_CONCURRENT_TRIAGE", 4); err != nil {
+		return nil, err
+	}
+	if c.MaxConcurrentTriage <= 0 {
+		return nil, fmt.Errorf("MAX_CONCURRENT_TRIAGE must be positive, got %d", c.MaxConcurrentTriage)
+	}
+
+	if boolErr != nil {
+		return nil, boolErr
+	}
 	return c, c.validate()
 }
 
@@ -281,6 +314,13 @@ func (c *Config) validate() error {
 			"`argocd account generate-token --account <account>`")
 	}
 
+	// Gitea has no public API to fall back to: without a base URL every read
+	// goes nowhere, and PushFix refuses outright. GitHub defaults to the
+	// public API on purpose, so this is a Gitea rule rather than a general one.
+	if c.GitProvider == GitGitea && strings.TrimSpace(c.GitAPIBase) == "" {
+		return fmt.Errorf("GIT_API_BASE is required for the gitea provider, e.g. https://gitea.example.com")
+	}
+
 	// An empty allowlist means the agent can write nothing. That is the safe
 	// default, but running with it is almost certainly a misconfiguration, so
 	// say so at startup rather than silently refusing every fix later.
@@ -326,14 +366,21 @@ func env(k, def string) string {
 // idioms, `== "true"` and `!= "false"`. They disagreed about everything except
 // the exact strings "true" and "false": `LIVE_READS=1` was off, and
 // `EXPLAIN_GREEN=no` was on.
-func envBool(k string, def bool) bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(k))) {
+func envBool(k string, def bool) (bool, error) {
+	switch v := strings.ToLower(strings.TrimSpace(os.Getenv(k))); v {
 	case "":
-		return def
+		return def, nil
 	case "1", "t", "true", "yes", "on":
-		return true
+		return true, nil
+	case "0", "f", "false", "no", "off":
+		return false, nil
 	default:
-		return false
+		// A typo is a configuration error, not a false. `EXPLAIN_GREEN=treu`
+		// used to read as off, so a setting somebody deliberately turned on
+		// was silently off and the only symptom was an agent that said
+		// nothing, which is what this service exists to notice about other
+		// people's systems.
+		return false, fmt.Errorf("%s: %q is not a boolean (true/false, yes/no, on/off, 1/0)", k, v)
 	}
 }
 
@@ -349,6 +396,14 @@ func envInt(k string, def int) (int, error) {
 	return n, nil
 }
 
+// envDur reads an interval or a timeout, and every duration this file reads is
+// one of those, so zero and negative are rejected here rather than at each
+// call site.
+//
+// Zero is not a faster poll; it is no wait at all. `GATE_POLL=0` turned the
+// gate's sweep and the agent's wait loop into spins that call the git host as
+// fast as it answers, and the symptom, a rate-limited token, points nowhere
+// near the setting that caused it.
 func envDur(k string, def time.Duration) (time.Duration, error) {
 	v := os.Getenv(k)
 	if v == "" {
@@ -357,6 +412,9 @@ func envDur(k string, def time.Duration) (time.Duration, error) {
 	d, err := time.ParseDuration(v)
 	if err != nil {
 		return 0, fmt.Errorf("%s: %w", k, err)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("%s must be positive, got %s", k, d)
 	}
 	return d, nil
 }

@@ -318,7 +318,7 @@ Consumers of the removed CustomResourceDefinition in this repository: 0.`,
 	},
 	{
 		// A live count of zero is the strongest evidence in a brief, nobody
-		// wrote it down, it was measured, and the failure it invites is the
+		// wrote it down; it was measured, and the failure it invites is the
 		// opposite of invention: a model that has been shown "0 objects are
 		// stored on the version being removed" and flags the bump anyway,
 		// because a disappearing CRD looks alarming in the abstract.
