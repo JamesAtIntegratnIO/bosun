@@ -83,6 +83,40 @@ for c in "${charts[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
+# The branches the ci values cannot reach.
+#
+# helm merges every `ci/*-values.yaml` with repeated -f, so those files
+# describe exactly one install and a second file cannot describe a different
+# one. Every default-off feature is therefore rendered by nothing above.
+#
+# Chart 0.25.0 published a ClusterRole that was not YAML whenever
+# `liveReads.enabled` was true: a `-}}` on a template comment ate the newline
+# after the previous rule, so the next rule began on its line. helm lint, the
+# schema and the render above were all green, because all three rendered the
+# feature off. It was found by rendering a real consumer's values by hand.
+#
+# helm parses what it renders, so `helm template` failing IS the check; no YAML
+# parser is needed here.
+# ---------------------------------------------------------------------------
+echo "==> the default-off features still render"
+render_with() { # <label> <set-args...>
+  local label="$1"; shift
+  if helm template t charts/bosun -f charts/bosun/ci/lint-values.yaml "$@" >/dev/null 2>&1; then
+    ok "helm template charts/bosun ${label}"
+  else
+    helm template t charts/bosun -f charts/bosun/ci/lint-values.yaml "$@" 2>&1 \
+      | sed 's/^/        /' | head -6
+    bad "helm template charts/bosun ${label}"
+  fi
+}
+render_with "liveReads.enabled"        --set liveReads.enabled=true
+render_with "liveReads.scope=wide"     --set liveReads.enabled=true --set liveReads.scope=wide
+render_with "credentials.mountAsFiles" --set credentials.mountAsFiles=true
+render_with "serviceMonitor"           --set metrics.serviceMonitor.enabled=true \
+                                       --set metrics.serviceMonitor.namespace=monitoring
+render_with "supervise off"            --set supervise.enabled=false
+
+# ---------------------------------------------------------------------------
 # The ArgoCD egress rule names a pod port.
 #
 # A NetworkPolicy matches the destination port of the packet, and a ClusterIP

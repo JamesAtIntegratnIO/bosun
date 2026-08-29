@@ -11,6 +11,27 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.25.1]
+
+### Fixed
+
+- **The ClusterRole was not YAML when `liveReads.enabled` was true.** A
+  template comment closed with `-}}`, which trims the following newline along
+  with the indentation, so the first live-reads rule began on the end of the
+  previous rule's line. Any install with the feature on failed to render, on
+  0.24.0 and 0.25.0 both. `liveReads` is off by default, so a default install
+  was never affected.
+
+  Nothing caught it because nothing rendered it. `helm lint`, the schema check
+  and the portability test all render `ci/lint-values.yaml`, helm merges every
+  `ci/*-values.yaml` with repeated `-f`, and so those files describe exactly
+  one install: the default one, with this feature off. It surfaced when a real
+  consumer's values were rendered by hand.
+
+  `hack/portability-test.sh` now renders the default-off branches too, and
+  since helm parses what it renders, an unparseable document fails the check.
+  Verified against the broken template before the fix went in.
+
 ## [0.25.0]
 
 ### Changed

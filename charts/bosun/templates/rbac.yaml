@@ -32,7 +32,14 @@ routinely carry secret material as literal env values. That is a standing
 information-disclosure grant paid for by installs that never used it. The
 Kargo and argoproj reads above stay unconditional: they are what the chart is
 for.
-*/ -}}
+
+This block closes without a trailing dash, deliberately. A dash before the
+closing braces trims the newline as well as the indentation, so the first rule
+below lands on the end of the previous rule's line and the document stops being
+YAML. 0.25.0 shipped exactly that, and nothing caught it: it only renders that
+way when this feature is on, and no lint values turned it on. There is a
+render check for it now.
+*/}}
   - apiGroups: [""]
     resources: [pods, events]
     verbs: [get, list, watch]
@@ -48,7 +55,7 @@ There are no deny rules. `apiGroups: ["*"]` includes the core group, and the
 core group contains Secrets -- so "everything except core" is not expressible,
 however reasonable it sounds. The two shapes below are what can be
 written down.
-*/ -}}
+*/}}
   # Reading a CustomResourceDefinition is how the agent learns which versions a
   # definition serves, for the case where a chart stops shipping one entirely
   # and the report names the object without its versions. The definition itself
