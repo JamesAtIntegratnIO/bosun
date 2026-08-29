@@ -5,6 +5,58 @@ All notable changes to `bosun`. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **[ADR 0012](adr/0012-the-repo-stops-repeating-the-ship.md): the repository
+  stops repeating the ship.** `.gitops-gate.yaml` calls itself "the whole of
+  that knowledge", and has not been since the gate moved in-cluster: `sources`
+  and `valuesRef` are a hand-maintained second copy of what ArgoCD is already
+  serving. The decision is to derive sources from live ArgoCD by default, take
+  content from the pull request's head wherever both can answer, and keep an
+  optional `.bosun.yaml` for the one fact ArgoCD cannot supply -- where an
+  untracked root's manifest lives in the gated repository.
+  `.gitops-gate.yaml` keeps working unchanged.
+
+  The measurements it rests on are in the ADR rather than in a commit message:
+  2 of 60 live ApplicationSets are untracked and both are roots, following live
+  and following the file produce the same 63 rows, ArgoCD's own `?repo=` filter
+  returns 7 of 65 Applications because it compares the first source by string
+  equality, and the split-repository pattern needs no file at all. What it
+  costs is recorded too, including the two asymmetrical failure modes: an
+  ArgoCD that is down fails loud, and an ArgoCD serving a smaller fleet than
+  yesterday fails quiet.
+
+- **`cluster.ArgoCD` can read Applications and ApplicationSets.**
+  `Applications(ctx)` and `ApplicationSets(ctx)` decode `spec.source`,
+  `spec.sources` (with `ref`, `directory` and `helm.valueFiles`/`valuesObject`),
+  `spec.sourceHydrator.drySource` and the tracking annotation, on the same
+  client and the same account token as the inventory read. **Nothing calls them
+  yet**, and the chart does not ask for the two RBAC lines they need until
+  something does; this lands the wire contract with the test that sees both
+  sides, per Rule 1a.
+
+  A 403 now names the exact policy line the account is missing rather than the
+  resource it was refused, per endpoint, because an operator adds those lines
+  one at a time and a message naming the wrong resource sends them to paste
+  something that changes nothing.
+
+- **URL normalisation for repository comparison.** One repository is written at
+  least three ways in a live fleet -- with and without `.git`, in different
+  case, and in scp form -- and ArgoCD stores whatever it was given. Without
+  folding those, a derived scope silently omits every Application whose author
+  typed the URL differently, which is exactly how ArgoCD's own filter loses
+  most of a fleet. All of `source`, `sources[*]` and `drySource` are compared.
+
+- **Recorded ArgoCD shapes under `cluster/testdata/`,** served by a fake at the
+  real paths: the fleet shape (multi-source addons resolving `$values/` through
+  a sibling `ref`, a hydrated Application, inline `valuesObject`, one
+  repository spelt three ways, two untracked roots among four ApplicationSets)
+  and the split-repository shape (`directory.recurse` with an `exclude`
+  pointer, and a root whose manifest is in another repository). They are
+  hand-written to the shapes the assessment measured rather than captured from
+  a live install, and `cluster/testdata/README.md` says so rather than letting
+  a reader assume otherwise.
+
 ### Changed
 
 - **The agent's deny-list drops `.gitops-gate/**` and adds `.bosun.yaml`.**

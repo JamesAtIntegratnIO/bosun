@@ -1,0 +1,39 @@
+{
+  "metadata": {"resourceVersion": "1"},
+  "items": [
+    {
+      "metadata": {
+        "name": "tenant-a-prod",
+        "namespace": "argocd",
+        "annotations": {"argocd.argoproj.io/tracking-id": "tenants:argoproj.io/ApplicationSet:argocd/tenants"}
+      },
+      "spec": {
+        "project": "default",
+        "source": {
+          "repoURL": "https://github.com/example-org/apps-config",
+          "path": "tenants/tenant-a/prod",
+          "targetRevision": "main",
+          "directory": {"recurse": true, "exclude": "exclude/*"}
+        },
+        "destination": {"server": "https://prod.example:6443", "namespace": "tenant-a"}
+      }
+    },
+    {
+      "metadata": {
+        "name": "tenant-b-prod",
+        "namespace": "argocd",
+        "annotations": {"argocd.argoproj.io/tracking-id": "tenants:argoproj.io/ApplicationSet:argocd/tenants"}
+      },
+      "spec": {
+        "project": "default",
+        "source": {
+          "repoURL": "https://github.com/example-org/apps-config.git",
+          "path": "tenants/tenant-b/prod",
+          "targetRevision": "main",
+          "directory": {"recurse": true, "include": "*.yaml", "exclude": "exclude/*"}
+        },
+        "destination": {"server": "https://prod.example:6443", "namespace": "tenant-b"}
+      }
+    }
+  ]
+}

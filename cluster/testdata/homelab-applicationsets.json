@@ -1,0 +1,138 @@
+{
+  "metadata": {"resourceVersion": "1"},
+  "items": [
+    {
+      "apiVersion": "argoproj.io/v1alpha1",
+      "kind": "ApplicationSet",
+      "metadata": {
+        "name": "bootstrap-addons",
+        "namespace": "argocd"
+      },
+      "spec": {
+        "goTemplate": true,
+        "generators": [
+          {"clusters": {"selector": {"matchLabels": {"argocd.argoproj.io/secret-type": "cluster"}}}}
+        ],
+        "template": {
+          "metadata": {"name": "addons-{{ .name }}"},
+          "spec": {
+            "project": "default",
+            "source": {
+              "repoURL": "https://github.com/example-org/homelab.git",
+              "path": "bootstrap/addons",
+              "targetRevision": "main",
+              "directory": {"recurse": true}
+            },
+            "destination": {"server": "{{ .server }}", "namespace": "argocd"}
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "argoproj.io/v1alpha1",
+      "kind": "ApplicationSet",
+      "metadata": {
+        "name": "bootstrap-apps",
+        "namespace": "argocd"
+      },
+      "spec": {
+        "goTemplate": true,
+        "generators": [
+          {"clusters": {"selector": {"matchLabels": {"cluster_role": "control-plane"}}}}
+        ],
+        "template": {
+          "metadata": {"name": "apps-{{ .name }}"},
+          "spec": {
+            "project": "default",
+            "source": {
+              "repoURL": "https://github.com/example-org/homelab.git",
+              "path": "bootstrap/apps",
+              "targetRevision": "main",
+              "directory": {"recurse": true}
+            },
+            "destination": {"server": "{{ .server }}", "namespace": "argocd"}
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "argoproj.io/v1alpha1",
+      "kind": "ApplicationSet",
+      "metadata": {
+        "name": "addons",
+        "namespace": "argocd",
+        "annotations": {"argocd.argoproj.io/tracking-id": "addons-hub:argoproj.io/Application:argocd/addons-hub"}
+      },
+      "spec": {
+        "goTemplate": true,
+        "generators": [
+          {
+            "clusters": {
+              "selector": {
+                "matchExpressions": [
+                  {"key": "enable_cert_manager", "operator": "In", "values": ["true"]}
+                ]
+              }
+            }
+          }
+        ],
+        "template": {
+          "metadata": {"name": "cert-manager-{{ .name }}"},
+          "spec": {
+            "project": "default",
+            "sources": [
+              {
+                "repoURL": "https://charts.jetstack.example",
+                "chart": "cert-manager",
+                "targetRevision": "v1.15.0",
+                "helm": {"valueFiles": ["$values/charts/cert-manager/values.yaml"]}
+              },
+              {
+                "repoURL": "https://github.com/example-org/homelab.git",
+                "targetRevision": "main",
+                "ref": "values"
+              }
+            ],
+            "destination": {"server": "{{ .server }}", "namespace": "cert-manager"}
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "argoproj.io/v1alpha1",
+      "kind": "ApplicationSet",
+      "metadata": {
+        "name": "apps",
+        "namespace": "argocd",
+        "annotations": {"argocd.argoproj.io/tracking-id": "apps-hub:argoproj.io/Application:argocd/apps-hub"}
+      },
+      "spec": {
+        "goTemplate": true,
+        "generators": [
+          {
+            "clusters": {
+              "selector": {
+                "matchExpressions": [
+                  {"key": "aws_cluster_name", "operator": "DoesNotExist"}
+                ]
+              }
+            }
+          }
+        ],
+        "template": {
+          "metadata": {"name": "{{ .name }}-media"},
+          "spec": {
+            "project": "default",
+            "source": {
+              "repoURL": "https://github.com/example-org/homelab",
+              "path": "apps/media",
+              "targetRevision": "main",
+              "directory": {"recurse": true}
+            },
+            "destination": {"server": "{{ .server }}", "namespace": "media"}
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "metadata": {"resourceVersion": "1"},
+  "items": [
+    {
+      "apiVersion": "argoproj.io/v1alpha1",
+      "kind": "ApplicationSet",
+      "metadata": {
+        "name": "tenants",
+        "namespace": "argocd"
+      },
+      "spec": {
+        "goTemplate": true,
+        "generators": [
+          {
+            "list": {
+              "elements": [
+                {"tenant": "tenant-a", "env": "prod"},
+                {"tenant": "tenant-b", "env": "prod"}
+              ]
+            }
+          }
+        ],
+        "template": {
+          "metadata": {"name": "{{ .tenant }}-{{ .env }}"},
+          "spec": {
+            "project": "default",
+            "source": {
+              "repoURL": "https://github.com/example-org/apps-config",
+              "path": "tenants/{{ .tenant }}/{{ .env }}",
+              "targetRevision": "main",
+              "directory": {"recurse": true, "exclude": "exclude/*"}
+            },
+            "destination": {"server": "https://prod.example:6443", "namespace": "{{ .tenant }}"}
+          }
+        }
+      }
+    }
+  ]
+}
