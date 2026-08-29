@@ -142,7 +142,15 @@ func walk(prefix string, node any, schema Schema, out *[]Finding) {
 			// the complaint would be one that deleted the object's identity,
 			// which the identity validator then refuses. A confusing escalation
 			// on a healthy manifest.
-			if prefix == "" && rootSupplied[name] {
+			//
+			// Only where the schema is silent about them, which is the case
+			// those rules describe and the case that was measured. A schema
+			// that does declare one is a schema speaking about its own
+			// document -- a chart's values may legitimately have a `metadata`
+			// key -- and skipping it there would leave a rejected field
+			// unreported, which on the values path means a setting nothing
+			// offers to migrate.
+			if _, declared := props[name]; !declared && prefix == "" && rootSupplied[name] {
 				continue
 			}
 			sub, ok := props[name]

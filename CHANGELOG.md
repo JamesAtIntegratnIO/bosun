@@ -106,6 +106,47 @@ All notable changes to `bosun`. Format follows
   a live install, and `cluster/testdata/README.md` says so rather than letting
   a reader assume otherwise.
 
+- **A values migration, for a chart this repository has outgrown.** The other
+  half of the unrenderable-chart fix below. Once the gate blocks on a chart that will not render,
+  something has to be able to fix it, and nothing could: removing a key,
+  renaming a key and adding a key are three operations `edits` has no way to
+  express, and it should not be widened to -- corroboration *is* the `from`
+  match, and a deletion has no `from`.
+
+  The home is the structural path, which already solves this shape of problem
+  for manifests. The model is shown the values and the chart's own
+  `values.schema.json` at the version being moved to, and returns the migrated
+  values; three checks decide whether they may be used at all. Two are
+  [ADR 0007](adr/0007-structure-from-the-schema-data-from-the-document.md)'s
+  unchanged -- schema validity, and positional value provenance. The first one
+  is new: **survival**, every value the new chart still declares comes through
+  byte-identical, which is what stops a setting being retuned on the way past
+  and what stops a renamed key landing on one that already had a value.
+
+  Then the chart is **rendered with the answer** before anything is written.
+  That is a guarantee the manifest path cannot have -- a migrated manifest is
+  judged by a schema walk, and this is judged by the program that refused the
+  original -- and it is what catches a key the chart *renamed* being dropped as
+  though it had been removed.
+
+  What lands is not the document. ADR 0007 re-serialises a migrated manifest
+  and pays for it in comments, which is a fair price for something that is
+  usually a document of its own; a repository's chart values are usually a
+  subtree of a file that also holds thirty other addons, and the values with a
+  note beside them are exactly the ones somebody had to reason about. So the
+  harness diffs the original against the validated proposal into a **plan** --
+  remove a key, rename a key, set a key -- and applies each one on that key's
+  own lines. The model never names a file, a key or an operation. See
+  [ADR 0013](adr/0013-a-values-migration-is-a-plan-not-a-document.md), which
+  also records where repair ends: a key the schema requires and names no value
+  for is escalated, with the key named, before the model is asked anything.
+
+  Behind `triage.structuralMigration`, which is the flag the document migration
+  already uses; an operator who has not turned that on has not turned this on
+  either. The eval suite gains a fourth path and four cases for it, scored by
+  the shipped validators and against hand-verified answers; they have not been
+  run against a live model here.
+
 ### Changed
 
 - **BREAKING: the ArgoCD account needs two more read lines.**

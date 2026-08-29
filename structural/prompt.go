@@ -29,6 +29,33 @@ func Prompt(path, body, fromVersion, toVersion string, old, target Schema, findi
 	return b.String()
 }
 
+// ValuesPrompt assembles the evidence for one values migration.
+//
+// The same shape as Prompt and a different set of nouns, because the two are
+// scored separately and a shared function with a mode flag would be one
+// function whose output nobody can read without knowing which mode it was in.
+//
+// The old schema is optional and often absent: most charts ship no
+// values.schema.json at all, and the one being migrated away from is exactly
+// the version that was permissive enough for these values to work. When it is
+// there it says what the keys used to mean, which is what makes a rename
+// recognisable rather than guessable.
+func ValuesPrompt(chart, fromVersion, toVersion, body string, old, target Schema, findings []Finding) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "CHART: %s, %s -> %s\n\n", chart, fromVersion, toVersion)
+	fmt.Fprintf(&b, "VALUES THIS REPOSITORY SETS\n\n%s\n", body)
+	fmt.Fprintf(&b, "\nWHY THE CHART REFUSES THEM\n\n%s\n", Summarise(findings))
+	if old != nil {
+		fmt.Fprintf(&b, "\nOLD VALUES SCHEMA (%s)\n\n%s\n", fromVersion, RenderSchema(old))
+	} else {
+		fmt.Fprintf(&b, "\nOLD VALUES SCHEMA (%s)\n\n(the old version shipped none, so what these keys "+
+			"used to mean is not available here)\n", fromVersion)
+	}
+	fmt.Fprintf(&b, "\nNEW VALUES SCHEMA (%s)\n\n%s\n", toVersion, RenderSchema(target))
+	b.WriteString("\nReturn the values, shaped for the new schema.")
+	return b.String()
+}
+
 // maxSchemaDepth bounds how deep a rendered schema goes. Deep enough for the
 // shapes migrations move, a field into a nested object, an object
 // into a list of objects, and shallow enough that a chart with a fully

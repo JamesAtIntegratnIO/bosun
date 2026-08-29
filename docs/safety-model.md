@@ -43,6 +43,44 @@ supplies data.
 records why the proposal surface includes whole documents and what replaced
 corroboration.
 
+### When the document is a chart's values
+
+The same shape, pointed at a chart's `values.schema.json` instead of a CRD's,
+and repairing a louder failure: helm checks that schema before it templates
+anything, so a repository whose values a chart has outgrown does not render at
+all. Removing a key, renaming a key and adding a key are the three operations
+that fixes, and a scalar edit can express none of them.
+
+Two of the three checks are unchanged. Two things are not.
+
+**The first check is survival rather than identity.** A values document has no
+kind and no name to preserve. What it has is everything the new chart still
+declares, and all of that must come through byte-identical — which is also
+what stops a displaced value landing on a key that already had one.
+
+**What lands is a plan, not the document.** ADR 0007 re-serialises a migrated
+manifest and pays for it in comments; a manifest is usually a document of its
+own, so that is a fair price. A repository's chart values are usually a subtree
+of a file that also holds thirty other addons, and the values that carry a note
+beside them are exactly the ones somebody had to reason about. So the harness
+diffs the original against the validated proposal into a plan — remove a key,
+rename a key, set a key — and applies each one on that key's own lines, the way
+a scalar edit is written. The model never names a file, a key or an operation;
+it returns a document, and the plan is computed from two structures that were
+checked first.
+
+And one guarantee this path has that the manifest path cannot: **the chart is
+rendered with the proposal before anything is written.** A migrated manifest is
+judged by a schema walk; a migrated values file is judged by the program that
+refused the original.
+
+Where the repair ends is decided before a model is asked anything. A key the
+target schema requires, that the values do not supply and that the schema names
+no default, `const` or single-member `enum` for, has an answer only a person
+holds; that escalates with the key named.
+[ADR 0013](../adr/0013-a-values-migration-is-a-plan-not-a-document.md) records
+the boundary and what it costs.
+
 ## The deterministic repair involves no model at all
 
 Migrating manifests off a CRD version a bump stopped serving takes no
@@ -104,6 +142,11 @@ named them rather than a model.
 | Cannot change what an object is while reshaping it | `apiVersion` must equal the target the gate named, and `kind`, `metadata.name` and `metadata.namespace` must be byte-identical to the original. A renamed object is a second change riding inside a migration |
 | Cannot propose a document that still does not fit | the proposal is walked against the target schema by the same code that found the problem, so the apiserver's objection is raised before the apply |
 | Cannot half-migrate a pull request | if any document in a pass is refused, **nothing** is pushed, including the plain swaps that were fine. The swap alone turns the gate green, because no manifest declares a dropped version any more, while a document the target schema rejects waits to be pruned. A partial push hides a broken change behind a green gate |
+| Cannot retune a setting a values migration was not about | the survival check: every value the target chart version still declares must be at the same path in the proposal, byte-identical. A setting quietly changed on the way past is a second change riding inside the migration, and it is also how a renamed key would overwrite one that already had a value |
+| Cannot write a values migration the chart still refuses | the chart is pulled and rendered with the proposed values before anything is written, and a proposal helm will not template is refused. This is the one check that catches a key the chart *renamed* being dropped as though the chart had removed it, whenever the chart insists on the key it renamed |
+| Cannot guess a required value nothing supplies | a key the target schema requires, that the values do not hold and that the schema names no default, `const` or single-member `enum` for, escalates **before** the model is called. There is nothing to derive an answer from, so asking for one is asking for an invention |
+| Cannot reformat a values file it edits | the write is a plan of key operations, each applied on that key's own lines through `yaml.Node`, so comments, indentation and quoting elsewhere in the file are untouched. A key inside a flow mapping, a value that is not a scalar, and a section that does not exist are all refused rather than improvised |
+| Cannot write to a values file it cannot uniquely identify | the file and the prefix a chart's values live under are discovered by matching the keys the plan touches, with their current values, against the files this change may write to. Zero matches or several is a refusal: a wrong guess here edits somebody else's addon |
 | Cannot drop a value silently | values present in the original and absent from the proposal are listed in the comment. Some are correct, because a field the target no longer accepts has to go somewhere and sometimes nowhere, and all are visible |
 | Cannot forge a marker in what it publishes | both halves find their own comments by substring-matching an HTML comment: `<!-- gitops-gate -->` for the report, `<!-- gitops-gate:head <sha> -->` for "this commit already has a verdict", `<!-- bosun:explanation -->` for "this pull request has already been explained". The model's summary, reasoning and notes are the one place a pull request's own words are reproduced verbatim, so `<!--` and `-->` are escaped there and each field is capped, with the truncation said out loud. A forged head stamp would not produce a wrong verdict; it would make the gate's own duplicate-suppression swallow the next one, so the commit ends with no verdict on it and nothing saying so. **The rest of the comment is not escaped.** Paths, values, table cells and the folded diffs come from the repository rather than the model, and escaping a diff would misreport the file, so a repository file containing a stamp can still forge that same suppression |
 | Cannot act without saying so | every exit path publishes a commit status, including the ones that do nothing and the ones that error. Without one, "nothing needed triage", "never called" and "crashed" are the same observation from outside |

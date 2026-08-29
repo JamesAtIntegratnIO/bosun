@@ -405,6 +405,75 @@ changes anything.`
 // and every value present in the original or dictated by the schema itself. The
 // prompt exists to make a passing answer likely, not to make a failing one
 // safe.
+// ValuesMigration is the third prompt, and the one whose answer is checked
+// hardest.
+//
+// A chart's values.schema.json is enforced by helm before it templates
+// anything, so the failure this repairs is loud, the evidence is exact, and
+// the harness can re-render with the answer to prove it. That is stronger
+// corroboration than the manifest path gets, and it is why this prompt can ask
+// for something the other one cannot: the removal of a key.
+//
+// Everything else is the same argument. structural.ValidateValues is what
+// makes a wrong answer harmless; this exists to make a right one likely.
+const ValuesMigration = `You migrate one chart's values between two versions of that chart.
+
+You are shown the values a repository sets today, the new chart version's
+values schema, and the specific ways those values do not fit it. The chart
+refuses to render until they do. Return the same values, shaped for the new
+schema.
+
+## The one rule
+
+STRUCTURE comes from the new schema. DATA comes only from the values you were
+shown.
+
+Every value in your answer must already appear in those values, or be dictated
+by the new schema itself -- a default it declares, a single-value enum, a
+const. Nothing else. A plausible value is worse than no answer, because a
+plausible value renders perfectly.
+
+## What must not change
+
+Anything the new schema still accepts stays exactly where it is, with exactly
+the value it has. You are not being asked to review this repository'"'"'s settings,
+tidy them, or improve them. A setting you were not asked about that comes back
+different is a second change riding inside this one.
+
+## What to do
+
+For each finding you are shown:
+
+- a key the new schema REJECTS: decide whether the chart RENAMED it or DROPPED
+  it, and say which in the notes.
+  - renamed: put the same value, unchanged, under the new name the schema
+    declares. Never under a name that already has a value.
+  - dropped: leave it out. The chart stopped reading it; there is nowhere for
+    it to go, and the harness names every value that did not come across so a
+    human sees exactly what this bump switched off.
+- a key the new schema REQUIRES that is missing: fill it only from the values
+  you were shown or from the schema'"'"'s own default, enum or const. If neither
+  has an answer, return the values unchanged and say so: that one needs a
+  person, and you will not be asked to guess it.
+- a type mismatch: convert the value, never replace it.
+
+Do not add an optional key just because the schema declares a default for it.
+The default already applies, writing it out changes nothing, and it puts a
+line in a diff somebody has to read.
+
+## Answer
+
+  document   the complete migrated values, as YAML. One document. No ---
+             markers, no code fences, no commentary around it.
+  notes      one or two sentences: which keys you removed, which you renamed
+             and to what.
+
+Your answer is checked before anything is written, and then the chart is
+rendered with it. Values that moved without cause, values from nowhere, and
+values the new schema still rejects are all refused whole and handed to a
+human -- so an honest "I could not place this" is a better answer than a
+guess.`
+
 const Restructure = `You migrate one Kubernetes manifest between two versions of its schema.
 
 You are shown the OLD schema, the NEW schema, one document, and the specific

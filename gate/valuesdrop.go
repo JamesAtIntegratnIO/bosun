@@ -168,7 +168,7 @@ func repoValues(repoRoot string, r Row) (map[string]any, error) {
 		return nil
 	}
 	for _, vf := range r.ValueFiles {
-		clean := stripValuesRef(vf)
+		clean := StripValuesRef(vf)
 		full, err := containedPath(repoRoot, clean)
 		if err != nil {
 			// Reported, not skipped. This reads the same head-controlled list

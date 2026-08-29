@@ -32,10 +32,10 @@ func TestChartDiffOnlyConsidersVersionChanges(t *testing.T) {
 	// rows either; what matters is which pairs it selects, which is
 	// observable through what it says about the renders that failed.
 	cfg := &Config{Concurrency: 2}
-	_, _, found, warns := ChartDiff(context.Background(), t.TempDir(), cfg, base, head)
+	_, _, found := ChartDiff(context.Background(), t.TempDir(), cfg, base, head)
 
-	said := strings.Join(warns, "\n")
-	for _, f := range found {
+	said := strings.Join(found.Warnings, "\n")
+	for _, f := range found.Changes {
 		said += "\n" + f.Object
 	}
 	if strings.Contains(said, "same") {
@@ -48,7 +48,7 @@ func TestChartDiffOnlyConsidersVersionChanges(t *testing.T) {
 	// result, this test passed for a while against a ChartDiff that had
 	// stopped saying anything at all.
 	if !strings.Contains(said, "moved") {
-		t.Errorf("the row whose version moved must be rendered and reported on, got %v / %v", found, warns)
+		t.Errorf("the row whose version moved must be rendered and reported on, got %+v", found)
 	}
 }
 
@@ -66,18 +66,18 @@ func TestChartDiffReportsWhatItCouldNotRender(t *testing.T) {
 	base := &Table{Rows: []Row{row("1.0.0")}}
 	head := &Table{Rows: []Row{row("2.0.0")}}
 
-	before, after, found, _ := ChartDiff(context.Background(), t.TempDir(), &Config{Concurrency: 1}, base, head)
+	before, after, found := ChartDiff(context.Background(), t.TempDir(), &Config{Concurrency: 1}, base, head)
 	if len(before) != 0 || len(after) != 0 {
 		t.Fatal("a failed render must contribute no objects")
 	}
 	var failures []ObjectChange
-	for _, f := range found {
+	for _, f := range found.Changes {
 		if f.Kind == ObjectRenderFailed {
 			failures = append(failures, f)
 		}
 	}
 	if len(failures) != 1 {
-		t.Fatalf("the head revision's failure must be a finding, got %+v", found)
+		t.Fatalf("the head revision's failure must be a finding, got %+v", found.Changes)
 	}
 	if failures[0].Object != "thing" || failures[0].To != "2.0.0" {
 		t.Errorf("the finding must name the Application and the version it failed at, got %+v", failures[0])
@@ -86,6 +86,13 @@ func TestChartDiffReportsWhatItCouldNotRender(t *testing.T) {
 	// there is nowhere else for the reader to look it up.
 	if failures[0].Reason == "" {
 		t.Error("the finding must carry what helm said")
+	}
+	// The reader's finding and the repair's contract are two derivations of
+	// one fact, and a repair that never hears about a failure the report
+	// blocks on is the gap this whole change is closing.
+	if len(found.Unrenderable) != 1 || found.Unrenderable[0].Head.Version != "2.0.0" ||
+		found.Unrenderable[0].From != "1.0.0" {
+		t.Fatalf("the repair contract must carry the same failure, got %+v", found.Unrenderable)
 	}
 }
 

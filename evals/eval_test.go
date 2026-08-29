@@ -45,6 +45,7 @@ func TestEval(t *testing.T) {
 		PathTriage:      prompt.System,
 		PathExplain:     prompt.Explain,
 		PathRestructure: prompt.Restructure,
+		PathValues:      prompt.ValuesMigration,
 	}
 
 	for _, model := range models {

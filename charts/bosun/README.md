@@ -234,6 +234,44 @@ whose every remaining line would move.
 
 See [`adr/0007-structure-from-the-schema-data-from-the-document.md`](../../adr/0007-structure-from-the-schema-data-from-the-document.md).
 
+### The other half: a chart your values have outgrown
+
+The same flag covers the mirror case, and it is the more common one. A chart
+version that adds `values.schema.json`, or tightens the one it had, refuses
+settings your repository has been making for years — and helm checks that
+schema before it templates anything, so the Application does not render at all.
+The gate blocks on it; this is what repairs it.
+
+The model is shown your values and the chart's new schema and returns the
+migrated values. Three checks again, one of them different:
+
+| Check | Refuses |
+|---|---|
+| survival | a setting the new chart version still declares that came back changed, moved, or missing |
+| schema validity | values the new schema still rejects |
+| value provenance | any value not at that path in your values, not displaced by the schema change, and not dictated by the chart's schema |
+
+Then **the chart is rendered with the answer**, and a proposal helm will not
+template is refused. That is a guarantee the document path cannot have, and it
+is what catches a key the chart *renamed* being dropped as though it had been
+removed.
+
+Where it stops: a key the new schema **requires** and says nothing about the
+value of — no default, no `const`, no single legal value — is escalated with
+the key named, before the model is asked anything. There is nothing to derive
+an answer from, and a plausible one renders perfectly.
+
+What lands is not the document. The harness turns the difference into a plan —
+remove a key, rename a key, set a key — and applies each one on that key's own
+lines, so **your comments, indentation and quoting survive** and the diff is
+the keys that changed. Three shapes are refused rather than improvised: a key
+inside a flow mapping (`{a: 1, b: 2}`), a value that is not a scalar, and a
+section that does not exist yet. A values file whose keys this cannot uniquely
+find among the files the change may write to is refused too, because a wrong
+guess edits a different addon.
+
+See [`adr/0013-a-values-migration-is-a-plan-not-a-document.md`](../../adr/0013-a-values-migration-is-a-plan-not-a-document.md).
+
 ## What is running
 
 `liveReads` lets a brief carry facts the gate structurally cannot have:

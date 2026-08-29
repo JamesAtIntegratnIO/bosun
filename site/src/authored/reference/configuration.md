@@ -209,7 +209,7 @@ rather than a required check that never reports.
 | `triage.maxAttempts` | `MAX_ATTEMPTS` | `2` | Attempt cap, tracked by pull-request label |
 | `triage.explainGreen` | `EXPLAIN_GREEN` | `true` | Explain green gates on held pull requests |
 | `triage.migrateDroppedVersions` | `MIGRATE_DROPPED_VERSIONS` | `true` | The deterministic apiVersion repair. **No model involved** |
-| `triage.structuralMigration` | `STRUCTURAL_MIGRATION` | `true` | The document-reshape path, for bumps where swapping the version is not the whole job |
+| `triage.structuralMigration` | `STRUCTURAL_MIGRATION` | `true` | The schema-guided repairs: reshaping a document an apiVersion swap left behind, and migrating values a new chart version refuses |
 | `triage.migrateMaxDocs` | `MIGRATE_MAX_DOCS` | `5` | Cap on documents reshaped in one pass |
 | `triage.egressDeny` | `EGRESS_DENY` | `[]` | Public hosts the upstream lookup must never reach |
 | `triage.egressAllowPrivate` | `EGRESS_ALLOW_PRIVATE` | `[]` | Internal networks it may reach after all. See below |

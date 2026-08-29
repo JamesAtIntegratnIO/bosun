@@ -156,6 +156,16 @@ type Outcome struct {
 	// everything downstream of the triage parses evidence out of this string,
 	// and it is now handed over instead of scraped back.
 	Report string
+	// Unrenderable is the repair contract for the Applications this run could
+	// not render at the version the head moves them to.
+	//
+	// A value rather than a line in the report, and the only piece of evidence
+	// that travels this way. Everything else downstream parses out of Report
+	// because that is what a gate old enough to predate a reader still
+	// carries; this is new on both sides at once, and ADR 0008 already bought
+	// the ability to hand a verdict over instead of scraping it back. It also
+	// means a chart cannot spell one: nothing here passed through markdown.
+	Unrenderable []gate.Unrenderable
 	// Err is the gate failing to run, which is a different thing from a
 	// failing verdict, exit 2, not exit 1.
 	Err error
@@ -434,7 +444,7 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 		fmt.Fprintf(&report, "### Schema validation\n\n%s\n", schemaDetail.String())
 	}
 
-	out := &Outcome{Report: report.String()}
+	out := &Outcome{Report: report.String(), Unrenderable: res.Unrenderable}
 	blocking := res.Blocking()
 
 	// The comment is for humans and for the audit trail; the verdict no

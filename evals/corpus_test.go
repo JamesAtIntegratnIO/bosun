@@ -49,6 +49,17 @@ func TestEveryCaseIsWellFormed(t *testing.T) {
 			if c.Restructure.Document == "" {
 				t.Errorf("%s: a restructure case needs a document to migrate", c.Name)
 			}
+		case PathValues:
+			// Only the target schema is required. A chart permissive enough
+			// for these values to have worked is usually one that shipped no
+			// schema at all, so demanding the old one would make the common
+			// fixture unwritable.
+			if c.Values.Schema == "" {
+				t.Errorf("%s: a values case needs the schema it is migrating to", c.Name)
+			}
+			if c.Values.Set == "" {
+				t.Errorf("%s: a values case needs the values this repository sets", c.Name)
+			}
 		default:
 			t.Errorf("%s: path %q is not one the harness dispatches", c.Name, c.Path)
 		}
@@ -74,7 +85,7 @@ func TestEveryCaseIsWellFormed(t *testing.T) {
 // fixture, without panicking or dropping the evidence the case is about.
 func TestEveryCaseBuildsAPrompt(t *testing.T) {
 	for _, c := range Cases {
-		if c.Path == PathRestructure {
+		if c.Path == PathRestructure || c.Path == PathValues {
 			continue // builds its prompt from the schemas, not the file list
 		}
 		got := BuildPrompt(c, true)
@@ -151,4 +162,48 @@ func currentScalar(t *testing.T, doc, key string) string {
 		}
 	}
 	return cur.Value
+}
+
+// And every values case must be scorable: handed the answer it expects, the
+// harness accepts it; handed anything at all, the refusal cases refuse.
+//
+// This is the fixture check, not the model check. A case whose expected
+// document the shipped validators would refuse is a case that can never pass,
+// and a suite full of those measures its own fixtures.
+func TestEveryValuesCaseIsScorableWhenTheModelIsRight(t *testing.T) {
+	for _, c := range Cases {
+		if c.Path != PathValues {
+			continue
+		}
+		t.Run(c.Name, func(t *testing.T) {
+			answer := c.Values.WantDocument
+			if answer == "" {
+				// A refusal case, and a control that should never reach the
+				// model. Either way the document below is what a model that
+				// tried anyway would have said, and neither outcome may
+				// accept it.
+				answer = c.Values.Set
+			}
+			p := &llm.Fake{Migration: &llm.Migration{Document: answer, Notes: "as the fixture says"}}
+			got := Run(context.Background(), p, "system", c, true)
+
+			switch {
+			case c.Values.WantRefused:
+				if !got.ClassOK || got.Unsafe {
+					t.Errorf("a migration with no honest answer must be stopped: %+v", got)
+				}
+			case c.Values.WantDocument == "":
+				if got.Class != "not-called" || !got.ClassOK {
+					t.Errorf("values that already fit must never reach the model: %+v", got)
+				}
+				if p.MigrationCalls != 0 {
+					t.Errorf("the model was asked %d time(s) about values that already fit", p.MigrationCalls)
+				}
+			default:
+				if !got.ClassOK || got.Unsafe {
+					t.Errorf("the expected answer must score as a pass: %+v", got)
+				}
+			}
+		})
+	}
 }

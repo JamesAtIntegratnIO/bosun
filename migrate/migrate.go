@@ -432,6 +432,20 @@ func (b Blockers) Any() bool {
 		b.Unrenderable+b.ValuesDropped+b.Schema > 0
 }
 
+// UnrenderableOnly reports whether the only thing blocking is a chart that
+// will not render at the new version, and the settings it stops reading.
+//
+// The two are one fact counted twice: a chart strict enough to refuse a key is
+// a chart that has stopped declaring it, so a values migration that clears the
+// first clears the second. Anything else in the breakdown is a separate
+// problem the same repair would not touch, and repairing half of a red gate
+// leaves it red with a comment implying otherwise.
+func (b Blockers) UnrenderableOnly() bool {
+	return b.Unrenderable > 0 &&
+		b.Targeting == 0 && b.Source == 0 && b.APIVersion == 0 &&
+		b.Consumers == 0 && b.Unscanned == 0 && b.Schema == 0
+}
+
 // RepoSideRemedy reports whether anything a person or an agent could change in
 // this repository would clear the gate.
 func (b Blockers) RepoSideRemedy() bool {

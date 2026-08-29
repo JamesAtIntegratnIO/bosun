@@ -11,6 +11,36 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.27.0]
+
+### Changed
+
+- **`triage.structuralMigration` now covers a chart your values have
+  outgrown.** The flag documented one repair: a document an apiVersion swap
+  left in a shape the target CRD schema rejects. It now covers the mirror case
+  as well, which is the more common one. A chart version that adds
+  `values.schema.json`, or tightens the one it had, refuses settings a
+  repository has been making for years, and helm checks that schema before it
+  templates anything, so the Application does not render at all.
+
+  The same shape and one more guarantee: the chart is pulled and **rendered
+  with the answer** before anything is written, which is a check the document
+  path cannot have. What lands is a plan of key operations applied on each
+  key's own lines, so the comments and formatting in a values file survive. A
+  key the new schema requires and names no value for is escalated with the key
+  named, before the model is asked anything.
+
+  No new value and nothing to set: an install with the flag on already has it,
+  and one with it off is unaffected. It needs the same registry egress the
+  document path does, and unlike that path it does not need `liveReads`,
+  because both schemas come from the chart. See
+  [ADR 0013](https://github.com/JamesAtIntegratnIO/bosun/blob/main/adr/0013-a-values-migration-is-a-plan-not-a-document.md).
+
+- **`appVersion` moves to 0.27.0, which is what makes 0.26.0's chart mean
+  anything.** The derivation work shipped a chart that still named the agent
+  from before it, so this release is the one that carries both it and the
+  values migration.
+
 ## [0.26.0]
 
 ### Added

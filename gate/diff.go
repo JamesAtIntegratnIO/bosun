@@ -91,6 +91,17 @@ type DiffResult struct {
 	// reader who cannot, cannot.
 	Scope []string `json:"scope,omitempty"`
 
+	// Unrenderable is the repair contract behind the renderFailed findings in
+	// Objects: the Applications whose chart will not render at the new
+	// version, each with the head Row a repair has to pull and render.
+	//
+	// Deliberately not in the report. The report is prose and half of it is
+	// strings a chart chose; this is a value the agent reads in process, from
+	// the same run that computed it, which is what ADR 0008 bought by moving
+	// the gate in-cluster. Nothing here has to survive a round trip through
+	// markdown, so nothing here can be spelled by a chart.
+	Unrenderable []Unrenderable `json:"unrenderable,omitempty"`
+
 	// SchemaFailures is manifests the target cluster's schemas reject, set by
 	// the caller that ran validation.
 	//

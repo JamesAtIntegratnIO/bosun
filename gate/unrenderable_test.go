@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/JamesAtIntegratnIO/bosun/internal/charttest"
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
 )
 
@@ -21,7 +22,7 @@ import (
 func TestASchemaThatRejectsThisRepositorysValuesBlocks(t *testing.T) {
 	requireTool(t, "helm")
 
-	repo := strictChart(t)
+	repo := charttest.Strict(t)
 	root := writeRepo(t, map[string]string{"values/thing.yaml": "legacy: true\n"})
 	row := func(v string) Row {
 		return Row{
@@ -92,8 +93,8 @@ func TestASchemaThatRejectsThisRepositorysValuesBlocks(t *testing.T) {
 func TestOnlyTheHeadRevisionsRenderFailureBlocks(t *testing.T) {
 	requireTool(t, "helm")
 
-	repo := strictChart(t)
-	root := writeRepo(t, map[string]string{"values/thing.yaml": "greeting: hi\n"})
+	repo := charttest.Strict(t)
+	root := writeRepo(t, map[string]string{"values/thing.yaml": "greeting: hi\npodPort: 8080\n"})
 	row := func(v string) Row {
 		return Row{
 			Cluster: "prod", App: "thing-prod", Chart: "thing", ChartRepo: repo,
