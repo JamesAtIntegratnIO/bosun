@@ -4,8 +4,8 @@
 Two halves matter and only one of them lives here.
 
 This policy governs what reaches the agent and what the agent may reach. The
-OTHER half is the Kargo controller's own egress policy, which must permit this
-service -- a controller allowed "0.0.0.0/0 except RFC1918" cannot reach a
+other half is the Kargo controller's own egress policy, which must permit this
+service: a controller allowed "0.0.0.0/0 except RFC1918" cannot reach a
 ClusterIP at all, and the symptom is a hang with zero bytes rather than an
 error. See the chart README.
 */ -}}
@@ -52,7 +52,7 @@ spec:
     {{- /* An in-cluster destination cannot be expressed as an ipBlock. A
            Service's ClusterIP is DNAT'd to a pod IP before policy is
            evaluated, so a rule naming the ClusterIP matches nothing and the
-           connection times out with no error anywhere -- the same shape of
+           connection times out with no error anywhere, the same shape of
            failure as reaching a service through a gateway whose egress
            allow-list has not learned the namespace. Select the namespace. */}}
     {{- range $np.egress.namespaces }}
@@ -96,7 +96,7 @@ spec:
     {{- /* The apiserver, for live cluster reads. Its own key because it is the
            destination people get wrong: `kubernetes.default.svc` is a
            ClusterIP, and a ClusterIP is DNAT'd to a real endpoint before
-           policy is evaluated -- so a rule naming it matches nothing and the
+           policy is evaluated, so a rule naming it matches nothing and the
            connection hangs with zero bytes rather than being refused. These
            are the endpoints the Service points at. The cilium flavor below
            needs none of this and does not go stale when a control-plane node
@@ -143,7 +143,7 @@ spec:
   egress:
     {{- if $np.egress.allowInternet }}
     {{- /* Everything, on 443. The agent reads public metadata about public
-           artifacts -- chart indexes, registry manifests, release notes -- and
+           artifacts (chart indexes, registry manifests, release notes) and
            naming every host in advance proved to be a full-time job whose
            failure mode was a two-minute timeout and a brief with no evidence.
            The record moved into the agent instead: it logs every outbound
@@ -156,7 +156,7 @@ spec:
               protocol: TCP
     {{- end }}
     {{- if or $.Values.liveReads.enabled $.Values.supervise.enabled }}
-    {{- /* Both readers of the apiserver -- liveReads and the pipeline sweep --
+    {{- /* Both readers of the apiserver, liveReads and the pipeline sweep,
            arrive here.
            The idiomatic Cilium answer to "reach the apiserver": an entity,
            resolved by the agent on every node, rather than a list of
@@ -170,7 +170,7 @@ spec:
         - matchName: {{ . | quote }}
         {{- end }}
         {{- /* A registry serves manifests from its own host and blobs from a
-             CDN whose names are a SET -- cdn01.quay.io, cdn02… -- or a cloud
+             CDN whose names are a set (cdn01.quay.io, cdn02…) or a cloud
              bucket that varies by region. matchName cannot express either
              without guessing at the membership, and a guessed allow-list is
              how this breaks silently: the connection hangs rather than being

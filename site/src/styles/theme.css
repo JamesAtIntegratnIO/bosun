@@ -1,7 +1,7 @@
 /* ---------------------------------------------------------------------------
    Bosun brand theme.
 
-   Every colour here is lifted from docs/avatar/bosun.svg -- the badge navy,
+   Every colour here is lifted from docs/avatar/bosun.svg: the badge navy,
    the two sea tones, the coral of the tentacles, the cream of the sailor cap.
    The mark and the site are the same palette because they were the same
    decision.
@@ -43,8 +43,8 @@
 
   --bo-radius: 10px;
 
-  /* Wider than Starlight's 45rem default. These docs are table-heavy -- the
-     guarantee/mechanism table, the values reference -- and 45rem forced every
+  /* Wider than Starlight's 45rem default. These docs are table-heavy, the
+     guarantee/mechanism table and the values reference among them, and 45rem forced every
      one of them into a horizontal scroll. */
   --sl-content-width: 50rem;
 }
@@ -272,9 +272,9 @@ starlight-toc a[aria-current='true'] {
   text-decoration-color: var(--sl-color-text-accent);
 }
 
-/* Tables carry most of the real content in these docs -- the guarantee/mechanism
+/* Tables carry most of the content in these docs: the guarantee/mechanism
    table, the finding tables, the exit codes. They deserve to be readable rather
-   than merely present. */
+   than only present. */
 .sl-markdown-content table:not(:where(.not-content *)) {
   display: block;
   overflow-x: auto;
@@ -285,7 +285,7 @@ starlight-toc a[aria-current='true'] {
   font-size: var(--sl-text-sm);
 }
 
-/* A value or env-var name must never break across lines -- it is the thing the
+/* A value or env-var name must never break across lines, because it is the thing the
    reader is going to copy, and the browser will otherwise squeeze a
    four-column table until `git.provider` wraps mid-identifier. The table
    scrolls inside its own box (above), so widening these columns costs a

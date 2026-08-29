@@ -120,7 +120,7 @@ if [ "$HEAD_BEFORE" != "$HEAD_AFTER" ]; then
   gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/git/commits/${HEAD_AFTER}" \
     | python3 -c 'import json,sys; d=json.load(sys.stdin); print("    commit: "+d["commit"]["message"].strip().splitlines()[0])' || true
 else
-  step "it pushed nothing -- so it escalated or found no fix"
+  step "it pushed nothing, so it escalated or found no fix"
 fi
 
 echo
@@ -141,7 +141,7 @@ say "5. does the gate accept it now?"
 if [ "$HEAD_BEFORE" != "$HEAD_AFTER" ]; then
   # The push is a new head commit, and the sweep gates a commit because it
   # exists. Nothing had to re-trigger anything.
-  step "new head ${HEAD_AFTER:0:8} -- waiting for its own verdict"
+  step "new head ${HEAD_AFTER:0:8}, waiting for its own verdict"
   RE=""
   for _ in $(seq 1 60); do
     RE="$(gate_status "$HEAD_AFTER" | cut -d' ' -f1)"
@@ -149,7 +149,7 @@ if [ "$HEAD_BEFORE" != "$HEAD_AFTER" ]; then
     sleep 5
   done
   [ "$RE" = "success" ] && ok "gate is green on the agent's fix" \
-    || step "gate ${RE:-<no verdict>} -- the fix was not enough"
+    || step "gate ${RE:-<no verdict>}: the fix was not enough"
 else
   step "nothing was pushed, so the gate would return the same verdict"
 fi

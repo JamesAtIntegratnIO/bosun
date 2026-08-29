@@ -48,7 +48,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- if not .Values.git.owner }}{{ fail "bosun: git.owner is required" }}{{ end -}}
 {{- if not .Values.git.repo }}{{ fail "bosun: git.repo is required" }}{{ end -}}
 {{- if not .Values.git.repoURL }}{{ fail "bosun: git.repoURL is required" }}{{ end -}}
-{{- if not .Values.git.existingSecret }}{{ fail "bosun: git.existingSecret is required -- this chart never creates a Secret" }}{{ end -}}
+{{- if not .Values.git.existingSecret }}{{ fail "bosun: git.existingSecret is required; this chart never creates a Secret" }}{{ end -}}
 {{- if not .Values.llm.provider }}{{ fail "bosun: llm.provider is required (openai or anthropic); there is deliberately no default" }}{{ end -}}
 {{- if not .Values.llm.model }}{{ fail "bosun: llm.model is required" }}{{ end -}}
 {{- if and (eq .Values.llm.provider "openai") (not .Values.llm.baseURL) }}{{ fail "bosun: llm.baseURL is required for the openai provider" }}{{ end -}}

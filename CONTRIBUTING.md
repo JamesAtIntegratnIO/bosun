@@ -125,7 +125,15 @@ gofmt -l .                 # must print nothing
 go vet ./...
 hack/lint.sh               # helm lint + values.schema.json validation
 hack/portability-test.sh   # no environment assumptions; everything renders
+
+cd site && npm ci          # once
+npm run build              # the site, from the markdown in this repository
+npm run check:links        # after a build
 ```
+
+The site build is a required check and it is in the dev shell, so run it
+before pushing anything that renames a heading or moves a published file.
+Those break the site rather than the doc, and only at build time.
 
 `hack/portability-test.sh` is the successor to an extraction test that enforced
 a one-way link rule while this package still lived inside the platform

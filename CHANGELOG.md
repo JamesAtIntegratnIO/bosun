@@ -5,6 +5,13 @@ All notable changes to `bosun`. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Node 22 in the dev shell.** The site is a required check and its build was
+  not runnable from `nix develop`, so `npm run build` and `npm run check:links`
+  only ever ran on the CI runner. `npm run og` regenerates a committed PNG, so
+  it wanted a pinned Node too. `CONTRIBUTING.md` lists both under Checks now.
+
 ### Changed
 
 - **Every doc and code comment in the repository is edited for one voice.** No
@@ -13,6 +20,13 @@ All notable changes to `bosun`. Format follows
   on `*.go` touches comment lines and nothing else, and the report strings the
   agent parses back are unchanged. `adr/` and the changelogs keep their own
   voice.
+- **The site's own source gets the voice pass the docs already had.** The
+  landing page, the Hero and LoopDiagram components, the Astro config, the sync
+  and link-check scripts, the stylesheets, the Helm template comments, the
+  chart schema descriptions, the demo narration in `local/scripts/`, and
+  `flake.nix`. The first pass matched `*.md` and `#`/`//` comments, so `.mdx`,
+  `.astro`, `.mjs`, `.css`, `.tpl` and Helm's `{{- /* ... */ -}}` were never
+  looked at.
 
 ### Fixed
 
@@ -27,6 +41,15 @@ All notable changes to `bosun`. Format follows
   from an earlier edit, with the word missing from the sentence above it.
 - **`agent/comment.go` had two doc comments for `renderMigration`**, the second
   restating and contradicting the first.
+- **The landing page claimed eight ADRs and five levers.** There are nine ADRs
+  in `adr/`, and `docs/prompt-contract.md` has six levers. Both counts were
+  stale rather than wrong when written.
+- **The landing page's safety strip described the model's proposal as an edit
+  set.** It has been able to return a complete migrated document since
+  [ADR 0007](adr/0007-structure-from-the-schema-data-from-the-document.md); the
+  page now says so.
+- **The link-preview card and the landing hero disagreed.** Both now lead on
+  the same finding, and `og.png` is regenerated from the pinned Node.
 
 ## [0.23.0] - 2026-08-28
 

@@ -3,6 +3,16 @@
 All notable changes to `kargo-pipelines`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.2.2] - 2026-08-29
+
+### Changed
+
+- **Comments in `_helpers.tpl` and `stage.yaml`, and the `values.schema.json`
+  descriptions** get the voice pass the README and `values.yaml` already had.
+  Helm template comments were missed the first time because they are
+  `{{- /* ... */ -}}` rather than `#`. No template, value, default or schema
+  constraint changed.
+
 ## [0.2.1] - 2026-08-29
 
 ### Changed

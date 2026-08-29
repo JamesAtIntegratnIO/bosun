@@ -3,6 +3,16 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.23.2]
+
+### Changed
+
+- **Comments in the templates and descriptions in `values.schema.json`** get
+  the same voice pass the README and `values.yaml` already had. The Helm
+  template comments were missed the first time because they are
+  `{{- /* ... */ -}}` rather than `#`. No template, value, default or schema
+  constraint changed, and `appVersion` stays at 0.23.0.
+
 ## [0.23.1]
 
 ### Changed

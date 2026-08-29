@@ -119,7 +119,7 @@ jobs:
             fi
           elif [ "${EVENT}" != push ] || [ "${REF_TYPE}" = tag ]; then
             build_agent=true; build_gate=true
-            why="${EVENT} (${REF_TYPE}) -- no diff to reason from"
+            why="${EVENT} (${REF_TYPE}): no diff to reason from"
           elif [ -z "${BEFORE}" ] || [ "${BEFORE}" = "${zero}" ] || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
             # A new branch, a force-push, or history this checkout does not
             # have. Unknown means build, never means skip.

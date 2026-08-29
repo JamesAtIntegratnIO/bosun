@@ -150,8 +150,8 @@ git -C "$WORK/repo" add -A
 git -C "$WORK/repo" commit -qm "chore(external-secrets): pin ${OLD_CHART} and two v1alpha1 ExternalSecrets" 2>/dev/null || true
 git -C "$WORK/repo" push -q "$CLONE" main
 ok "main declares external-secrets ${OLD_CHART} and two external-secrets.io/v1alpha1 ExternalSecrets"
-step "registry-pull.yaml   -- every field survives; the swap is enough"
-step "platform-secrets.yaml -- dataFrom moved under extract; the swap is not"
+step "registry-pull.yaml   : every field survives; the swap is enough"
+step "platform-secrets.yaml: dataFrom moved under extract; the swap is not"
 
 say "2. the bump that deletes the version"
 git -C "$WORK/repo" checkout -q -B "$BRANCH"
@@ -183,7 +183,7 @@ wait_for "the gate refused a change that deletes an API version in use" 300 \
 ok "blocked"
 gate_report "$PR" | grep -E 'no longer serves|still declare' | sed 's/^/    /' | head -8
 
-say "4. the agent repairs -- swapping one, reshaping the other"
+say "4. the agent repairs: swapping one, reshaping the other"
 POD="$(agent_pod)"
 [ -n "$POD" ] || bad "no agent pod"
 BEFORE="$(kc -n bosun logs "$POD" | wc -l | tr -d ' ')"

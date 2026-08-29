@@ -73,8 +73,8 @@ func (inv *Inventory) Validate(selectorKeys []string, knownAbsent []string) erro
 	sort.Strings(unknown)
 	return fmt.Errorf(
 		"selectors match on label(s) no cluster in the inventory carries: %s\n\n"+
-			"Either the inventory is stale -- re-run `gitops-gate clusters export` --\n"+
-			"or those labels genuinely exist nowhere, in which case the Applications\n"+
+			"Either the inventory is stale (re-run `gitops-gate clusters export`)\n"+
+			"or no cluster carries those labels, in which case the Applications\n"+
 			"selecting on them are generated for no cluster at all and that is worth\n"+
 			"knowing.\n\n"+
 			"If it is deliberate, list them under `clustersExport.knownAbsentLabels`\n"+

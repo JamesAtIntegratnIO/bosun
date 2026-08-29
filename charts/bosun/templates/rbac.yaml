@@ -30,13 +30,13 @@ rules:
     verbs: [get, list, watch]
 {{- if .Values.liveReads.enabled }}
 {{- /*
-Live reads. Which custom resources the agent may COUNT is the one genuinely
+Live reads. Which custom resources the agent may count is the one
 interesting access question in this chart, and Kubernetes RBAC constrains the
 answer more than people expect.
 
 There are no deny rules. `apiGroups: ["*"]` includes the core group, and the
 core group contains Secrets -- so "everything except core" is not expressible,
-however reasonable it sounds. The two shapes below are what can actually be
+however reasonable it sounds. The two shapes below are what can be
 written down.
 */ -}}
   # Reading a CustomResourceDefinition is how the agent learns which versions a

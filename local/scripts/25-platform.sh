@@ -27,7 +27,7 @@ APPS=(cert-manager argo-rollouts monitoring kargo)
 
 say "the platform, reconciled from ${SAMPLE_REPO_NAME}/platform"
 kc -n argocd get application sample-platform >/dev/null 2>&1 \
-  || bad "no sample-platform root Application -- run make seed first"
+  || bad "no sample-platform root Application; run make seed first"
 
 # Nudge rather than wait for the poll. A fresh root Application otherwise sits
 # until ArgoCD's next reconcile, which turns a two-minute step into five for
