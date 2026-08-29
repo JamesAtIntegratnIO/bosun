@@ -22,16 +22,17 @@ import (
 // only for rows whose version moved, which on a typical bump pull
 // request is one.
 //
-// valuesDropped is findings that are not object diffs: settings this
-// repository makes that the new chart version no longer declares. They come
-// from here because this is the only place that has both chart versions and
-// the Application's own value files in hand.
+// The third result is what this step knows that no object diff can carry: a
+// chart that will not render at the version the head revision moves it to, and
+// settings this repository makes that the new chart version no longer
+// declares. It comes from here because this is the only place that has both
+// chart versions and the Application's own value files in hand.
 //
-// The results are named because two of them are adjacent same-typed slices,
-// "the third return" only tells a reader which one to count to, and swapping
-// before and after at a call site would compile and silently invert the diff.
+// before and after are named because they are adjacent same-typed slices,
+// "the second return" only tells a reader which one to count to, and swapping
+// them at a call site would compile and silently invert the diff.
 func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Table) (
-	before, after []Object, valuesDropped []ObjectChange, warnings []string) {
+	before, after []Object, found ChartFindings) {
 	type pair struct{ before, after Row }
 
 	baseByKey := map[string]Row{}
@@ -51,7 +52,7 @@ func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Ta
 		pairs = append(pairs, pair{before: b, after: h})
 	}
 	if len(pairs) == 0 {
-		return nil, nil, nil, nil
+		return nil, nil, ChartFindings{}
 	}
 
 	// Results are written into a slot per pair rather than appended under a
@@ -62,7 +63,8 @@ func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Ta
 	// index keeps the report in `pairs` order, which is head.Rows order.
 	type result struct {
 		before, after []Object
-		drop          *ObjectChange
+		changes       []ObjectChange
+		unrenderable  []Unrenderable
 		warnings      []string
 	}
 	results := make([]result, len(pairs))
@@ -102,24 +104,60 @@ func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Ta
 			b, errB := renderChartVersion(ctx, repoRoot, p.before)
 			a, errA := renderChartVersion(ctx, repoRoot, p.after)
 
-			// A chart that cannot be pulled is reported, never silently
-			// skipped: "no resource changes" and "we could not look" must not
-			// read identically.
-			if errB != nil || errA != nil {
-				err := errB
-				if err == nil {
-					err = errA
-				}
+			// The two failures are different facts and only one of them is
+			// this change's doing, which is why they are no longer reported
+			// through the same sentence.
+			//
+			// The head revision is what merges. A chart that will not render
+			// at the version this pull request moves to is an Application
+			// that cannot sync once it does, and that is a finding, not a
+			// coverage gap: "we looked and it does not work" is stronger
+			// evidence than the unscanned consumer this gate already blocks
+			// on. It used to be a warning, which counts towards nothing, so
+			// the strictest possible failure -- a chart whose
+			// values.schema.json rejects what this repository sets -- was the
+			// one the gate passed in silence.
+			//
+			// A failure at the base version is coverage loss and stays a
+			// warning. The repository was already in that state before this
+			// change, there is no diff to compute either way, and blocking a
+			// pull request for the condition it inherited helps nobody.
+			switch {
+			case errA != nil:
+				res.changes = append(res.changes, ObjectChange{
+					Kind:    ObjectRenderFailed,
+					Object:  p.after.App,
+					Cluster: p.after.Cluster,
+					From:    p.before.Version,
+					To:      p.after.Version,
+					Reason:  errA.Error(),
+				})
+				// The same fact in the form a repair needs, alongside the
+				// form a reader needs. Two derivations of one finding, from
+				// one place, for the reason DroppedBlock exists: the prose is
+				// where a chart's own strings end up, and a repair must not be
+				// spelled by anything a chart chose.
+				res.unrenderable = append(res.unrenderable, Unrenderable{
+					Head: p.after, From: p.before.Version, Reason: errA.Error(),
+				})
+			case errB != nil:
 				res.warnings = append(res.warnings, fmt.Sprintf(
-					"%s: could not render %s at both versions, so its resource changes are NOT covered: %v",
-					p.after.App, p.after.Chart, err))
-				return
+					"%s: %s renders at %s but not at %s, so its resource changes are NOT covered: %v",
+					p.after.App, p.after.Chart, p.after.Version, p.before.Version, errB))
+			default:
+				res.before, res.after = b, a
 			}
-			res.before, res.after = b, a
 
-			// A settings drop is reported even though the render succeeded;
-			// it is invisible in the render by definition, because helm
-			// ignores a value it does not know rather than failing on it.
+			// Reached whether or not either render did, because it does not
+			// depend on one: the values surface comes from `helm show`, not
+			// from `helm template`. Behind the early return this used to sit
+			// under, a chart that hard-failed on a strict values.schema.json
+			// never reached the one check that names the stale keys, so the
+			// clearer the breakage the less the report said about it.
+			//
+			// A settings drop is reported even when the render succeeded; it
+			// is invisible in the render by definition, because helm ignores
+			// a value it does not know rather than failing on it.
 			gone, err := droppedValues(ctx, repoRoot, p.before, p.after)
 			switch {
 			case err != nil:
@@ -127,14 +165,14 @@ func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Ta
 					"%s: could not compare %s's values surface across versions, so settings it stops reading are NOT covered: %v",
 					p.after.App, p.after.Chart, err))
 			case len(gone) > 0:
-				res.drop = &ObjectChange{
+				res.changes = append(res.changes, ObjectChange{
 					Kind:    ObjectValuesKeyDropped,
 					Object:  p.after.App,
 					Cluster: p.after.Cluster,
 					From:    p.before.Version,
 					To:      p.after.Version,
 					Keys:    gone,
-				}
+				})
 			}
 		}(i, p)
 	}
@@ -143,12 +181,42 @@ func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Ta
 	for _, res := range results {
 		before = append(before, res.before...)
 		after = append(after, res.after...)
-		if res.drop != nil {
-			valuesDropped = append(valuesDropped, *res.drop)
-		}
-		warnings = append(warnings, res.warnings...)
+		found.Changes = append(found.Changes, res.changes...)
+		found.Unrenderable = append(found.Unrenderable, res.unrenderable...)
+		found.Warnings = append(found.Warnings, res.warnings...)
 	}
-	return before, after, valuesDropped, warnings
+	return before, after, found
+}
+
+// ChartFindings is what a chart-diff pass produced besides rendered objects.
+//
+// One struct rather than three more returns. Three same-shaped slices in an
+// argument list is a call site where a reader counts positions, and the two
+// that are both findings differ only in who reads them.
+type ChartFindings struct {
+	// Changes are the findings a reader sees: a chart that would not render,
+	// and settings the new version stops declaring.
+	Changes []ObjectChange
+	// Unrenderable is the repair contract for the render failures in Changes:
+	// what to pull, what to render it with, and what helm said. Nothing in it
+	// is prose, and nothing in it was chosen by a chart.
+	Unrenderable []Unrenderable
+	// Warnings are coverage this pass lost, and blame nobody for.
+	Warnings []string
+}
+
+// Unrenderable is one Application whose chart will not render at the version
+// this change moves it to, in the form a repair needs.
+//
+// The whole head Row rather than a copy of five of its fields: a repair has to
+// pull the same chart from the same repository and render it with the same
+// values, and a hand-copied subset is a subset that goes stale. From is the
+// version that still rendered, which is not on the head Row and is what makes
+// the failure this change's doing rather than the repository's.
+type Unrenderable struct {
+	Head   Row
+	From   string
+	Reason string
 }
 
 // renderChartVersion renders one Application's chart at its pinned version,
@@ -168,7 +236,7 @@ func renderChartVersion(ctx context.Context, repoRoot string, r Row) ([]Object, 
 		// `$values/x` refers to the multi-source values ref, which is this
 		// repository. A file that does not exist for this Application is
 		// normal, ArgoCD's ignoreMissingValueFiles behaves the same way.
-		clean := stripValuesRef(vf)
+		clean := StripValuesRef(vf)
 		full, err := containedPath(repoRoot, clean)
 		if err != nil {
 			// The list is `helm.valueFiles` off an Application in the pull
@@ -231,7 +299,7 @@ func renderChartVersion(ctx context.Context, repoRoot string, r Row) ([]Object, 
 	return result, nil
 }
 
-// stripValuesRef turns `$values/charts/x/values.yaml` into
+// StripValuesRef turns `$values/charts/x/values.yaml` into
 // `charts/x/values.yaml`.
 //
 // A multi-source Application names its values source with `ref:` and then
@@ -239,7 +307,7 @@ func renderChartVersion(ctx context.Context, repoRoot string, r Row) ([]Object, 
 // and the values-surface comparison, have to strip it the same way, or one of
 // them looks for a file whose name starts with a dollar sign and quietly finds
 // nothing.
-func stripValuesRef(vf string) string {
+func StripValuesRef(vf string) string {
 	if i := strings.Index(vf, "/"); strings.HasPrefix(vf, "$") && i > 0 {
 		return vf[i+1:]
 	}

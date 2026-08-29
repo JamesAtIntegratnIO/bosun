@@ -352,6 +352,13 @@ triage:
   # Without either it degrades to the plain swap and the comment says which
   # check it could not make.
   #
+  # It also covers the mirror case, which is the more common one: a chart
+  # version whose values.schema.json refuses settings this repository still
+  # makes, so helm will not render it at all. There the answer is checked by
+  # rendering the chart with it, the write is a plan of key operations rather
+  # than a re-serialised file, and a required key the schema names no value for
+  # is escalated before the model is asked. See ADR 0013.
+  #
   # Default on. It runs only where the deterministic repair already had
   # authority, over files the path policy already permitted, and behind
   # stricter checks than anything else here.

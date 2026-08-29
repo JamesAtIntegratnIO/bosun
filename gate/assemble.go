@@ -26,29 +26,32 @@ import (
 // base and head are mutated: the rendered objects and the render warnings are
 // spliced into them, which is what makes them visible to Diff.
 func Assemble(ctx context.Context, repoRoot string, cfg *Config, base, head *Table) *DiffResult {
-	var valueDrops []ObjectChange
+	var found ChartFindings
 	if repoRoot != "" {
-		beforeOb, afterOb, drops, warns := ChartDiff(ctx, repoRoot, cfg, base, head)
+		var beforeOb, afterOb []Object
+		beforeOb, afterOb, found = ChartDiff(ctx, repoRoot, cfg, base, head)
 		base.Objects = append(base.Objects, beforeOb...)
 		head.Objects = append(head.Objects, afterOb...)
 		// On base, not head: Diff dedupes the union of both sides' warnings,
 		// and a render warning belongs to the comparison rather than to either
 		// side of it.
-		base.Warnings = append(base.Warnings, warns...)
-		valueDrops = drops
+		base.Warnings = append(base.Warnings, found.Warnings...)
 	}
 
 	res := Diff(base, head)
+	res.Unrenderable = found.Unrenderable
 
-	// Not an object diff: a setting the new chart stops reading leaves the
-	// render identical, which is exactly why it needs saying out loud.
+	// Neither of these is an object diff. A setting the new chart stops
+	// reading leaves the render identical, which is exactly why it needs
+	// saying out loud; a chart that will not render at the new version has no
+	// objects to diff at all, and that absence is the finding.
 	//
 	// Diff has already sorted res.Objects, so these are re-sorted in rather
-	// than appended to the end; otherwise the drops arrive in ChartDiff's
-	// pair order after an otherwise sorted list, and the report has a tail
-	// that does not follow its own ordering.
-	if len(valueDrops) > 0 {
-		res.Objects = append(res.Objects, valueDrops...)
+	// than appended to the end; otherwise they arrive in ChartDiff's pair
+	// order after an otherwise sorted list, and the report has a tail that
+	// does not follow its own ordering.
+	if len(found.Changes) > 0 {
+		res.Objects = append(res.Objects, found.Changes...)
 		sortObjectChanges(res.Objects)
 	}
 

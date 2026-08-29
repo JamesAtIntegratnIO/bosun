@@ -71,6 +71,51 @@ func renderMigration(brand, model string, drops []migrate.Dropped, res *migrate.
 	return b.String()
 }
 
+// renderValuesMigration is the comment for a chart the repository outgrew.
+//
+// The plan is shown in full and never folded. It is three or four lines, every
+// one of them a key that stopped applying or moved, and it is the whole of
+// what a reviewer has to check; the values that did not come across sit
+// directly beneath it because the one that should have been renamed and was
+// not is hiding among them.
+func renderValuesMigration(brand, model string, res *valuesResult, headline string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\n\n", headline)
+	b.WriteString("**The new chart version refuses settings this repository makes.** " +
+		"`values.schema.json` is checked before helm templates anything, so the Application does not " +
+		"render at all until they fit.\n")
+
+	for _, a := range res.Applied {
+		fmt.Fprintf(&b, "\n**`%s`** — `%s` `%s` → `%s`, in `%s`\n\n", a.App, a.Chart, a.From, a.To, a.Anchor)
+		for _, op := range a.Ops {
+			fmt.Fprintf(&b, "- %s\n", op)
+		}
+		if a.Notes != "" {
+			fmt.Fprintf(&b, "\n%s\n", a.Notes)
+		}
+		if len(a.Lost) > 0 {
+			// Never folded, and never summarised as a count. A chart that
+			// renamed a key and a chart that dropped one produce the same
+			// line here, and telling them apart is the reader's job, which
+			// they cannot do from a number.
+			fmt.Fprintf(&b, "\n%s not carried across, because the new chart declares nowhere for them: `%s`\n",
+				countOf(len(a.Lost), "value"), strings.Join(a.Lost, "`, `"))
+		}
+	}
+	for _, r := range res.Refused {
+		fmt.Fprintf(&b, "\n**`%s`** — `%s`, refused\n\n", r.App, r.Chart)
+		for _, why := range r.Why {
+			fmt.Fprintf(&b, "- %s\n", why)
+		}
+	}
+	if len(res.Applied) > 0 {
+		b.WriteString("\nThe chart was rendered with these values before any of it was written; " +
+			"a proposal that still did not render would have been refused.\n")
+	}
+	fmt.Fprintf(&b, "\n<sub>%s · values migration · %s · automated triage, not a review</sub>\n", brand, model)
+	return b.String()
+}
+
 // renderRestructured shows exactly what a model reshaped, and what it could
 // not.
 //

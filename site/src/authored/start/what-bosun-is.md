@@ -35,7 +35,7 @@ They fail at apply time, or later, or quietly forever.
 
 | Piece | What it does |
 |---|---|
-| **The gate** | The inspection round. Renders your ApplicationSets at base and at head, fails on a cluster-targeting change, an apiVersion migration, or a CRD dropping a served version your manifests still declare; diffs the old and new chart render down to the field; schema-validates the result. |
+| **The gate** | The inspection round. Renders your ApplicationSets at base and at head, fails on a cluster-targeting change, an apiVersion migration, a CRD dropping a served version your manifests still declare, or a chart that will not render at all at the version you are moving to; diffs the old and new chart render down to the field; schema-validates the result. |
 | **The agent** | The rounds and the repair. Acts on the verdict: migrates manifests off dropped API versions deterministically, fixes what the rendered diff *proves* is mechanical, explains what a green gate cannot show, and escalates the rest as a handoff. |
 
 They are one loop, inspect then repair, joined by contracts that nothing else

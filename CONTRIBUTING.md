@@ -76,7 +76,8 @@ it deliberately does not:
 | `gateservice/` | running the gate in-process, per open pull request, on a timer |
 | `supervisor/` | the pipeline sweep: the promotions that never happened |
 | `prompt/` | what the model is told, and what the eval suite scores |
-| `edits/`, `migrate/`, `structural/` | the three ways a file gets written, each behind its own refusals |
+| `edits/`, `migrate/`, `structural/`, `valuesmigrate/` | the four ways a file gets written, each behind its own refusals |
+| `internal/` | fixtures two packages need and nobody outside this module should have. Today: a chart repository on loopback, because a chart directory cannot express two versions of one chart |
 | `cluster/`, `gitprovider/`, `llm/`, `upstream/`, `egress/` | the outside world, one seam each, every one with a fake |
 | root | the composition root: read the environment, build one of each, wire, serve |
 

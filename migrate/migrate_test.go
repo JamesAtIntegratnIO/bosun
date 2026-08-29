@@ -260,6 +260,10 @@ func TestOtherThanDroppedCountsEveryUnrelatedReason(t *testing.T) {
 		{"source", Blockers{Source: 1}, true},
 		{"apiVersion", Blockers{APIVersion: 1}, true},
 		{"schema", Blockers{Schema: 1}, true},
+		// A repair that moves manifests to a served version does nothing for
+		// a chart that will not render, so running it would fix the fixable
+		// half and leave a red gate implying it had not.
+		{"unrenderable", Blockers{Unrenderable: 1}, true},
 	} {
 		if got := tc.b.OtherThanDropped(); got != tc.want {
 			t.Errorf("%s: OtherThanDropped() = %v, want %v", tc.name, got, tc.want)

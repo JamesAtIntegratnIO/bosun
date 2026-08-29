@@ -30,6 +30,15 @@ const (
 	// reshaped document that passes every check and is still wrong reads
 	// exactly like one that is right.
 	PathRestructure = "restructure"
+	// PathValues is the values migration: a chart version that refuses the
+	// settings this repository makes, scored the same two ways.
+	//
+	// Its own path rather than a restructure case with different fixtures,
+	// because the validator is a different one. A values document has no
+	// identity to preserve and a survival rule instead, and a suite that
+	// scored it through Validate would be measuring a check the shipped path
+	// never runs.
+	PathValues = "values"
 )
 
 // Case is one triage scenario.
@@ -81,6 +90,7 @@ type Case struct {
 	Triage      triageWant
 	Explain     explainWant
 	Restructure restructureWant
+	Values      valuesWant
 }
 
 // triageWant is what the red-gate classifier should have produced.
@@ -151,6 +161,26 @@ type restructureWant struct {
 	WantRefused bool
 }
 
+// valuesWant is one values migration: the chart's new values schema, what the
+// repository sets today, and the answer.
+type valuesWant struct {
+	// Schema is the chart's own values.schema.json at the version being moved
+	// to, as JSON. OldSchema is the same file at the version being left, and
+	// is usually empty: a chart permissive enough for these values to have
+	// worked is usually a chart that shipped no schema at all.
+	Schema, OldSchema string
+	// Set is what this repository passes the chart today, as YAML.
+	Set string
+	// WantDocument is the correct migration, verified by hand. Compared
+	// semantically, so key order does not decide a score.
+	WantDocument string
+	// WantRefused says the correct outcome is a refusal. Its own field rather
+	// than an empty WantDocument for the reason restructureWant gives: no
+	// expected document means "nothing should have been asked", and this
+	// means "something was asked and nothing should be written".
+	WantRefused bool
+}
+
 // ChangedFiles is what the promotion reports it rewrote. Defaults to every
 // fixture file, which is what a case means when it does not distinguish them.
 func (c Case) ChangedFiles() []string {
@@ -179,7 +209,7 @@ const cpAddonsPath = "addons/cluster-roles/control-plane/addons/addons.yaml"
 // much judgement a case needs, and an init() in another file extended it
 // invisibly, from a function nothing calls and nothing can be read in order
 // with.
-var Cases = slices.Concat(triageCases, explainCases, restructureCases)
+var Cases = slices.Concat(triageCases, explainCases, restructureCases, valuesCases)
 
 // triageCases are ordered roughly by how much judgement they need.
 var triageCases = []Case{
@@ -444,6 +474,42 @@ Rendered diff, external-secrets 1.9.4 -> 2.9.0:
 
 39 ExternalSecret manifests across 29 files in this repository still declare
 apiVersion external-secrets.io/v1beta1.`,
+		WantClass: "escalate",
+	},
+	{
+		// The bump this finding class comes from, and the one where every
+		// fluent answer is wrong. The keys have to be removed or renamed,
+		// which no scalar edit expresses; and putting the version back would
+		// pass every check the applier makes -- the old version is named in
+		// the report, so it corroborates -- while undoing the promotion
+		// rather than repairing it.
+		Name:    "chart-schema-refuses-stale-values",
+		Subject: "bump bosun chart 0.20.0 -> 0.25.1",
+		Files: map[string]string{addonsPath: `bosun:
+  enabled: true
+  namespace: bosun
+  chartName: bosun
+  defaultVersion: 0.25.1
+  valuesObject:
+    gate:
+      mode: service
+      wait: true
+      inventorySource: argocd
+      argocd:
+        port: 8080
+`},
+		GateReport: `The gate is RED.
+
+bosun does not render at 0.25.1 with the values this repository sets:
+
+  Error: values don't meet the specifications of the schema(s) in the following chart(s):
+  bosun:
+  - at '/gate/argocd': additional properties 'port' not allowed
+  - at '/gate': additional properties 'inventorySource', 'mode', 'wait' not allowed
+
+The chart still renders at 0.20.0. Four settings this repository makes are no
+longer declared by 0.25.1: gate.mode, gate.wait, gate.inventorySource and
+gate.argocd.port.`,
 		WantClass: "escalate",
 	},
 	{

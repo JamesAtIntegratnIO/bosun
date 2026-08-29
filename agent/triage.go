@@ -342,6 +342,27 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 		}
 	}
 
+	// The other deterministic-by-construction repair, on the same terms: only
+	// when it is the sole reason the gate is red, and only where the evidence
+	// is computed rather than asserted. A chart that will not render at the
+	// new version named the settings it refuses, in its own values schema, and
+	// the harness proves the answer by rendering the chart with it (ADR 0013).
+	//
+	// Behind the same flag as the document migration. Both ask a model for a
+	// whole document and refuse it whole; an operator who has not turned that
+	// on has not turned this on either.
+	if b, ok := migrate.ParseBlockers(report); ok && t.Structural && b.UnrenderableOnly() {
+		if len(out.Unrenderable) > 0 {
+			return t.repairValues(ctx, pr, root, out.Unrenderable, live, attempt)
+		}
+		// The count says a chart would not render and the contract is empty,
+		// which means this report came from a gate that predates it. Said out
+		// loud rather than falling through to a model that has no way to fix
+		// it either.
+		t.logf("PR %d: the gate reports an unrenderable chart and carried no repair contract for it",
+			pr.Number)
+	}
+
 	// A red with nothing in this repository to change. Deterministic, and
 	// deliberately not a model call.
 	//

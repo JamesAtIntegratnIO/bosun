@@ -397,6 +397,14 @@ type Blockers struct {
 	// Unscanned is definitions whose consumers could not be counted. "We could
 	// not look" blocks, and is not the same as "we looked and found none".
 	Unscanned int `json:"unscanned"`
+	// Unrenderable is Applications whose chart will not render at the version
+	// this change moves them to. The stronger sibling of Unscanned, and
+	// counted apart from it because the remedy is different: this is not "we
+	// could not look" but "we looked and it does not work", and what has to
+	// change is in this repository. A failure at the *base* version is
+	// coverage loss and stays a warning; only the head revision's own render
+	// is counted here, because only that one is this change's doing.
+	Unrenderable int `json:"unrenderable"`
 	// ValuesDropped is settings this repository makes that the new chart
 	// version no longer declares. Helm ignores an unknown value instead of
 	// failing on it, so these stop applying while everything stays green.
@@ -408,24 +416,41 @@ type Blockers struct {
 }
 
 // OtherThanDropped reports whether anything blocks other than a dropped served
-// version: a targeting change, a source change, or an object whose own
-// apiVersion moved. A repair that runs anyway would fix the fixable half and
-// leave a red gate implying it had not.
+// version: a targeting change, a source change, an object whose own apiVersion
+// moved, or a chart that will not render at the new version. A repair that
+// runs anyway would fix the fixable half and leave a red gate implying it had
+// not.
 //
 // Counted from the structured breakdown, so an apiVersion object the repair is
 // already migrating does not read as an unrelated blocker.
 func (b Blockers) OtherThanDropped() bool {
-	return b.Targeting > 0 || b.Source > 0 || b.APIVersion > 0 || b.Schema > 0
+	return b.Targeting > 0 || b.Source > 0 || b.APIVersion > 0 || b.Schema > 0 || b.Unrenderable > 0
 }
 
 func (b Blockers) Any() bool {
-	return b.Targeting+b.Source+b.APIVersion+b.Consumers+b.Unscanned+b.ValuesDropped+b.Schema > 0
+	return b.Targeting+b.Source+b.APIVersion+b.Consumers+b.Unscanned+
+		b.Unrenderable+b.ValuesDropped+b.Schema > 0
+}
+
+// UnrenderableOnly reports whether the only thing blocking is a chart that
+// will not render at the new version, and the settings it stops reading.
+//
+// The two are one fact counted twice: a chart strict enough to refuse a key is
+// a chart that has stopped declaring it, so a values migration that clears the
+// first clears the second. Anything else in the breakdown is a separate
+// problem the same repair would not touch, and repairing half of a red gate
+// leaves it red with a comment implying otherwise.
+func (b Blockers) UnrenderableOnly() bool {
+	return b.Unrenderable > 0 &&
+		b.Targeting == 0 && b.Source == 0 && b.APIVersion == 0 &&
+		b.Consumers == 0 && b.Unscanned == 0 && b.Schema == 0
 }
 
 // RepoSideRemedy reports whether anything a person or an agent could change in
 // this repository would clear the gate.
 func (b Blockers) RepoSideRemedy() bool {
-	return b.Targeting > 0 || b.Source > 0 || b.Consumers > 0 || b.Unscanned > 0 || b.ValuesDropped > 0
+	return b.Targeting > 0 || b.Source > 0 || b.Consumers > 0 || b.Unscanned > 0 ||
+		b.ValuesDropped > 0 || b.Unrenderable > 0
 }
 
 // The rendered-object changes are grouped under one heading per class. The
@@ -516,6 +541,7 @@ func ParseBlockers(report string) (Blockers, bool) {
 	into := map[string]*int{
 		"targeting": &b.Targeting, "source": &b.Source, "apiVersion": &b.APIVersion,
 		"consumers": &b.Consumers, "unscanned": &b.Unscanned,
+		"unrenderable":  &b.Unrenderable,
 		"valuesDropped": &b.ValuesDropped, "schema": &b.Schema,
 	}
 	found := false

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"sigs.k8s.io/yaml"
 )
 
 // Prompt assembles the evidence for one document migration.
@@ -26,6 +28,49 @@ func Prompt(path, body, fromVersion, toVersion string, old, target Schema, findi
 	fmt.Fprintf(&b, "\nOLD SCHEMA (%s)\n\n%s\n", fromVersion, RenderSchema(old))
 	fmt.Fprintf(&b, "\nNEW SCHEMA (%s)\n\n%s\n", toVersion, RenderSchema(target))
 	b.WriteString("\nReturn the document, shaped for the new schema.")
+	return b.String()
+}
+
+// ValuesPrompt assembles the evidence for one values migration.
+//
+// The same shape as Prompt and a different set of nouns, because the two are
+// scored separately and a shared function with a mode flag would be one
+// function whose output nobody can read without knowing which mode it was in.
+//
+// The old schema is optional and often absent: most charts ship no
+// values.schema.json at all, and the one being migrated away from is exactly
+// the version that was permissive enough for these values to work. When it is
+// there it says what the keys used to mean, which is what makes a rename
+// recognisable rather than guessable.
+func ValuesPrompt(chart, fromVersion, toVersion string, values map[string]any,
+	old, target Schema, findings []Finding) string {
+
+	body, err := yaml.Marshal(values)
+	if err != nil {
+		// Cannot happen for a document that was decoded from YAML, and a
+		// prompt is not the place to invent an error return: an empty values
+		// block produces a proposal every validator refuses, which is the
+		// same outcome an error would have reached by a longer route.
+		body = nil
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "CHART: %s, %s -> %s\n\n", chart, fromVersion, toVersion)
+	fmt.Fprintf(&b, "VALUES THIS REPOSITORY SETS\n\n%s\n", body)
+	fmt.Fprintf(&b, "\nWHY THE CHART REFUSES THEM\n\n%s\n", Summarise(findings))
+	if free := Vacancies(values, target); len(free) > 0 {
+		fmt.Fprintf(&b, "\nWHAT THE NEW SCHEMA DECLARES BESIDE EACH REFUSED KEY, AND THESE VALUES DO NOT SET\n\n")
+		for _, line := range free {
+			fmt.Fprintf(&b, "- %s\n", line)
+		}
+	}
+	if old != nil {
+		fmt.Fprintf(&b, "\nOLD VALUES SCHEMA (%s)\n\n%s\n", fromVersion, RenderSchema(old))
+	} else {
+		fmt.Fprintf(&b, "\nOLD VALUES SCHEMA (%s)\n\n(the old version shipped none, so what these keys "+
+			"used to mean is not available here)\n", fromVersion)
+	}
+	fmt.Fprintf(&b, "\nNEW VALUES SCHEMA (%s)\n\n%s\n", toVersion, RenderSchema(target))
+	b.WriteString("\nReturn the values, shaped for the new schema.")
 	return b.String()
 }
 
@@ -103,11 +148,36 @@ func renderSchemaInto(b *strings.Builder, indent string, s Schema, depth int) {
 		if typ != "" {
 			line += ": " + typ
 		}
-		if required[name] {
+		// Optionality is stated, and where a field offers a value to
+		// volunteer it is stated as the consequence rather than the fact.
+		//
+		// `kind: string default=SecretStore` beside `name: string (required)`
+		// reads as two fields to fill, and a live model filled both: correct
+		// migration, plus a default the schema already applies, on the one
+		// path whose whole product is a small diff. Both prompts already said
+		// not to, in a paragraph well above this, and the word they used --
+		// OPTIONAL -- was a category this render never labelled. So the reader
+		// had to infer optionality from the absence of a marker, and the only
+		// marker present said "here is a good value for this".
+		//
+		// `unset means SecretStore` is the same schema fact with the reason to
+		// write it removed. A required field keeps its default printed: that
+		// one may have to be filled from the schema, and the value is how.
+		//
+		// Only where a default is declared, and nowhere else. Marking every
+		// optional field would be redundant with the required ones being
+		// marked -- both prompts say only those have to be present -- and it
+		// is not free: enums are ordinary in a CRD schema, the largest one
+		// measured renders to 43,831 characters against a 12,000-character
+		// budget, and eleven characters a line is fields the model stops
+		// being shown at all.
+		switch d, hasDefault := sub["default"]; {
+		case required[name] && hasDefault:
+			line += fmt.Sprintf(" (required) default=%v", d)
+		case required[name]:
 			line += " (required)"
-		}
-		if d, ok := sub["default"]; ok {
-			line += fmt.Sprintf(" default=%v", d)
+		case hasDefault:
+			line += fmt.Sprintf(" (optional, unset means %v)", d)
 		}
 		if e, ok := sub["enum"].([]any); ok {
 			parts := make([]string, 0, len(e))

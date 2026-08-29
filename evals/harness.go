@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
-
-	"reflect"
 
 	"sigs.k8s.io/yaml"
 
@@ -103,6 +102,8 @@ func Run(ctx context.Context, p llm.Provider, system string, c Case, withInvento
 		return runExplain(ctx, p, system, c, withInventory)
 	case PathRestructure:
 		return runRestructure(ctx, p, system, c)
+	case PathValues:
+		return runValues(ctx, p, system, c)
 	default:
 		return runTriage(ctx, p, system, c, withInventory)
 	}
@@ -546,4 +547,128 @@ func (s Summary) String() string {
 		}
 	}
 	return b.String()
+}
+
+// runValues scores the values migration the same two ways the document
+// migration is scored: by the harness's own validators, and against a
+// hand-verified answer.
+//
+// The two are not the same measurement and both are needed. A proposal the
+// validators refuse costs a human an escalation, which is the safe failure. A
+// proposal they accept and that is still wrong is the one that reaches a file,
+// and on this path it reaches it as a setting that silently stops applying,
+// which is the failure the whole service exists to find.
+func runValues(ctx context.Context, p llm.Provider, system string, c Case) Result {
+	res := Result{Case: c.Name, WantClass: PathValues, EditsOK: true, Grounded: true}
+
+	target, err := decodeSchema(c.Values.Schema)
+	if err != nil {
+		res.Notes = append(res.Notes, "values schema: "+err.Error())
+		return res
+	}
+	var old structural.Schema
+	if c.Values.OldSchema != "" {
+		if old, err = decodeSchema(c.Values.OldSchema); err != nil {
+			res.Notes = append(res.Notes, "old values schema: "+err.Error())
+			return res
+		}
+	}
+	var set map[string]any
+	if err := yaml.Unmarshal([]byte(c.Values.Set), &set); err != nil {
+		res.Notes = append(res.Notes, "values: "+err.Error())
+		return res
+	}
+
+	findings := structural.Check(set, target)
+
+	// The control. Values the chart already accepts must never reach the
+	// model, which is what keeps the common case free; a suite that did not
+	// assert it would let the cost creep back.
+	if c.Values.WantDocument == "" && !c.Values.WantRefused {
+		res.Class = "not-called"
+		res.ClassOK = len(findings) == 0
+		if !res.ClassOK {
+			res.Notes = append(res.Notes, fmt.Sprintf(
+				"values that should have fitted produced %d finding(s): %v", len(findings), findings))
+		}
+		return res
+	}
+	if len(findings) == 0 {
+		res.Class = "not-called"
+		res.Notes = append(res.Notes, "the detector found nothing, so the model was never asked")
+		return res
+	}
+	// The boundary is deterministic and comes before the model, so the suite
+	// scores it the same way: a required key nothing can answer for is not a
+	// migration anybody should be proposing.
+	if needs := structural.NeedsAnAuthor(set, target); len(needs) > 0 {
+		res.Class = "needs-an-author"
+		res.ClassOK = c.Values.WantRefused
+		if !res.ClassOK {
+			res.Notes = append(res.Notes, "escalated before the model over "+strings.Join(needs, ", "))
+		}
+		return res
+	}
+
+	rs, ok := p.(llm.Restructurer)
+	if !ok {
+		res.Notes = append(res.Notes, "provider cannot restructure")
+		return res
+	}
+
+	start := time.Now()
+	m, err := rs.Restructure(ctx, system, structural.ValuesPrompt(
+		"chart", "old", "new", set, old, target, findings))
+	res.Elapsed = time.Since(start)
+	if err != nil || m == nil {
+		res.Notes = append(res.Notes, fmt.Sprintf("provider error: %v", err))
+		return res
+	}
+
+	var proposed map[string]any
+	if err := yaml.Unmarshal([]byte(m.Document), &proposed); err != nil {
+		res.Class = "unparseable"
+		res.Notes = append(res.Notes, "the proposal is not a YAML document: "+err.Error())
+		return res
+	}
+
+	verdict := structural.ValidateValues(set, proposed, target)
+	res.Rejected = append(res.Rejected, verdict.Refusals...)
+
+	if c.Values.WantRefused {
+		res.Class = "refused"
+		res.ClassOK = !verdict.OK()
+		if verdict.OK() {
+			res.Class = "accepted"
+			res.Unsafe = true
+			res.Grounded = false
+			got, _ := yaml.Marshal(proposed)
+			res.Notes = append(res.Notes, "a migration with no honest answer was accepted:\n"+string(got))
+		}
+		return res
+	}
+	if !verdict.OK() {
+		res.Class = "refused"
+		res.Notes = append(res.Notes, "the harness refused it, so nothing would have been written")
+		return res
+	}
+	res.Class = "accepted"
+	res.ClassOK = true
+
+	var want map[string]any
+	if err := yaml.Unmarshal([]byte(c.Values.WantDocument), &want); err != nil {
+		res.Notes = append(res.Notes, "expected values: "+err.Error())
+		return res
+	}
+	if reflect.DeepEqual(proposed, want) {
+		return res
+	}
+	// Accepted and not the answer. This is the outcome UNSAFE exists to name:
+	// the validators had no objection, so it would have been written, and the
+	// difference is a setting somebody chose.
+	res.Unsafe = true
+	res.Grounded = false
+	got, _ := yaml.Marshal(proposed)
+	res.Notes = append(res.Notes, "accepted and wrong:\n"+string(got))
+	return res
 }

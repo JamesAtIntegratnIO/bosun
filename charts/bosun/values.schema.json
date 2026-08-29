@@ -352,7 +352,7 @@
         },
         "structuralMigration": {
           "type": "boolean",
-          "description": "When the apiVersion swap leaves a document the target schema no longer accepts, show the model both schemas and validate what it returns. Needs liveReads and registry egress; degrades to the plain swap without them."
+          "description": "The schema-guided repairs: a document the target CRD schema no longer accepts after an apiVersion swap, and values a new chart version refuses outright. The model is shown the schemas and what it returns is validated, and for values also rendered, before anything is written. Needs liveReads and registry egress; degrades to the plain swap without them."
         },
         "migrateMaxDocs": {
           "type": "integer",

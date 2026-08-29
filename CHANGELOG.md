@@ -106,6 +106,67 @@ All notable changes to `bosun`. Format follows
   a live install, and `cluster/testdata/README.md` says so rather than letting
   a reader assume otherwise.
 
+- **A values migration, for a chart this repository has outgrown.** The other
+  half of the unrenderable-chart fix below. Once the gate blocks on a chart that will not render,
+  something has to be able to fix it, and nothing could: removing a key,
+  renaming a key and adding a key are three operations `edits` has no way to
+  express, and it should not be widened to -- corroboration *is* the `from`
+  match, and a deletion has no `from`.
+
+  The home is the structural path, which already solves this shape of problem
+  for manifests. The model is shown the values and the chart's own
+  `values.schema.json` at the version being moved to, and returns the migrated
+  values; three checks decide whether they may be used at all. Two are
+  [ADR 0007](adr/0007-structure-from-the-schema-data-from-the-document.md)'s
+  unchanged -- schema validity, and positional value provenance. The first one
+  is new: **survival**, every value the new chart still declares comes through
+  byte-identical, which is what stops a setting being retuned on the way past
+  and what stops a renamed key landing on one that already had a value.
+
+  Then the chart is **rendered with the answer** before anything is written.
+  That is a guarantee the manifest path cannot have -- a migrated manifest is
+  judged by a schema walk, and this is judged by the program that refused the
+  original -- and it is what catches a key the chart *renamed* being dropped as
+  though it had been removed.
+
+  What lands is not the document. ADR 0007 re-serialises a migrated manifest
+  and pays for it in comments, which is a fair price for something that is
+  usually a document of its own; a repository's chart values are usually a
+  subtree of a file that also holds thirty other addons, and the values with a
+  note beside them are exactly the ones somebody had to reason about. So the
+  harness diffs the original against the validated proposal into a **plan** --
+  remove a key, rename a key, set a key -- and applies each one on that key's
+  own lines. The model never names a file, a key or an operation. See
+  [ADR 0013](adr/0013-a-values-migration-is-a-plan-not-a-document.md), which
+  also records where repair ends: a key the schema requires and names no value
+  for is escalated, with the key named, before the model is asked anything.
+
+  Behind `triage.structuralMigration`, which is the flag the document migration
+  already uses; an operator who has not turned that on has not turned this on
+  either.
+
+  **Measured on `qwen/qwen3.8-27b`:** classification **27/27**, full pass
+  **27/27**, **UNSAFE 0** across all four paths (4m59s). The previous
+  measurement on this model was 22/22 and 21/22; the case behind that 21 is
+  fixed below, so this is the first clean sweep the suite has recorded.
+
+  The suite gains a fourth path and four cases for it, and the first run of
+  them found the failure ADR 0013 names as the one its harness cannot catch.
+  On the 0.20.0 -> 0.25.1 case the model dropped `port: 8080` rather than
+  moving it to `podPort`, and every validator accepted that -- correctly,
+  because dropping a key the schema refuses is exactly what the other three
+  keys in that bump needed. **full pass 0/1, UNSAFE 1.**
+
+  The fix is not a firmer instruction. The prompt already carried the whole
+  new schema, with `podPort: integer` printed directly under the section
+  `port` was refused from. `structural.Vacancies` now states the fact instead:
+  for each refused key, what the new schema declares beside it that these
+  values do not set, filtered to slots that could hold the value. That is a
+  fact about two documents, derived the way the findings above it are, and its
+  other half carries as much as the first -- *nothing free beside it* is what
+  tells a model to stop looking for a home. Same model, same case: **full pass
+  1/1, UNSAFE 0**. `docs/prompt-contract.md` carries it as Lever 7.
+
 ### Changed
 
 - **BREAKING: the ArgoCD account needs two more read lines.**
@@ -154,6 +215,72 @@ All notable changes to `bosun`. Format follows
 
 ### Fixed
 
+- **A chart that will not render at the version a pull request moves to now
+  blocks, and the settings it stops reading are named even so.** Two defects,
+  one bump. Kargo raised `bosun.defaultVersion` from 0.20.0 to 0.25.1 against
+  values still carrying four keys the chart had removed, the new
+  `values.schema.json` refused them, `helm template` failed, and the gate
+  filed the whole thing under **Not covered** and published a green verdict
+  on a change that could not deploy. The agent's own comment named all four
+  keys correctly and had nothing to act on, because the report it was reading
+  said nothing was blocking.
+
+  A failed render was a warning, and warnings count towards no blocker --
+  which is the reasoning this repository already refuses, one line away, on
+  `Blockers.Unscanned`: *"we could not look" blocks, and is not the same as
+  "we looked and found none"*. A render that fails at the head revision is the
+  stronger case again -- not "we could not look" but "we looked and it does
+  not work" -- so it is now counted as `unrenderable` and blocks. Failing at
+  the **base** version is a different fact, since the repository was already
+  in that state and no pull request caused it; that stays a warning under
+  **Not covered**, and the two are no longer reported through one sentence
+  claiming both versions failed.
+
+  The second half is why the strictest breakage produced the weakest verdict.
+  The values-surface check that exists for exactly this case sat behind the
+  early return a failed render took, so a chart with no schema had its stale
+  keys named and blocked on, while a chart strict enough to hard-fail had
+  them named nowhere. It never needed the render -- it reads `helm show`, not
+  `helm template` -- and now runs either way, so the report carries both the
+  error and the list of keys.
+
+  Consequence worth knowing before upgrading: a pull request whose chart does
+  not render at the new version was green and is now red. That is the point,
+  and it is also the one behaviour change here.
+
+  The triage prompt gains a rule with it, because a newly red class is a
+  newly *modelled* class. The repair here is a key deleted or renamed, which
+  the edit format cannot express, so the answer is an escalation naming the
+  keys -- and the prompt now says so, along with the one wrong answer that
+  would otherwise pass every check the applier makes: putting the version
+  back. The old version is named in the gate report, so a revert corroborates
+  cleanly and undoes the promotion instead of repairing it. The eval suite
+  gains the 0.20.0 -> 0.25.1 bump as a case, and it is worth being exact about
+  what that measured: `qwen/qwen3.8-27b` classifies it `escalate` with the rule
+  and without it, so on this model the rule changed nothing. It stays for the
+  failure it names, which this corpus contains the temptation for and does not
+  reproduce; the levers in `docs/prompt-contract.md` exist for the smaller
+  models, and this one is recorded as unproven rather than as a win.
+- **A schema render that invited the mistake its own prompt forbade.** Since
+  the restructure path shipped, one case has scored correct-but-noisy: the
+  model produced the right migration for `spec.store` -> `spec.secretStoreRef`
+  and also wrote out `kind: SecretStore`, a default the schema already
+  applies. That was recorded as the cost of doing business.
+
+  It was the evidence. `RenderSchema` printed
+  `kind: string default=SecretStore` directly beside
+  `name: string (required)`, which reads as two fields to fill; and the rule
+  against it, forty lines above, named a category -- OPTIONAL -- that the
+  render never printed, so the only way to know a field was optional was the
+  absence of a marker. The render now says
+  `kind: string (optional, unset means SecretStore)`: the same schema fact
+  with the reason to write it removed, at the line where the decision is made.
+  A required field keeps its default printed, because that one may have to be
+  filled from the schema.
+
+  Both schema-guided prompts are measurably shorter-answered for it, and the
+  suite reaches **full pass 27/27** for the first time.
+  `docs/prompt-contract.md` carries it as Lever 8.
 - **A selector that matches on a label being absent no longer demands that
   label be present.** `selectorKeys` handed every `matchExpressions` key to
   `Inventory.Validate`, `NotIn` and `DoesNotExist` included. Those two select

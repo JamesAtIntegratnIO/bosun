@@ -240,6 +240,10 @@ func TestARedWithNoRepositorySideFixIsAnsweredWithoutTheModel(t *testing.T) {
 		{"settings to remove is a repository fix", migrate.Blockers{ValuesDropped: 48}, false},
 		{"targeting is a repository fix", migrate.Blockers{Targeting: 1}, false},
 		{"unscanned still wants a human to look here", migrate.Blockers{Unscanned: 1}, false},
+		// The values this repository sets are exactly what the chart refused,
+		// so telling the reader nothing here can change it would be false on
+		// the one finding where the fix is most obviously in the values file.
+		{"a chart that will not render is a repository fix", migrate.Blockers{Unrenderable: 1}, false},
 		{"nothing blocking is not this path", migrate.Blockers{}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -270,17 +274,31 @@ func TestBlockersRoundTripThroughTheReport(t *testing.T) {
 	(&gate.DiffResult{Objects: []gate.ObjectChange{
 		{Kind: "apiVersion", Object: "PodDisruptionBudget/x"},
 		{Kind: "valuesKeyDropped", Object: "kyverno", Keys: []string{"a", "b"}},
+		{Kind: "renderFailed", Object: "kyverno-prod", Reason: "helm said no"},
 	}}).Report(&b)
 
 	got, ok := migrate.ParseBlockers(b.String())
 	if !ok {
 		t.Fatal("the report must carry a machine-readable breakdown")
 	}
-	if got.APIVersion != 1 || got.ValuesDropped != 2 {
+	if got.APIVersion != 1 || got.ValuesDropped != 2 || got.Unrenderable != 1 {
 		t.Fatalf("round trip lost counts: %+v", got)
 	}
 	if _, ok := migrate.ParseBlockers("<!-- gitops-gate -->\nan older gate said nothing"); ok {
 		t.Fatal("a report with no breakdown must report absence, not zero")
+	}
+	// A breakdown from a gate that predates a counter is still a breakdown.
+	// The fields are read by name, so an older gate's line parses with the
+	// new counter at zero, which is what that gate meant; read positionally,
+	// or refused for being short, the agent would either mis-attribute every
+	// count after the gap or fall back to the prose scrape on every report.
+	old, ok := migrate.ParseBlockers(
+		migrate.BlockersMarker + "targeting=0 source=0 apiVersion=0 consumers=2 unscanned=0 valuesDropped=0 schema=0 -->")
+	if !ok {
+		t.Fatal("a breakdown written before this counter existed must still parse")
+	}
+	if old.Consumers != 2 || old.Unrenderable != 0 {
+		t.Fatalf("an older gate's counts must survive verbatim: %+v", old)
 	}
 }
 
