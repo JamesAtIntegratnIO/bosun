@@ -90,12 +90,21 @@ func (p Policy) corroborated(to string) bool {
 
 // DefaultDeny are refused regardless of configuration. Each entry is a way the
 // agent could otherwise make a red gate green without fixing anything.
+//
+// That test is what the list is kept to, in both directions. `.gitops-gate/**`
+// was the inventory-snapshot directory, and nothing has read it since ADR 0010
+// removed the CLI: a pattern that guards nothing reads as protection the list
+// is not providing, and it is off the list rather than left as decoration.
+//
+// `.bosun.yaml` is here for the opposite reason. It is the filename the gate's
+// config is moving to, and a guard that arrives after the reader does is a
+// window with the guarantee off.
 var DefaultDeny = []string{
 	".github/**",     // the gate's own workflows
 	".gitlab-ci.yml", //
 	"bitbucket-pipelines.yml",
 	".gitops-gate.yaml",     // what the gate renders, and how
-	".gitops-gate/**",       // the retired snapshot directory; a leftover copy must not be editable either
+	".bosun.yaml",           // the same file under the name the gate is moving to
 	"delivery/**",           // the kit itself, including this agent
 	"**/kargo-projects/**",  // merge policy and constraints
 	"**/kargo-pipelines/**", // the promotion pipelines themselves

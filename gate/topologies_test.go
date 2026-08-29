@@ -252,52 +252,6 @@ spec:
 	}
 }
 
-// A source scoped to one ArgoCD instance must not see another's clusters.
-// Large fleets routinely run one ArgoCD per region or per tenant.
-func TestSourceScopedToOneArgoCDInstance(t *testing.T) {
-	root := writeRepo(t, map[string]string{"appsets/a.yaml": `
-apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
-metadata:
-  name: thing
-spec:
-  goTemplate: true
-  generators:
-    - clusters:
-        selector:
-          matchLabels:
-            argocd.argoproj.io/secret-type: cluster
-  template:
-    metadata:
-      name: 'thing-{{ .name }}'
-    spec:
-      project: default
-      source: {repoURL: https://charts.example.com, chart: thing, targetRevision: 1.0.0}
-      destination: {namespace: thing}
-`})
-	cfg := &Config{Concurrency: 4, Sources: []Source{
-		{Name: "eu", Type: SourceManifests, Paths: []string{"appsets/*.yaml"}, ArgoCD: "eu"},
-	}}
-	inv := fleet(t, root, []Cluster{
-		{Name: "eu-1", ArgoCD: "eu"},
-		{Name: "us-1", ArgoCD: "us"},
-	})
-
-	// The manifests source is cluster-independent, so scoping happens when the
-	// ApplicationSet expands; both clusters are in the inventory and both
-	// match the selector. Recording the expectation so the behaviour is
-	// deliberate rather than accidental: instance scoping applies to source
-	// selection, and an ApplicationSet still expands against the whole
-	// inventory unless its own selector says otherwise.
-	table, err := Render(context.Background(), root, cfg, inv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(table.Rows) != 2 {
-		t.Fatalf("want both clusters from an unscoped selector, got %v", appNames(table.Rows))
-	}
-}
-
 // Several shapes at once, which is what a real repository looks like after a
 // few years.
 func TestMixedTopologiesCoexist(t *testing.T) {

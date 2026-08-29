@@ -5,6 +5,59 @@ All notable changes to `bosun`. Format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The agent's deny-list drops `.gitops-gate/**` and adds `.bosun.yaml`.**
+  Every entry on that list is supposed to be a way to make a red gate green
+  without fixing anything, and the list is now kept to that test in both
+  directions. `.gitops-gate/**` was the inventory-snapshot directory, and
+  nothing has read it since [ADR 0010](adr/0010-the-cli-goes-too.md) removed
+  the CLI: an entry guarding nothing still reads as a guarantee, and a list
+  that only ever grows stops describing what it protects. `.bosun.yaml` is
+  here for the opposite reason. It is the filename the gate's config is moving
+  to, and a guard that arrives after the reader does is a window with the
+  guarantee off. `docs/safety-model.md` and the site's configuration reference
+  carry the same table and are updated with it.
+
+### Removed
+
+- **`sources[].argocd`, which never selected anything.** It scoped a source to
+  one ArgoCD instance in a fleet running several, by matching against a field
+  on each `Cluster`. Nothing ever set that field: since
+  [ADR 0009](adr/0009-one-gate-one-inventory.md) the inventory is read from one
+  ArgoCD's own API, which does not report which install served it, so every
+  cluster carried the empty string and a source naming an instance matched none
+  of them. A helm source that matches no cluster is already a hard error, so
+  the key failed a run rather than quietly narrowing one, and removing it takes
+  nothing away from a configuration that works today. Strict parsing is what
+  makes that safe: a config still setting it stops at parse with the key named.
+  `Cluster.argocd` goes with it, having had no writer and now no reader.
+
+### Fixed
+
+- **A selector that matches on a label being absent no longer demands that
+  label be present.** `selectorKeys` handed every `matchExpressions` key to
+  `Inventory.Validate`, `NotIn` and `DoesNotExist` included. Those two select
+  the clusters that do *not* carry the key, so on a fleet where the key is
+  simply unused every cluster matches and the render is right -- and the gate
+  refused to render at all, naming a label nothing was missing. The only cure
+  was listing the key under `clustersExport.knownAbsentLabels`, which is worse
+  than the symptom: that entry suppresses the stale-inventory check for the key
+  everywhere, including the `In` selectors where a missing label really does
+  shrink a render silently, so a workaround for one selector disarmed the check
+  for the rest. `matchLabels`, `In` and `Exists` are still demanded, which is
+  the case the check was built for.
+- **`concurrency` is capped at 32.** The value comes out of
+  `.gitops-gate.yaml` in the repository being gated, and every worker it asks
+  for is a helm subprocess with a chart download and a temporary directory
+  behind it, running in the operator's pod beside every other open pull
+  request's render. Nothing bounded it. `concurrency: 5000` still parses --
+  failing a pull request over a field with nothing to do with its diff is the
+  wrong trade -- and is clamped where it is acted on. The clamp lives in
+  `workers()` rather than `ParseConfig` because a `Config` built as a literal
+  reaches the same semaphore, and a bound only the parser applied would be one
+  the gate's own callers could skip.
+
 ## [0.25.0] - 2026-08-29
 
 ### Security

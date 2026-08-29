@@ -102,7 +102,7 @@ func TestAlwaysDeniesTheGateAndThePolicy(t *testing.T) {
 	forbidden := []string{
 		".github/workflows/validate-addons.yaml",
 		".gitops-gate.yaml",
-		".gitops-gate/clusters.yaml",
+		".bosun.yaml",
 		"delivery/images/bosun/prompt.go",
 		"delivery/charts/kargo-pipelines/values.yaml",
 		"addons/cluster-roles/control-plane/addons/kargo-projects/values.yaml",

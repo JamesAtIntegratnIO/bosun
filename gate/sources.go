@@ -104,7 +104,7 @@ func collect(ctx context.Context, repoRoot string, cfg *Config, inv *Inventory, 
 func collectHelm(ctx context.Context, repoRoot string, inv *Inventory, s Source) ([]docs, error) {
 	perCluster := templated(s.Chart) || anyTemplated(s.ValueFiles)
 
-	if !perCluster && s.Selector == nil && s.ArgoCD == "" {
+	if !perCluster && s.Selector == nil {
 		objs, err := helmRender(ctx, repoRoot, s.Chart, resolveAll(s.ValueFiles, nil))
 		if err != nil {
 			return nil, fmt.Errorf("source %q: %w", s.Name, err)

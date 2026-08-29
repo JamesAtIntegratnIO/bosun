@@ -43,9 +43,9 @@ guarantees and the mechanism enforcing each.
 
 No, twice over.
 
-`edits.DefaultDeny` refuses `.github/**`, `.gitops-gate.yaml`,
-`.gitops-gate/**`, the kargo pipelines and projects trees, and the CI config of
-three hosts. An operator can *add* to that list; nothing can remove from it.
+`edits.DefaultDeny` refuses `.github/**`, `.gitops-gate.yaml`, `.bosun.yaml`,
+the kargo pipelines and projects trees, and the CI config of three hosts. An
+operator can *add* to that list; nothing can remove from it.
 
 Separately, the recommended token has **no Workflows permission**, so GitHub
 itself rejects any push touching `.github/workflows/**`. Two independent
