@@ -37,4 +37,4 @@ say "reinstalling the pipelines"
 bash "$ROOT/scripts/30-kit.sh" >/dev/null
 ok "warehouse and stages recreated"
 
-say "ready -- run: make demo"
+say "ready. run: make demo"

@@ -36,7 +36,7 @@ func (r *Report) Metrics(w io.Writer) {
 	fmt.Fprintf(w, "bosun_pipeline_sweep_timestamp_seconds %d\n", r.At.Unix())
 
 	writeHeader(w, "bosun_pipeline_checked", "gauge",
-		"How many objects the last sweep actually read, by resource. Zero Stages means nothing was proved.")
+		"How many objects the last sweep read, by resource. Zero Stages means nothing was proved.")
 	for _, kv := range []struct {
 		res string
 		n   int

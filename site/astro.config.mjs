@@ -12,10 +12,10 @@ export default defineConfig({
     starlight({
       title: 'Bosun',
       description:
-        'The crew for Argo and Kargo. A gate that renders what a pull request actually deploys and blocks what breaks, and an agent that repairs what is provable and escalates the rest.',
+        'The crew for Argo and Kargo. A gate that renders what a pull request deploys and blocks what breaks, and an agent that repairs what is provable and escalates the rest.',
       logo: {
         src: './src/assets/bosun.svg',
-        alt: 'Bosun — an octopus in a sailor cap, wrench raised, inside a life ring',
+        alt: 'Bosun, an octopus in a sailor cap, wrench raised, inside a life ring',
         replacesTitle: false,
       },
       favicon: '/favicon.svg',

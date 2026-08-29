@@ -491,7 +491,7 @@
             "groups",
             "wide"
           ],
-          "description": "groups: only the API groups listed, so Secrets stay unreadable. wide: apiGroups ['*'] -- answers everything and CAN read Secret contents, because RBAC cannot subtract the core group."
+          "description": "groups: only the API groups listed, so Secrets stay unreadable. wide: apiGroups ['*'], which answers everything and can read Secret contents, because RBAC cannot subtract the core group."
         },
         "apiGroups": {
           "type": "array",

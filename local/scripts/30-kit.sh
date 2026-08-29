@@ -167,7 +167,7 @@ ok "built $AGENT_IMAGE"
 # kind nodes have their own image store; a locally built image is invisible
 # until it is loaded, and the pod would sit ImagePullBackOff against a registry
 # that has never heard of this tag.
-command -v kind >/dev/null 2>&1 || bad "kind is not on PATH -- idpbuilder embeds it but does not install it"
+command -v kind >/dev/null 2>&1 || bad "kind is not on PATH; idpbuilder embeds it but does not install it"
 kind load docker-image "$AGENT_IMAGE" --name "$KIND_CLUSTER" 2>&1 | sed 's/^/    /'
 ok "loaded into kind/$KIND_CLUSTER"
 

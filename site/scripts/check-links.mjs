@@ -1,10 +1,10 @@
 // Asserts every internal link in the BUILT site resolves to a page or asset
 // that exists, and that every link rewritten to a GitHub URL points at a path
-// that is really in the repository.
+// that is in the repository.
 //
 // This is the check that earns the link rewriting in sync-docs.mjs. That
 // script turns `../adr/0008-....md` into either a site route or a GitHub blob
-// URL depending on whether the file is published here -- and both halves of
+// URL depending on whether the file is published here, and both halves of
 // that decision fail silently. A wrong route is a 404 nobody clicks in
 // review; a wrong GitHub path is a 404 on someone else's server.
 //
@@ -21,7 +21,7 @@ const DIST = join(SITE, 'dist')
 const GITHUB_PREFIX = 'https://github.com/JamesAtIntegratnIO/bosun/'
 
 if (!existsSync(DIST)) {
-  console.error('check-links: no dist/ -- run `npm run build` first')
+  console.error('check-links: no dist/, run `npm run build` first')
   process.exit(1)
 }
 
@@ -80,4 +80,4 @@ if (unique.length) {
   process.exit(1)
 }
 
-console.log(`check-links: ok -- ${pages.size} pages, every internal and repository link resolves`)
+console.log(`check-links: ok, ${pages.size} pages, every internal and repository link resolves`)

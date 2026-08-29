@@ -129,7 +129,7 @@ say "3. the verdict"
 if printf '%s' "$SLICE" | grep -q "outbound REFUSED"; then
   ok "refused, and the log names the rule that did it"
 else
-  bad "nothing was refused -- either the agent did not reach ${DENY}, or the deny list is not being applied"
+  bad "nothing was refused: either the agent did not reach ${DENY}, or the deny list is not being applied"
 fi
 # A refusal must degrade, never derail: the agent still has to reach a verdict.
 if printf '%s' "$SLICE" | grep -qE "PR ${PR}: (escalated:|no action needed:)"; then

@@ -30,7 +30,7 @@ announced_the_gate() {
 }
 
 say "the agent is the gate"
-wait_for "polling for open pull requests -- no CI anywhere in this act" 120 announced_the_gate
+wait_for "polling for open pull requests, no CI anywhere in this act" 120 announced_the_gate
 
 open_pr() { # branch title -> pr number
   local pr
@@ -71,7 +71,7 @@ ok "the status says why: ${DESC#success }"
 MARKED="$(gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/issues/${PR1}/comments?limit=50" \
   | python3 -c 'import json,sys; print(sum(1 for c in json.load(sys.stdin) if "<!-- gitops-gate -->" in c["body"]))')"
 [ "$MARKED" = "0" ] || { bad "a no-change render must not post a report; found ${MARKED}"; exit 1; }
-ok "and no report comment -- nothing to read means nothing posted"
+ok "and no report comment: nothing to read means nothing posted"
 
 say "2. a destination move goes red, reported by the agent itself"
 RED="cluster-gate/a-cluster-it-should-not-reach"
@@ -97,8 +97,8 @@ git -C "$WORK/repo" commit -qam "fix(podinfo): the tenant stays where it was"
 git -C "$WORK/repo" push -q --force "$CLONE" "$RED"
 SHA3="$(head_sha "$PR2")"
 [ "$SHA3" != "$SHA2" ] || { bad "the push did not move the head"; exit 1; }
-step "new head ${SHA3:0:8} -- in CI this is where the wrong token waits forever"
+step "new head ${SHA3:0:8}: in CI this is where the wrong token waits forever"
 wait_for "the new head commit got its own verdict: success" 180 status_is "$SHA3" success
-ok "re-gated on the next sweep -- the retrigger trap does not exist here"
+ok "re-gated on the next sweep: the retrigger trap does not exist here"
 
 say "the gate held all three properties"

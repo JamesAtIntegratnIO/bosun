@@ -7,7 +7,7 @@
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 load_credentials
-[ -n "${GITEA_TOKEN:-}" ] || bad "no Gitea token -- is the cluster up?"
+[ -n "${GITEA_TOKEN:-}" ] || bad "no Gitea token; is the cluster up?"
 
 say "gitea repository ${GITEA_OWNER}/${SAMPLE_REPO_NAME}"
 if gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}" -o /dev/null -w '%{http_code}' | grep -q 200; then

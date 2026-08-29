@@ -93,7 +93,7 @@ func TestTheLegacyAuthorIsIgnoredNotHonored(t *testing.T) {
 
 	chosen := &Config{AuthorName: "release-bot", AuthorEmail: "1234+release-bot@users.noreply.github.com"}
 	if chosen.NormaliseLegacyAuthor() {
-		t.Fatal("an identity somebody actually chose must be honored")
+		t.Fatal("an identity somebody chose must be honored")
 	}
 }
 

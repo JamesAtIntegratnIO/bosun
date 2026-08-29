@@ -10,7 +10,7 @@ FAIL=0
 check() { if "$@" >/dev/null 2>&1; then ok "$1"; else bad "$1"; FAIL=1; fi; }
 
 # ---------------------------------------------------------------------------
-say "1. discovery -- the Warehouse finds a chart version"
+say "1. discovery: the Warehouse finds a chart version"
 # ---------------------------------------------------------------------------
 wait_for "warehouse podinfo is healthy" 180 \
   bash -c "kubectl --context $CLUSTER_CONTEXT -n $KARGO_PROJECT get warehouse podinfo \
@@ -20,14 +20,14 @@ FREIGHT="$(kc -n "$KARGO_PROJECT" get freight --no-headers 2>/dev/null | wc -l |
 kc -n "$KARGO_PROJECT" get freight -o custom-columns=NAME:.metadata.name,CHART:.charts[0].name,VERSION:.charts[0].version --no-headers 2>/dev/null | head -3 | sed 's/^/    /'
 
 # ---------------------------------------------------------------------------
-say "2. promotion -- the Stage writes the new version and pushes a branch"
+say "2. promotion: the Stage writes the new version and pushes a branch"
 # ---------------------------------------------------------------------------
 wait_for "a promotion exists" 240 \
   bash -c "[ \$(kubectl --context $CLUSTER_CONTEXT -n $KARGO_PROJECT get promotions --no-headers 2>/dev/null | wc -l) -gt 0 ]"
 kc -n "$KARGO_PROJECT" get promotions -o custom-columns=NAME:.metadata.name,STAGE:.spec.stage,PHASE:.status.phase --no-headers 2>/dev/null | head -5 | sed 's/^/    /'
 
 # ---------------------------------------------------------------------------
-say "3. the pull request -- opened against Gitea, not simulated"
+say "3. the pull request: opened against Gitea, not simulated"
 # ---------------------------------------------------------------------------
 wait_for "a pull request is open" 300 \
   bash -c "curl -sk -H 'Authorization: token ${GITEA_TOKEN}' \
@@ -40,12 +40,12 @@ gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls/${PR}" \
   | python3 -c 'import json,sys; d=json.load(sys.stdin); print("    #%s  %s\n    %s -> %s" % (d["number"], d["title"], d["head"]["ref"], d["base"]["ref"]))'
 
 # ---------------------------------------------------------------------------
-say "4. the gate -- renders both sides and diffs the resources"
+say "4. the gate: renders both sides and diffs the resources"
 # ---------------------------------------------------------------------------
 # Nothing is run here. The agent sweeps the open pull requests and gates them
 # itself, so this waits for the verdict it publishes.
 SHA="$(head_sha "$PR")"
-step "waiting for the sweep to render ${SHA:0:8} -- both revisions, so it takes a moment"
+step "waiting for the sweep to render ${SHA:0:8}: both revisions, so it takes a moment"
 GATE_STATE=""
 for _ in $(seq 1 60); do
   GATE_STATE="$(gate_status "$SHA" | cut -d' ' -f1)"
@@ -56,7 +56,7 @@ step "gate: ${GATE_STATE:-<no verdict yet>}"
 gate_report "$PR" | sed 's/^/    /' | head -25
 
 # ---------------------------------------------------------------------------
-say "5. triage -- the agent reads its own verdict and decides"
+say "5. triage: the agent reads its own verdict and decides"
 # ---------------------------------------------------------------------------
 # Kargo's triage step fires this on promotion, but calling it directly makes
 # the demo deterministic and shows the request and the verdict.
@@ -70,7 +70,7 @@ if [ -n "$AGENT_POD" ]; then
     wget -q -O- --post-data "{\"prNumber\":${PR},\"stage\":\"podinfo-tenant\"}" \
     --header 'Content-Type: application/json' \
     http://localhost:8080/v1/promotion-opened 2>&1 | sed 's/^/    /' | head -5 || true
-  step "accepted; triage runs asynchronously -- waiting for the verdict"
+  step "accepted; triage runs asynchronously, waiting for the verdict"
   for _ in $(seq 1 30); do
     kc -n bosun logs "$AGENT_POD" --tail=200 2>/dev/null | grep -qiE "triage done|nothing to triage|verdict|classif|applied|refus" && break
     sleep 6
@@ -87,16 +87,16 @@ if [ "${GATE_STATE:-}" = "success" ]; then
   gitea_api POST "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls/${PR}/merge" \
     -d '{"Do":"squash"}' >/dev/null && ok "merged #${PR}"
 else
-  step "gate ${GATE_STATE:-<no verdict>} -- not merging, which is the gate doing its job"
+  step "gate ${GATE_STATE:-<no verdict>}: not merging, which is the gate doing its job"
 fi
 
 # ---------------------------------------------------------------------------
-say "7. reconcile -- ArgoCD syncs the new version"
+say "7. reconcile: ArgoCD syncs the new version"
 # ---------------------------------------------------------------------------
 kc -n argocd get applications -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status --no-headers 2>/dev/null | sed 's/^/    /'
 
 # ---------------------------------------------------------------------------
-say "8. verification -- the AnalysisRun asks Prometheus"
+say "8. verification: the AnalysisRun asks Prometheus"
 # ---------------------------------------------------------------------------
 kc -n "$KARGO_PROJECT" get analysisruns --no-headers 2>/dev/null | head -5 | sed 's/^/    /' \
   || step "no AnalysisRun yet"

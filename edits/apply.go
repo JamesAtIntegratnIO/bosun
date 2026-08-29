@@ -274,9 +274,9 @@ func setScalar(data []byte, key, want, to string) ([]byte, error) {
 		// the model could overwrite any scalar in any permitted file without
 		// having read it, while the schema, the prompt and this package's own
 		// documentation all promised the current value was checked first. An
-		// actually-empty scalar is not a special case; it matches "" exactly
-		// and always did.
-		return nil, fmt.Errorf("key %q holds %q, not the expected %q -- refusing to overwrite", key, node.Value, want)
+		// empty scalar is not a special case; it matches "" exactly and always
+		// did.
+		return nil, fmt.Errorf("key %q holds %q, not the expected %q; refusing to overwrite", key, node.Value, want)
 	}
 
 	lines := strings.Split(string(data), "\n")

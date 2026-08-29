@@ -1,5 +1,5 @@
 {
-  description = "bosun -- the toolchain this repository builds, tests and proves itself with";
+  description = "bosun: the toolchain this repository builds, tests and proves itself with";
 
   inputs = {
     nixpkgs.url = "nixpkgs/nixos-unstable";
@@ -24,7 +24,7 @@
           # nobody would think to look for". nixpkgs currently ships Helm 4,
           # so a dev shell that took `kubernetes-helm` would hand you a
           # different renderer than production for the one operation the whole
-          # gate is built on -- and the verdict you got locally would not be
+          # gate is built on, and the verdict you got locally would not be
           # the verdict CI or the cluster got.
           #
           # hack/portability-test.sh asserts these two strings equal the ARGs
@@ -58,14 +58,14 @@
           };
 
           # Both are static Go binaries, so there is nothing to build and
-          # nothing to patch -- unpack and install.
+          # nothing to patch, so unpack and install.
           prebuilt = { pname, version, url, hash, path }:
             pkgs.stdenvNoCC.mkDerivation {
               inherit pname version;
               src = pkgs.fetchurl { inherit url hash; };
               sourceRoot = ".";
               # Never strip. These are signed upstream on darwin, and a
-              # stripped signature does not fail honestly -- the binary is
+              # stripped signature does not fail honestly: the binary is
               # killed on launch with no explanation worth reading.
               dontStrip = true;
               installPhase = ''
@@ -113,16 +113,23 @@
               yq-go
               git
               curl
+
+              # The documentation site. Pinned to the major CI installs, because
+              # `npm run build` is a required check and a site that only builds
+              # on the runner is one nobody builds before pushing. It also owns
+              # `npm run og`, whose output is committed, so a card regenerated
+              # under a different Node is a diff nobody asked for.
+              nodejs_22
             ];
 
             shellHook = ''
-              # Speak only when something is missing. Two tools stay a HOST
+              # Speak only when something is missing. Two tools stay a host
               # concern rather than living in here:
               #
-              #   colima      -- a macOS VM, with state in ~/.colima that a
+              #   colima      a macOS VM, with state in ~/.colima that a
               #                  second copy at a different version would be
               #                  managing behind the first one's back.
-              #   idpbuilder  -- not in nixpkgs.
+              #   idpbuilder  not in nixpkgs.
               #
               # local/scripts/00-runtime.sh installs both with brew, which is
               # what a macOS host is going to do anyway.
@@ -132,7 +139,7 @@
               command -v docker     >/dev/null 2>&1 || missing="$missing docker"
               if [ -n "$missing" ]; then
                 echo "note: the local proving ground also needs:$missing" >&2
-                echo "      host tools, installed by local/scripts/00-runtime.sh -- everything else is in this shell." >&2
+                echo "      host tools, installed by local/scripts/00-runtime.sh; everything else is in this shell." >&2
               fi
             '';
           };

@@ -64,10 +64,10 @@ func (inv *Inventory) Validate(selectorKeys []string, knownAbsent []string) erro
 	sort.Strings(unknown)
 	return fmt.Errorf(
 		"selectors match on label(s) no cluster in the inventory carries: %s\n\n"+
-			"Either a selector names a label that genuinely exists on no cluster,\n"+
-			"in which case the Applications selecting on it are generated for no\n"+
-			"cluster at all and that is worth knowing, or the label is misspelt\n"+
-			"in .gitops-gate.yaml or on the cluster itself.\n\n"+
+			"Either no cluster carries those labels, in which case the Applications\n"+
+			"selecting on them are generated for no cluster at all and that is worth\n"+
+			"knowing, or the label is misspelt in .gitops-gate.yaml or on the\n"+
+			"cluster itself.\n\n"+
 			"If it is deliberate, list them under `clustersExport.knownAbsentLabels`\n"+
 			"in .gitops-gate.yaml.\n\n"+
 			"This is refused rather than assumed because the failure is silent: a\n"+

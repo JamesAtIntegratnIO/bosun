@@ -1,17 +1,17 @@
 // Builds site/src/content/docs/ from two sources, and owns that directory
 // completely: it is wiped on every run and is NOT in git.
 //
-// 1. The repository's own markdown -- docs/, adr/, gate/docs/, the chart and
+// 1. The repository's own markdown: docs/, adr/, gate/docs/, the chart and
 //    CI READMEs. Those files stay where they are and stay readable on GitHub;
 //    this script is the only thing that knows they are also a website.
-// 2. site/src/authored/ -- pages that exist only on the site (the landing
+// 2. site/src/authored/: pages that exist only on the site (the landing
 //    page, the quickstart, the reference tables). Those ARE in git.
 //
 // The interesting half is link rewriting. A doc that says
 // `[ADR 0008](../adr/0008-the-gate-moves-in-cluster.md)` has to keep working
 // when GitHub renders it AND resolve to /decisions/0008-the-gate-moves-in-cluster/
 // on the site. Every relative link is resolved against the source file's own
-// directory, looked up in the page map below, and rewritten -- to a site route
+// directory, looked up in the page map below, and rewritten, either to a site route
 // if that file is published here, and to a GitHub URL if it is not. A link
 // that silently 404s is the failure mode this replaces.
 
@@ -29,7 +29,7 @@ const BRANCH = 'main'
 
 // ---------------------------------------------------------------------------
 // The page map. `src` is repo-relative; `out` is the route, without extension.
-// `title` overrides the source's H1 (which is stripped -- Starlight renders the
+// `title` overrides the source's H1 (which is stripped, because Starlight renders the
 // title from frontmatter, and two H1s on a page is a real accessibility bug).
 // ---------------------------------------------------------------------------
 const PAGES = [
@@ -62,7 +62,7 @@ const PAGES = [
     out: 'concepts/classification',
     title: 'Mechanical or escalate',
     description:
-      'The judgement the agent makes, with the worked examples the eval cases encode -- and the ones that were reclassified after they went wrong live.',
+      'The judgement the agent makes, with the worked examples the eval cases encode, including the ones reclassified after they went wrong live.',
   },
   {
     src: 'docs/prompt-contract.md',
@@ -76,7 +76,7 @@ const PAGES = [
     out: 'concepts/supervisor',
     title: 'The pipeline supervisor',
     description:
-      'Sweeping the Kargo pipeline for the promotions that never happened -- because nothing about a promotion that did not occur produces an event.',
+      'Sweeping the Kargo pipeline for the promotions that never happened, because nothing about a promotion that did not occur produces an event.',
   },
 
   // --- The gate -----------------------------------------------------------
@@ -85,7 +85,7 @@ const PAGES = [
     out: 'gate/index',
     title: 'The gate',
     description:
-      'The deterministic half. Renders what the repository actually deploys at base and head, diffs it, and blocks the changes that break things.',
+      'The deterministic half. Renders what the repository deploys at base and head, diffs it, and blocks the changes that break things.',
   },
   {
     src: 'gate/docs/config-reference.md',
@@ -113,7 +113,7 @@ const PAGES = [
     src: 'charts/bosun/README.md',
     out: 'reference/chart-bosun',
     title: 'Chart: bosun',
-    description: 'Running the agent in-cluster -- Deployment, Service, RBAC and both halves of the NetworkPolicy.',
+    description: 'Running the agent in-cluster: Deployment, Service, RBAC and both halves of the NetworkPolicy.',
   },
   {
     src: 'charts/kargo-pipelines/README.md',
@@ -196,7 +196,7 @@ const ROUTES = new Map(
 )
 
 // Repo paths that have no page here but are worth linking somewhere sensible.
-// Anything not listed simply falls through to a GitHub blob/tree URL, which is
+// Anything not listed falls through to a GitHub blob/tree URL, which is
 // the correct destination for source files.
 const EXTERNAL_OVERRIDES = new Map([
   ['README.md', '/'],
@@ -223,7 +223,7 @@ function rewriteLinks(body, srcPath) {
     } else if (EXTERNAL_OVERRIDES.has(repoPath)) {
       dest = EXTERNAL_OVERRIDES.get(repoPath) + (anchor ?? '')
     } else if (whole.startsWith('!')) {
-      // An image the site has to actually serve; sync-assets copies these.
+      // An image the site has to serve; sync-assets copies these.
       dest = '/' + posix.basename(repoPath)
     } else {
       const abs = join(REPO, repoPath)
@@ -258,7 +258,7 @@ function build() {
   for (const page of PAGES) {
     const abs = join(REPO, page.src)
     if (!existsSync(abs)) {
-      console.warn(`  ! skipped ${page.src} -- not found`)
+      console.warn(`  ! skipped ${page.src}: not found`)
       continue
     }
 
