@@ -178,7 +178,7 @@ Every entry is a way to make a red gate green without fixing anything:
 ```
 .github/**            the workflows that run the gate
 .gitops-gate.yaml     what the gate renders, and how
-.gitops-gate/**       the retired inventory-snapshot directory; a leftover copy must not be editable either
+.bosun.yaml           the same file under the name the gate is moving to
 delivery/**           the kit itself, including this agent and its prompt
 .gitlab-ci.yml        the GitLab and Bitbucket equivalents of .github/**
 bitbucket-pipelines.yml
@@ -190,6 +190,15 @@ These are the patterns as enforced. The matcher understands `**` at the start
 of a pattern, at the end, or at both, but not in the middle, so a wildcard in
 the directory name itself (`**/kargo-*/**`) is not something the deny-list can
 say.
+
+The test is applied in both directions, because a list that only ever grows
+stops describing what it protects. `.gitops-gate/**` was the inventory-snapshot
+directory, and nothing has read it since
+[ADR 0010](../adr/0010-the-cli-goes-too.md) removed the CLI: an entry that
+guards nothing still reads as a guarantee, so it is off the list rather than
+kept as decoration. `.bosun.yaml` is the filename the gate's config is moving
+to, and it is denied before anything reads it, because a guard that arrives
+after the reader is a window with the guarantee off.
 
 An operator can add to the deny-list. They cannot remove from it.
 

@@ -144,12 +144,12 @@ func TestMigrateRewritesOnlyTheDeclarations(t *testing.T) {
 func TestMigrateAnswersToThePathPolicy(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "platform/secrets.yaml", consumers)
-	write(t, root, ".gitops-gate/fixture.yaml",
+	write(t, root, ".github/fixture.yaml",
 		"apiVersion: external-secrets.io/v1beta1\nkind: ExternalSecret\nmetadata:\n  name: g\n")
 
 	deny := func(path string) string {
-		if path == ".gitops-gate/fixture.yaml" {
-			return "path is denied (.gitops-gate/**)"
+		if path == ".github/fixture.yaml" {
+			return "path is denied (.github/**)"
 		}
 		return ""
 	}
@@ -160,10 +160,10 @@ func TestMigrateAnswersToThePathPolicy(t *testing.T) {
 	if len(res.Applied) != 1 || res.Applied[0].Path != "platform/secrets.yaml" {
 		t.Fatalf("the permitted file should still move: %+v", res.Applied)
 	}
-	if len(res.Refused) != 1 || res.Refused[0].Path != ".gitops-gate/fixture.yaml" {
+	if len(res.Refused) != 1 || res.Refused[0].Path != ".github/fixture.yaml" {
 		t.Fatalf("the denied file must be reported refused, got %+v", res.Refused)
 	}
-	data, _ := os.ReadFile(filepath.Join(root, ".gitops-gate/fixture.yaml"))
+	data, _ := os.ReadFile(filepath.Join(root, ".github/fixture.yaml"))
 	if string(data) != "apiVersion: external-secrets.io/v1beta1\nkind: ExternalSecret\nmetadata:\n  name: g\n" {
 		t.Error("the denied file was rewritten anyway")
 	}

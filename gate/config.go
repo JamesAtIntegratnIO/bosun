@@ -31,10 +31,12 @@ type Config struct {
 	// fifty-cluster inventory is fifty chart renders per revision, and serial
 	// execution turns a ninety-second gate into a coffee break.
 	//
-	// ParseConfig defaults this to 8. Read it through workers() rather than
-	// directly, a Config built as a literal rather than parsed leaves it
-	// zero, and a zero-capacity semaphore is not "no limit", it is a channel
-	// nobody can send on.
+	// ParseConfig defaults this to 8 and clamps nothing. Read it through
+	// workers() rather than directly, for two reasons: a Config built as a
+	// literal rather than parsed leaves it zero, and a zero-capacity
+	// semaphore is not "no limit", it is a channel nobody can send on; and
+	// this number comes out of the repository being gated, so workers() caps
+	// it at maxConcurrency before anything acts on it.
 	Concurrency int `json:"concurrency"`
 
 	// Validate controls schema validation.
@@ -114,11 +116,6 @@ type Source struct {
 	// helm source renders once with no cluster context; a manifests or
 	// kustomize source is cluster-independent anyway.
 	Selector *SourceSelector `json:"selector"`
-
-	// ArgoCD names the ArgoCD instance this source belongs to, for fleets
-	// running more than one. Clusters carry the same field; a source only
-	// sees clusters whose value matches.
-	ArgoCD string `json:"argocd"`
 
 	// Scope decides which clusters the ApplicationSets from a per-cluster
 	// render expand against.
@@ -265,9 +262,6 @@ func defaultName(p string) string {
 
 // matches reports whether a cluster is in this source's scope.
 func (s *Source) matches(c Cluster) bool {
-	if s.ArgoCD != "" && c.ArgoCD != s.ArgoCD {
-		return false
-	}
 	if s.Selector == nil {
 		return true
 	}
@@ -284,6 +278,16 @@ func (s *Source) matches(c Cluster) bool {
 // asking the host for fifty concurrent helm subprocesses.
 const defaultConcurrency = 8
 
+// maxConcurrency is the ceiling, whatever the config asks for. Each worker is
+// a helm subprocess with a chart download and a temporary directory behind it,
+// so the number is a request for host resources the host never agreed to: the
+// value is read from the repository being gated, and the gate runs in a pod
+// with a memory limit beside every other pull request's render. Thirty-two is
+// well above any fleet size that renders inside a gate's time budget, so a
+// config that trips this was not tuning, it was a typo or a lever someone
+// found.
+const maxConcurrency = 32
+
 // workers is the render parallelism to use.
 //
 // Render and ChartDiff are exported and size their semaphore from this. Taking
@@ -292,9 +296,17 @@ const defaultConcurrency = 8
 // error: `make(chan struct{}, 0)` is unbuffered, so the first worker blocks on
 // a send nobody will ever receive. A caller that got the config right is
 // unaffected; a caller that did not gets the default instead of a deadlock.
+//
+// It is also the only place the value is bounded above. Both ends are checked
+// here rather than in ParseConfig because ParseConfig is not on every path to
+// a render: a Config built as a literal reaches the semaphore too, and a cap
+// only the parser applied would be a cap the gate's own callers could skip.
 func (c *Config) workers() int {
 	if c == nil || c.Concurrency < 1 {
 		return defaultConcurrency
+	}
+	if c.Concurrency > maxConcurrency {
+		return maxConcurrency
 	}
 	return c.Concurrency
 }

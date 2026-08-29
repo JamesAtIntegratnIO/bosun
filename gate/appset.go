@@ -175,9 +175,20 @@ func mergeKeyFor(p Param, keys []string) string {
 	return out
 }
 
-// selectorKeys returns every label key a generator list matches on, at any
-// depth. Feeding these to Inventory.Validate is what converts a stale fixture
-// from a wrong answer into a refusal.
+// selectorKeys returns every label key a generator list requires a cluster to
+// carry, at any depth. Feeding these to Inventory.Validate is what converts a
+// stale fixture from a wrong answer into a refusal.
+//
+// Only the operators that select on presence are collected. matchLabels, `In`
+// and `Exists` all pick clusters that carry the key, so an inventory that has
+// never seen it renders nothing where it should have rendered something, and
+// that silent shrink is the whole reason Validate exists.
+//
+// `NotIn` and `DoesNotExist` are the opposite: they select on absence, and on
+// a fleet where the key is simply unused every cluster matches and the render
+// is correct. Demanding presence for those turned a working selector into a
+// refusal whose only cure was naming the key under knownAbsentLabels, which
+// then suppressed the real check for that key everywhere else too.
 func selectorKeys(gens []generatorSpec) []string {
 	seen := map[string]bool{}
 	var walk func([]generatorSpec)
@@ -188,7 +199,10 @@ func selectorKeys(gens []generatorSpec) []string {
 					seen[k] = true
 				}
 				for _, e := range g.Clusters.Selector.MatchExpressions {
-					seen[e.Key] = true
+					switch e.Operator {
+					case metav1.LabelSelectorOpIn, metav1.LabelSelectorOpExists:
+						seen[e.Key] = true
+					}
 				}
 			}
 			if g.Merge != nil {

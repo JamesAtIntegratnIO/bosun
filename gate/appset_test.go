@@ -211,3 +211,85 @@ func TestSelectorKeysReachesInsideMergeGenerators(t *testing.T) {
 		}
 	}
 }
+
+// A selector that matches on a label being absent must not make the inventory
+// check demand that label be present. This is the whole of the defect: an
+// addon selecting `aws_cluster_name: DoesNotExist` is correct on a fleet where
+// no cluster is on EKS, and every cluster matches it, but selectorKeys
+// collected the key anyway and Validate then refused to render at all.
+//
+// The only cure was listing the key under knownAbsentLabels, which is worse
+// than it looks: that entry suppresses the stale-inventory check for that key
+// everywhere, including for the `In` selectors where a missing label really
+// does shrink the render silently. A workaround for one selector disarmed the
+// check for the rest.
+func TestSelectorKeysIgnoresTheOperatorsThatMatchOnAbsence(t *testing.T) {
+	gens := parseGens(t, `
+- clusters:
+    selector:
+      matchLabels:
+        argocd.argoproj.io/secret-type: cluster
+      matchExpressions:
+        - key: aws_cluster_name
+          operator: DoesNotExist
+        - key: cluster_role
+          operator: NotIn
+          values: ['vcluster']
+`)
+	inv := &Inventory{Clusters: []Cluster{{
+		Name: "hub", Server: "https://hub",
+		Labels: map[string]string{"argocd.argoproj.io/secret-type": "cluster"},
+	}}}
+
+	// The render is right, which is what makes the refusal a defect rather
+	// than a conservative choice: the one cluster carries neither key and
+	// both expressions select it.
+	got, _, err := expandGenerators(gens, inv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Cluster.Name != "hub" {
+		t.Fatalf("absence operators should select the cluster, got %v", names(got))
+	}
+
+	keys := selectorKeys(gens)
+	for _, k := range keys {
+		if k == "aws_cluster_name" || k == "cluster_role" {
+			t.Errorf("%q is matched on absence and must not be demanded present", k)
+		}
+	}
+	if err := inv.Validate(keys, nil); err != nil {
+		t.Fatalf("want no error without knownAbsentLabels, got %v", err)
+	}
+}
+
+// The other half, and the reason the fix is a narrowing rather than a removal:
+// `In` still selects clusters that carry the key, so an inventory that has
+// never seen it renders nothing where it should have rendered something.
+func TestSelectorKeysStillDemandsTheKeysAnInSelectorNeeds(t *testing.T) {
+	gens := parseGens(t, `
+- clusters:
+    selector:
+      matchExpressions:
+        - key: enable_metrics_server
+          operator: In
+          values: ['true']
+        - key: aws_cluster_name
+          operator: DoesNotExist
+`)
+	inv := &Inventory{Clusters: []Cluster{{
+		Name: "hub", Server: "https://hub",
+		Labels: map[string]string{"argocd.argoproj.io/secret-type": "cluster"},
+	}}}
+
+	err := inv.Validate(selectorKeys(gens), nil)
+	if err == nil {
+		t.Fatal("an In on a label no cluster carries must still refuse")
+	}
+	if !strings.Contains(err.Error(), "enable_metrics_server") {
+		t.Errorf("the refusal must name the key: %v", err)
+	}
+	if strings.Contains(err.Error(), "aws_cluster_name") {
+		t.Errorf("the absence-matched key must not be in the refusal: %v", err)
+	}
+}

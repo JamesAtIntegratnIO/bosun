@@ -65,7 +65,6 @@ func InventoryFromClusters(cs []Cluster) *Inventory {
 		inv.Clusters = append(inv.Clusters, Cluster{
 			Name:        c.Name,
 			Server:      c.Server,
-			ArgoCD:      c.ArgoCD,
 			Labels:      labels,
 			Annotations: annotations,
 		})

@@ -61,8 +61,7 @@ per-environment values layout is expressed without enumerating every
 combination. A value file whose placeholders do not resolve for a given cluster
 is not that cluster's file, matching ArgoCD's `ignoreMissingValueFiles`.
 
-`selector.matchLabels` limits which clusters a source renders for. `argocd`
-scopes a source to one ArgoCD instance in a fleet that runs several.
+`selector.matchLabels` limits which clusters a source renders for.
 
 ### `scope`
 
@@ -106,9 +105,16 @@ the usual "app of apps of addons" shape, and the gate walks both.
 
 ## `concurrency`
 
-Parallel renders, default 8. Fleets are the reason: fifty clusters is fifty
-chart renders per revision, and serial execution turns a ninety-second gate
-into something people route around.
+Parallel renders, default 8, capped at 32. Fleets are the reason it exists:
+fifty clusters is fifty chart renders per revision, and serial execution turns
+a ninety-second gate into something people route around.
+
+The cap is why a larger number is not a lever. Every worker is a helm
+subprocess with a chart download and a temporary directory behind it, and this
+file belongs to the repository being gated while the renders run in the
+operator's pod, beside every other open pull request's. A value above the cap
+parses and is then clamped rather than refused, because failing a pull request
+over a field with nothing to do with its diff is the wrong trade.
 
 ## `valuesRef`
 
@@ -124,6 +130,13 @@ has never seen renders a fraction of the real Applications and then reports
 "no targeting change" with total confidence, so the mismatch is an error rather
 than a wrong answer. List a label here only when the absence is deliberate; an
 addon inherited from upstream whose selector is never satisfied on this fleet.
+
+Only the operators that need a label **present** are checked: `matchLabels`,
+`In` and `Exists`. `NotIn` and `DoesNotExist` select on absence, so on a fleet
+where the key is simply unused every cluster matches and the render is right;
+those keys are not demanded and do not need listing here. If you added one for
+that reason, the line is now unnecessary, and removing it restores the check
+for every other selector that matches on the same key.
 
 The key's name has outlived the export subcommand it was written for. It stays
 because renaming it would break every config that sets it, for tidiness.
