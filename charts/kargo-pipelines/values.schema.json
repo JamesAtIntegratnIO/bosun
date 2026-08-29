@@ -91,6 +91,9 @@
         },
         "timeout": {
           "type": "string"
+        },
+        "authorization": {
+          "type": "string"
         }
       }
     },

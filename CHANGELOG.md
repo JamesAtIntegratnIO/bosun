@@ -3,7 +3,7 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
-## [Unreleased]
+## [0.23.0] - 2026-08-28
 
 Seven defects from an external security review, and the checks that pin them.
 

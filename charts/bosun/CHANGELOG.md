@@ -3,6 +3,50 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.23.0]
+
+### Added
+
+- **`promotionAuth.existingSecret` / `promotionAuth.tokenKey`.** The bearer
+  token `POST /v1/promotion-opened` requires. That endpoint's payload names the
+  pull request the agent edits and the files it reads into a prompt it
+  publishes, and the NetworkPolicy admits the whole namespace — which is as
+  narrow as a NetworkPolicy gets.
+
+  Opt-in, so an upgrade does not stop answering Kargo. Left unset the endpoint
+  is open and the pod logs a warning saying so at every start-up. Set the same
+  value on the promotion side with kargo-pipelines `triage.authorization`:
+
+  ```yaml
+  # bosun
+  promotionAuth:
+    existingSecret: bosun-promotion
+    tokenKey: token
+  ```
+
+- **`maxConcurrentTriage`** (default `4`). Bounds simultaneous triages. Each is
+  a clone, a helm render and a model call, so the ceiling is about the pod's
+  memory and your git host's rate limit rather than throughput.
+
+### Changed
+
+- **BREAKING (agent, not values): `git.apiBase` is required for `gitea`.** There
+  is no public Gitea to default to, so an empty value was a pod that started
+  healthy and could not read a pull request. The process now refuses to start
+  and names the setting.
+
+- **BREAKING (agent, not values): an invalid boolean is a configuration error.**
+  `explainGreen: treu` read as `false`, so a setting somebody deliberately
+  turned on was silently off. Accepted words are unchanged
+  (`true/false`, `yes/no`, `on/off`, `1/0`); anything else fails at start-up.
+
+- **BREAKING (agent, not values): `gate.poll` must be positive.** `0` is not a
+  faster poll but no wait at all, and it spun the sweep against the git host's
+  API as fast as it answered.
+
+  No values file needs editing for any of the three unless it already carries
+  one of those mistakes, in which case it was not doing what it looked like.
+
 ## [0.22.0]
 
 ### Removed
