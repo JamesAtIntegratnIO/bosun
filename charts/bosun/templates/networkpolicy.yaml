@@ -76,13 +76,11 @@ spec:
         - protocol: TCP
           port: {{ .port }}
     {{- end }}
-    {{- if and (eq $.Values.gate.mode "cluster") (eq $.Values.gate.inventorySource "argocd") }}
     {{- /* argocd-server, for the inventory. Emitted by the chart rather than
-           left to `egress.namespaces` because the destination is known from
-           `inventorySource` and the failure mode of forgetting it is the worst
-           one in this file: a ClusterIP is DNAT'd before policy is evaluated,
-           so the connection hangs with zero bytes and the pod dies at start-up
-           blaming ArgoCD.
+           left to `egress.namespaces` because the gate always reads it and the
+           failure mode of forgetting it is the worst one in this file: a
+           ClusterIP is DNAT'd before policy is evaluated, so the connection
+           hangs with zero bytes and the pod dies at start-up blaming ArgoCD.
 
            `podPort` and not the port in `baseURL`, for the same DNAT reason:
            the packet arriving at this rule is addressed to the pod. Deriving
@@ -95,7 +93,6 @@ spec:
       ports:
         - protocol: TCP
           port: {{ $.Values.gate.argocd.podPort }}
-    {{- end }}
     {{- /* The apiserver, for live cluster reads. Its own key because it is the
            destination people get wrong: `kubernetes.default.svc` is a
            ClusterIP, and a ClusterIP is DNAT'd to a real endpoint before
@@ -125,7 +122,7 @@ spec:
           port: 443
     {{- end }}
 {{- if eq $np.flavor "cilium" }}
-{{- if or $np.egress.fqdns $np.egress.fqdnPatterns $np.egress.allowInternet $.Values.liveReads.enabled (eq $.Values.gate.mode "cluster") }}
+{{- if or $np.egress.fqdns $np.egress.fqdnPatterns $np.egress.allowInternet $.Values.liveReads.enabled $.Values.supervise.enabled }}
 ---
 {{- /* FQDN egress is materially tighter than an ipBlock: it names the hosts
      the agent may reach rather than a range that happens to contain them. */}}
@@ -158,9 +155,9 @@ spec:
             - port: "443"
               protocol: TCP
     {{- end }}
-    {{- if or $.Values.liveReads.enabled (eq $.Values.gate.mode "cluster") }}
-    {{- /* Both readers of the apiserver -- liveReads and the cluster-mode
-           gate's inventory -- arrive here.
+    {{- if or $.Values.liveReads.enabled $.Values.supervise.enabled }}
+    {{- /* Both readers of the apiserver -- liveReads and the pipeline sweep --
+           arrive here.
            The idiomatic Cilium answer to "reach the apiserver": an entity,
            resolved by the agent on every node, rather than a list of
            control-plane addresses that goes stale the first time one is

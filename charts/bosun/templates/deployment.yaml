@@ -111,29 +111,26 @@ spec:
                   name: {{ .Values.llm.existingSecret }}
                   key: {{ .Values.llm.apiKeyKey }}
             {{- end }}
-            - name: GATE_MODE
-              value: {{ .Values.gate.mode | quote }}
             - name: GATE_FORK_PRS
               value: {{ .Values.gate.forkPRs | quote }}
             - name: GATE_CHECK_NAME
               value: {{ .Values.gate.checkName | quote }}
-            - name: GATE_WAIT
-              value: {{ .Values.gate.wait | quote }}
             - name: SUPERVISE_PIPELINE
               value: {{ .Values.supervise.enabled | quote }}
             - name: SUPERVISE_INTERVAL
               value: {{ .Values.supervise.interval | quote }}
             - name: GATE_POLL
               value: {{ .Values.gate.poll | quote }}
-            - name: INVENTORY_SOURCE
-              value: {{ .Values.gate.inventorySource | quote }}
-            {{- if and (eq .Values.gate.mode "cluster") (eq .Values.gate.inventorySource "argocd") }}
+            # The cluster inventory, which the gate reads from ArgoCD's own
+            # API. Both halves are required: `required` here rather than in the
+            # schema, because a missing value should name the value, and an
+            # empty string is a value the schema would accept.
             - name: ARGOCD_BASE_URL
-              value: {{ .Values.gate.argocd.baseURL | quote }}
+              value: {{ required "gate.argocd.baseURL is required: the gate reads the cluster inventory from the ArgoCD API" .Values.gate.argocd.baseURL | quote }}
             - name: ARGOCD_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ required "gate.argocd.existingSecret is required when gate.inventorySource is argocd" .Values.gate.argocd.existingSecret }}
+                  name: {{ required "gate.argocd.existingSecret is required: it holds the ArgoCD account token the gate reads the inventory with" .Values.gate.argocd.existingSecret }}
                   key: {{ .Values.gate.argocd.tokenKey }}
             {{- if .Values.gate.argocd.caSecret }}
             - name: ARGOCD_CA_FILE
@@ -141,15 +138,6 @@ spec:
             {{- end }}
             - name: ARGOCD_INSECURE_SKIP_TLS_VERIFY
               value: {{ .Values.gate.argocd.insecureSkipTLSVerify | quote }}
-            {{- end }}
-            {{- with .Values.gate.reportAuthor }}
-            # Only when set. Empty is not "trust nobody" -- it is "use the
-            # per-host default", and the binary is where that lives, because
-            # which account a gate comments as is a property of the host and
-            # not of this chart.
-            - name: GATE_REPORT_AUTHOR
-              value: {{ . | quote }}
-            {{- end }}
             - name: EXPLAIN_GREEN
               value: {{ .Values.triage.explainGreen | quote }}
             - name: MIGRATE_DROPPED_VERSIONS
@@ -168,10 +156,10 @@ spec:
               value: {{ .Values.triage.upstreamNotes.maxReleases | quote }}
             - name: LIVE_READS
               value: {{ .Values.liveReads.enabled | quote }}
-            {{- if or .Values.liveReads.enabled (eq .Values.gate.mode "cluster") }}
-            # The one ArgoCD-namespace value serves both readers: liveReads
-            # (Application health for briefs) and the cluster-mode gate (the
-            # inventory in the cluster Secrets).
+            {{- if .Values.liveReads.enabled }}
+            # Where liveReads looks for Applications when it reads their health
+            # for a brief. The NetworkPolicy reads it too, for the argocd-server
+            # egress rule the gate's inventory needs.
             - name: LIVE_READS_ARGOCD_NS
               value: {{ .Values.liveReads.argocdNamespace | quote }}
             {{- end }}
@@ -207,11 +195,11 @@ spec:
             # gate does not treat it as fatal -- it reports the Application as
             # "could not render at both versions, so its resource changes are
             # NOT covered" -- so the symptom is silently reduced coverage on
-            # every version bump, not an error. In CI mode the runner supplied
-            # /tmp and nobody had to think about it.
+            # every version bump, not an error. A CI runner supplied /tmp and
+            # nobody had to think about it.
             - name: tmp
               mountPath: /tmp
-            {{- if and (eq .Values.gate.mode "cluster") (eq .Values.gate.inventorySource "argocd") .Values.gate.argocd.caSecret }}
+            {{- if .Values.gate.argocd.caSecret }}
             # The CA that verifies argocd-server. Nothing mounts one for it the
             # way the kubelet does for the apiserver, so it has to come from
             # somewhere -- and a Secret an operator already manages beats a
@@ -235,7 +223,7 @@ spec:
           emptyDir: {}
         - name: tmp
           emptyDir: {}
-        {{- if and (eq .Values.gate.mode "cluster") (eq .Values.gate.inventorySource "argocd") .Values.gate.argocd.caSecret }}
+        {{- if .Values.gate.argocd.caSecret }}
         - name: argocd-ca
           secret:
             secretName: {{ .Values.gate.argocd.caSecret }}

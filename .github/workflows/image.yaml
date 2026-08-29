@@ -26,7 +26,6 @@ on:
     paths-ignore:
       - 'local/**'
       - 'charts/**'
-      - 'ci/**'
       - 'docs/**'
       - 'adr/**'
       - '**.md'
@@ -134,7 +133,7 @@ jobs:
             # Prose and charts reach no image. Repeated from `paths-ignore`
             # rather than relying on it: a push that mixes charts with code
             # passes that filter with the chart files still in the diff.
-            code=$(printf '%s\n' "${changed}" | grep -vE '(^|/)(docs|adr)/|\.md$|^charts/|^local/|^ci/' || true)
+            code=$(printf '%s\n' "${changed}" | grep -vE '(^|/)(docs|adr)/|\.md$|^charts/|^local/' || true)
 
             # What the gate compiles: gate/ itself plus migrate/, the scanner
             # it shares with the agent so the report line and its parser

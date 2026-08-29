@@ -20,33 +20,28 @@ loop names its cause in the log; a degraded process does not.
 | `LLM_BASE_URL is required for the openai provider` | `llm.provider: openai` with no `baseURL` | Set `llm.baseURL`. This is what makes a self-hosted model work |
 | `unknown LLM_PROVIDER "…" (openai or anthropic)` | Typo, or a provider that does not exist | Only `openai` and `anthropic` are implemented |
 | `GIT_PROVIDER "…" is not implemented yet` | `gitlab` or `bitbucket` | Those are extension points, not implementations. See [Git providers](/reference/git-providers/) |
-| `GATE_MODE "…" is not a mode (cluster or ci)` | Typo | `cluster` or `ci` |
-| `SUPERVISE_PIPELINE needs apiserver access` | Supervisor on, but neither live reads nor cluster mode | Set `liveReads.enabled: true`, or `gate.mode: cluster`, or `supervise.enabled: false` |
-| `no ArgoCD cluster Secrets in namespace "…"` | Wrong `liveReads.argocdNamespace`, or the RBAC grant is missing | The gate cannot expand a generator against an empty inventory. Point it at the real ArgoCD namespace |
-| `secrets is forbidden` | The Role was not created, or `rbac.create: false` | Cluster mode with `gate.inventorySource: secrets` (the default) needs get/list on Secrets in the ArgoCD namespace. `inventorySource: argocd` needs neither |
-| `INVENTORY_SOURCE is argocd but ARGOCD_BASE_URL is empty` | `gate.inventorySource: argocd` without `gate.argocd.baseURL` | Set it to the ArgoCD API server, e.g. `https://argocd-server.argocd.svc` |
-| `INVENTORY_SOURCE is argocd but ARGOCD_TOKEN is empty` | No ArgoCD account token | `argocd account generate-token --account <account>`, and give that account `clusters, get` in ArgoCD's RBAC |
-| `INVENTORY_SOURCE "…" is not a source (secrets or argocd)` | Typo | `secrets` or `argocd` |
-| `gate.mode is cluster and the inventory could not be read: … context deadline exceeded` | With `inventorySource: argocd`, nothing refused the connection — it hung until the timeout. Almost always a NetworkPolicy naming the wrong port | `gate.argocd.podPort` must be argocd-server's **pod** port (`8080`), not the port in `baseURL` — see [Configuration](/reference/configuration/#gateargocdpodport-is-the-pods-port-not-the-urls). argocd-server's own ingress policy must admit bosun's namespace on that same port |
+| `ARGOCD_BASE_URL is empty` | `gate.argocd.baseURL` unset. It has no default | Set it to the ArgoCD API server, e.g. `https://argocd-server.argocd.svc` |
+| `ARGOCD_TOKEN is empty` | No ArgoCD account token | `argocd account generate-token --account <account>`, and give that account `clusters, get` in ArgoCD's RBAC |
+| `the cluster inventory could not be read: … 401` | The token is wrong, expired, or its account lacks `clusters, get` | Check `p, <account>, clusters, get, *, allow` is in `argocd-rbac-cm` |
+| `the cluster inventory could not be read: … context deadline exceeded` | Nothing refused the connection — it hung until the timeout. Almost always a NetworkPolicy naming the wrong port | `gate.argocd.podPort` must be argocd-server's **pod** port (`8080`), not the port in `baseURL` — see [Configuration](/reference/configuration/#gateargocdpodport-is-the-pods-port-not-the-urls). argocd-server's own ingress policy must admit bosun's namespace on that same port |
 | `github app authentication failed` | Wrong `appId`, wrong key, or the App is not installed on the repository | Check `git.app.privateKeyKey` matches the Secret's key |
 
 ## The gate never reports on a pull request
 
-**Check the obvious one first.** In cluster mode the log line on a healthy agent
-is:
+**Check the obvious one first.** The log line on a healthy agent is:
 
 ```
-gate: in-cluster, polling for open pull requests every 30s
+gate: polling for open pull requests every 30s
 ```
 
 If that line is absent, the gate is not running — go back to the table above.
 
 | Symptom | Cause |
 |---|---|
-| The check never appears on **fork** pull requests, and the status says `gate.forkPRs` | Working as designed. Cluster mode renders the pull request's helm content *inside your cluster*; whose content that is is an operator's decision. Set `gate.forkPRs: true` or use [`gate.mode: ci`](/gate/ci-adapters/) |
+| The check never appears on **fork** pull requests, and the status says `gate.forkPRs` | Working as designed. The render runs the pull request's helm content *inside your cluster*; whose content that is is an operator's decision. Set `gate.forkPRs: true` |
 | `no .gitops-gate.yaml at the head revision` | The config is read from the pull request's **head**. A pull request that predates the config, or deletes it, has nothing to render |
 | The check appears but is `error` | The gate could not *run* — bad config, an unreachable chart repository. This is deliberately distinct from "this change is bad" and is worth paging on |
-| Nothing on pull requests opened before install | Should not happen in cluster mode — the sweep picks them up. It *was* the CI-mode behaviour, which needed a rebase to fire the workflow |
+| Nothing on pull requests opened before install | Should not happen — the sweep picks them up. It is the CI-workflow behaviour, which needs a rebase to fire |
 
 :::caution[An `error` status is not a red gate]
 `failure` means the change is blocking. `error` means the gate is broken.
@@ -79,21 +74,6 @@ triage:
 **A hang with zero bytes is the NetworkPolicy.** The chart writes its own
 policy; it cannot write the Kargo controller's egress policy, which must permit
 this namespace and port. Missing that half produces a hang, not an error.
-
-## The agent says it ignored the gate's report
-
-The comment names the author it saw. That is `gate.reportAuthor` doing its job:
-the gate's verdict is a pull-request comment carrying a marker, and anyone who
-can comment can write that marker. A forged report is not a wrong opinion — it
-is an instruction wearing the gate's authority.
-
-- **GitHub, gate in Actions** — leave `gate.reportAuthor` empty; the per-host
-  default is `github-actions[bot]`.
-- **Gitea, or a gate commenting as a bot user or PAT owner** — set it to that
-  account explicitly. Gitea Actions has no fixed identity the chart could
-  default to.
-- **You genuinely cannot name one account** — `"*"` reads the report whoever
-  wrote it. Make it a decision in your values file rather than an absence.
 
 ## The model returns nothing, or nonsense
 
@@ -175,17 +155,6 @@ person's name and avatar.
   own.** That namespace belongs to GitHub accounts. An earlier default of
   `bosun@users.noreply.github.com` attributed the first live repair's commits —
   avatar and all — to an unrelated account named `bosun`.
-
-## Pushes do not re-trigger the gate
-
-CI-mode only. Most hosts suppress workflow triggers for pushes made with the CI
-system's own token — so if the agent pushes with that token, the gate never
-re-runs, the status stays red at its previous conclusion, and the promotion
-waits on a result that will never change.
-
-Use a separate credential for the agent. Cluster mode does not have this
-problem: a pushed fix is a new head commit, and the sweep gates it because it is
-there.
 
 ## Still stuck
 

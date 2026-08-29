@@ -5,14 +5,13 @@ question about a pull request: **does this change what actually gets deployed,
 and is what it produces still valid?**
 
 The same engine ships in two forms, reaching the same verdict. The agent
-imports it and runs it in-cluster against the live ArgoCD inventory — the default since [ADR
-0008](../adr/0008-the-gate-moves-in-cluster.md), and the reason onboarding no
-longer involves this directory at all. And it ships as a CLI
-([`cmd/gitops-gate`](cmd/gitops-gate)) whose exit code is the verdict, for
-running locally before a push and for the CI fallback; adapters in
-[`../ci`](../ci) are thin wrappers that pass a workspace in and turn the exit
-code into a commit status. The CLI renders against a checked-in inventory
-snapshot, which is what `clusters export` maintains.
+imports it and runs it in-cluster against the live cluster inventory, read from
+ArgoCD's API ([ADR 0008](../adr/0008-the-gate-moves-in-cluster.md)) — that is
+how every pull request gets its verdict, and onboarding does not involve this
+directory at all. It also ships as a CLI ([`cmd/gitops-gate`](cmd/gitops-gate))
+whose exit code is the verdict, for running locally before a push. The CLI
+renders against a checked-in inventory snapshot, which is what `clusters
+export` maintains.
 
 > **Status: shipped and judging every pull request** on the platform it was
 > built for, published as `ghcr.io/jamesatintegratnio/gitops-gate`.
@@ -27,7 +26,7 @@ snapshot, which is what `clusters export` maintains.
 | `render` | Renders every bootstrap ApplicationSet declared in `.gitops-gate.yaml`, for every cluster in the inventory, expanding the generators. Emits a normalized target table. |
 | `diff` | Compares two target tables. With `-repo`, also renders every chart whose version moved — at both versions — and diffs the resources, down to the fields that changed. Emits the report and `render-diff.json`. |
 | `validate` | Schema-validates every rendered stream. |
-| `clusters export` | Regenerates the cluster inventory from live ArgoCD cluster Secrets. **Workstation only** — shells out to `kubectl` against a kubeconfig, and `kubectl` is not in the gate's image. |
+| `clusters export` | Regenerates the CLI's inventory snapshot from the live ArgoCD cluster Secrets. **Workstation only** — shells out to `kubectl` against a kubeconfig, and `kubectl` is not in the gate's image. |
 
 ### What the image carries
 
@@ -36,8 +35,8 @@ binary the image does not have, and both say so rather than failing obscurely:
 
 | Path | Needs | Where it runs |
 |---|---|---|
-| `clusters export` | `kubectl` | a workstation, against a kubeconfig. The in-cluster gate reads the same Secrets through the apiserver instead. |
-| a `kustomize` source in `.gitops-gate.yaml` | `kustomize` **or** `kubectl` | a workstation, or a CI runner that installs one. Not in-cluster. |
+| `clusters export` | `kubectl` | a workstation, against a kubeconfig. The in-cluster gate reads the same four fields from ArgoCD's API instead, and needs no snapshot. |
+| a `kustomize` source in `.gitops-gate.yaml` | `kustomize` **or** `kubectl` | a workstation. Not in-cluster. |
 
 ## What blocks, and why
 
@@ -55,11 +54,10 @@ binary the image does not have, and both say so rather than failing obscurely:
 |---|---|
 | `0` | No blocking change. |
 | `1` | Blocking change — see the table above. |
-| `2` | The gate itself could not run (bad config, unreachable chart repo). Distinct from `1` so CI can tell "this change is bad" from "the gate is broken". |
+| `2` | The gate itself could not run (bad config, unreachable chart repo). Distinct from `1` so a caller can tell "this change is bad" from "the gate is broken". |
 
 ## Reference
 
 - [`docs/config-reference.md`](docs/config-reference.md) — the full `.gitops-gate.yaml` schema
 - [`docs/render-diff-schema.md`](docs/render-diff-schema.md) — the JSON contract the agent consumes
-- [`docs/adding-a-ci-provider.md`](docs/adding-a-ci-provider.md)
 - [`docs/rendered-manifests.md`](docs/rendered-manifests.md) — the rendered-manifests pattern, and why ArgoCD's source hydrator cannot gate a merge

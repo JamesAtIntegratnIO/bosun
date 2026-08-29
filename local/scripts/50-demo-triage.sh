@@ -58,15 +58,13 @@ ok "pull request #${PR}"
 printf '    %s/%s/%s/pulls/%s\n' "$GITEA_URL" "$GITEA_OWNER" "$SAMPLE_REPO_NAME" "$PR"
 
 say "2. the gate refuses it"
-set +e
-bash "$ROOT/scripts/gate-run.sh" "$PR"
-GATE_EXIT=$?
-set -e
-if [ "$GATE_EXIT" -eq 0 ]; then
-  bad "the gate passed a change it should have blocked"; exit 1
-fi
-ok "gate exit ${GATE_EXIT} -- blocked, as it should be"
-sed 's/^/    /' "/tmp/gate-report-${PR}.md" | head -20
+# Nothing is run here. The agent sweeps the open pull requests and gates them
+# itself, so this waits for the verdict it publishes.
+SHA="$(head_sha "$PR")"
+step "waiting for the sweep to render ${SHA:0:8}"
+wait_for "the gate blocked it" 300 status_is "$SHA" failure
+ok "blocked, as it should be"
+gate_report "$PR" | sed 's/^/    /' | head -20
 
 say "3. the agent triages"
 AGENT_POD="$(agent_pod)"
@@ -141,11 +139,17 @@ for c in json.load(sys.stdin):
 
 say "5. does the gate accept it now?"
 if [ "$HEAD_BEFORE" != "$HEAD_AFTER" ]; then
-  set +e
-  bash "$ROOT/scripts/gate-run.sh" "$PR"
-  RE=$?
-  set -e
-  [ "$RE" -eq 0 ] && ok "gate is green on the agent's fix" || step "gate still exit ${RE} -- the fix was not enough"
+  # The push is a new head commit, and the sweep gates a commit because it
+  # exists. Nothing had to re-trigger anything.
+  step "new head ${HEAD_AFTER:0:8} -- waiting for its own verdict"
+  RE=""
+  for _ in $(seq 1 60); do
+    RE="$(gate_status "$HEAD_AFTER" | cut -d' ' -f1)"
+    case "$RE" in success|failure|error) break ;; esac
+    sleep 5
+  done
+  [ "$RE" = "success" ] && ok "gate is green on the agent's fix" \
+    || step "gate ${RE:-<no verdict>} -- the fix was not enough"
 else
   step "nothing was pushed, so the gate would return the same verdict"
 fi

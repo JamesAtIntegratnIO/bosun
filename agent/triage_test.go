@@ -12,6 +12,7 @@ import (
 
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/gate"
+	"github.com/JamesAtIntegratnIO/bosun/gateservice"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
@@ -79,12 +80,32 @@ func newHarness(t *testing.T) *harness {
 			CheckName:   "addons-gate",
 			MaxAttempts: 2,
 			GatePoll:    time.Millisecond,
+			Gate:        seededGate{git},
 			Log:         t.Logf,
 			Checkout: func(context.Context, *gitprovider.PullRequest) (string, func(), error) {
 				return root, func() {}, nil
 			},
 		},
 	}
+}
+
+// seededGate is the gate, standing in for a real render.
+//
+// It reads the verdict out of the fake provider the harness already seeds --
+// `Check` for the state, the seeded gate comment for the report -- so a test
+// still says "the gate was red and said this" in one place. Where the report
+// came from is the double's business; the agent's own code never goes looking
+// for one.
+type seededGate struct{ git *gitprovider.Fake }
+
+func (g seededGate) Ensure(context.Context, *gitprovider.PullRequest) *gateservice.Outcome {
+	out := &gateservice.Outcome{State: g.git.Check}
+	for _, c := range g.git.Comments {
+		if strings.Contains(c.Body, gate.ReportMarker) {
+			out.Report = c.Body
+		}
+	}
+	return out
 }
 
 func (h *harness) values(t *testing.T) string {
@@ -136,16 +157,6 @@ func TestTriageRun(t *testing.T) {
 		{
 			name:        "a green gate is left alone",
 			check:       gitprovider.CheckSuccess,
-			wantVersion: "0.16.0",
-		},
-		{
-			name:        "a pull request with no gate check is left alone",
-			check:       gitprovider.CheckMissing,
-			wantVersion: "0.16.0",
-		},
-		{
-			name:        "a gate still running is left for the next run",
-			check:       gitprovider.CheckPending,
 			wantVersion: "0.16.0",
 		},
 		{
@@ -369,69 +380,6 @@ func equal(got, want []string) bool {
 	return true
 }
 
-// Kargo calls this service from the promotion, immediately after opening the
-// pull request. Measured in production: THREE SECONDS after. CI has not
-// registered a check that early, so the gate check does not exist yet -- and
-// "does not exist" is a different CheckState from "pending".
-//
-// The first triage that ever reached this code found no check, returned, and
-// did nothing. It looked like a successful no-op:
-//
-//	PR 109: no "addons-gate" check found
-//	PR 109: triage done in 2s
-//
-// A missing check and a pending one are the same thing to the caller: the gate
-// has not answered. The deadline is the only honest way to tell them apart.
-func TestWaitsForAGateThatHasNotReportedYet(t *testing.T) {
-	h := newHarness(t)
-	// Absent for the first three polls, then red -- the real sequence.
-	h.git.ChecksBefore = 3
-	h.git.Check = gitprovider.CheckFailure
-	h.triage.GateWait = time.Second
-	h.model.Verdict = &llm.Verdict{
-		Classification: llm.ClassEscalate,
-		EscalationReason: "the rendered speaker DaemonSet changed shape; " +
-			"that is not something a values edit can fix",
-	}
-
-	if err := h.triage.Run(context.Background(), Promotion{
-		PRNumber: 42, Branch: "kargo/metallb", Files: []string{valuesPath},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	if h.git.CheckCalls <= h.git.ChecksBefore {
-		t.Fatalf("must poll past the missing check, got %d calls for %d absent",
-			h.git.CheckCalls, h.git.ChecksBefore)
-	}
-	// It got far enough to actually triage, rather than returning on a missing
-	// check. Anything posted proves the gate report was read.
-	if len(h.git.Posted) == 0 {
-		t.Fatal("triage produced nothing; it gave up before the gate reported")
-	}
-}
-
-// And a check that never appears is still reported as absent, or the wait
-// above would turn a misconfigured gate name into a ten-minute silence.
-func TestAGateThatNeverReportsIsStillMissing(t *testing.T) {
-	h := newHarness(t)
-	h.git.Check = "" // never appears
-	h.git.ChecksBefore = 0
-	h.triage.GateWait = 20 * time.Millisecond
-
-	if err := h.triage.Run(context.Background(), Promotion{
-		PRNumber: 42, Branch: "kargo/metallb", Files: []string{valuesPath},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if len(h.git.Posted) != 0 {
-		t.Fatalf("a gate that never reported must not be triaged, posted %+v", h.git.Posted)
-	}
-	if h.git.CheckCalls < 2 {
-		t.Fatalf("must have polled rather than giving up immediately, got %d", h.git.CheckCalls)
-	}
-}
-
 // Every outcome must leave a verdict on the pull request, including the ones
 // that do nothing.
 //
@@ -450,14 +398,6 @@ func TestEveryOutcomeLeavesAVerdict(t *testing.T) {
 			name:    "gate green",
 			arrange: func(h *harness) { h.git.Check = gitprovider.CheckSuccess },
 			want:    "is green; nothing to triage",
-		},
-		{
-			name: "gate never appears",
-			arrange: func(h *harness) {
-				h.git.Check = ""
-				h.triage.GateWait = 10 * time.Millisecond
-			},
-			want: "no addons-gate check appeared",
 		},
 		{
 			name: "attempts spent",
@@ -528,21 +468,23 @@ func TestSaysItIsWorkingBeforeTheWait(t *testing.T) {
 }
 
 // An error anywhere in triage must still resolve the status. Otherwise the
-// pending written on entry never clears, and "the gate broke" looks like "the
+// pending written on entry never clears, and "something broke" looks like "the
 // agent is still thinking" -- for ever.
 //
-// The live shape of this: `render` fails, the job that publishes the gate
-// report is skipped, and gateReport finds a red check with nothing explaining
-// it. Before this, that reached a pod log and nowhere else.
+// Driven here through a checkout that fails, which is deliberately NOT the
+// gate: a broken gate has its own test, and the claim this one makes is about
+// every other way a run can end early.
 func TestAnErrorResolvesTheStatus(t *testing.T) {
 	h := newHarness(t)
 	h.git.Check = gitprovider.CheckFailure
-	h.git.Comments = nil // a red gate that published no report
+	h.triage.Checkout = func(context.Context, *gitprovider.PullRequest) (string, func(), error) {
+		return "", func() {}, errors.New("the branch could not be fetched")
+	}
 
 	if err := h.triage.Run(context.Background(), Promotion{
 		PRNumber: 42, Branch: "kargo/metallb", Files: []string{valuesPath},
 	}); err == nil {
-		t.Fatal("want an error when the gate is red with no report")
+		t.Fatal("want an error when the branch could not be checked out")
 	}
 	if len(h.git.Statuses) == 0 {
 		t.Fatal("want a status")

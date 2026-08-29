@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,13 +10,18 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/JamesAtIntegratnIO/bosun/gate"
 )
 
-// The ArgoCD-API inventory source exists to delete an RBAC grant, and it is
-// only worth having if it answers the same question the same way. So the
-// centre of gravity here is the equivalence test: the same cluster, served
-// once as a Secret and once as an ArgoCD cluster, must produce byte-identical
-// inventories. Everything else is about refusing rather than guessing.
+// The ArgoCD API is where the gate reads the inventory, and the CLI's
+// `clusters export` snapshot is decoded from the cluster Secrets instead. Those
+// two must describe the same cluster the same way -- a selector matches on
+// those maps, so a key one side trimmed differently is a different targeting
+// verdict from the same cluster. So the centre of gravity here is the
+// equivalence test: the same cluster, decoded once from a Secret and once from
+// an ArgoCD cluster, must produce byte-identical inventories. Everything else
+// is about refusing rather than guessing.
 
 func argoFor(t *testing.T, h http.Handler) *ArgoCD {
 	t.Helper()
@@ -23,6 +29,8 @@ func argoFor(t *testing.T, h http.Handler) *ArgoCD {
 	t.Cleanup(srv.Close)
 	return &ArgoCD{BaseURL: srv.URL, Token: "argocd-tok", HTTP: srv.Client()}
 }
+
+func b64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
 
 func clusterList(items ...map[string]any) string {
 	b, _ := json.Marshal(map[string]any{"items": items})
@@ -36,12 +44,18 @@ func TestArgoCDAndSecretsDecodeTheSameClusterIdentically(t *testing.T) {
 	}
 	annotations := map[string]string{"addons_repo_path": "charts/application-sets"}
 
-	secrets := serverFor(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, secretList(map[string]any{
-			"metadata": map[string]any{"name": "cluster-hub", "labels": labels, "annotations": annotations},
-			"data":     map[string]string{"name": b64("hub"), "server": b64("https://media.example:6443")},
-		}))
-	}))
+	// Decoded from JSON rather than built as a literal, because that is how
+	// `clusters export` gets one: from `kubectl get secrets -o json`.
+	raw, _ := json.Marshal(map[string]any{
+		"metadata": map[string]any{"name": "cluster-hub", "labels": labels, "annotations": annotations},
+		"data":     map[string]string{"name": b64("hub"), "server": b64("https://media.example:6443")},
+	})
+	var secret gate.ClusterSecret
+	if err := json.Unmarshal(raw, &secret); err != nil {
+		t.Fatal(err)
+	}
+	fromSecrets := gate.InventoryFromSecrets([]gate.ClusterSecret{secret}, gate.ExportFilter{})
+
 	argo := argoFor(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, clusterList(map[string]any{
 			"name": "hub", "server": "https://media.example:6443",
@@ -53,17 +67,13 @@ func TestArgoCDAndSecretsDecodeTheSameClusterIdentically(t *testing.T) {
 		}))
 	}))
 
-	fromSecrets, err := secrets.ClusterInventory(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
 	fromArgo, err := argo.ClusterInventory(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(fromSecrets, fromArgo) {
-		t.Fatalf("the two sources disagree about the same cluster, so the gate's verdict "+
-			"would depend on which one an operator chose:\n  secrets: %+v\n  argocd:  %+v",
+		t.Fatalf("the API and the export decode disagree about the same cluster, so a "+
+			"snapshot would not describe what the gate renders against:\n  secrets: %+v\n  argocd:  %+v",
 			fromSecrets.Clusters, fromArgo.Clusters)
 	}
 }

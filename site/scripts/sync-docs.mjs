@@ -107,19 +107,6 @@ const PAGES = [
     title: 'render-diff.json schema',
     description: 'The JSON contract between the gate and the agent that consumes its verdict.',
   },
-  {
-    src: 'ci/README.md',
-    out: 'gate/ci-adapters',
-    title: 'CI adapters',
-    description:
-      'The fallback path: running the gate as a container in CI, and the four-step contract every adapter must satisfy.',
-  },
-  {
-    src: 'gate/docs/adding-a-ci-provider.md',
-    out: 'gate/adding-a-ci-provider',
-    title: 'Adding a CI provider',
-    description: 'What a new CI adapter has to implement, and the details that are easy to get wrong.',
-  },
 
   // --- Reference ----------------------------------------------------------
   {

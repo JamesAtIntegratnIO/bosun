@@ -3,6 +3,74 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.22.0]
+
+### Removed
+
+- **BREAKING: `gate.mode`, `gate.wait`, `gate.reportAuthor` and
+  `gate.inventorySource` are gone.** The agent is the gate, and the gate reads
+  its cluster inventory from the ArgoCD API. There is no second placement and no
+  second source. See
+  [ADR 0009](https://github.com/JamesAtIntegratnIO/bosun/blob/main/adr/0009-one-gate-one-inventory.md).
+
+  Migration:
+
+  ```diff
+   gate:
+  -  mode: cluster
+  -  wait: 10m
+  -  reportAuthor: ""
+  -  inventorySource: secrets
+     argocd:
+  +    baseURL: https://argocd-server.argocd.svc
+  +    existingSecret: bosun-argocd
+  ```
+
+  `gate` is `additionalProperties: false`, so a values file carrying any of the
+  four keys fails at install time naming the key, rather than quietly
+  configuring nothing.
+
+  If you were on `gate.mode: ci`, the CI half has no replacement in this chart:
+  the agent gates every open pull request itself, under the same `gate.checkName`
+  status, so branch protection does not change — but a repository taking **fork**
+  pull requests has only `gate.forkPRs` to decide with, since the render runs
+  in-cluster.
+
+- **The namespaced Role and RoleBinding on the ArgoCD namespace.** This chart
+  now creates no Role or ClusterRole granting `get`/`list` on Secrets anywhere.
+  It was the one grant in here worth stopping on and it could not be made
+  smaller: RBAC has no predicate for "the labels but not the data", so a token
+  that could read the cluster labels could read `argocd-secret` beside them.
+  `GET /api/v1/clusters` serves the same four fields with the credential block
+  redacted, so the authorisation happens somewhere that can draw the line.
+
+### Changed
+
+- **BREAKING: `gate.argocd.baseURL` and `gate.argocd.existingSecret` are
+  required, and `baseURL` has no default.** They are how the gate reads its
+  inventory, and there is no other way now.
+
+  `baseURL` lost its `https://argocd-server.argocd.svc` default on purpose. It
+  is a fact about your install, and a plausible-but-wrong address does not fail
+  where you would look for it: the connection hangs for the full HTTP timeout
+  and the pod dies at start-up saying argocd-server is unreachable. A required
+  value fails at `helm upgrade`, naming the value.
+
+  Mint the token, and give the account one line in `argocd-rbac-cm`:
+
+  ```bash
+  argocd account generate-token --account bosun
+  ```
+
+  ```
+  p, bosun, clusters, get, *, allow
+  ```
+
+- **The apiserver egress rules follow `supervise.enabled` rather than
+  `gate.mode`.** The pipeline sweep and `liveReads` are the two readers of the
+  apiserver now; the gate is not one of them. Both default on, so a default
+  install renders the same rules it did before.
+
 ## [0.21.0]
 
 ### Changed

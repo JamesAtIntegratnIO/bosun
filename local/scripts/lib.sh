@@ -98,3 +98,78 @@ load_credentials() {
     | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["password"])')"
   export GITEA_TOKEN GITEA_PASSWORD
 }
+
+# The address the AGENT dials argocd-server on, which is not the one a human
+# uses. It is the Service, and whether it speaks TLS on it is a property of
+# this ArgoCD rather than a preference: `server.insecure` in
+# argocd-cmd-params-cm makes argocd-server serve plain HTTP, and idpbuilder
+# sets it because ArgoCD sits behind the ingress here. Guessing wrong is the
+# worst failure in this file -- the pod hangs for the full timeout and dies
+# blaming ArgoCD -- so it is read rather than assumed.
+#
+# The POD port is 8080 either way, and that is the whole point of
+# gate.argocd.podPort: the Service publishes 80 and 443 against the same
+# container port, and a NetworkPolicy is matched after the ClusterIP has been
+# DNAT'd away.
+argocd_service_url() {
+  local insecure
+  insecure="$(kc -n argocd get cm argocd-cmd-params-cm \
+    -o jsonpath='{.data.server\.insecure}' 2>/dev/null || true)"
+  if [ "$insecure" = "true" ]; then
+    printf 'http://argocd-server.argocd.svc'
+  else
+    printf 'https://argocd-server.argocd.svc'
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Reading the gate's verdict off a pull request.
+#
+# The gate is the agent: it sweeps the open pull requests and publishes a
+# commit status and a report comment. So a demo asks Gitea what the gate said,
+# rather than running anything itself.
+# ---------------------------------------------------------------------------
+
+head_sha() { # <pr> -> sha
+  gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls/$1" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["head"]["sha"])'
+}
+
+# One status, by context name. Gitea has no check-runs API, so this is the
+# whole surface. It arrives newest first -- but Gitea stamps whole seconds, and
+# the gate posts `pending` and then its verdict inside one of them, so the
+# order within that tie is arbitrary and taking the first match is a coin flip.
+# A demo lost that flip on its first run: it watched a `pending` from 01:04:02
+# while the `success` beside it, same second, went unread for 180s. Newest
+# wins, and a tie is broken on meaning -- a verdict cannot precede the pending
+# that announced it. The same rule the Gitea client itself applies.
+gate_status() { # <sha> -> "state description"
+  gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/statuses/$1?limit=50" \
+    | CTX="${GATE_CHECK_NAME:-gate}" python3 -c '
+import json,os,sys
+ctx = os.environ["CTX"]
+best = None
+for s in json.load(sys.stdin):
+    if s.get("context") != ctx:
+        continue
+    at, state = s.get("created_at",""), s.get("status","")
+    if best is None or at > best[0] or (at == best[0] and best[1] == "pending" and state != "pending"):
+        best = (at, state, s.get("description",""))
+if best:
+    print(best[1], best[2])'
+}
+
+status_is() { # <sha> <state> -> bool
+  gate_status "$1" | grep -q "^$2"
+}
+
+# The gate's own report comment: the newest one carrying the marker. The gate
+# edits its comment in place rather than appending per push, so on a settled
+# pull request there is exactly one.
+gate_report() { # <pr> -> the report body
+  gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/issues/$1/comments?limit=50" \
+    | python3 -c '
+import json,sys
+bodies = [c["body"] for c in json.load(sys.stdin) if "<!-- gitops-gate -->" in c["body"]]
+print(bodies[-1] if bodies else "")'
+}

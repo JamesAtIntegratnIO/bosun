@@ -11,8 +11,9 @@ Service, RBAC and NetworkPolicy.
 
 ## Install
 
-Two Secrets and a values file. The chart creates neither Secret — how they get
-there is yours to choose.
+Three Secrets and a values file — git, the model endpoint, and the ArgoCD
+account token the gate reads its inventory with. The chart creates none of them;
+how they get there is yours to choose.
 
 ```yaml
 image:
@@ -28,7 +29,9 @@ llm:
   baseURL: http://model.internal:1234/v1
   model: your-model
 gate:
-  reportAuthor: ""            # empty = per-host default; see below
+  argocd:
+    baseURL: https://argocd-server.argocd.svc  # no default; see below
+    existingSecret: bosun-argocd               # the account token
 triage:
   allowPaths: [addons/**]     # empty means it can fix nothing
 networkPolicy:
@@ -49,46 +52,27 @@ triage:
 
 ## Where the gate runs
 
-`gate.mode: cluster` (the default) makes the agent the gate: it polls the
-open pull requests, renders base and head against the live ArgoCD cluster
-inventory, and posts the `gate.checkName` status and report comment itself.
-Nothing to install in CI, no inventory snapshot to keep fresh — and two costs
-stated plainly. The ServiceAccount gets **get/list on Secrets in the ArgoCD
-namespace** (the inventory lives in the ArgoCD cluster Secrets, which also
-hold cluster credentials; `rbac.create` scopes the grant to a namespaced
-Role that exists only in this mode). And the render runs over pull-request
-content in-cluster, so **fork pull requests are refused** with an `error`
-status unless `gate.forkPRs` says otherwise.
-
-`gate.mode: ci` is the original shape — the gate runs in CI
-([`ci/`](../../ci)), the agent waits on the check and reads the report from a
-comment. The fallback for public repositories taking fork pull requests, and
-for a gate that must keep answering while the cluster is down — the Secret
-grant on its own is answered by `gate.inventorySource: argocd` below, without
-leaving cluster mode. Everything under
-[Whose report the agent believes](#whose-report-the-agent-believes-ci-mode)
-applies to this mode; in cluster mode the verdict never travels through a
-comment, so there is nothing to authenticate.
+The agent is the gate. It polls the open pull requests, renders base and head
+against the live cluster inventory, and posts the `gate.checkName` status and
+report comment itself. Nothing to install in CI, no inventory snapshot to keep
+fresh — and one cost stated plainly: the render runs over pull-request content
+in-cluster, so **fork pull requests are refused** with an `error` status unless
+`gate.forkPRs` says otherwise.
 
 ### Where the inventory comes from
 
-`gate.inventorySource: secrets` (the default) is the grant above: the
-inventory *is* the ArgoCD cluster Secrets, read from the apiserver with the
-pod's own ServiceAccount. One credential, and nothing in the path that can be
-down by itself.
+`gate.argocd` is required. The gate reads four fields — name, server, labels,
+annotations — from `GET /api/v1/clusters` on the ArgoCD API, which serves them
+with the credential block redacted.
 
-`gate.inventorySource: argocd` reads the same four fields — name, server,
-labels, annotations — from `GET /api/v1/clusters` on the ArgoCD API, which
-serves them with the credential block redacted. **The Role stops being
-created.** The reason to want this is that the Secret grant cannot be made
-smaller: the gate reads four fields, and RBAC has no predicate for "the labels
+It is the API and not the cluster Secrets those fields live in because that
+Secret read cannot be made small enough. RBAC has no predicate for "the labels
 but not the data" — there are no deny rules, `resourceNames` does not apply to
-`list`, and the label selector the gate sends is a filter the apiserver
-applies *after* authorising, so a token holding that Role can drop it and read
-`argocd-secret` and every repository credential beside it. ArgoCD's own API
-draws the line RBAC cannot.
-
-What it costs, as plainly as the grant it replaces:
+`list`, and the label selector the gate would send is a filter the apiserver
+applies *after* authorising, so a token holding such a Role could drop it and
+read `argocd-secret` and every repository credential beside it. ArgoCD's own API
+draws the line RBAC cannot, and **this chart creates no Role over Secrets at
+all.**
 
 ```bash
 argocd account generate-token --account bosun
@@ -96,11 +80,10 @@ argocd account generate-token --account bosun
 
 ```yaml
 gate:
-  inventorySource: argocd
   argocd:
-    baseURL: https://argocd-server.argocd.svc
+    baseURL: https://argocd-server.argocd.svc   # REQUIRED
     podPort: 8080                  # the POD's port, not the URL's — see below
-    existingSecret: bosun-argocd   # key `token`
+    existingSecret: bosun-argocd   # REQUIRED, key `token`
     caSecret: bosun-argocd-ca      # or insecureSkipTLSVerify: true
 ```
 
@@ -110,17 +93,14 @@ and in `argocd-rbac-cm`, the smallest policy that answers the question:
 p, bosun, clusters, get, *, allow
 ```
 
-A second credential to mint, store and rotate, bearer-equivalent for whatever
-its ArgoCD RBAC permits — give it that one line and nothing else, or it is a
-bigger credential than the Secret read it replaced. A second component that
-can be down: the Secrets are readable whenever the apiserver is; argocd-server
-is not. And a second TLS story, because argocd-server serves its own
-certificate rather than the one the kubelet mounts into every pod — hence
-`caSecret`, or `insecureSkipTLSVerify` if nobody can produce that CA. And a
-network path with two ends and a port that catches people — the next section,
-and the last one on this page.
-
-A trade, not a free win — which is why it is a value and not the default.
+What it costs, as plainly as the grant it replaces. A credential to mint, store
+and rotate, bearer-equivalent for whatever its ArgoCD RBAC permits — give it
+that one line and nothing else. A component that can be down on its own: the
+apiserver is up whenever the cluster is; argocd-server is not. Its own TLS
+story, because argocd-server serves its own certificate rather than the one the
+kubelet mounts into every pod — hence `caSecret`, or `insecureSkipTLSVerify` if
+nobody can produce that CA. And a network path with two ends and a port that
+catches people — the next section, and the last one on this page.
 
 ### `gate.argocd.podPort` is the pod's port, not the URL's
 
@@ -158,22 +138,6 @@ Which is why the two common installs differ only in the URL:
 
 The insecure row is the one worth reading twice: nothing in `baseURL` mentions
 a port, the Service answers on 80, and the policy still has to say 8080.
-
-## Whose report the agent believes (ci mode)
-
-The gate publishes its verdict as a pull-request comment carrying a marker, and
-the agent reads that comment to decide what to do. A comment is a surface
-anybody with write access can publish to, so the marker alone is not a
-provenance — `gate.reportAuthor` is the account the report has to come from.
-
-Left empty it defaults per host: `github-actions[bot]` on GitHub, because a gate
-running in GitHub Actions comments through `github.token` and therefore as that
-account; **unchecked on Gitea**, which has no equivalent fixed identity — set it
-to whichever user minted your CI token. `"*"` reads the report whoever wrote it.
-
-If your gate comments as something else — a bot user, a PAT's owner — the
-symptom is the agent saying it ignored a report and naming the author it saw.
-That message is the fix instruction.
 
 ## What upstream says
 
@@ -307,7 +271,7 @@ controller allowed `0.0.0.0/0` with RFC1918 excepted — a common shape, since i
 usually only needs to reach registries — cannot reach a ClusterIP at all. Add
 an explicit rule for this service's namespace and port.
 
-**argocd-server's ingress**, with `gate.inventorySource: argocd`. The chart
+**argocd-server's ingress**, which the gate's inventory read needs. The chart
 emits the agent's *egress* to the ArgoCD namespace; argocd-server's own
 ingress policy belongs to your ArgoCD release, and until both exist the
 connection is dropped with nothing logged at either end. If your ArgoCD
@@ -349,8 +313,8 @@ spec:
   and write to your repository.
 - **Every network path has a far end this chart cannot write.** The agent's
   namespace must admit Kargo's controller *and* the controller's own egress
-  policy must permit the agent; with `gate.inventorySource: argocd`, the same
-  is true of argocd-server's ingress. A missing far end presents as a hang
+  policy must permit the agent; the same is true of argocd-server's ingress,
+  which the gate's inventory read needs. A missing far end presents as a hang
   with zero bytes, not an error.
 - **Secrets by reference.** The chart takes the name of an existing Secret. How
   it gets there — ExternalSecret, Vault Agent, SOPS, `kubectl create` — belongs

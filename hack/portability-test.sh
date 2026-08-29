@@ -100,7 +100,6 @@ echo "==> the ArgoCD egress rule names a pod port, not the URL's port"
 argocd_egress_port() { # <baseURL>
   helm template t charts/bosun -f charts/bosun/ci/lint-values.yaml \
     --show-only templates/networkpolicy.yaml \
-    --set gate.mode=cluster --set gate.inventorySource=argocd \
     --set gate.argocd.existingSecret=placeholder \
     --set gate.argocd.baseURL="$1" 2>/dev/null \
     | awk '/metadata.name: argocd$/{f=1} f&&/^ *port: /{print $2; exit}'

@@ -114,9 +114,9 @@ into something people route around.
 
 ## `clusters`
 
-Path to the cluster inventory, relative to the repository root. Generate it with
-`gitops-gate clusters export`. Needed only in `gate.mode: ci` and for the CLI —
-in cluster mode the inventory is read live and this key is ignored.
+Path to the cluster inventory snapshot, relative to the repository root.
+Generate it with `gitops-gate clusters export`. **CLI only** — the in-cluster
+gate reads the inventory live and ignores this key.
 
 ## `valuesRef`
 
@@ -144,7 +144,7 @@ The cost is that those kinds are then **not validated at all**. The gate
 reports how many kinds it skipped, so the gap is visible rather than assumed
 away.
 
-## The cluster inventory (CI mode and the CLI only)
+## The cluster inventory (CLI only)
 
 ```yaml
 generatedAt: "2026-08-22T12:00:00Z"
@@ -159,21 +159,20 @@ clusters:
       addons_repo_path: charts/application-sets
 ```
 
-**The `clusters:` key and this file apply only to `gate.mode: ci` and to the
-CLI.** In cluster mode — the default since
-[ADR 0008](../../adr/0008-the-gate-moves-in-cluster.md) — the inventory is read
-live on every run, from ArgoCD's cluster Secrets or from ArgoCD's API depending
-on `gate.inventorySource`, and there is no snapshot to keep current. The rest of this section is about the snapshot, which is the gate's
+**The `clusters:` key and this file are for the CLI.** The agent reads the
+inventory live from ArgoCD's API on every run ([ADR
+0008](../../adr/0008-the-gate-moves-in-cluster.md)), and has no snapshot to keep
+current. The rest of this section is about the snapshot, which is the gate's
 weakest joint when it is in use.
 
-Generators resolve selectors against **live** cluster labels. CI has no cluster
-access, so the inventory is a checked-in snapshot. If a cluster's labels change,
-or a cluster is added, the gate keeps answering confidently and wrongly: it
-reports "no targeting change" for a change that does move targeting, because it
-is comparing against a world that no longer exists.
+Generators resolve selectors against **live** cluster labels. A workstation run
+has only the snapshot, so if a cluster's labels change, or a cluster is added,
+the CLI keeps answering confidently and wrongly: it reports "no targeting
+change" for a change that does move targeting, because it is comparing against a
+world that no longer exists.
 
-Nothing in CI can detect that. The mitigation has to run somewhere with cluster
-access:
+The snapshot cannot detect that about itself. The check has to run somewhere
+with cluster access:
 
 ```bash
 gitops-gate clusters export -out .gitops-gate/clusters.yaml -check

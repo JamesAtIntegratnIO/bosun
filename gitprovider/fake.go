@@ -25,18 +25,12 @@ type Fake struct {
 	// gate test can serve a list while a triage test keeps serving one.
 	OpenPRs []PullRequest
 	ListErr error
-	// Comments is the pull request's history, oldest first. The gate's report
-	// belongs here, marked, or triage has nothing to hand the model.
+	// Comments is the pull request's history, oldest first.
 	Comments []Comment
 	Check    CheckState
 	CheckErr error
-	// ChecksBefore is how many CheckStatus calls return CheckMissing before
-	// Check is served. It models the real race: Kargo calls the agent from the
-	// promotion, three seconds after the pull request opens, and CI has not
-	// registered a check that early.
-	ChecksBefore int
-	// CheckCalls counts CheckStatus calls, so a test can assert the agent
-	// actually polled rather than getting lucky on the first read.
+	// CheckCalls counts CheckStatus calls, so a test can assert whether the
+	// status on the commit was read at all.
 	CheckCalls int
 	PushErr    error
 
@@ -102,9 +96,6 @@ func (f *Fake) CheckStatus(_ context.Context, _, _ string) (CheckState, error) {
 	f.CheckCalls++
 	if f.CheckErr != nil {
 		return CheckMissing, f.CheckErr
-	}
-	if f.CheckCalls <= f.ChecksBefore {
-		return CheckMissing, nil
 	}
 	if f.Check == "" {
 		return CheckMissing, nil

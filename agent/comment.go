@@ -202,13 +202,6 @@ func render(brand, model string, v *llm.Verdict, res *edits.Result, headline str
 	return b.String()
 }
 
-func quoted(s string) string {
-	if s == "" {
-		return "nothing"
-	}
-	return "\"" + s + "\""
-}
-
 // renderExplanation is deliberately shorter than render(). Nothing was changed
 // and nothing was refused, so there are no tables to show -- and a long comment
 // on a green pull request is the fastest way to teach people to ignore this

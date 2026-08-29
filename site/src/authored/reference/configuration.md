@@ -88,49 +88,44 @@ the score to optimise is *unsafe actions = 0* rather than accuracy.
 
 | Value | Env | Default | |
 |---|---|---|---|
-| `gate.mode` | `GATE_MODE` | `cluster` | `cluster` — the agent is the gate. `ci` — the gate runs in CI and the agent waits on the check |
 | `gate.checkName` | `GATE_CHECK_NAME` | `addons-gate` | Must match your branch protection rule |
 | `gate.forkPRs` | `GATE_FORK_PRS` | `false` | Render pull requests whose head is in another repository |
-| `gate.wait` | `GATE_WAIT` | `10m` | How long to wait for a verdict. CI mode only |
-| `gate.poll` | `GATE_POLL` | `30s` | Paces the cluster-mode sweep for new pull requests |
-| `gate.reportAuthor` | `GATE_REPORT_AUTHOR` | *(per-host)* | Whose gate report the agent will believe — see below |
-| `gate.inventorySource` | `INVENTORY_SOURCE` | `secrets` | Where cluster mode reads the live inventory — see below |
-| `gate.argocd.baseURL` | `ARGOCD_BASE_URL` | `https://argocd-server.argocd.svc` | The ArgoCD API. `inventorySource: argocd` only |
+| `gate.poll` | `GATE_POLL` | `30s` | Paces the sweep for pull requests with no verdict yet |
+| `gate.argocd.baseURL` | `ARGOCD_BASE_URL` | *(none)* | **Required.** The ArgoCD API the inventory is read from — see below |
 | `gate.argocd.podPort` | *(NetworkPolicy only)* | `8080` | The port **argocd-server's pod** listens on. Not the port in `baseURL` — see below |
-| `gate.argocd.existingSecret` | `ARGOCD_TOKEN` | *(none)* | Secret holding the ArgoCD account token, key `tokenKey` |
+| `gate.argocd.existingSecret` | `ARGOCD_TOKEN` | *(none)* | **Required.** Secret holding the ArgoCD account token, key `tokenKey` |
 | `gate.argocd.caSecret` | `ARGOCD_CA_FILE` | *(none)* | Secret holding the CA that verifies argocd-server, key `caKey` |
 | `gate.argocd.insecureSkipTLSVerify` | `ARGOCD_INSECURE_SKIP_TLS_VERIFY` | `false` | Accept any certificate from argocd-server |
 
-### `gate.inventorySource` is where the uncomfortable grant lives
+### `gate.argocd` is where the inventory comes from
 
-Cluster mode reads four fields — name, server, labels, annotations — and by
-default it reads them from the ArgoCD cluster Secrets, which also carry cluster
-credentials. **That grant cannot be made smaller.** Kubernetes RBAC has no
-predicate for "the labels but not the data": there are no deny rules,
-`resourceNames` does not apply to `list` (a list request carries no name for
-the authorizer to match), and the label selector the gate sends is a filter the
-apiserver applies *after* authorising — so a token holding the Role can drop it
-and read every Secret in the namespace.
-
-`gate.inventorySource: argocd` reads the same four fields from
-`GET /api/v1/clusters` on the ArgoCD API, which serves them with the credential
-block redacted. **The Role stops being created.** Mint the token with
+The gate reads four fields per cluster — name, server, labels, annotations —
+from `GET /api/v1/clusters` on the ArgoCD API, which serves them with the
+credential block redacted. Mint the token with
 
 ```bash
 argocd account generate-token --account bosun
 ```
 
 and give it one line in `argocd-rbac-cm` — `p, bosun, clusters, get, *, allow`
-— and nothing else, or it is a bigger credential than the Secret read it
-replaced.
+— and nothing else.
 
-It is a trade rather than a win, which is why it is not the default: a second
-credential to rotate, a second component that can be down on its own (the
-Secrets are readable whenever the apiserver is; argocd-server is not), and a
-second TLS story, because argocd-server serves its own certificate rather than
-the one the kubelet mounts into every pod. The chart adds the NetworkPolicy
-egress rule for the ArgoCD namespace itself — argocd-server is a ClusterIP, and
-forgetting that hangs with zero bytes.
+**It is the API and not the cluster Secrets those clusters are stored in
+because that read cannot be made small enough.** Kubernetes RBAC has no
+predicate for "the labels but not the data": there are no deny rules,
+`resourceNames` does not apply to `list` (a list request carries no name for
+the authorizer to match), and a label selector in the request is a filter the
+apiserver applies *after* authorising — so a token holding such a Role could
+drop it and read every Secret in the namespace. The chart creates no Role over
+Secrets at all.
+
+What it costs, stated as plainly as the grant it replaces: a credential to
+rotate, a component that can be down on its own (the apiserver is up whenever
+the cluster is; argocd-server is not), and its own TLS story, because
+argocd-server serves its own certificate rather than the one the kubelet mounts
+into every pod. The chart adds the NetworkPolicy egress rule for the ArgoCD
+namespace itself — argocd-server is a ClusterIP, and forgetting that hangs with
+zero bytes.
 
 ### `gate.argocd.podPort` is the pod's port, not the URL's
 
@@ -166,33 +161,10 @@ carries a copy-pasteable rule for it.
 
 ### `gate.forkPRs` is off for a reason
 
-In cluster mode the render runs `helm` over the pull request's content, **inside
-your cluster**. Whose content that is should be an operator's decision. Off, a
+The render runs `helm` over the pull request's content, **inside your
+cluster**. Whose content that is should be an operator's decision. Off, a
 fork pull request gets an `error` status naming this value — a refusal you can
 see, rather than a required check that never reports.
-
-### `gate.reportAuthor` is an authenticity check
-
-The gate publishes its verdict as a pull-request comment carrying a marker.
-Anyone who can comment can write that marker — and the report under it is what
-the agent reads to decide which manifests to rewrite and which version strings
-it will accept as corroborated. **A forged report is not a wrong opinion; it is
-an instruction wearing the gate's authority.**
-
-Empty means the per-host default, because the answer is a fact about the host:
-
-- **github** — `github-actions[bot]`. A gate running in GitHub Actions comments
-  through `github.token` and therefore as that account, every time.
-- **gitea** — unchecked. Gitea Actions has no equivalent fixed identity; set
-  this to whichever user minted the CI token.
-
-Set it to `"*"` to read the report whoever wrote it. That is the pre-existing
-behaviour and there are deployments where it is the only expressible answer —
-but it should be a decision in your values file rather than an absence.
-
-If your gate comments as a bot user or a PAT's owner rather than through
-Actions, name that account here. The symptom of getting it wrong is the agent
-saying it ignored a report and naming the author it saw.
 
 ## Triage
 
@@ -259,15 +231,14 @@ corroborated value to write. See
 | `liveReads.enabled` | `LIVE_READS` | `false` | Off by default: everything else the agent reads is public or already in the pull request |
 | `liveReads.scope` | *(RBAC only)* | `groups` | `groups` or `wide` |
 | `liveReads.apiGroups` | *(RBAC only)* | `[]` | The groups granted under `groups` scope |
-| `liveReads.argocdNamespace` | `LIVE_READS_ARGOCD_NS` | `argocd` | Also the cluster-mode gate's inventory namespace |
+| `liveReads.argocdNamespace` | `LIVE_READS_ARGOCD_NS` | `argocd` | Also the namespace the chart opens egress to for argocd-server |
 
 Live reads are `get` and `list` only. The chart's ClusterRole has no `create`,
 `update`, `patch` or `delete` verb anywhere.
 
 :::danger[`scope: wide` can read Secrets]
-With `groups`, the core API group is never granted **cluster-wide** beyond
-`pods, events`. (The cluster-mode inventory Role above is the one namespaced
-exception, and `gate.inventorySource: argocd` removes it.) With `wide` the chart
+With `groups`, the core API group is never granted beyond `pods, events`, and
+the chart creates no namespaced Secret Role anywhere. With `wide` the chart
 grants
 `apiGroups: ["*"]`, which **includes Secrets** — RBAC has no deny rules and no
 way to subtract the core group, which is exactly why "everything except Secrets"
