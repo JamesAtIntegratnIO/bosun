@@ -222,6 +222,7 @@ const (
 	ObjectAPIVersionMoved   ObjectChangeKind = "apiVersion"
 	ObjectCRDVersionRemoved ObjectChangeKind = "crdVersionRemoved"
 	ObjectValuesKeyDropped  ObjectChangeKind = "valuesKeyDropped"
+	ObjectRenderFailed      ObjectChangeKind = "renderFailed"
 )
 
 type ObjectChange struct {
@@ -257,6 +258,13 @@ type ObjectChange struct {
 	// value rather than failing on it, so every one of these is a setting that
 	// silently stops applying while the render stays green.
 	Keys []string `json:"keys,omitempty"`
+
+	// renderFailed only. Reason is what helm said when the chart would not
+	// render at the head revision's version, with the values this repository
+	// sets. It is the whole substance of the finding: the version alone says
+	// only that something is wrong, and the reader cannot look it up anywhere
+	// else, because there is no rendered output to inspect.
+	Reason string `json:"reason,omitempty"`
 
 	// Note is a computed fact about this change worth a reader's eyes,
 	// today, a removed binding whose ServiceAccount retains no RBAC in the

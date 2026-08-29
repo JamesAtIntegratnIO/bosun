@@ -22,16 +22,17 @@ import (
 // only for rows whose version moved, which on a typical bump pull
 // request is one.
 //
-// valuesDropped is findings that are not object diffs: settings this
-// repository makes that the new chart version no longer declares. They come
-// from here because this is the only place that has both chart versions and
-// the Application's own value files in hand.
+// findings is what this step knows that no object diff can carry: a chart that
+// will not render at the version the head revision moves it to, and settings
+// this repository makes that the new chart version no longer declares. They
+// come from here because this is the only place that has both chart versions
+// and the Application's own value files in hand.
 //
 // The results are named because two of them are adjacent same-typed slices,
 // "the third return" only tells a reader which one to count to, and swapping
 // before and after at a call site would compile and silently invert the diff.
 func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Table) (
-	before, after []Object, valuesDropped []ObjectChange, warnings []string) {
+	before, after []Object, findings []ObjectChange, warnings []string) {
 	type pair struct{ before, after Row }
 
 	baseByKey := map[string]Row{}
@@ -62,7 +63,7 @@ func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Ta
 	// index keeps the report in `pairs` order, which is head.Rows order.
 	type result struct {
 		before, after []Object
-		drop          *ObjectChange
+		found         []ObjectChange
 		warnings      []string
 	}
 	results := make([]result, len(pairs))
@@ -102,24 +103,52 @@ func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Ta
 			b, errB := renderChartVersion(ctx, repoRoot, p.before)
 			a, errA := renderChartVersion(ctx, repoRoot, p.after)
 
-			// A chart that cannot be pulled is reported, never silently
-			// skipped: "no resource changes" and "we could not look" must not
-			// read identically.
-			if errB != nil || errA != nil {
-				err := errB
-				if err == nil {
-					err = errA
-				}
+			// The two failures are different facts and only one of them is
+			// this change's doing, which is why they are no longer reported
+			// through the same sentence.
+			//
+			// The head revision is what merges. A chart that will not render
+			// at the version this pull request moves to is an Application
+			// that cannot sync once it does, and that is a finding, not a
+			// coverage gap: "we looked and it does not work" is stronger
+			// evidence than the unscanned consumer this gate already blocks
+			// on. It used to be a warning, which counts towards nothing, so
+			// the strictest possible failure -- a chart whose
+			// values.schema.json rejects what this repository sets -- was the
+			// one the gate passed in silence.
+			//
+			// A failure at the base version is coverage loss and stays a
+			// warning. The repository was already in that state before this
+			// change, there is no diff to compute either way, and blocking a
+			// pull request for the condition it inherited helps nobody.
+			switch {
+			case errA != nil:
+				res.found = append(res.found, ObjectChange{
+					Kind:    ObjectRenderFailed,
+					Object:  p.after.App,
+					Cluster: p.after.Cluster,
+					From:    p.before.Version,
+					To:      p.after.Version,
+					Reason:  errA.Error(),
+				})
+			case errB != nil:
 				res.warnings = append(res.warnings, fmt.Sprintf(
-					"%s: could not render %s at both versions, so its resource changes are NOT covered: %v",
-					p.after.App, p.after.Chart, err))
-				return
+					"%s: %s renders at %s but not at %s, so its resource changes are NOT covered: %v",
+					p.after.App, p.after.Chart, p.after.Version, p.before.Version, errB))
+			default:
+				res.before, res.after = b, a
 			}
-			res.before, res.after = b, a
 
-			// A settings drop is reported even though the render succeeded;
-			// it is invisible in the render by definition, because helm
-			// ignores a value it does not know rather than failing on it.
+			// Reached whether or not either render did, because it does not
+			// depend on one: the values surface comes from `helm show`, not
+			// from `helm template`. Behind the early return this used to sit
+			// under, a chart that hard-failed on a strict values.schema.json
+			// never reached the one check that names the stale keys, so the
+			// clearer the breakage the less the report said about it.
+			//
+			// A settings drop is reported even when the render succeeded; it
+			// is invisible in the render by definition, because helm ignores
+			// a value it does not know rather than failing on it.
 			gone, err := droppedValues(ctx, repoRoot, p.before, p.after)
 			switch {
 			case err != nil:
@@ -127,14 +156,14 @@ func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Ta
 					"%s: could not compare %s's values surface across versions, so settings it stops reading are NOT covered: %v",
 					p.after.App, p.after.Chart, err))
 			case len(gone) > 0:
-				res.drop = &ObjectChange{
+				res.found = append(res.found, ObjectChange{
 					Kind:    ObjectValuesKeyDropped,
 					Object:  p.after.App,
 					Cluster: p.after.Cluster,
 					From:    p.before.Version,
 					To:      p.after.Version,
 					Keys:    gone,
-				}
+				})
 			}
 		}(i, p)
 	}
@@ -143,12 +172,10 @@ func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Ta
 	for _, res := range results {
 		before = append(before, res.before...)
 		after = append(after, res.after...)
-		if res.drop != nil {
-			valuesDropped = append(valuesDropped, *res.drop)
-		}
+		findings = append(findings, res.found...)
 		warnings = append(warnings, res.warnings...)
 	}
-	return before, after, valuesDropped, warnings
+	return before, after, findings, warnings
 }
 
 // renderChartVersion renders one Application's chart at its pinned version,

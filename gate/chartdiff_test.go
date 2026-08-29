@@ -28,22 +28,34 @@ func TestChartDiffOnlyConsidersVersionChanges(t *testing.T) {
 		mk("path-source", "c", "2.0.0", "path"),
 	}}
 
-	// No helm on PATH in this test; what matters is which pairs it selects,
-	// which is observable through the warnings it emits for failed renders.
+	// No helm on PATH in this test, and no chart repository behind these
+	// rows either; what matters is which pairs it selects, which is
+	// observable through what it says about the renders that failed.
 	cfg := &Config{Concurrency: 2}
-	_, _, _, warns := ChartDiff(context.Background(), t.TempDir(), cfg, base, head)
+	_, _, found, warns := ChartDiff(context.Background(), t.TempDir(), cfg, base, head)
 
-	joined := strings.Join(warns, "\n")
-	if strings.Contains(joined, "same") {
+	said := strings.Join(warns, "\n")
+	for _, f := range found {
+		said += "\n" + f.Object
+	}
+	if strings.Contains(said, "same") {
 		t.Error("an unchanged version must not be rendered")
 	}
-	if strings.Contains(joined, "path-source") {
+	if strings.Contains(said, "path-source") {
 		t.Error("a path source has no chart to render")
+	}
+	// Positive as well as negative: with both negatives satisfied by an empty
+	// result, this test passed for a while against a ChartDiff that had
+	// stopped saying anything at all.
+	if !strings.Contains(said, "moved") {
+		t.Errorf("the row whose version moved must be rendered and reported on, got %v / %v", found, warns)
 	}
 }
 
-// A chart that cannot be pulled must be reported. "No resource changes" and
-// "we could not look" must never read the same.
+// A chart that cannot be pulled at the version this change moves to is a
+// finding, not a coverage note. "No resource changes", "we could not look" and
+// "we looked and it does not work" are three different answers, and only the
+// last one is about the pull request.
 func TestChartDiffReportsWhatItCouldNotRender(t *testing.T) {
 	row := func(v string) Row {
 		return Row{
@@ -54,12 +66,26 @@ func TestChartDiffReportsWhatItCouldNotRender(t *testing.T) {
 	base := &Table{Rows: []Row{row("1.0.0")}}
 	head := &Table{Rows: []Row{row("2.0.0")}}
 
-	before, after, _, warns := ChartDiff(context.Background(), t.TempDir(), &Config{Concurrency: 1}, base, head)
+	before, after, found, _ := ChartDiff(context.Background(), t.TempDir(), &Config{Concurrency: 1}, base, head)
 	if len(before) != 0 || len(after) != 0 {
 		t.Fatal("a failed render must contribute no objects")
 	}
-	if len(warns) != 1 || !strings.Contains(warns[0], "NOT covered") {
-		t.Fatalf("the failure must be surfaced, got %v", warns)
+	var failures []ObjectChange
+	for _, f := range found {
+		if f.Kind == ObjectRenderFailed {
+			failures = append(failures, f)
+		}
+	}
+	if len(failures) != 1 {
+		t.Fatalf("the head revision's failure must be a finding, got %+v", found)
+	}
+	if failures[0].Object != "thing" || failures[0].To != "2.0.0" {
+		t.Errorf("the finding must name the Application and the version it failed at, got %+v", failures[0])
+	}
+	// The version alone says only that something is wrong, and with no render
+	// there is nowhere else for the reader to look it up.
+	if failures[0].Reason == "" {
+		t.Error("the finding must carry what helm said")
 	}
 }
 

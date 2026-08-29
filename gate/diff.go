@@ -134,6 +134,14 @@ func (d *DiffResult) Blocking() bool {
 		if o.Kind == ObjectValuesKeyDropped && len(o.Keys) > 0 {
 			return true
 		}
+		// The chart will not render at the version this change moves to.
+		// Every other finding here is "what merging this does"; this one is
+		// "merging this leaves an Application that cannot sync", and it is
+		// the only one where the gate has no diff to show because there was
+		// nothing to diff.
+		if o.Kind == ObjectRenderFailed {
+			return true
+		}
 	}
 	return false
 }
@@ -389,6 +397,8 @@ func (d *DiffResult) Blockers() migrate.Blockers {
 			b.Consumers += len(o.ConsumerFiles)
 		case o.Kind == ObjectValuesKeyDropped:
 			b.ValuesDropped += len(o.Keys)
+		case o.Kind == ObjectRenderFailed:
+			b.Unrenderable++
 		}
 	}
 	b.Schema = d.SchemaFailures
@@ -435,6 +445,14 @@ func (d *DiffResult) droppedContract() []migrate.Dropped {
 func (d *DiffResult) Verdict() (blocking bool, headline string) {
 	bl := d.Blockers()
 	var why []string
+	// First, because it is the only finding that says the Application does
+	// not work at all. Everything below it describes a change; this describes
+	// an absence of one, and a reader who stops after the first clause has
+	// still read the thing that matters most.
+	if n := bl.Unrenderable; n > 0 {
+		why = append(why, fmt.Sprintf("%s whose chart will not render at the new version",
+			plural(n, "Application")))
+	}
 	if n := bl.Targeting; n > 0 {
 		why = append(why, fmt.Sprintf("%s now generated for a different set of clusters", plural(n, "Application")))
 	}
@@ -518,6 +536,35 @@ func inline(s string) string {
 // among them, that ends a line or a table row.
 func unwritable(r rune) bool { return r == '`' || r < 0x20 || r == 0x7f }
 
+// maxFencedLines bounds one fenced block. helm's own errors run to a handful
+// of lines; a chart is free to make one run to thousands, and a pull-request
+// comment has a size limit that a single finding must not be able to spend.
+const maxFencedLines = 20
+
+// fenced neutralises a multi-line value the gate did not write, for a fenced
+// code block.
+//
+// Same argument as inline, with one difference that is the whole reason it is
+// a second function: inside a fence the newline is the block's own structure
+// rather than something a value can forge with, so it survives, and helm's
+// error stays the shape helm printed it in. The backtick does not, and that is
+// what keeps a value from closing the fence and writing report structure of
+// its own -- a finding, or an instruction the agent reads back.
+func fenced(s string) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	over := 0
+	if len(lines) > maxFencedLines {
+		over, lines = len(lines)-maxFencedLines, lines[:maxFencedLines]
+	}
+	for i, line := range lines {
+		lines[i] = inline(line)
+	}
+	if over > 0 {
+		lines = append(lines, fmt.Sprintf("…and %d more line(s)", over))
+	}
+	return strings.Join(lines, "\n")
+}
+
 // joinAnd is an English list. Same name and shape as pipeline.joinAnd, two
 // packages that never import each other, each rendering findings for a human,
 // and a shared helper package for one function would cost more than the
@@ -554,8 +601,9 @@ func (d *DiffResult) Report(w io.Writer) {
 	// written for a person. Every adapter that posts the report verbatim
 	// carries it, so the CI path gets it for free.
 	b := d.Blockers()
-	fmt.Fprintf(w, "%stargeting=%d source=%d apiVersion=%d consumers=%d unscanned=%d valuesDropped=%d schema=%d -->\n",
-		migrate.BlockersMarker, b.Targeting, b.Source, b.APIVersion, b.Consumers, b.Unscanned, b.ValuesDropped, b.Schema)
+	fmt.Fprintf(w, "%stargeting=%d source=%d apiVersion=%d consumers=%d unscanned=%d unrenderable=%d valuesDropped=%d schema=%d -->\n",
+		migrate.BlockersMarker, b.Targeting, b.Source, b.APIVersion, b.Consumers, b.Unscanned,
+		b.Unrenderable, b.ValuesDropped, b.Schema)
 	// The repair contract, from the structured findings rather than from the
 	// prose that describes them. The prose cannot carry it: half of a bullet
 	// is a rendered object's name, the chart chooses that name, and a name
@@ -600,32 +648,69 @@ func (d *DiffResult) Report(w io.Writer) {
 		fmt.Fprintln(w)
 	}
 	if len(d.Objects) > 0 {
-		var api, crd, vdrop, added, removed, changed []ObjectChange
+		var api, crd, vdrop, unrendered, added, removed, changed []ObjectChange
 		for _, o := range d.Objects {
+			// Written with the constants rather than their values. Six
+			// literals repeating six exported names is six chances for a
+			// renamed kind to land silently in `changed`, which is the one
+			// bucket that accepts anything.
 			switch o.Kind {
-			case "apiVersion":
+			case ObjectAPIVersionMoved:
 				api = append(api, o)
-			case "crdVersionRemoved":
+			case ObjectCRDVersionRemoved:
 				crd = append(crd, o)
-			case "valuesKeyDropped":
+			case ObjectValuesKeyDropped:
 				vdrop = append(vdrop, o)
-			case "added":
+			case ObjectRenderFailed:
+				unrendered = append(unrendered, o)
+			case ObjectAdded:
 				added = append(added, o)
-			case "removed":
+			case ObjectRemoved:
 				removed = append(removed, o)
 			default:
 				changed = append(changed, o)
 			}
 		}
+		if len(unrendered) > 0 {
+			// Above everything, including the settings drop. The rest of the
+			// report describes what merging this would change; this says the
+			// Application will not come up at all, and nothing below it is
+			// worth reading first.
+			fmt.Fprintf(w, "### The chart does not render at the new version\n\n")
+			fmt.Fprintf(w, "`helm template` refuses these at the version this change moves them to, "+
+				"with the values this repository sets. There are no resource changes listed for them "+
+				"below, because nothing rendered to compare: the gate looked, and it does not work.\n\n")
+			for _, o := range unrendered {
+				fmt.Fprintf(w, "**`%s`", inline(o.Object))
+				if o.Cluster != "" {
+					fmt.Fprintf(w, " on %s", inline(o.Cluster))
+				}
+				fmt.Fprintf(w, " — `%s` → `%s`**\n\n", inline(o.From), inline(o.To))
+				fmt.Fprintf(w, "```text\n%s\n```\n\n", fenced(o.Reason))
+			}
+		}
 		if len(vdrop) > 0 {
-			// First, deliberately. It is the finding with no other symptom:
-			// the render is identical, the values file did not change, and
-			// helm does not complain. If it is below three tables of resource
-			// diffs, it is below the fold.
+			// Early, deliberately, and above every resource table. It is the
+			// finding with no other symptom: the render is identical, the
+			// values file did not change, and helm does not complain. Below
+			// three tables of resource diffs it is below the fold. The only
+			// section that goes higher is the one that says nothing rendered
+			// at all, which is a symptom on its own.
 			fmt.Fprintf(w, "### Settings this bump stops reading\n\n")
 			fmt.Fprintf(w, "The chart no longer declares these values, and helm ignores a value it does not "+
 				"know rather than failing on it. Each one silently stops applying, and the render looks "+
 				"identical either way.\n\n")
+			if len(unrendered) > 0 {
+				// Said only when both sections are on the page, because
+				// without the one above it the paragraph describes an
+				// exception to a rule the reader has no example of. With it,
+				// the previous paragraph is flatly contradicted by the error
+				// printed a screen higher, and a report that argues with
+				// itself is one nobody trusts the rest of.
+				fmt.Fprintf(w, "Except where it did not: a chart strict enough to refuse a key it has "+
+					"stopped declaring is listed above, and the two findings there are one fact seen "+
+					"from two sides.\n\n")
+			}
 			for _, o := range vdrop {
 				fmt.Fprintf(w, "- `%s`", inline(o.Object))
 				if o.Cluster != "" {
@@ -645,7 +730,12 @@ func (d *DiffResult) Report(w io.Writer) {
 			}
 			fmt.Fprintln(w)
 		}
-		fmt.Fprintf(w, "### Resources\n\n")
+		// Guarded, because two of the buckets above are not resources. A
+		// report whose only finding is a settings drop used to print this
+		// heading over nothing at all.
+		if len(api)+len(crd)+len(added)+len(removed)+len(changed) > 0 {
+			fmt.Fprintf(w, "### Resources\n\n")
+		}
 		if len(api) > 0 {
 			fmt.Fprintf(w, "%s — this is a migration, not a bump.\n\n", migrate.HeadingAPIVersion)
 			for _, o := range api {

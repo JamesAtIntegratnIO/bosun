@@ -154,6 +154,48 @@ All notable changes to `bosun`. Format follows
 
 ### Fixed
 
+- **A chart that will not render at the version a pull request moves to now
+  blocks, and the settings it stops reading are named even so.** Two defects,
+  one bump. Kargo raised `bosun.defaultVersion` from 0.20.0 to 0.25.1 against
+  values still carrying four keys the chart had removed, the new
+  `values.schema.json` refused them, `helm template` failed, and the gate
+  filed the whole thing under **Not covered** and published a green verdict
+  on a change that could not deploy. The agent's own comment named all four
+  keys correctly and had nothing to act on, because the report it was reading
+  said nothing was blocking.
+
+  A failed render was a warning, and warnings count towards no blocker --
+  which is the reasoning this repository already refuses, one line away, on
+  `Blockers.Unscanned`: *"we could not look" blocks, and is not the same as
+  "we looked and found none"*. A render that fails at the head revision is the
+  stronger case again -- not "we could not look" but "we looked and it does
+  not work" -- so it is now counted as `unrenderable` and blocks. Failing at
+  the **base** version is a different fact, since the repository was already
+  in that state and no pull request caused it; that stays a warning under
+  **Not covered**, and the two are no longer reported through one sentence
+  claiming both versions failed.
+
+  The second half is why the strictest breakage produced the weakest verdict.
+  The values-surface check that exists for exactly this case sat behind the
+  early return a failed render took, so a chart with no schema had its stale
+  keys named and blocked on, while a chart strict enough to hard-fail had
+  them named nowhere. It never needed the render -- it reads `helm show`, not
+  `helm template` -- and now runs either way, so the report carries both the
+  error and the list of keys.
+
+  Consequence worth knowing before upgrading: a pull request whose chart does
+  not render at the new version was green and is now red. That is the point,
+  and it is also the one behaviour change here.
+
+  The triage prompt gains a rule with it, because a newly red class is a
+  newly *modelled* class. The repair here is a key deleted or renamed, which
+  the edit format cannot express, so the answer is an escalation naming the
+  keys -- and the prompt now says so, along with the one wrong answer that
+  would otherwise pass every check the applier makes: putting the version
+  back. The old version is named in the gate report, so a revert corroborates
+  cleanly and undoes the promotion instead of repairing it. The eval suite
+  gains the 0.20.0 -> 0.25.1 bump as a case; it has not been re-scored
+  against a live model here, and should be before the next release.
 - **A selector that matches on a label being absent no longer demands that
   label be present.** `selectorKeys` handed every `matchExpressions` key to
   `Inventory.Validate`, `NotIn` and `DoesNotExist` included. Those two select

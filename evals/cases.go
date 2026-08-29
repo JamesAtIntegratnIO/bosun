@@ -447,6 +447,42 @@ apiVersion external-secrets.io/v1beta1.`,
 		WantClass: "escalate",
 	},
 	{
+		// The bump this finding class comes from, and the one where every
+		// fluent answer is wrong. The keys have to be removed or renamed,
+		// which no scalar edit expresses; and putting the version back would
+		// pass every check the applier makes -- the old version is named in
+		// the report, so it corroborates -- while undoing the promotion
+		// rather than repairing it.
+		Name:    "chart-schema-refuses-stale-values",
+		Subject: "bump bosun chart 0.20.0 -> 0.25.1",
+		Files: map[string]string{addonsPath: `bosun:
+  enabled: true
+  namespace: bosun
+  chartName: bosun
+  defaultVersion: 0.25.1
+  valuesObject:
+    gate:
+      mode: service
+      wait: true
+      inventorySource: argocd
+      argocd:
+        port: 8080
+`},
+		GateReport: `The gate is RED.
+
+bosun does not render at 0.25.1 with the values this repository sets:
+
+  Error: values don't meet the specifications of the schema(s) in the following chart(s):
+  bosun:
+  - at '/gate/argocd': additional properties 'port' not allowed
+  - at '/gate': additional properties 'inventorySource', 'mode', 'wait' not allowed
+
+The chart still renders at 0.20.0. Four settings this repository makes are no
+longer declared by 0.25.1: gate.mode, gate.wait, gate.inventorySource and
+gate.argocd.port.`,
+		WantClass: "escalate",
+	},
+	{
 		Name:    "kyverno-drops-subcharts",
 		Subject: "bump kyverno chart 3.2.6 -> 3.9.0",
 		Files: map[string]string{addonsPath: `kyverno:

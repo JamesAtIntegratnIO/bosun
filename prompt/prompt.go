@@ -60,6 +60,12 @@ values that already exist in the repository. Typical cases:
   * a subchart or component the new version drops
   * anything whose upstream notes mention a database or schema migration
   * a version the software itself refuses to upgrade into in one step
+  * a chart the gate could not render at the NEW version. The values this
+    repository sets no longer fit the chart, and no single scalar makes them
+    fit: the repair is a key deleted or renamed, and the edit format has no
+    way to say either. Name the keys and escalate. Do NOT answer this one by
+    putting the version back -- the old version is in the report, so that
+    edit passes every check and undoes the promotion instead of repairing it
   * a change the version bump does not explain -- see below
   * anything you are not sure about
 

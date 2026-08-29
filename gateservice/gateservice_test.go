@@ -112,7 +112,30 @@ func lastStatus(t *testing.T, git *gitprovider.Fake) gitprovider.Status {
 	return git.Statuses[len(git.Statuses)-1]
 }
 
+// requireTool skips rather than fails when an external binary is absent, the
+// same trade gate's own suite makes and for the same reason: a suite that
+// depends on the developer's PATH is a suite nobody runs. REQUIRE_TOOLS=1
+// turns the skip into a failure, and CI sets it.
+//
+// A second copy rather than an export, because the two packages share nothing
+// else and a testing helper exported from gate would be part of gate's API.
+func requireTool(t *testing.T, name string) {
+	t.Helper()
+	if _, err := exec.LookPath(name); err != nil {
+		if os.Getenv("REQUIRE_TOOLS") != "" {
+			t.Fatalf("%s is not on PATH and REQUIRE_TOOLS is set: "+
+				"this seam must be exercised here, not skipped", name)
+		}
+		t.Skipf("%s is not on PATH; skipping", name)
+	}
+}
+
 func TestAVersionBumpIsGreenAndReported(t *testing.T) {
+	// Stated, now that it matters. This test asserts a green verdict on a
+	// real chart bump, and without helm both renders fail: it used to pass
+	// anyway, because a failed render was a warning that counted towards
+	// nothing, which is the defect this gate now blocks on.
+	requireTool(t, "helm")
 	h := newGateHarness(t,
 		map[string]string{".gitops-gate.yaml": gateConfig,
 			"apps/podinfo.yaml": appManifest("podinfo", "https://kubernetes.default.svc", "6.7.0")},
