@@ -1,14 +1,14 @@
 /* ---------------------------------------------------------------------------
    Bosun brand theme.
 
-   Every colour here is lifted from docs/avatar/bosun.svg: the badge navy,
+   Every colour here comes from docs/avatar/bosun.svg: the badge navy,
    the two sea tones, the coral of the tentacles, the cream of the sailor cap.
    The mark and the site are the same palette because they were the same
    decision.
 
-   Dark is the primary theme: the badge is navy, and the docs are read next to
-   a terminal. Light is a paper/cream treatment rather than plain white, so it
-   still reads as the same brand rather than as the theme being switched off.
+   Dark is the primary theme: the badge is navy, and you read these docs next
+   to a terminal. Light is a paper and cream treatment, so a reader who flips
+   the toggle still sees the brand.
    --------------------------------------------------------------------------- */
 
 :root {
@@ -82,16 +82,18 @@
 
   --bo-surface: #12243599;
   --bo-surface-solid: #122435;
-  /* The landing page's alternating section band. A shade off the page rather
-     than a panel: it should read as a change of ground, not as a card. */
+  /* The landing page's alternating section band. A shade off the page: it
+     should read as a change of ground. */
   --bo-band: #0f2032a8;
   --bo-rule: color-mix(in srgb, var(--bo-teal-300) 14%, transparent);
   --bo-glow: color-mix(in srgb, var(--bo-teal-500) 22%, transparent);
   --bo-code-bg: #0c1a27;
+  --bo-code-tabbar: color-mix(in srgb, var(--bo-navy-800) 80%, transparent);
+  --bo-code-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
 
   /* Starlight tints asides and badges from this scale. Left at its defaults an
-     indigo `note` box lands in the middle of a teal-and-coral page, so the
-     scale is remapped to the brand rather than each component patched. */
+     indigo `note` box lands in the middle of a teal-and-coral page, so this
+     block remaps the whole scale to the brand in one place. */
   --sl-color-blue-low: #10303a;
   --sl-color-blue: var(--bo-teal-500);
   --sl-color-blue-high: var(--bo-teal-300);
@@ -143,7 +145,11 @@
   --bo-band: #f0e7d3c4;
   --bo-rule: color-mix(in srgb, var(--bo-navy-700) 12%, transparent);
   --bo-glow: color-mix(in srgb, var(--bo-teal-600) 16%, transparent);
-  --bo-code-bg: #10233480;
+  /* Expressive Code switches to its light syntax theme here, and those tokens
+     are dark: they need paper under them. */
+  --bo-code-bg: #f3eee0;
+  --bo-code-tabbar: #e9e2ce;
+  --bo-code-shadow: 0 1px 3px rgb(20 41 62 / 0.08);
 
   --sl-color-blue-low: #d7eaee;
   --sl-color-blue: var(--bo-teal-600);
@@ -234,7 +240,7 @@ header.header {
 }
 
 /* The active page in the sidebar gets the coral rule, matching the H2 marker:
-   the same colour always means "you are here / this is the point". */
+   the same colour means "you are here / this is the point". */
 .sidebar-content a[aria-current='page'],
 .sidebar-content a[aria-current='page']:hover {
   background: color-mix(in srgb, var(--sl-color-accent) 18%, transparent);
@@ -273,8 +279,7 @@ starlight-toc a[aria-current='true'] {
 }
 
 /* Tables carry most of the content in these docs: the guarantee/mechanism
-   table, the finding tables, the exit codes. They deserve to be readable rather
-   than only present. */
+   table, the finding tables, the exit codes. */
 .sl-markdown-content table:not(:where(.not-content *)) {
   display: block;
   overflow-x: auto;
@@ -289,14 +294,14 @@ starlight-toc a[aria-current='true'] {
    reader is going to copy, and the browser will otherwise squeeze a
    four-column table until `git.provider` wraps mid-identifier. The table
    scrolls inside its own box (above), so widening these columns costs a
-   horizontal scroll rather than a broken page. */
+   horizontal scroll at most. */
 .sl-markdown-content td:where(:first-child, :nth-child(2)) code:not(:where(.not-content *)) {
   white-space: nowrap;
 }
 
 /* ...and the prose column then needs a floor of its own, or the space the
-   nowrap columns took comes entirely out of it and the last column collapses
-   to one word per line. */
+   nowrap columns took comes out of it and the last column collapses to one
+   word per line. */
 .sl-markdown-content td:last-child:not(:where(.not-content *)) {
   min-width: 16rem;
 }
@@ -330,7 +335,7 @@ starlight-toc a[aria-current='true'] {
   background: color-mix(in srgb, var(--sl-color-accent) 6%, transparent);
 }
 
-/* First column of a two-or-more column table is nearly always the subject. */
+/* The first column of a two-or-more column table names the subject. */
 .sl-markdown-content tbody td:first-child:not(:where(.not-content *)) {
   color: var(--sl-color-white);
   font-weight: 500;
@@ -362,12 +367,12 @@ starlight-toc a[aria-current='true'] {
   --ec-brdCol: var(--bo-rule);
   --ec-frm-edBg: var(--bo-code-bg);
   --ec-frm-trmBg: var(--bo-code-bg);
-  --ec-frm-edTabBarBg: color-mix(in srgb, var(--bo-navy-800) 80%, transparent);
-  --ec-frm-frameBoxShdCssVal: 0 1px 3px rgb(0 0 0 / 0.25);
+  --ec-frm-edTabBarBg: var(--bo-code-tabbar);
+  --ec-frm-frameBoxShdCssVal: var(--bo-code-shadow);
 }
 
-/* Asides pick their colours up from the remapped scale above; only the shape
-   is set here. */
+/* Asides pick their colours up from the remapped scale above; this rule sets
+   only the shape. */
 .starlight-aside {
   border-radius: var(--bo-radius);
   border-inline-start-width: 3px;

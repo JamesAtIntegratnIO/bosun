@@ -1,15 +1,15 @@
 /* ---------------------------------------------------------------------------
    Landing page. Only loaded styles that the splash template and Hero.astro
-   use; the docs pages are styled entirely by theme.css.
+   use; theme.css styles the docs pages.
    --------------------------------------------------------------------------- */
 
-/* The splash template still renders the docs content column. Rather than widen
-   that column to a fixed measure, open it to the whole pane and let each band
-   set its own: a section's background then runs edge to edge while its content
-   stays centred on --bo-shell (the hero) or --bo-measure (everything else).
-   Both carry fallbacks, because the hero also renders on Starlight's generated
-   404, and a structure change that stops this selector matching should cost a
-   little width rather than the entire layout. */
+/* The splash template still renders the docs content column. This opens that
+   column to the whole pane and lets each band set its own measure: a section's
+   background runs edge to edge while its content stays centred on --bo-shell
+   (the hero) or --bo-measure (everything else). Both carry fallbacks, because
+   the hero also renders on Starlight's generated 404; if a structure change
+   stops this selector matching, the page loses some width and still lays
+   out. */
 .page > .main-frame .main-pane:has(.bo-hero) {
   --sl-content-width: 100%;
   --sl-content-pad-x: 0rem;
@@ -62,8 +62,8 @@
   }
 }
 
-/* The copy column keeps its own measure inside the wider shell: the title is
-   set to break where the sentence does, not wherever the column ends. */
+/* The copy column keeps its own measure inside the wider shell, so the title
+   breaks where the sentence does. */
 .bo-hero__copy {
   max-width: 44rem;
 }
@@ -106,8 +106,8 @@
    hangs the arm of an `r` past its advance width, so an `r` ending a line of
    "breaks the cluster" lost its arm to the clip. The padding widens the paint
    area, the matching negative margin keeps the text where it was, and the
-   cloned decoration break gives every wrapped line the same room rather than
-   only the first and last. */
+   cloned decoration break extends that room to the middle lines, which would
+   otherwise miss out. */
 .bo-hero__title em {
   font-style: normal;
   padding-inline: 0.09em;
@@ -253,6 +253,14 @@
   color: var(--sl-color-gray-3);
 }
 
+/* The bar keeps its navy in the light theme: 55% navy over a white card is a
+   mid slate, and the gray-3 label disappears against it. Solid navy and mist
+   text keep the terminal-window pastiche legible. */
+:root[data-theme='light'] .bo-report__bar {
+  background: var(--bo-navy-700);
+  color: var(--bo-mist);
+}
+
 .bo-report__dots {
   display: inline-flex;
   gap: 0.3rem;
@@ -278,6 +286,10 @@
   word-break: break-all;
 }
 
+:root[data-theme='light'] .bo-report__body code {
+  color: var(--bo-teal-700);
+}
+
 .bo-report__diff {
   font-family: var(--sl-font-mono);
   font-size: 0.76rem;
@@ -293,6 +305,15 @@
 }
 .bo-add {
   color: #7bd88f;
+}
+
+/* The diff sits on --bo-code-bg, which is paper in the light theme; the
+   colours above suit navy and wash out there. */
+:root[data-theme='light'] .bo-del {
+  color: var(--bo-coral-600);
+}
+:root[data-theme='light'] .bo-add {
+  color: #2e8560;
 }
 
 .bo-chip {
@@ -318,6 +339,14 @@
   background: color-mix(in srgb, #4ac07a 20%, transparent);
   color: #8fe0ab;
   border: 1px solid color-mix(in srgb, #4ac07a 40%, transparent);
+}
+
+:root[data-theme='light'] .bo-chip--red {
+  color: var(--bo-coral-700);
+}
+
+:root[data-theme='light'] .bo-chip--green {
+  color: #1c5840;
 }
 
 .bo-report__verdict {
@@ -353,9 +382,9 @@
 /* --- landing body sections ----------------------------------------------- */
 
 /* Sections run the full width of the pane so their background can, and hold
-   their content to the reading measure themselves. The space between them is
-   padding rather than margin, so a band's tint reaches its neighbour's edge
-   instead of leaving a gap of page colour. */
+   their content to the reading measure themselves. Padding carries the space
+   between them, so a band's tint reaches its neighbour's edge with no gap of
+   page colour between. */
 .bo-section {
   margin-block: 0;
   padding: clamp(3rem, 7vw, 5rem) var(--bo-gutter, 1.5rem);
@@ -366,10 +395,9 @@
   margin-inline: auto;
 }
 
-/* Every other section is tinted, which is what tells the eye where one
-   argument ends and the next begins. The rules top and bottom carry the edge
-   where the tint alone is close to the page colour; in light theme it is
-   nearly the same cream. */
+/* The tint on every other section shows you where one argument ends and the
+   next begins. The rules top and bottom carry that edge where the tint sits
+   close to the page colour; in the light theme both are cream. */
 .bo-section:nth-of-type(even) {
   background: var(--bo-band);
   border-block: 1px solid var(--bo-rule);
@@ -423,8 +451,8 @@
   grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
 }
 
-/* Six tiles want three columns, not the four the measure would otherwise fit
-   and then two orphans on the second row. */
+/* Six tiles want three columns. The measure fits four, which leaves two
+   orphans on the second row. */
 .bo-grid--3up {
   grid-template-columns: repeat(auto-fit, minmax(min(21rem, 100%), 1fr));
 }
@@ -532,6 +560,10 @@
 .bo-split--fix li::before {
   content: '✓';
   color: #7bd88f;
+}
+
+:root[data-theme='light'] .bo-split--fix li::before {
+  color: #2e8560;
 }
 
 /* The findings column. Coral is this site's "look at this" colour, and a green
