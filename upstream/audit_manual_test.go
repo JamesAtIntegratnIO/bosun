@@ -15,8 +15,8 @@ import (
 //
 // It exists because every bug found in this package so far has been the same
 // bug: reality had a shape the fixtures did not, and the code was only ever
-// aimed at one artifact at a time. A list of the artifacts a pipeline ACTUALLY
-// promotes is the cheapest way to find that out before somebody deploys.
+// aimed at one artifact at a time. A list of the artifacts a pipeline promotes
+// is the cheapest way to find that out before somebody deploys.
 //
 //	UPSTREAM_AUDIT_FILE=/path/to/artifacts.txt go test ./upstream -run Audit -v
 func TestAuditArtifacts(t *testing.T) {

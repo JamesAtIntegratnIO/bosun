@@ -13,12 +13,12 @@ import (
 )
 
 // TestEval measures the shipped prompts against a real endpoint. Skipped unless
-// DELIVERY_AGENT_LIVE is set, so `go test ./...` stays hermetic and offline.
+// DELIVERY_AGENT_LIVE is set, so `go test./...` stays hermetic and offline.
 //
-// The prompts are IMPORTED, not supplied. They used to arrive through three
+// The prompts are imported, not supplied. They used to arrive through three
 // environment variables filled by a shell script that regex-scraped the Go
 // source, and that bridge silently supplied nothing when a constant was
-// renamed -- so a shipped prompt went unmeasured while the suite reported a
+// renamed, so a shipped prompt went unmeasured while the suite reported a
 // number for the two it still found. Importing them means the thing scored and
 // the thing shipped are the same constant, checked by the compiler.
 //
@@ -36,7 +36,7 @@ func TestEval(t *testing.T) {
 	}
 	withInventory := os.Getenv("DELIVERY_AGENT_NO_INVENTORY") == ""
 	// A substring filter, because the loop worth running most often is one
-	// case against a prompt you just edited -- and without this that costs the
+	// case against a prompt you just edited, and without this that costs the
 	// whole suite every time.
 	only := os.Getenv("DELIVERY_AGENT_CASES")
 

@@ -40,7 +40,7 @@ func none(t *testing.T, r *Report, k Kind) {
 }
 
 // The situation that cost four addons three days of updates: one transient
-// error, a terminal promotion, and no retry -- while every Application stayed
+// error, a terminal promotion, and no retry, while every Application stayed
 // Synced and Healthy.
 func TestATerminalFailureThatNothingWillRetry(t *testing.T) {
 	s := &Snapshot{
@@ -63,7 +63,7 @@ func TestATerminalFailureThatNothingWillRetry(t *testing.T) {
 	if !strings.Contains(f.Detail, "server misbehaving") {
 		t.Errorf("the detail must carry the reason Kargo recorded:\n%s", f.Detail)
 	}
-	// The remedy is the whole point: a refresh does NOT do this, and the
+	// The remedy is the whole point: a refresh does not do this, and the
 	// generateName must not end in a dot.
 	for _, want := range []string{"kubectl create -f -", "generateName: external-secrets", "freight: f08f1c9"} {
 		if !strings.Contains(f.Remedy, want) {
@@ -193,7 +193,7 @@ func TestSupersededPullRequestsNameTheOneThatCanMerge(t *testing.T) {
 	if !strings.Contains(f.Remedy, "gh pr close 41 173") {
 		t.Errorf("the remedy must close the older ones only:\n%s", f.Remedy)
 	}
-	// The current one may be NAMED (as the reason), but must never be closed.
+	// The current one may be named (as the reason), but must never be closed.
 	closeArgs, _, _ := strings.Cut(strings.TrimPrefix(f.Remedy, "gh pr close "), " --comment")
 	for _, n := range strings.Fields(closeArgs) {
 		if n == "219" {
@@ -336,8 +336,8 @@ func fileHasFrom(files map[string]map[string]bool) func(string, string) (bool, e
 	}
 }
 
-// A verification that FAILED is over. Kargo does not re-run it -- that freight
-// has been verified and the answer was no -- so the Stage sits Ready=False
+// A verification that failed is over. Kargo does not re-run it, that freight
+// has been verified and the answer was no, so the Stage sits Ready=False
 // forever while every Application stays Synced and Healthy. Three Stages were
 // held that way for three days.
 func TestAFinishedVerificationIsBlockingAndNamesItsId(t *testing.T) {
@@ -419,7 +419,7 @@ func TestAPromotionIsNotStrandedTheMomentItsPullRequestMerges(t *testing.T) {
 	}
 	none(t, Detect(snap(3*time.Minute)), KindOrphanedPR)
 
-	// A genuinely stranded one waits indefinitely; the ones observed live had
+	// A stranded one waits indefinitely; the ones observed live had
 	// been running for hours.
 	f := findingOf(t, Detect(snap(6*time.Hour)), KindOrphanedPR)
 	if f.Severity != Blocking {

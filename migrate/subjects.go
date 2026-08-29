@@ -17,16 +17,16 @@ import (
 var objectBullet = regexp.MustCompile(
 	"^\\s*- `([A-Za-z][A-Za-z0-9]*)/([^`]+?)(?: in [^`]+)?`\\s*$")
 
-// Subjects names the things a gate report is ABOUT: the kinds and the resource
+// Subjects names the things a gate report is about: the kinds and the resource
 // names in its findings, plus the kind and group of any dropped API version.
 //
 // It exists to aim an upstream search. A finding like "the chart removed its
 // ClusterRole" is something the render proves and cannot explain, and the
-// commits between the two upstream tags usually can -- but only if something
+// commits between the two upstream tags usually can, but only if something
 // deterministic decides which commits are about this. These are the terms that
 // decision is made from.
 //
-// DETERMINISTIC, and that is the whole point. The alternative is handing the
+// Deterministic, and that is the whole point. The alternative is handing the
 // model the range and asking which commits support its conclusion, which is not
 // evidence: it is a second opinion from the same opinion. Here the gate's own
 // findings choose, and the model is shown the result.

@@ -42,7 +42,7 @@ func TestParsesBothKeyEncodings(t *testing.T) {
 	}
 }
 
-// The most common way to get this wrong is to store the base64 OF the PEM
+// The most common way to get this wrong is to store the base64 of the PEM
 // rather than the PEM, which yields a blob that is not PEM at all. The error
 // says so rather than making someone guess.
 func TestANonPEMKeySaysWhatIsProbablyWrong(t *testing.T) {
@@ -205,7 +205,7 @@ func TestRepairDoesNotRescueSomethingThatIsNotAKey(t *testing.T) {
 // The commit identity is the App's own bot account, in the exact format
 // GitHub attributes: `<slug>[bot]` and `<id>+<slug>[bot]@users.noreply`.
 // Anything else in that namespace attributes the commit to whoever owns the
-// name -- measured live, when the default `bosun@users.noreply.github.com`
+// name, measured live, when the default `bosun@users.noreply.github.com`
 // rendered the first repair under a stranger's avatar.
 func TestBotIdentityIsTheAppsOwn(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

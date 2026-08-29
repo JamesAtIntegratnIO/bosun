@@ -13,7 +13,7 @@ import (
 )
 
 // The gate can only ever say what a repository holds. These are about the
-// other half -- and, more carefully, about the difference between a zero that
+// other half, and, more carefully, about the difference between a zero that
 // was counted and a zero that is the shape of nobody having looked.
 
 func droppedReport() string {
@@ -37,7 +37,7 @@ func TestABriefSaysHowManyObjectsAreLiveOnTheDroppedVersions(t *testing.T) {
 	if err := h.triage.Run(context.Background(), promotion()); err != nil {
 		t.Fatal(err)
 	}
-	// It reaches the model as fact, clearly labelled.
+	// It reaches the model as fact, labelled.
 	if !strings.Contains(h.model.User, "LIVE CLUSTER (fact, read-only)") {
 		t.Fatal("the live block never reached the prompt")
 	}
@@ -97,8 +97,8 @@ func TestAPartialCountIsNotPresentedAsATotal(t *testing.T) {
 	}
 }
 
-// A chart that stops shipping a definition ENTIRELY names the object and not
-// its versions, so the versions have to come from the cluster -- which still
+// A chart that stops shipping a definition entirely names the object and not
+// its versions, so the versions have to come from the cluster, which still
 // has the definition, because this runs before the change is applied.
 func TestARemovedDefinitionGetsItsVersionsFromTheCluster(t *testing.T) {
 	h := newHarness(t)

@@ -64,7 +64,7 @@ func TestDuplicateCallsForOnePRCollapse(t *testing.T) {
 
 	// Wait for the first triage rather than for a duration. A sleep long
 	// enough to be reliable on a loaded CI runner is far longer than this
-	// needs, and one short enough to be quick fails at random -- and it fails
+	// needs, and one short enough to be quick fails at random, and it fails
 	// as "0 started", which reads as the collapse being too aggressive rather
 	// than as the test being early.
 	select {
@@ -95,7 +95,7 @@ func TestRejectsPayloadWithoutAPRNumber(t *testing.T) {
 	}
 }
 
-// A panic in triage must not take the process down -- one malformed pull
+// A panic in triage must not take the process down; one malformed pull
 // request should not stop the agent handling the next.
 func TestPanicInTriageIsContained(t *testing.T) {
 	s := &Server{Log: testLogger(t), Timeout: time.Minute}

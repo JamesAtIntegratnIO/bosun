@@ -8,8 +8,8 @@ import (
 )
 
 // The list and GetPullRequest return the same type, so they have to carry the
-// same fields. Body was the exception -- populated by one, left empty by the
-// other, with nothing saying so -- and a difference like that is one a caller
+// same fields. Body was the exception, populated by one, left empty by the
+// other, with nothing saying so, and a difference like that is one a caller
 // finds by reading an empty string at runtime.
 func TestListOpenPullRequestsCarriesTheBody(t *testing.T) {
 	const listJSON = `[{"number":7,"title":"bump metallb","body":"promotion body",

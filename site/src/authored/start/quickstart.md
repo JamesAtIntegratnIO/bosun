@@ -1,6 +1,6 @@
 ---
 title: Quickstart
-description: Two ways in — watch the whole loop run against a disposable cluster, or put the gate on a real repository. Pick the one that matches what you are trying to find out.
+description: Two ways in. Watch the whole loop run against a disposable cluster, or put the gate on a real repository. Pick the one that matches what you are trying to find out.
 ---
 
 There are two things you might mean by "try Bosun", and they want different
@@ -8,18 +8,19 @@ paths.
 
 | You want to | Take |
 |---|---|
-| **See it work** — watch a real pull request get gated, repaired and merged, without touching anything you own | [Track A: the proving ground](#track-a-the-proving-ground) |
-| **Put it on a repository** — get the gate answering your own pull requests | [Track B: gate a real repository](#track-b-gate-a-real-repository) |
+| **See it work**: watch a real pull request get gated, repaired and merged, without touching anything you own | [Track A: the proving ground](#track-a-the-proving-ground) |
+| **Put it on a repository**: get the gate answering your own pull requests | [Track B: gate a real repository](#track-b-gate-a-real-repository) |
 
 Track A needs no cluster of your own and nothing configured on your git host.
 Track B is the first two steps of [Onboarding](/start/onboarding/), which is the
 document to read when you are doing this for real.
 
 Both need one thing you must supply: **an OpenAI- or Anthropic-compatible model
-endpoint**. There is no default and there is not going to be one — a component
-that installs cleanly and then quietly spends money against a vendor you did not
-choose is a bad default. A local LM Studio or Ollama endpoint is a first-class
-answer here, not a workaround; the eval numbers were measured against one.
+endpoint**. There is no default and there is not going to be one, because a
+component that installs cleanly and then quietly spends money against a vendor
+you did not choose is a bad default. A local LM Studio or Ollama endpoint is a
+first-class answer here rather than a workaround; the eval numbers were
+measured against one.
 
 ---
 
@@ -30,14 +31,14 @@ where the entire flow runs end to end: a chart version is discovered, promoted,
 written onto a branch, opened as a pull request, gated, triaged by the agent,
 merged, reconciled and verified.
 
-Everything of Bosun's own comes **from your working tree** — the agent image is
-built locally, the charts install from the checkout. A proving ground that tests
-the last published version is testing the past.
+Everything of Bosun's own comes **from your working tree**: the agent image is
+built locally, and the charts install from the checkout. A proving ground that
+tests the last published version is testing the past.
 
 ### What you need
 
 - macOS or Linux, roughly **10 GB free RAM** and **20 GB disk**
-- Homebrew — the runtime script installs colima, kind and idpbuilder
+- Homebrew, since the runtime script installs colima, kind and idpbuilder
 - A model endpoint the cluster can reach
 
 ### Bring it up
@@ -50,8 +51,8 @@ make up
 ```
 
 `make up` builds the runtime, the cluster, the sample repository, the platform
-and the kit. It takes a while the first time — most of it is idpbuilder standing
-up ArgoCD and Gitea.
+and the kit. It takes a while the first time, most of it idpbuilder standing up
+ArgoCD and Gitea.
 
 ### Watch the loop
 
@@ -62,8 +63,8 @@ make demo-cluster-gate  # the gate with no CI anywhere: renders, blocks, re-gate
 ```
 
 No act runs a gate itself. Each one changes the sample repository, opens a pull
-request and waits for the verdict the **agent** publishes from its sweep — the
-same path a real install takes.
+request and waits for the verdict the **agent** publishes from its sweep, which
+is the path a real install takes.
 
 Two more targets exercise the harder ones: `make demo-structural` (a chart that
 moves a field between API versions) and `make demo-egress` (the egress deny-list
@@ -92,8 +93,8 @@ Full detail, including what is installed with which settings and why, is in
 ## Track B: gate a real repository
 
 The goal here is the **gate answering your pull requests**. Triage, labels and
-autonomous repair come after, and are deliberately not part of this first step —
-watch the gate be right about a handful of real pull requests before you let
+autonomous repair come after, and are deliberately not part of this first step.
+Watch the gate be right about a handful of real pull requests before you let
 anything act on it.
 
 ### 1. Create a bot identity
@@ -124,7 +125,7 @@ to respect.
 
 ### 2. Create two Secrets
 
-The chart consumes existing Secrets by name and **creates none** — how they get
+The chart consumes existing Secrets by name and **creates none**. How they get
 there (ExternalSecret, Vault Agent, SOPS, `kubectl`) belongs to whoever installs
 it.
 
@@ -135,7 +136,7 @@ kubectl create namespace bosun
 kubectl -n bosun create secret generic bosun-git \
   --from-literal=token='<your-token>'
 
-# the model API key — omit entirely for an unauthenticated local endpoint
+# the model API key; omit entirely for an unauthenticated local endpoint
 kubectl -n bosun create secret generic bosun-llm \
   --from-literal=api-key='<your-key>'
 ```
@@ -152,16 +153,18 @@ git:
   existingSecret: bosun-git
 
 llm:
-  provider: openai              # or anthropic — no default
+  provider: openai              # or anthropic; no default
   baseURL: http://your-endpoint:1234/v1
   model: your-model
   existingSecret: bosun-llm
 
 gate:
-  mode: cluster                 # the default, stated so it is a decision
+  argocd:
+    baseURL: https://argocd-server.argocd.svc   # required; no default
+    existingSecret: bosun-argocd                # the account token
 
 triage:
-  allowPaths: []                # nothing yet — the gate first
+  allowPaths: []                # nothing yet; the gate first
 
 networkPolicy:
   kargoNamespace: kargo
@@ -190,9 +193,8 @@ half is the Kargo controller's egress policy, which must permit this namespace
 and port. The symptom of missing it is a hang with zero bytes, not an error.
 :::
 
-**Verify:** the pod starts — it refuses to start if it cannot reach the
-apiserver or read the inventory, rather than running degraded — and the log
-says:
+**Verify:** the pod starts, refusing to start if it cannot reach the apiserver
+or read the inventory rather than running degraded, and the log says:
 
 ```
 gate: polling for open pull requests every 30s
@@ -213,21 +215,21 @@ sources:
     path: bootstrap/addons.yaml
 ```
 
-You do **not** need the `clusters:` key or a `.gitops-gate/` directory — that is
+You do **not** need the `clusters:` key or a `.gitops-gate/` directory. That is
 the checked-in snapshot, and it exists only for the CLI. Every source type and
 option is in the
 [`.gitops-gate.yaml` reference](/gate/config-reference/).
 
-**Verify:** open that change as a pull request. The config is read from the pull
-request's head, so the gate gates the very pull request that introduces it.
-Read the report comment — the **Not covered** section is the honest list of what
-the gate could not expand, and the time to care about it is now, before anything
-depends on the verdict.
+**Verify:** open that change as a pull request. The config is read from the
+pull request's head, so the gate gates the very pull request that introduces
+it. Read the report comment: the **Not covered** section is the honest list of
+what the gate could not expand, and the time to care about it is now, before
+anything depends on the verdict.
 
 ### 5. Then, and only then, protect the branch
 
 Watch the gate answer a handful of real pull requests first. When you trust it,
-make `addons-gate` — and only `addons-gate` — a required check on your default
+make `addons-gate`, and only `addons-gate`, a required check on your default
 branch.
 
 If you are the only human committer, leave yourself an override: with classic
@@ -239,12 +241,12 @@ for the day the cluster is down and a merge is urgent.
 
 ## Where to go from here
 
-You now have the inspection half. The repair half — triage, the deterministic
-migration, the escalation handoff — is steps 5 and 6 of
+You now have the inspection half. The repair half, triage, the deterministic
+migration and the escalation handoff, is steps 5 and 6 of
 [Onboarding](/start/onboarding/): widen `triage.allowPaths` to the tree the
-agent may write in, and wire Kargo's promotion hook so triage actually fires.
+agent may write in, and wire Kargo's promotion hook so triage fires.
 
-:::tip[The classic day-one trap]
+:::tip[The most common day-one mistake]
 `triage.enabled: false` is the `kargo-pipelines` chart's default. The agent
 deploys, the gate answers, and no triage ever fires. Check with:
 
@@ -255,7 +257,7 @@ kubectl get stages -A -o json | grep -c promotion-opened
 Zero means the hook is not rendered into your Stages.
 :::
 
-- [Onboarding](/start/onboarding/) — the full six-step path with the CI-mode appendix
-- [Configuration](/reference/configuration/) — every value, and the env var it becomes
-- [Troubleshooting](/reference/troubleshooting/) — symptoms, causes, fixes
-- [The loop, end to end](/start/the-loop/) — what you just installed, as a story
+- [Onboarding](/start/onboarding/): the full six-step path, with the CLI appendix
+- [Configuration](/reference/configuration/): every value, and the env var it becomes
+- [Troubleshooting](/reference/troubleshooting/): symptoms, causes, fixes
+- [The loop, end to end](/start/the-loop/): what you just installed, walked through one pull request

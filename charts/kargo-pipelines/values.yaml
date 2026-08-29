@@ -5,7 +5,7 @@
 #
 # A target is one artifact you want kept current. By default it renders one
 # Warehouse and one Stage, and the Stage's whole job is to write the new
-# version onto your branch through a pull request -- your GitOps controller
+# version onto your branch through a pull request; your GitOps controller
 # does the rest. Targets that need a canary declare `stages` instead; see
 # docs/chaining.md.
 
@@ -16,7 +16,7 @@ nameLabel: kargo-pipelines
 git:
   # Repository the Stages clone, push branches to, and open PRs against.
   # REQUIRED. Must match the `repoURL` of the git credential Secret Kargo
-  # reads -- Kargo matches credentials by normalised URL, so a trailing `.git`
+  # reads; Kargo matches credentials by normalised URL, so a trailing `.git`
   # mismatch here fails at git-clone with an authentication error rather than
   # anything that names the real cause.
   repoURL: ""
@@ -25,10 +25,10 @@ git:
   provider: github
   # Accept a self-signed or privately-issued certificate on the git host.
   #
-  # Needed more often than it looks. Kargo REFUSES to send credentials to a
-  # plain-HTTP endpoint -- "refused to get credentials for insecure HTTP
-  # endpoint" -- so a self-hosted host cannot be reached over http:// to dodge
-  # a certificate problem. It has to be https://, which means the certificate
+  # Needed more often than it looks. Kargo refuses to send credentials to a
+  # plain-HTTP endpoint, "refused to get credentials for insecure HTTP
+  # endpoint", so a self-hosted host cannot be reached over http:// to dodge a
+  # certificate problem. It has to be https://, which means the certificate
   # has to be either trusted or explicitly skipped, and this is the second.
   insecureSkipTLSVerify: false
 
@@ -41,7 +41,7 @@ merge:
   # human-gated PR costs one GitHub API call per interval.
   waitPollInterval: 5m
   # Consecutive failures a PR step tolerates before the Promotion is failed.
-  # Kargo's system-wide default is 1 -- no retries at all -- which turned two
+  # Kargo's system-wide default is 1, no retries at all, which turned two
   # transient `error getting pull request N` blips from api.github.com into
   # Errored promotions on day one.
   errorThreshold: 3
@@ -49,9 +49,9 @@ merge:
   # git-merge-pr returns Running while a PR is not yet mergeable, which
   # includes "a required status check is pending or red". This is what stops a
   # red gate spinning forever: the Promotion parks as Failed and alerts,
-  # instead of being indistinguishable from one waiting on a human.
-  # Canonical Go duration form -- the webhook rewrites `45m` to `45m0s` and
-  # ArgoCD would read the difference as permanent drift.
+  # instead of being indistinguishable from one waiting on a human. Canonical
+  # Go duration form, the webhook rewrites `45m` to `45m0s` and ArgoCD would
+  # read the difference as permanent drift.
   timeout: 45m0s
   # git-wait-for-pr parks deliberately until a human acts, so its cap is
   # generous: it exists to surface a PR everyone forgot, not to police review.
@@ -60,12 +60,12 @@ merge:
 # Optional: hand each opened pull request to a triage service.
 triage:
   enabled: false
-  # URL of the service. Cluster-internal is the norm -- nothing outside Kargo
+  # URL of the service. Cluster-internal is the norm; nothing outside Kargo
   # needs to reach it.
   url: ""
   # when: always | gated | never
-  #   always -- every opened PR
-  #   gated  -- only PRs the merge policy will NOT auto-merge, i.e. the ones
+  #   always: every opened PR
+  #   gated: only PRs the merge policy will not auto-merge, i.e. the ones
   #             already waiting on a human. Fewer calls, and it targets the
   #             backlog rather than the happy path.
   when: gated
@@ -78,11 +78,11 @@ triage:
 defaults:
   # autoMerge: what the Stage may merge on its own. Anything it may not merge
   # is still opened as a PR and the promotion waits for a human.
-  #   always -- merge whatever the Warehouse produced
-  #   minor  -- merge patch and metadata changes, plus minor bumps when the
+  #   always: merge whatever the Warehouse produced
+  #   minor: merge patch and metadata changes, plus minor bumps when the
   #             major is > 0 (0.x minors are treated as breaking, per semver)
-  #   patch  -- merge patch and metadata changes only
-  #   never  -- always wait for a human
+  #   patch: merge patch and metadata changes only
+  #   never: always wait for a human
   # For non-semver strategies (Digest, NewestBuild, Lexical) only `always`
   # and `never` are meaningful; `minor`/`patch` behave as `never`.
   autoMerge: minor
@@ -93,11 +93,11 @@ defaults:
     # Registry/repo polling cadence by artifact kind. Kargo enforces a 5m floor.
     # Write durations in Go's canonical form (6h0m0s, not 6h). Kargo's webhook
     # normalises them on write, so a non-canonical value is rewritten in the
-    # cluster and your GitOps controller sees permanent drift -- every
-    # Warehouse re-syncing on every reconcile.
+    # cluster and your GitOps controller sees permanent drift, every Warehouse
+    # re-syncing on every reconcile.
     image: 6h0m0s
     chart: 24h0m0s
-    # NewestBuild targets -- typically your own CI images, where a merged
+    # NewestBuild targets, typically your own CI images, where a merged
     # change should reach the cluster promptly rather than on the next poll.
     build: 15m0s
   discoveryLimit:
@@ -112,13 +112,13 @@ verification:
   # this chart renders into every Project that needs it: after the PR merges
   # and ArgoCD has had time to sync, Prometheus is asked whether every named
   # ArgoCD Application is Synced and Healthy. Needs Argo Rollouts (the
-  # argo-rollouts addon: its CRDs and the controller that actually executes
-  # AnalysisRuns -- Kargo only creates them) and
+  # argo-rollouts addon: its CRDs and the controller that executes
+  # AnalysisRuns, Kargo only creates them) and
   # controller.rollouts.integrationEnabled on the Kargo chart.
   #
-  # It ALSO needs Prometheus to be scraping ArgoCD, because the query is
+  # It also needs Prometheus to be scraping ArgoCD, because the query is
   # `argocd_app_info`. With nothing scraping it the query returns no rows,
-  # every AnalysisRun fails, and no component names the reason -- the run
+  # every AnalysisRun fails, and no component names the reason; the run
   # reports Failed with an empty message. Confirm before enabling:
   #
   #   count(argocd_app_info)   must be > 0
@@ -131,13 +131,13 @@ verification:
   failureLimit: 2
 
 # projects:
-#   <project name -- becomes the Namespace and Kargo Project>:
+#   <project name: becomes the Namespace and Kargo Project>:
 #     description: free text, rendered into the Project's annotations
 #     autoRollback: false  # when true, a failed verification promotes the
 #                          # previously verified Freight back (another PR).
 #                          # Off by default; see docs/chaining.md.
 #     targets:
-#       <target name -- becomes the Warehouse and Stage name>:
+#       <target name: becomes the Warehouse and Stage name>:
 #         scope: conventional-commit scope for the PR title (default: project)
 #         autoMerge: override of defaults.autoMerge
 #         autoPromotion: override of defaults.autoPromotion
@@ -178,7 +178,7 @@ verification:
 #
 # Constraints on the files being updated (from how Kargo's yaml-update works):
 #   * the key must exist and address a scalar, in the FIRST YAML document of
-#     the file -- later `---` documents are preserved but unreachable;
+#     the file: later `---` documents are preserved but unreachable;
 #   * the edited line is rewritten from the value onwards, so a trailing
 #     `# comment` on that line is dropped.
 projects: {}

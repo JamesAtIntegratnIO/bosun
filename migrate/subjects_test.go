@@ -32,7 +32,7 @@ func TestSubjectsNamesWhatTheReportIsAbout(t *testing.T) {
 		}
 	}
 	// Names first: they are the terms that only match when a commit is
-	// genuinely about this, and a caller that takes the front of the list
+	// about this, and a caller that takes the front of the list
 	// should get those rather than `Role`.
 	if got[0] != "trivy-operator-explorer" {
 		t.Errorf("names should sort ahead of kinds, got %v", got)

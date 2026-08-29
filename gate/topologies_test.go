@@ -14,7 +14,7 @@ import (
 )
 
 // requireTool skips rather than fails when an external binary is absent. The
-// alternative -- a hard failure -- makes `go test ./...` depend on the
+// alternative, a hard failure, makes `go test./...` depend on the
 // developer's PATH, and a suite that cannot run is a suite nobody runs.
 //
 // REQUIRE_TOOLS=1 turns the skip into a failure, and CI sets it. A skip is the
@@ -32,9 +32,9 @@ func requireTool(t *testing.T, name string) {
 	}
 }
 
-// These are the repository shapes people actually have. The first version of
-// this gate could read exactly one of them -- an app-of-apps ApplicationSet
-// rendering a chart -- and silently could not see the rest, which for most
+// These are the repository shapes people have. The first version of
+// this gate could read exactly one of them, an app-of-apps ApplicationSet
+// rendering a chart, and silently could not see the rest, which for most
 // ArgoCD users would have meant a gate that checked nothing while reporting
 // success.
 
@@ -177,7 +177,7 @@ spec:
 		t.Fatal(err)
 	}
 	got := appNames(table.Rows)
-	// A destination given by server must resolve to the cluster's NAME, or the
+	// A destination given by server must resolve to the cluster's name, or the
 	// same Application keys differently depending on how it was written and
 	// every diff reports a spurious move.
 	want := []string{"prod-eu/grafana", "prod-us/loki"}
@@ -283,9 +283,9 @@ spec:
 	})
 
 	// The manifests source is cluster-independent, so scoping happens when the
-	// ApplicationSet expands -- both clusters are in the inventory and both
+	// ApplicationSet expands; both clusters are in the inventory and both
 	// match the selector. Recording the expectation so the behaviour is
-	// deliberate rather than accidental: instance scoping applies to SOURCE
+	// deliberate rather than accidental: instance scoping applies to source
 	// selection, and an ApplicationSet still expands against the whole
 	// inventory unless its own selector says otherwise.
 	table, err := Render(root, cfg, inv)
@@ -362,12 +362,12 @@ func TestUnknownSourceTypeIsRejectedAtLoad(t *testing.T) {
 }
 
 // The canonical gitops-bridge bootstrap: an ApplicationSet whose template
-// points at a DIRECTORY (repo URL, basepath and path all templated from
+// points at a directory (repo URL, basepath and path all templated from
 // annotations on the cluster Secret) which ArgoCD walks with
 // `directory.recurse: true`, applying every ApplicationSet YAML it finds.
 //
 // The first version of this gate assumed that path was always a Helm chart,
-// which made it blind to the pattern most gitops-bridge users actually run.
+// which made it blind to the pattern most gitops-bridge users run.
 func TestArgoCDBootstrapReadsADirectoryOfManifests(t *testing.T) {
 	root := writeRepo(t, map[string]string{
 		"bootstrap/addons.yaml": `

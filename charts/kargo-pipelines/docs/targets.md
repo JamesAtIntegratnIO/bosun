@@ -21,7 +21,7 @@ projects:
 ```
 
 Exactly one of `image`, `chart` or `git` is required, and at least one entry in
-`updates` (or in each entry of `stages` — see [chaining.md](chaining.md)).
+`updates` (or in each entry of `stages`; see [chaining.md](chaining.md)).
 
 ## Merge policy
 
@@ -44,9 +44,9 @@ is no difference to measure.
 These come from how Kargo rewrites files, not from this chart. Getting one
 wrong fails in a way that is easy to miss.
 
-- **The key must live in the FIRST YAML document of the file.** Kargo parses
+- **The key must live in the first YAML document of the file.** Kargo parses
   only that one. In a multi-document file, the resource you track has to come
-  first — otherwise the path resolves against the wrong object and every
+  first. Otherwise the path resolves against the wrong object and every
   promotion errors with something like `cannot fetch spec from <nil>`, from the
   day the target was written, reporting nothing anywhere else.
 - **The key must already exist and address a scalar.** Kargo rewrites a line in
@@ -55,10 +55,10 @@ wrong fails in a way that is easy to miss.
   Put the comment on the line above.
 - **List indices are positional.** `additionalResources.10.image` means the
   eleventh element. Insert an entry above it and the target now edits something
-  else — the failure is silent if the new element happens to have the same
-  shape.
-- **Write durations in Go's canonical form** — `12h0m0s`, not `12h`. Kargo's
-  webhook rewrites them, and ArgoCD reads the difference as permanent drift.
+  else, with no error at all if the new element happens to have the same shape.
+- **Write durations in Go's canonical form**, `12h0m0s` rather than `12h`.
+  Kargo's webhook rewrites them, and ArgoCD reads the difference as permanent
+  drift.
 
 ## Semver prereleases
 
@@ -72,8 +72,8 @@ both parse that way, and a plain range constraint excludes prereleases by rule:
 
 Pair such tags either with no constraint at all, or with bounds that carry
 their own prerelease. Getting it wrong matches *nothing*: the Warehouse sits at
-`NoImageReferencesDiscovered` with zero Freight and reports no error, so the
-target is simply dead and looks idle.
+`NoImageReferencesDiscovered` with zero Freight and reports no error, so a dead
+target looks like an idle one.
 
 ## Verification
 

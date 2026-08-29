@@ -31,15 +31,15 @@ func expandAppSet(as map[string]any, inv *Inventory) ([]Row, []string, error) {
 	}
 
 	// An ApplicationSet that matches no cluster generates nothing. Usually
-	// that is deliberate -- a disabled addon, or one aimed at a cluster type
+	// that is deliberate, a disabled addon, or one aimed at a cluster type
 	// this installation does not run.
 	//
 	// But it is also what a stale inventory looks like, and that case is
 	// dangerous: labels drift, selectors stop matching, the render shrinks,
 	// and the gate compares two diminished sets and reports no change. One
 	// missing label took a real render from 62 Applications to 7. Nothing
-	// inside the inventory file can detect that the file is out of date --
-	// only `clusters export -check` against the live cluster can -- so this
+	// inside the inventory file can detect that the file is out of date,
+	// only `clusters export -check` against the live cluster can, so this
 	// warning is the in-band signal, and a page of them means look at the
 	// inventory before believing the verdict.
 	if len(params) == 0 {
@@ -61,7 +61,7 @@ func expandAppSet(as map[string]any, inv *Inventory) ([]Row, []string, error) {
 			rendered, err = renderGoTemplate(tmpl, data)
 			if err != nil {
 				// A template that will not render is a real finding, not a
-				// reason to abandon the whole run -- report it and continue so
+				// reason to abandon the whole run, report it and continue so
 				// the reviewer sees every problem at once.
 				warnings = append(warnings, fmt.Sprintf("%s (cluster %s): template did not render: %v", asName, p.Cluster.Name, err))
 				continue
@@ -115,7 +115,7 @@ func rowFromApp(asName, clusterName string, app any) (Row, error) {
 	}
 
 	// An Application has either `source` or `sources`. The interesting one is
-	// whichever carries a chart or a path -- the first source in these charts
+	// whichever carries a chart or a path, the first source in these charts
 	// is a bare `ref: values` with neither.
 	var sources []any
 	if s, ok := spec["sources"].([]any); ok {
@@ -158,8 +158,8 @@ func rowFromApp(asName, clusterName string, app any) (Row, error) {
 // layers, and any inline valuesObject serialised back to YAML.
 //
 // The inline block matters more than it looks. It is where a repository pins
-// the chart defaults it depends on -- `global.networkPolicy.create: false`,
-// `speaker.frr.enabled: false` -- so rendering without it reproduces upstream
+// the chart defaults it depends on, `global.networkPolicy.create: false`,
+// `speaker.frr.enabled: false`, so rendering without it reproduces upstream
 // defaults rather than this cluster's configuration, and the diff describes a
 // cluster nobody has.
 func helmValues(src map[string]any) ([]string, string) {

@@ -80,7 +80,7 @@ spec:
   args:
     # Regex over argocd_app_info{name}; PromQL anchors it.
     - name: apps
-    # How many of those must be Synced and Healthy -- i.e. all of them.
+    # How many of those must be Synced and Healthy, i.e. all of them.
     - name: expected
   metrics:
     - name: argocd-apps-healthy

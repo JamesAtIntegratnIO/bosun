@@ -18,11 +18,11 @@ SKIP_SCHEME = ("http://", "https://", "mailto:", "#", "data:")
 
 # Directories whose markdown is not this package's documentation.
 #
-# `site/` is the documentation WEBSITE, and its links follow the opposite rule:
+# `site/` is the documentation website, and its links follow the opposite rule:
 # they are absolute site routes (`/start/quickstart/`), which this checker is
 # specifically here to reject. Those are verified instead by
 # site/scripts/check-links.mjs, which resolves every link against the built
-# output -- a stricter check than this one, because it knows which pages exist.
+# output, a stricter check than this one, because it knows which pages exist.
 #
 # The rest are vendored or generated trees that happen to contain READMEs.
 PRUNE = {"node_modules", "dist", ".astro", ".git", ".desloppify"}

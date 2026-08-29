@@ -14,7 +14,7 @@ import (
 // set up needs a seam something other than the cluster package can construct.
 type Fake struct {
 	// Counts are keyed "group/version/plural". A key that is absent answers
-	// the way an unlisted API group does in production -- not permitted --
+	// the way an unlisted API group does in production, not permitted,
 	// rather than zero, because a fake whose default is the safest possible
 	// answer would let a brief that prints unknowns as "0" pass its tests.
 	Counts map[string]Count

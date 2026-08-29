@@ -8,7 +8,7 @@ import (
 
 // The report is read by somebody who has just learned that something they did
 // not know about has been true for a while. The thing they most need is not a
-// description of the problem but the command that ends it -- so every finding
+// description of the problem but the command that ends it, so every finding
 // puts its remedy in a fenced block, and nothing is written that a reader
 // would have to translate into an action themselves.
 

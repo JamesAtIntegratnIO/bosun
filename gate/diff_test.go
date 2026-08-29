@@ -79,7 +79,7 @@ func TestMoveBetweenClustersIsOneChange(t *testing.T) {
 	}
 }
 
-// Two departures and two arrivals is not two moves -- nothing in the render
+// Two departures and two arrivals is not two moves; nothing in the render
 // says which arrival answers which departure. Reporting them plainly is the
 // honest answer; pairing them is a guess dressed as a finding.
 func TestAnAmbiguousMoveIsNotReportedAsAMove(t *testing.T) {
@@ -205,9 +205,9 @@ func TestExistingAddonGainingAClusterStillBlocks(t *testing.T) {
 }
 
 // The marker is a contract with whatever reads the gate's verdict off a pull
-// request -- a triage agent finds the report by searching comments for it.
+// request, a triage agent finds the report by searching comments for it.
 //
-// It is asserted on BOTH a blocking report and a green one. Before this test
+// It is asserted on both a blocking report and a green one. Before this test
 // existed the marker was prepended by one shell script in the local proving
 // ground and by no adapter at all, so the agent could never have found a
 // report published by CI. A report that leads with anything else is a report

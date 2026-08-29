@@ -10,13 +10,13 @@ import (
 )
 
 // Cluster mirrors the fields of an ArgoCD cluster Secret that generators and
-// templates can actually see: the name and server, plus labels and
+// templates can see: the name and server, plus labels and
 // annotations. Selectors match on labels; templates read both.
 type Cluster struct {
 	Name   string `json:"name"`
 	Server string `json:"server"`
 	// ArgoCD names the instance this cluster is registered with, for fleets
-	// running more than one -- per region, per tenant, per business unit.
+	// running more than one, per region, per tenant, per business unit.
 	// Empty means "the only one", which is the common case.
 	ArgoCD      string            `json:"argocd,omitempty"`
 	Labels      map[string]string `json:"labels"`
@@ -40,16 +40,16 @@ type Inventory struct {
 // Validate checks that the inventory can answer the questions the selectors
 // ask of it.
 //
-// This is what makes a stale inventory an ERROR rather than a wrong answer.
-// Selectors match on labels, and a label the inventory has never seen simply
-// does not match -- so a fixture written before someone added `cluster_role`
+// This is what makes a stale inventory an error rather than a wrong answer.
+// Selectors match on labels, and a label the inventory has never seen does
+// not match, so a fixture written before someone added `cluster_role`
 // renders a fraction of the real Applications and then reports "no targeting
 // change" with total confidence. Measured: one missing label took a render
 // from 62 Applications to 7, silently.
 //
 // The known set is derived from the clusters themselves rather than recorded
 // separately. Recording it would be the same information written twice, and
-// a stale file's own record is stale too -- so it would detect nothing.
+// a stale file's own record is stale too, so it would detect nothing.
 func (inv *Inventory) Validate(selectorKeys []string, knownAbsent []string) error {
 	known := map[string]bool{}
 	for _, c := range inv.Clusters {

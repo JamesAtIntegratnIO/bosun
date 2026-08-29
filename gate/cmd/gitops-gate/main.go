@@ -1,11 +1,11 @@
 // gitops-gate answers one question about a pull request: does this change what
-// actually gets deployed, and is what it produces still valid?
+// gets deployed, and is what it produces still valid?
 //
 // It is CI-agnostic on purpose. Run the binary, read the exit code:
 //
-//	0  no blocking change
-//	1  blocking change -- targeting moved, or validation failed
-//	2  the gate could not run
+//	0 no blocking change
+//	1 blocking change: targeting moved, or validation failed
+//	2 the gate could not run
 //
 // Exit 2 is deliberately distinct from 1. "This change is bad" and "the gate is
 // broken" want opposite reactions, and a CI system that shows them identically
@@ -13,7 +13,7 @@
 //
 // This package is the command-line face only. The rendering, diffing and
 // validation live in the gate package one level up, where the agent imports
-// them directly -- the CLI and the in-cluster gate answer with the same code.
+// them directly, the CLI and the in-cluster gate answer with the same code.
 package main
 
 import (
@@ -143,7 +143,7 @@ func cmdDiff(args []string) (bool, error) {
 
 	// Chart-diff turns "the version moved" into "here is what the version
 	// moving does". It needs the repository for the value files, so it is
-	// opt-in via -repo rather than assumed -- gate.Assemble skips the two
+	// opt-in via -repo rather than assumed, gate.Assemble skips the two
 	// worktree-dependent steps when the root is empty.
 	var cfg *gate.Config
 	if *repo != "" {
@@ -157,7 +157,7 @@ func cmdDiff(args []string) (bool, error) {
 
 	// Rendered whole, then written once. A report streamed straight at a file
 	// discards every write error on the way and then discards the Close, which
-	// is where a full disk actually surfaces -- so a truncated report was
+	// is where a full disk surfaces, so a truncated report was
 	// presented as a complete one, from the tool whose entire job is not doing
 	// that.
 	var report strings.Builder
@@ -176,7 +176,7 @@ func cmdDiff(args []string) (bool, error) {
 	// on its commit status. Counting targeting and source changes here was
 	// wrong in the way that matters: a run blocked only by a dropped API
 	// version or a dropped setting printed "0 targeting change(s), 0 other
-	// source change(s) -- blocking", which reads as the gate contradicting
+	// source change(s), blocking", which reads as the gate contradicting
 	// itself.
 	blocking, headline := res.Verdict()
 	fmt.Fprintf(os.Stderr, "\ngitops-gate: %s\n", headline)
@@ -188,7 +188,7 @@ func cmdDiff(args []string) (bool, error) {
 // -ignore-missing-schemas is effectively mandatory rather than a convenience:
 // CRDs outside the big projects are in no published catalogue, and without it
 // one unknown kind fails a run that had nothing wrong with it. The cost is
-// real and worth stating -- those kinds are simply not checked.
+// real and worth stating; those kinds are not checked.
 func cmdValidate(args []string) (bool, error) {
 	fs := flag.NewFlagSet("validate", flag.ExitOnError)
 	root := fs.String("repo", ".", "path to the repository worktree")
@@ -227,7 +227,7 @@ func cmdValidate(args []string) (bool, error) {
 // The inventory has to be checked in, because CI cannot reach the cluster. That
 // makes it a snapshot, and snapshots go stale silently. Running this somewhere
 // with cluster access and diffing the result is the only way that drift ever
-// surfaces -- so `export` is built to be run in a check, not just by hand.
+// surfaces, so `export` is built to be run in a check, not just by hand.
 func cmdClusters(args []string) error {
 	if len(args) == 0 || args[0] != "export" {
 		return fmt.Errorf("usage: gitops-gate clusters export [-out FILE] [-context CTX] [-namespace NS]")
@@ -294,7 +294,7 @@ func load(root, cfgPath string) (*gate.Config, *gate.Inventory, error) {
 	}
 	// The CLI reads the inventory from a checked-in snapshot, so the config
 	// must say where it is. The in-cluster gate reads the inventory live and
-	// has no use for this key -- which is why the requirement lives here and
+	// has no use for this key, which is why the requirement lives here and
 	// not in the parser.
 	if cfg.Clusters == "" {
 		return nil, nil, fmt.Errorf("%s: `clusters` is required -- run `gitops-gate clusters export` to create one", cfgPath)
@@ -329,8 +329,8 @@ func writeJSONFile(path string, v any) error {
 // one was named, stdout otherwise.
 //
 // Rendered whole and written once, on purpose. Streaming into a file discards
-// every write error on the way there and then discards the Close -- which is
-// where a full disk actually surfaces -- so a truncated report was handed back
+// every write error on the way there and then discards the Close, which is
+// where a full disk surfaces, so a truncated report was handed back
 // as a complete one by the tool whose entire job is not doing that.
 func writeReport(path, body string) error {
 	if path == "" {

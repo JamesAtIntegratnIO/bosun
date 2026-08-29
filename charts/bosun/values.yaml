@@ -15,17 +15,17 @@ service:
 
 # Kargo calls this in-cluster. Nothing else needs to reach it, and publishing
 # something that can spend money and write to your repository would be
-# gratuitous exposure -- so this chart deliberately renders no Ingress or
+# gratuitous exposure, so this chart deliberately renders no Ingress or
 # HTTPRoute at all.
 
-# What the agent calls itself. This is NOT the same as the account its token
-# belongs to -- the token's owner is whoever minted it, and every comment and
+# What the agent calls itself. This is not the same as the account its token
+# belongs to; the token's owner is whoever minted it, and every comment and
 # commit will carry that person's name unless you give the agent an account of
 # its own. Create a dedicated bot user on your git host and mint the token as
 # that user; this only controls the name it signs with.
 branding:
   name: Bosun
-  # DEPRECATED and ignored since 0.17.0. Comments no longer carry an identity
+  # Deprecated and ignored since 0.17.0. Comments no longer carry an identity
   # header at all: authenticating as a GitHub App puts the name and avatar
   # above every comment already, and a bold "⚓ Bosun" under that was the agent
   # introducing itself twice. Still accepted so that setting it does not fail
@@ -37,8 +37,8 @@ git:
   # github, gitea (implemented) | gitlab | bitbucket (extension points)
   provider: github
   # What this means depends on the host, because the hosts differ:
-  #   github -- the API root, e.g. https://ghe.example.com/api/v3
-  #   gitea  -- the INSTANCE root, e.g. https://gitea.example.com. The client
+  #   github: the API root, e.g. https://ghe.example.com/api/v3
+  #   gitea: the instance root, e.g. https://gitea.example.com. The client
   #             appends /api/v1 itself, and also needs the root to build a
   #             push remote.
   apiBase: ""
@@ -50,28 +50,28 @@ git:
   repo: ""                # REQUIRED
   # Clone URL. Must be reachable from the cluster.
   repoURL: ""             # REQUIRED
-  # Commit identity. LEAVE EMPTY unless you have a reason: empty means the
-  # agent derives it -- as a GitHub App, its own bot identity
-  # (`<slug>[bot] <id+slug[bot]@users.noreply.github.com>`), which is what
+  # Commit identity. Leave empty unless you have a reason: empty means the
+  # agent derives it, as a GitHub App, its own bot identity (`<slug>[bot]
+  # <id+slug[bot]@users.noreply.github.com>`), which is what
   # makes the pushed commits attribute to the App's avatar rather than to a
   # stranger. The old default was `bosun@users.noreply.github.com`, and that
-  # namespace BELONGS to GitHub accounts: every commit the first live repair
+  # namespace belongs to GitHub accounts: every commit the first live repair
   # pushed was attributed, avatar and all, to the unrelated account named
   # `bosun`. If you do set an email here, never use a
   # users.noreply.github.com address that is not your bot's own.
   author:
     name: ""
     email: ""
-  # Existing Secret holding the token. This chart never creates a Secret --
-  # how it gets there (ExternalSecret, Vault Agent, SOPS, kubectl) belongs to
+  # Existing Secret holding the token. This chart never creates a Secret; how
+  # it gets there (ExternalSecret, Vault Agent, SOPS, kubectl) belongs to
   # whoever installs this.
   existingSecret: ""      # REQUIRED
   tokenKey: token
 
   # Act as a GitHub App instead of as the owner of a token.
   #
-  # THIS IS ABOUT IDENTITY, not access. A token grants exactly the same rights
-  # -- but it belongs to whoever minted it, so every comment the agent writes
+  # This is about identity, not access. A token grants the same rights, but
+  # it belongs to whoever minted it, so every comment the agent writes
   # arrives under that person's name and avatar and reads like a colleague's
   # review until you reach the footer. `branding` exists to compensate for
   # that, and compensating is all it can do.
@@ -80,14 +80,14 @@ git:
   # and its own timeline entry. Nobody has to be told what wrote them.
   #
   # Two things follow that matter more than they sound. Installation tokens
-  # EXPIRE, in about an hour, and are minted on demand from the key -- a leaked
+  # expire, in about an hour, and are minted on demand from the key; a leaked
   # one is a bad hour, not a standing grant. And the App is its own principal,
   # so revoking it disturbs nobody and its actions are attributable to it
   # alone.
   #
   # Needs these repository permissions, the same set the token needed:
   #   Contents read+write, Pull requests read+write, Issues read+write,
-  #   Commit statuses read+write, Metadata read. Workflows: NONE.
+  #   Commit statuses read+write, Metadata read. Workflows: none.
   #
   # installationId is optional: left empty it is discovered from the repository
   # itself, which removes a value that can be silently wrong.
@@ -99,7 +99,7 @@ git:
     privateKeyKey: private-key
 
 llm:
-  # openai | anthropic. NO DEFAULT: a component that installs cleanly and then
+  # openai | anthropic. No default: a component that installs cleanly and then
   # quietly spends money against a vendor you did not choose is a bad default.
   provider: ""            # REQUIRED
   # Required for `openai`. This is what makes a self-hosted endpoint work.
@@ -114,19 +114,19 @@ llm:
   apiKeyKey: api-key
 
 gate:
-  # The agent IS the gate. It polls the open pull requests, renders base and
-  # head against the LIVE cluster inventory, and posts the `checkName` status
+  # The agent is the gate. It polls the open pull requests, renders base and
+  # head against the live cluster inventory, and posts the `checkName` status
   # and the report comment itself. Nothing to install in CI, no checked-in
-  # cluster inventory to go stale, no paths filter to hand-edit -- every pull
+  # cluster inventory to go stale, no paths filter to hand-edit; every pull
   # request is rendered, and "no change to what gets deployed" is an answer
   # rather than a guess.
   #
-  # WHAT IT COSTS: an ArgoCD account token (`argocd` below, REQUIRED), and the
+  # What it costs: an ArgoCD account token (`argocd` below, REQUIRED), and the
   # render runs over pull-request content in-cluster, which is why fork pull
   # requests are refused unless `forkPRs` says otherwise.
 
   # Render pull requests whose head branch lives in another repository.
-  # OFF by default: the render runs helm over the pull request's content,
+  # Off by default: the render runs helm over the pull request's content,
   # inside the cluster, and whose content that is should be an operator's
   # decision. Off, a fork pull request gets an `error` status naming this
   # value rather than an unreported required check.
@@ -141,33 +141,33 @@ gate:
   # serves the four fields the gate wants (name, server, labels, annotations)
   # with the credential block redacted.
   #
-  # WHY THE API AND NOT THE SECRETS THEY LIVE IN. Reading the cluster Secrets
+  # Why the API and not the secrets they live in. Reading the cluster Secrets
   # needs get/list on Secrets in the ArgoCD namespace, and that grant cannot
   # be made smaller. The gate reads four fields; RBAC has no predicate for
-  # "the labels but not the data" -- there are no deny rules, `resourceNames`
+  # "the labels but not the data"; there are no deny rules, `resourceNames`
   # does not apply to `list`, and the label selector in the request is a
-  # filter the apiserver applies AFTER authorising. So a token holding that
+  # filter the apiserver applies after authorising. So a token holding that
   # Role can drop the selector and read argocd-secret and every repository
   # credential beside it. ArgoCD's own API draws the line RBAC cannot.
   #
-  # WHAT IT COSTS, as plainly as the grant it replaces. A credential to mint,
+  # What it costs, as plainly as the grant it replaces. A credential to mint,
   # store and rotate, bearer-equivalent for whatever its ArgoCD RBAC permits.
   # A component that can be down on its own: the apiserver is up whenever the
   # cluster is; argocd-server is not. And its own TLS story, because
   # argocd-server serves its own certificate rather than the one the kubelet
   # mounts into every pod.
   argocd:
-    # The ArgoCD API server, as the agent dials it. NO DEFAULT: this is a
+    # The ArgoCD API server, as the agent dials it. No default: this is a
     # fact about your install, and a wrong-but-plausible address fails at
     # start-up with a timeout that points nowhere near this line.
     #
-    # In-cluster, so it CANNOT be reached through an ipBlock in the
-    # NetworkPolicy -- the chart adds the namespace egress rule itself, on
+    # In-cluster, so it cannot be reached through an ipBlock in the
+    # NetworkPolicy; the chart adds the namespace egress rule itself, on
     # `podPort`.
     baseURL: ""             # REQUIRED
 
-    # The port argocd-server's POD listens on. Nothing but the NetworkPolicy
-    # rule reads this: it is not part of `baseURL`, and it is normally NOT the
+    # The port argocd-server's pod listens on. Nothing but the NetworkPolicy
+    # rule reads this: it is not part of `baseURL`, and it is normally not the
     # port that appears there.
     #
     # A NetworkPolicy matches the destination port of the packet, and a
@@ -175,12 +175,11 @@ gate:
     # evaluated. Whatever port the Service published, by the time the rule is
     # matched the packet is addressed to the pod, on 8080.
     #
-    # So setting this to the Service port from `baseURL` -- 80, or 443 --
-    # renders clean, passes `helm lint`, passes this chart's schema, and then
-    # drops every packet. There is no error at either end: the connection
-    # hangs for the full HTTP timeout and the pod dies at start-up saying
-    # argocd-server is unreachable, which is true and points nowhere near
-    # this line.
+    # So setting this to the Service port from `baseURL`, 80, or 443, renders
+    # clean, passes `helm lint`, passes this chart's schema, and then drops
+    # every packet. There is no error at either end: the connection hangs for
+    # the full HTTP timeout and the pod dies at start-up saying argocd-server
+    # is unreachable, which is true and points nowhere near this line.
     #
     # 8080 is argocd-server's container port in the upstream argo-cd chart,
     # and it does not move with `server.insecure`: the Service publishes both
@@ -205,15 +204,15 @@ gate:
     # read it replaced, which would defeat the point.
     existingSecret: ""      # REQUIRED
     tokenKey: token
-    # argocd-server's default certificate is self-signed. Give this its CA
-    # (a Secret holding one PEM key) or set insecureSkipTLSVerify -- which of
+    # argocd-server's default certificate is self-signed. Give this its CA (a
+    # Secret holding one PEM key) or set insecureSkipTLSVerify, which of
     # those you can produce is a fact about your install.
     caSecret: ""
     caKey: ca.crt
     insecureSkipTLSVerify: false
 
 triage:
-  # Repair a RED gate whose only cause is a CRD that stopped serving versions:
+  # Repair a red gate whose only cause is a CRD that stopped serving versions:
   # rewrite every manifest in the repository that still declares one to the
   # version the gate says survives, and push the migration to the pull
   # request's branch.
@@ -235,32 +234,32 @@ triage:
   # see it.
   #
   # Enumerating every upstream's structural changes is impossible, so this shows
-  # the model the OLD schema, the NEW schema and the document, and asks it to
+  # the model the old schema, the new schema and the document, and asks it to
   # translate. What makes that safe is not the prompt. Every proposal is checked
   # before anything is written:
   #
   #   identity     apiVersion is the target; kind, metadata.name and
   #                metadata.namespace are byte-identical to the original.
-  #   schema       the proposal validates against the target schema -- the
+  #   schema       the proposal validates against the target schema: the
   #                apiserver's objection, raised before the apply.
-  #   provenance   every value in the proposal appears in the ORIGINAL document
+  #   provenance   every value in the proposal appears in the original document
   #                or is dictated by the target schema itself (a default, an
   #                enum member, a const). Structure comes from the schema; data
   #                comes only from the document.
   #
   # A proposal that fails any of them is refused whole and escalated with the
-  # refusal, and NOTHING is pushed -- not even the plain swaps that were fine,
+  # refusal, and nothing is pushed, not even the plain swaps that were fine,
   # because a swap alone turns the gate green over a document the apiserver
   # will silently prune.
   #
-  # WHAT IT NEEDS. `liveReads.enabled`, for the schema of the version being
-  # left -- only the CustomResourceDefinition installed right now knows it, and
+  # What it needs. `liveReads.enabled`, for the schema of the version being
+  # left, only the CustomResourceDefinition installed right now knows it, and
   # after the merge it is gone. And egress to the chart registry, to render the
   # target version: the same hosts the upstream-notes lookup already needs.
   # Without either it degrades to the plain swap and the comment says which
   # check it could not make.
   #
-  # DEFAULT ON. It runs only where the deterministic repair already had
+  # Default on. It runs only where the deterministic repair already had
   # authority, over files the path policy already permitted, and behind
   # stricter checks than anything else here.
   structuralMigration: true
@@ -268,37 +267,37 @@ triage:
   # escalated rather than quietly left behind.
   migrateMaxDocs: 5
 
-  # Explain a GREEN gate that still changed the render.
+  # Explain a green gate that still changed the render.
   #
-  # The gate blocks on structural changes and REPORTS the rest -- a chart that
+  # The gate blocks on structural changes and reports the rest, a chart that
   # added resources, moved a port, flipped a default. All of that passes, and
   # arrives as a pull request whose visible diff is one version number. With
   # this off, the agent only ever speaks about failures and that content stays
   # invisible.
   #
-  # Costs one model call per bump whose render actually changed. Nothing is
-  # called when the gate reports no change, and each pull request is explained
-  # at most once.
+  # Costs one model call per bump whose render changed. Nothing is called when
+  # the gate reports no change, and each pull request is explained at most
+  # once.
   explainGreen: true
 
   # Read what the maintainers wrote between the two versions, and use it to
-  # explain WHY the render changed rather than only what changed.
+  # explain why the render changed rather than only what changed.
   #
-  # HOW IT FINDS THEM, and why it is not a guess: an artifact reference is not
-  # a repository name -- ghcr.io/akuity/kargo-charts/kargo is published from
+  # How it finds them, and why it is not a guess: an artifact reference is not
+  # a repository name, ghcr.io/akuity/kargo-charts/kargo is published from
   # github.com/akuity/kargo, and no string-munging discovers that. It reads the
   # publisher's own `org.opencontainers.image.source` label off the image
   # config. A guessed repository yields another project's release notes, which
   # is worse than none because it reads exactly like the truth.
   #
-  # EGRESS. This is the only part of the agent that talks to anything beyond
+  # Egress. This is the only part of the agent that talks to anything beyond
   # your git host and your model. Release notes come from api.github.com, which
-  # it can already reach; finding WHICH repository needs a read against the
-  # registry the artifact lives in. Those hosts are knowable -- they are the
-  # repoURLs in your promotion pipeline's target list -- so keep them an
-  # explicit allow-list under networkPolicy.egress.fqdns rather than opening
-  # egress up. Without them this degrades to a render-only explanation that
-  # says so, which is the behaviour that existed before.
+  # it can already reach; finding which repository needs a read against the
+  # registry the artifact lives in. Those hosts are knowable; they are the
+  # repoURLs in your promotion pipeline's target list, so keep them an explicit
+  # allow-list under networkPolicy.egress.fqdns rather than opening egress up.
+  # Without them this degrades to a render-only explanation that says so, which
+  # is the behaviour that existed before.
   #
   # GitHub-only today. A GitLab or Gitea source URL is refused rather than
   # bent into an API this cannot read.
@@ -308,10 +307,10 @@ triage:
     # affordable. The newest are the ones that matter.
     maxReleases: 5
     # Some projects paste an entire commit log into a release. Left uncapped,
-    # that crowds the gate report out of the prompt -- and the gate report is
-    # what the explanation is actually grounded in.
+    # that crowds the gate report out of the prompt, and the gate report is
+    # what the explanation is grounded in.
     maxBodyChars: 4000
-    # How many upstream COMMITS between the two tags may reach a prompt or a
+    # How many upstream commits between the two tags may reach a prompt or a
     # comment.
     #
     # Commits answer the question release notes routinely do not. A chart drops
@@ -320,16 +319,16 @@ triage:
     # is "no release note explains why". The commit that deleted the template
     # says exactly why, in a sentence nobody wrote for a changelog.
     #
-    # WHICH commits is decided by code, not by the model: the kinds and resource
+    # Which commits is decided by code, not by the model: the kinds and resource
     # names in the gate's own findings are matched against commit messages and
     # against the paths in the upstream diff. Asking the model which commits
     # support its conclusion would be a second opinion from the same opinion.
     #
-    # Read on the paths that produce PROSE for a human: the green-gate
-    # explanation, and an escalation. The mechanical path -- the one that
-    # writes files -- never reads them, because an edit's evidence is the gate
-    # report alone and a commit message that mentions a version must never
-    # become corroboration for writing one.
+    # Read on the paths that produce prose for a human: the green-gate
+    # explanation, and an escalation. The mechanical path, the one that writes
+    # files, never reads them, because an edit's evidence is the gate report
+    # alone and a commit message that mentions a version must never become
+    # corroboration for writing one.
     #
     # Costs at most two extra api.github.com calls on those paths, and no new
     # egress: it is the same host the gate's checks are read from.
@@ -337,7 +336,7 @@ triage:
   # Self-fix attempts per pull request, tracked by label so the cap survives a
   # restart or a rescheduled pod.
   maxAttempts: 2
-  # Paths the agent may edit. EMPTY MEANS IT CAN FIX NOTHING, and the process
+  # Paths the agent may edit. Empty means it can fix nothing, and the process
   # refuses to start that way rather than silently refusing every fix later.
   allowPaths: []
   # Added to the built-in deny-list, which already refuses CI config, the gate
@@ -348,11 +347,11 @@ triage:
   #
   # The other half of `networkPolicy.egress.allowInternet`: egress is open, so
   # this is where a destination gets forbidden by name. An entry is an exact
-  # host or a `*.suffix` pattern, and a pattern forbids the apex too --
+  # host or a `*.suffix` pattern, and a pattern forbids the apex too,
   # `*.example.com` also stops `example.com`, because an operator blocking a
   # domain means the domain.
   #
-  # A refused request is logged as REFUSED with the rule that stopped it, and
+  # A refused request is logged as refused with the rule that stopped it, and
   # degrades the same way any other unreachable host does: a shorter brief that
   # says what it could not read.
   egressDeny: []
@@ -379,12 +378,12 @@ rbac:
   # it never mutates the cluster.
   create: true
 
-# Read what is actually running.
+# Read what is running.
 #
 # The gate renders a repository and compares, so everything it knows is a
 # property of text: "3 manifests still declare a version this chart stops
 # serving" is a fact about the repository, and the only kind of fact it can
-# have. Whether anything is STORED on that version is a different question, it
+# have. Whether anything is stored on that version is a different question, it
 # usually decides whether a human needs waking, and CI structurally cannot
 # answer it. This agent runs in the cluster.
 #
@@ -393,17 +392,17 @@ rbac:
 #   - externalsecrets.external-secrets.io on v1beta1 — 0 live object(s)
 #   - Application external-secrets-host — Degraded / OutOfSync
 #
-# OFF BY DEFAULT, unlike everything else here. The rest of what the agent reads
+# Off by default, unlike everything else here. The rest of what the agent reads
 # is public or already in the pull request; this reads your cluster, and a
 # component that starts doing that because somebody upgraded a chart has made a
 # decision that belongs to you.
 #
-# READ-ONLY, structurally: get and list, no watch, and no create, update, patch
+# Read-only, structurally: get and list, no watch, and no create, update, patch
 # or delete anywhere in this chart.
 #
-# NETWORK. This is the one feature that needs egress the chart cannot infer.
-# The apiserver is reached at `kubernetes.default.svc`, and a ClusterIP CANNOT
-# be expressed as an ipBlock -- it is DNAT'd to a real endpoint before policy is
+# Network. This is the one feature that needs egress the chart cannot infer. The
+# apiserver is reached at `kubernetes.default.svc`, and a ClusterIP cannot be
+# expressed as an ipBlock; it is DNAT'd to a real endpoint before policy is
 # evaluated, so a rule naming it matches nothing and the connection hangs with
 # zero bytes rather than failing. Give the real endpoints under
 # `networkPolicy.egress.apiServer`, or use the cilium flavor, which can name the
@@ -416,17 +415,17 @@ liveReads:
   # Which custom resources the agent may count.
   #
   # "Everything except the core group" is the intent most people have here and
-  # it is NOT EXPRESSIBLE in Kubernetes RBAC: there are no deny rules, and
+  # it is not expressible in Kubernetes RBAC: there are no deny rules, and
   # `apiGroups: ["*"]` includes the core group, which contains Secrets. These
-  # are the two shapes that can actually be written down.
+  # are the two shapes that can be written down.
   #
-  #   groups  (default) -- the API groups you list, and nothing else. Secrets
+  #   groups  (default): the API groups you list, and nothing else. Secrets
   #                        stay unreadable because the core group is never
   #                        granted beyond the pods/events above. An unlisted
   #                        group shows up in the brief as "not permitted to
   #                        check", which is honest and fixable.
-  #   wide              -- apiGroups ["*"], resources ["*"], get + list. Answers
-  #                        everything and CAN READ SECRET CONTENTS. There is no
+  #   wide: apiGroups ["*"], resources ["*"], get + list. Answers
+  #                        everything and can read Secret contents. There is no
   #                        way to subtract the core group.
   #
   # `groups` is the recommendation. The list is short and knowable: it is the
@@ -439,7 +438,7 @@ liveReads:
 
   # Where ArgoCD Applications live. Read so a brief can say "this Application
   # was already Degraded before your bump", which is the single most useful
-  # sentence available to somebody looking at a red gate -- and which the
+  # sentence available to somebody looking at a red gate, and which the
   # promotion has been carrying the name for, unread, since the first release.
   argocdNamespace: argocd
 
@@ -448,31 +447,31 @@ networkPolicy:
   # cilium emits CiliumNetworkPolicy with toFQDNs, which is materially tighter
   # than an ipBlock. `standard` emits plain NetworkPolicy and works anywhere.
   flavor: standard
-  # Namespace running the Kargo controller -- the only thing allowed to call
+  # Namespace running the Kargo controller, the only thing allowed to call
   # this service.
   kargoNamespace: kargo
   # Egress the agent needs: the git host and the model endpoint.
   # For `standard`, give CIDRs; for `cilium`, FQDNs are also honoured.
   egress:
     dnsNamespace: kube-system
-    # In-cluster destinations -- a self-hosted git host or a model endpoint
-    # running in this cluster. These CANNOT be expressed as ipBlocks: a
+    # In-cluster destinations, a self-hosted git host or a model endpoint
+    # running in this cluster. These cannot be expressed as ipBlocks: a
     # ClusterIP is DNAT'd to a pod IP before policy evaluation, so a rule
     # naming it matches nothing and the connection hangs with zero bytes.
     # e.g. [{name: gitea, ports: [3000]}]
     namespaces: []
-    # e.g. [{cidr: 10.1.2.3/32, port: 8000}] for a model endpoint on your LAN
+    # e.g. [{cidr: 10.1.2.3/32, port: 8000}] for a model endpoint on your lan
     ipBlocks: []
-    # The Kubernetes apiserver, needed when liveReads is enabled OR the
-    # pipeline sweep is on -- both read it, and both are on by default.
-    # (The gate does not: its inventory comes from the ArgoCD API, and the
+    # The Kubernetes apiserver, needed when liveReads is enabled or the
+    # pipeline sweep is on, both read it, and both are on by default. (The
+    # gate does not: its inventory comes from the ArgoCD API, and the
     # chart writes that egress rule itself.)
     #
     # It has its own key because it is the destination people get wrong. The
     # apiserver is reached at `kubernetes.default.svc`, whose ClusterIP is
-    # DNAT'd to a real endpoint BEFORE policy is evaluated -- so a rule naming
+    # DNAT'd to a real endpoint before policy is evaluated, so a rule naming
     # that ClusterIP matches nothing, and the symptom is a hang with zero bytes
-    # rather than a refusal. Give the endpoints the Service actually points at:
+    # rather than a refusal. Give the endpoints the Service points at:
     #
     #   kubectl get endpoints kubernetes -n default
     #
@@ -483,14 +482,14 @@ networkPolicy:
     # control-plane node being replaced.
     apiServer:
       ipBlocks: []
-    # e.g. [api.github.com] -- honoured only when flavor is `cilium`
+    # e.g. [api.github.com]; honoured only when flavor is `cilium`
     fqdns: []
     # Cilium matchPattern entries, for hosts whose names are a set rather than
     # a name: `*.quay.io` covers cdn01/cdn02/cdn03 without asserting how many
     # there are. Merged with `fqdns` into one rule.
     #
-    # A registry needs BOTH halves. `ghcr.io` serves the manifest and redirects
-    # the blob -- where the image labels live -- to
+    # A registry needs both halves. `ghcr.io` serves the manifest and redirects
+    # the blob, where the image labels live, to
     # pkg-containers.githubusercontent.com. Allowing only the registry host
     # means the label lookup hangs until it times out, which reads as a slow
     # model rather than a blocked connection.
@@ -502,9 +501,9 @@ networkPolicy:
     # Let the agent reach the internet on 443, and hold it to account in the
     # log instead of in this file.
     #
-    # WHY THIS EXISTS. The allow-list above is correct and it is a full-time
+    # Why this exists. The allow-list above is correct and it is a full-time
     # job. Every chart repository, every registry's blob CDN and every redirect
-    # target has to be named before the agent can read it -- and a chart
+    # target has to be named before the agent can read it, and a chart
     # repository redirects its index, publishes its archive on a release-asset
     # CDN, and changes that CDN's hostname without telling anyone. Three
     # separate incidents in this project added a host after the fact. The
@@ -512,25 +511,25 @@ networkPolicy:
     # no evidence, which is the quiet failure this whole component exists to
     # end.
     #
-    # WHAT YOU GET INSTEAD. The agent logs EVERY outbound request -- method,
+    # What you GET instead. The agent logs every outbound request, method,
     # host and path, with the query string redacted because release-asset URLs
-    # carry signed tokens -- and refuses any host in `triage.egressDeny`.
+    # carry signed tokens, and refuses any host in `triage.egressDeny`.
     # Accountability after the fact rather than permission before it.
     #
-    # WHAT THIS DOES NOT WIDEN. The agent still writes only to the pull
+    # What this does not widen. The agent still writes only to the pull
     # request's own branch, still refuses paths on a deny-list it cannot
     # configure away, and still never mutates the cluster. This widens what it
-    # may READ, not what it may DO.
+    # may read, not what it may do.
     #
     # Cilium emits `toFQDNs: [matchPattern: "*"]` on 443. For the `standard`
-    # flavor, use `allowPublicHTTPS` above -- an ipBlock cannot express "any
+    # flavor, use `allowPublicHTTPS` above; an ipBlock cannot express "any
     # name", so that is the nearest equivalent and it excludes RFC1918.
     allowInternet: false
 
 # Watch the promotion pipeline itself.
 #
 # The gate answers a pull request that exists. This answers the question
-# nobody asks: whether the pull requests that SHOULD exist are being opened at
+# nobody asks: whether the pull requests that should exist are being opened at
 # all. Nothing about a promotion that never happened produces an event, so the
 # only way to see it is to look on a timer.
 #
@@ -542,9 +541,9 @@ networkPolicy:
 # succeeds and changes nothing; duplicate promotion pull requests where only
 # the newest can merge.
 #
-# READ-ONLY. It only ever LISTs, and it uses the Kargo read the ClusterRole
+# Read-only. It only ever LISTs, and it uses the Kargo read the ClusterRole
 # already grants. Every finding carries the exact command to fix it, because
-# none of them are guessable -- `kargo.akuity.io/abort=true` is silently
+# none of them are guessable, `kargo.akuity.io/abort=true` is silently
 # ignored where the request object works, and a Warehouse refresh will never
 # re-run a promotion that already reached a terminal phase.
 supervise:
@@ -556,10 +555,10 @@ supervise:
 metrics:
   serviceMonitor:
     # Scrapes /metrics, which carries the supervisor's findings by kind and
-    # severity, how long each has held, and -- the one that matters -- a sweep
+    # severity, how long each has held, and, the one that matters, a sweep
     # timestamp.
     #
-    # ALERT ON THE TIMESTAMP'S ABSENCE, not only on the findings:
+    # Alert on the timestamp'S absence, not only on the findings:
     #
     #   absent(bosun_pipeline_sweep_timestamp_seconds)
     #     or time() - bosun_pipeline_sweep_timestamp_seconds > 3600

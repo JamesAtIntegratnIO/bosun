@@ -14,7 +14,7 @@ import (
 
 // Everything here is about one distinction: an answer nobody was allowed to
 // give, versus an answer. Both are zero if you are careless, and the careless
-// version is the dangerous one -- "0 live objects on the dropped versions" is
+// version is the dangerous one, "0 live objects on the dropped versions" is
 // the sentence that ends a conversation, and it must never be produced by not
 // having looked.
 
@@ -45,8 +45,8 @@ func page(items int, cont string) string {
 	return string(b)
 }
 
-// The apiserver sets metadata.remainingItemCount only for etcd-served lists --
-// not the default watch-cache path -- and documents it as best-effort. A count
+// The apiserver sets metadata.remainingItemCount only for etcd-served lists,
+// not the default watch-cache path, and documents it as best-effort. A count
 // that trusted it would silently under-report and then present the number as a
 // fact, so the pages get walked.
 func TestItWalksThePagesRatherThanTrustingAHintTheApiserverMayNotSet(t *testing.T) {
@@ -131,7 +131,7 @@ func TestTheCoreGroupLivesUnderApiAndNotApis(t *testing.T) {
 	}
 }
 
-// Projected service-account tokens are BOUND: they expire in about an hour and
+// Projected service-account tokens are bound: they expire in about an hour and
 // the kubelet rewrites the file in place. A client that read the token once
 // works for fifty minutes and then 401s forever, which on a service called a
 // few times a day looks fine in every test.

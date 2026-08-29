@@ -9,7 +9,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// Config is .gitops-gate.yaml -- everything the gate needs to know about a
+// Config is.gitops-gate.yaml; everything the gate needs to know about a
 // repository it has never seen. The binary itself knows nothing about any
 // particular layout; this file is the whole of that knowledge.
 type Config struct {
@@ -18,8 +18,8 @@ type Config struct {
 
 	// Sources describe how to obtain the Applications and ApplicationSets this
 	// repository defines. A repository usually has more than one shape at
-	// once -- some things committed as plain YAML, some rendered from a chart
-	// -- so this is a list of strategies rather than a single mode.
+	// once, some things committed as plain YAML, some rendered from a chart,
+	// so this is a list of strategies rather than a single mode.
 	Sources []Source `json:"sources"`
 
 	// Bootstraps is the older single-strategy form, kept working. It is
@@ -35,7 +35,7 @@ type Config struct {
 	// execution turns a ninety-second gate into a coffee break.
 	//
 	// ParseConfig defaults this to 8. Read it through workers() rather than
-	// directly -- a Config built as a literal rather than parsed leaves it
+	// directly, a Config built as a literal rather than parsed leaves it
 	// zero, and a zero-capacity semaphore is not "no limit", it is a channel
 	// nobody can send on.
 	Concurrency int `json:"concurrency"`
@@ -46,7 +46,7 @@ type Config struct {
 	// Egress is the operator's outbound deny-list, applied before helm pulls a
 	// remote chart. Nil is open, which is what the standalone CLI wants.
 	//
-	// Not from the config file -- it is the HOST's policy, not the reviewed
+	// Not from the config file; it is the host's policy, not the reviewed
 	// repository's, and a pull request that could widen its own egress rules
 	// would be the deny-list configuring itself.
 	Egress EgressPolicy `json:"-"`
@@ -75,19 +75,19 @@ const (
 	// SourceKustomize builds an overlay.
 	SourceKustomize SourceType = "kustomize"
 
-	// SourceRendered reads manifests that are already rendered in git -- the
+	// SourceRendered reads manifests that are already rendered in git, the
 	// rendered-manifests pattern, whether produced by ArgoCD's source
 	// hydrator, by Kargo's helm-template/kustomize-build promotion steps, or
 	// by any CI job that commits its output.
 	//
-	// These are DEPLOYED OBJECTS, not Applications. That makes an
+	// These are deployed objects, not Applications. That makes an
 	// object-level diff possible: which Deployments, CRDs and NetworkPolicies
-	// actually appear, vanish or change. It is the strongest signal available,
+	// appear, vanish or change. It is the strongest signal available,
 	// because it is the real answer rather than a reconstruction of it.
 	SourceRendered SourceType = "rendered"
 
 	// SourceArgoCDBootstrap derives a helm source from an app-of-apps
-	// ApplicationSet -- the gitops-bridge shape, where cluster metadata on the
+	// ApplicationSet, the gitops-bridge shape, where cluster metadata on the
 	// ArgoCD cluster Secret drives which chart is rendered and with what.
 	SourceArgoCDBootstrap SourceType = "argocd-bootstrap"
 )
@@ -103,10 +103,10 @@ type Source struct {
 	// Path is a directory, for `kustomize` and `argocd-bootstrap`.
 	Path string `json:"path"`
 
-	// Chart and ValueFiles are for `helm`. Both may contain
-	// {{ .name }}, {{ .labels.x }} and {{ .annotations.y }} placeholders,
-	// resolved per cluster -- which is what makes a per-environment values
-	// layout expressible without listing every combination by hand.
+	// Chart and ValueFiles are for `helm`. Both may contain {{.name }},
+	// {{.labels.x }} and {{.annotations.y }} placeholders, resolved per
+	// cluster, which is what makes a per-environment values layout
+	// expressible without listing every combination by hand.
 	Chart      string   `json:"chart"`
 	ValueFiles []string `json:"valueFiles"`
 
@@ -123,12 +123,12 @@ type Source struct {
 	// Scope decides which clusters the ApplicationSets from a per-cluster
 	// render expand against.
 	//
-	//   fleet (default) -- the whole inventory. Correct for hub-and-spoke,
-	//     where one ArgoCD holds every cluster and an ApplicationSet rendered
-	//     under one cluster's values can still generate Applications for
-	//     others. This is the gitops-bridge shape.
-	//   cluster -- only the cluster it was rendered for. Correct where each
-	//     cluster runs its own ArgoCD and therefore only ever sees itself.
+	//  fleet (default): the whole inventory. Correct for hub-and-spoke,
+	//  where one ArgoCD holds every cluster and an ApplicationSet rendered
+	//  under one cluster's values can still generate Applications for
+	//  others. This is the gitops-bridge shape.
+	//  cluster: only the cluster it was rendered for. Correct where each
+	//  cluster runs its own ArgoCD and therefore only ever sees itself.
 	//
 	// Getting this wrong is quiet rather than loud, which is why it is
 	// explicit: under `fleet` a chart rendered per cluster yields the same
@@ -152,7 +152,7 @@ type Bootstrap struct {
 type ClustersExportConfig struct {
 	// IgnoreKeys are labels and annotations to drop from the exported
 	// inventory because they churn without affecting any selector or
-	// template -- a resync stamp, a content hash. A trailing `*` matches by
+	// template, a resync stamp, a content hash. A trailing `*` matches by
 	// prefix. Without this, every export reports drift and a check that
 	// always fails gets switched off.
 	IgnoreKeys []string `json:"ignoreKeys"`
@@ -184,11 +184,11 @@ func LoadConfig(path string) (*Config, error) {
 	return ParseConfig(raw, path)
 }
 
-// ParseConfig parses and normalises a config already read from somewhere --
-// a file, or a git revision that is not checked out. `clusters` is NOT
+// ParseConfig parses and normalises a config already read from somewhere, a
+// file, or a git revision that is not checked out. `clusters` is not
 // required here: it names the checked-in inventory snapshot, which only the
 // CLI reads. A caller with a live inventory has no use for the key, and the
-// CLI enforces it where the snapshot is actually loaded.
+// CLI enforces it where the snapshot is loaded.
 func ParseConfig(raw []byte, path string) (*Config, error) {
 	var c Config
 	if err := yaml.UnmarshalStrict(raw, &c); err != nil {
@@ -293,11 +293,11 @@ func (s *Source) matches(c Cluster) bool {
 // asking the host for fifty concurrent helm subprocesses.
 const defaultConcurrency = 8
 
-// workers is the render parallelism to actually use.
+// workers is the render parallelism to use.
 //
 // Render and ChartDiff are exported and size their semaphore from this. Taking
-// Concurrency straight off the struct made a zero value -- any Config built as
-// a literal instead of through ParseConfig -- a permanent hang rather than an
+// Concurrency straight off the struct made a zero value, any Config built as a
+// literal instead of through ParseConfig, a permanent hang rather than an
 // error: `make(chan struct{}, 0)` is unbuffered, so the first worker blocks on
 // a send nobody will ever receive. A caller that got the config right is
 // unaffected; a caller that did not gets the default instead of a deadlock.

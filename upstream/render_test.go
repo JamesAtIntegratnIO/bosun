@@ -7,8 +7,8 @@ import (
 
 // This block goes into the model's prompt, and the eval suite scores the
 // explain path against it. Its whole job is keeping two things apart: the gate
-// report is COMPUTED, somebody rendered both versions and diffed them, while
-// release notes are CLAIMED, somebody wrote down what they meant to do. An
+// report is computed, somebody rendered both versions and diffed them, while
+// release notes are claimed, somebody wrote down what they meant to do. An
 // explanation that blurs those states an intention as an outcome, fluently,
 // and the reader cannot tell.
 
@@ -51,7 +51,7 @@ func TestRenderSaysWhereTheNotesCameFrom(t *testing.T) {
 	}
 }
 
-// The case that matters most: with no maintainer account of WHY the render
+// The case that matters most: with no maintainer account of why the render
 // changed, a model either says so or invents one, and inventing one is this
 // path's whole failure mode.
 func TestRenderTellsTheModelNotToSupplyAReasonItDoesNotHave(t *testing.T) {
@@ -76,7 +76,7 @@ func TestRenderHandlesNilNotes(t *testing.T) {
 	}
 }
 
-// A compare is what the maintainers CHANGED, as opposed to what they wrote --
+// A compare is what the maintainers changed, as opposed to what they wrote,
 // and with no releases at all it is the only evidence there is.
 func TestRenderCarriesTheCompareEvenWithNoReleases(t *testing.T) {
 	got := Render(&Notes{
@@ -90,7 +90,7 @@ func TestRenderCarriesTheCompareEvenWithNoReleases(t *testing.T) {
 		t.Errorf("the commit is evidence and must survive:\n%s", got)
 	}
 	// With a compare present, the "invent nothing" instruction is not the
-	// right one -- there IS something to reason from.
+	// right one; there is something to reason from.
 	if strings.Contains(got, "do not supply a reason") {
 		t.Errorf("a compare is a reason:\n%s", got)
 	}

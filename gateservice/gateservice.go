@@ -1,8 +1,8 @@
 // Package gateservice runs the gate inside this process, on a timer, for every
 // open pull request.
 //
-// Its own package because it needs gitprovider -- which gate deliberately does
-// not import, so this cannot live there -- and because the agent needs only one
+// Its own package because it needs gitprovider, which gate deliberately does
+// not import, so this cannot live there, and because the agent needs only one
 // thing from it: a verdict for a head commit. Everything else here (the sweep,
 // the per-SHA cache, the retry window, the comment and its verdict history) is
 // how that verdict gets produced and published, and is nobody else's business.
@@ -26,7 +26,7 @@ import (
 // Service is the gate, run by the agent.
 //
 // It used to run in CI, because ADR 0002 said "CI is where the checkout
-// already is" -- and then the agent grew its own checkout, its own commit
+// already is", and then the agent grew its own checkout, its own commit
 // statuses, its own poll loop and live cluster access, at which point that
 // shape, the checked-in cluster inventory it existed to work around, and the
 // report-comment contract for reading the verdict back were all vestige. See
@@ -34,11 +34,11 @@ import (
 //
 // The loop is the same one the agent already runs for check states: poll the
 // open pull requests, and for every head commit that has no verdict, render
-// the repository at the base and the head, diff, and publish -- a commit
+// the repository at the base and the head, diff, and publish, a commit
 // status for branch protection, and a report comment for humans. The verdict
 // itself stays in memory, where the triage reads it as a value.
 //
-// There is deliberately NO relevance filter. A paths filter is what CI needed,
+// There is deliberately no relevance filter. A paths filter is what CI needed,
 // because a skipped required check bricks the pull request and CI minutes are
 // billed; in here the status is always posted, so the safe answer to "is this
 // change relevant?" is to render it and let the diff say "no change to what
@@ -48,9 +48,9 @@ type Service struct {
 	Git gitprovider.Provider
 	// Inventory reads the live cluster inventory. In production this is
 	// cluster.ArgoCD.ClusterInventory; there is no snapshot fallback in here,
-	// because a snapshot can go stale and this service can simply look.
+	// because a snapshot can go stale and this service can look.
 	Inventory func(ctx context.Context) (*gate.Inventory, error)
-	// CheckName is the commit-status context branch protection requires --
+	// CheckName is the commit-status context branch protection requires;
 	// the same name the gate reported under when it ran in CI, so moving it
 	// in-cluster changed nothing about protection rules.
 	CheckName string
@@ -59,7 +59,7 @@ type Service struct {
 	// ForkPRs renders pull requests whose head branch lives in another
 	// repository. Off by default: the render runs helm over the pull
 	// request's content, inside the cluster, and that is a trust decision an
-	// operator makes -- not a default.
+	// operator makes, not a default.
 	ForkPRs bool
 	Poll    time.Duration
 	// Timeout bounds one gate run. A hung chart render must not wedge the
@@ -69,7 +69,7 @@ type Service struct {
 
 	// Egress is the operator's outbound deny-list. The gate pulls remote
 	// charts to render them, and helm is a subprocess the egress transport
-	// cannot see inside -- so the policy has to reach the gate explicitly or
+	// cannot see inside, so the policy has to reach the gate explicitly or
 	// the default deployment is outside a control the start-up banner says
 	// covers every outbound request.
 	Egress gate.EgressPolicy
@@ -89,14 +89,14 @@ type Service struct {
 type Outcome struct {
 	// State is CheckSuccess or CheckFailure. Zero when Err is set.
 	State gitprovider.CheckState
-	// Report is the same markdown the comment carries, marker first --
+	// Report is the same markdown the comment carries, marker first,
 	// everything downstream of the triage parses evidence out of this string,
 	// and it is now handed over instead of scraped back.
 	Report string
 	// Err is the gate failing to run, which is a different thing from a
-	// failing verdict -- exit 2, not exit 1.
+	// failing verdict, exit 2, not exit 1.
 	Err error
-	// retryAfter is when a BROKEN run may be attempted again. Zero means
+	// retryAfter is when a broken run may be attempted again. Zero means
 	// never: a verdict is final, and so is a refusal to gate fork content.
 	retryAfter time.Time
 }
@@ -104,13 +104,13 @@ type Outcome struct {
 // spent reports whether a broken run has waited long enough to be worth
 // another attempt.
 //
-// A verdict is kept forever -- it answers a commit, and the commit does not
-// change. A FAILURE TO RUN is different: its cause is usually cluster-side --
+// A verdict is kept forever; it answers a commit, and the commit does not
+// change. A failure to run is different: its cause is usually cluster-side,
 // RBAC not granted yet, a chart repository briefly unreachable, an apiserver
-// mid-upgrade -- and the fix for those is not a commit. Cached forever, the
+// mid-upgrade, and the fix for those is not a commit. Cached forever, the
 // `error` status would outlive its own cause and clear only when somebody
 // pushed to the pull request, which is exactly the quiet trap this service
-// exists to remove. Retried immediately, a genuinely broken config would
+// exists to remove. Retried immediately, a broken config would
 // re-render on every poll for as long as the pull request stays open.
 func (o *Outcome) spent() bool {
 	return o.Err != nil && !o.retryAfter.IsZero() && time.Now().After(o.retryAfter)
@@ -164,14 +164,14 @@ func (g *Service) sweep(ctx context.Context) {
 		if g.known(pr.HeadSHA) {
 			continue
 		}
-		// A verdict that already stands -- from a previous life of this pod --
-		// is not re-litigated. The triage re-renders on demand if it needs the
+		// A verdict that already stands, from a previous life of this pod, is
+		// not re-litigated. The triage re-renders on demand if it needs the
 		// report; the sweep's job is only that every head commit gets one.
 		state, err := g.Git.CheckStatus(ctx, pr.HeadSHA, g.CheckName)
 		switch {
 		case err != nil:
-			// Re-gating is the safe answer -- a verdict we could not read is
-			// not a verdict we may assume -- but it is not free, so say why.
+			// Re-gating is the safe answer, a verdict we could not read is
+			// not a verdict we may assume, but it is not free, so say why.
 			// Silently, a revoked Checks:read read as "nothing has run yet"
 			// on every sweep, for every pull request, forever.
 			g.logf("gate: PR %d: could not read the %q status, re-gating: %v", pr.Number, g.CheckName, err)
@@ -213,7 +213,7 @@ func (g *Service) store(sha string, out *Outcome) {
 
 // Ensure returns the verdict for the pull request's head commit, running the
 // gate if no run has answered for it yet. Concurrent callers for the same
-// commit share one run -- the sweep and a Kargo-triggered triage arriving
+// commit share one run, the sweep and a Kargo-triggered triage arriving
 // together must not render twice and comment twice.
 func (g *Service) Ensure(ctx context.Context, pr *gitprovider.PullRequest) *Outcome {
 	g.mu.Lock()
@@ -269,11 +269,11 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 	// Here rather than in the sweep, because the sweep is not the only way in.
 	// Ensure is called directly by the triage on a network-triggered promotion,
 	// and a fork pull request the sweep had not reached yet would have been
-	// rendered -- with helm, in the cluster, over content somebody outside the
+	// rendered, with helm, in the cluster, over content somebody outside the
 	// repository controls. That is the trust decision gate.forkPRs exists to
 	// make, and it belongs on the path that does the work.
 	if pr.FromFork && !g.ForkPRs {
-		// An unreported required check blocks the merge with no explanation --
+		// An unreported required check blocks the merge with no explanation,
 		// the same trap a CI paths filter used to spring. Error, with the
 		// reason, says why and how to decide otherwise.
 		g.status(ctx, pr, gitprovider.StateError,
@@ -307,10 +307,10 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 	}
 	cfg, err := gate.ParseConfig(cfgRaw, ".gitops-gate.yaml")
 	if err == nil {
-		// The HOST's egress policy, attached after parsing so a pull request
+		// The host's egress policy, attached after parsing so a pull request
 		// cannot widen its own. helm is a subprocess and the egress transport
-		// cannot see inside it, so without this the in-cluster gate -- the
-		// DEFAULT deployment -- pulled remote charts with no policy check and
+		// cannot see inside it, so without this the in-cluster gate, the
+		// default deployment, pulled remote charts with no policy check and
 		// no log line, while the start-up banner promised otherwise.
 		cfg.Egress = g.Egress
 		cfg.Log = g.Log
@@ -331,15 +331,15 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 	// Chart-diff and consumer annotation both want a worktree; the head is
 	// the one under judgement. gate.Assemble owns the order of the four steps
 	// so this surface and the CLI cannot reach different verdicts on one
-	// commit -- which they had already started to do.
+	// commit, which they had already started to do.
 	res := gate.Assemble(head, cfg, baseTable, headTable)
 	res.Suppressed = suppressedChecks(base, head, cfg)
 
-	// Validation runs BEFORE the report is written, and its count goes onto
+	// Validation runs before the report is written, and its count goes onto
 	// the result rather than beside it. Written after, the headline and the
 	// machine-readable marker were already on the page by the time the failure
 	// was known: a run blocked only by schema validation published "✅ No
-	// blocking findings" and an all-zero blockers marker next to a FAILURE
+	// blocking findings" and an all-zero blockers marker next to a failure
 	// status, and the triage agent read the marker.
 	var schemaDetail strings.Builder
 	if cfg.Validate.Enabled {
@@ -359,9 +359,9 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 	blocking := res.Blocking()
 
 	// The comment is for humans and for the audit trail; the verdict no
-	// longer travels through it. Posted when there is something to read --
-	// a change, or a blocking finding -- and never twice for one commit,
-	// which the head line makes checkable across restarts.
+	// longer travels through it. Posted when there is something to read, a
+	// change, or a blocking finding, and never twice for one commit, which
+	// the head line makes checkable across restarts.
 	if blocking || !gate.SaysNothingChanged(out.Report) {
 		g.comment(ctx, pr, out.Report)
 	}
@@ -370,14 +370,14 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 		out.State = gitprovider.CheckFailure
 		// The status says what the report says. It used to count only
 		// targeting and source changes, so a pull request blocked for any
-		// OTHER reason -- an apiVersion that moved, settings the bump stops
-		// reading -- got "0 targeting change(s), 0 other source change(s)"
+		// other reason, an apiVersion that moved, settings the bump stops
+		// reading, got "0 targeting change(s), 0 other source change(s)"
 		// beside a red cross. That is the most-read surface on the pull
 		// request telling the reader nothing changed, on the one occasion it
-		// most needed to say what did.
-		// Verdict now counts schema failures itself, so the status, the
-		// report headline and the blockers marker are three renderings of one
-		// answer rather than three places to keep in step.
+		// most needed to say what did. Verdict now counts schema failures
+		// itself, so the status, the report headline and the blockers marker
+		// are three renderings of one answer rather than three places to keep
+		// in step.
 		_, headline := res.Verdict()
 		g.status(ctx, pr, gitprovider.StateFailure, "%s", strings.TrimPrefix(headline, "Blocking — "))
 		return out
@@ -392,7 +392,7 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 	return out
 }
 
-// broke reports the gate failing to run -- error, never failure, for the
+// broke reports the gate failing to run, error, never failure, for the
 // reason exit 2 is not exit 1: "this change is bad" and "the gate is broken"
 // want opposite reactions, and a status that shows them identically teaches
 // people to ignore the check.
@@ -409,31 +409,31 @@ func (g *Service) status(ctx context.Context, pr *gitprovider.PullRequest, state
 	}
 }
 
-// comment publishes the report as ONE comment per pull request, rewritten in
+// comment publishes the report as one comment per pull request, rewritten in
 // place on every run, carrying the verdicts that came before it.
 //
 // It used to post a fresh comment per head commit. A pull request the agent
 // repaired therefore ended up with two twenty-thousand-character reports that
-// differed only in their verdict -- and since neither stated a verdict, the
+// differed only in their verdict, and since neither stated a verdict, the
 // failed pass read as a duplicate of the pass that succeeded rather than as
 // the thing that had to be fixed.
 //
-// Editing in place alone would be worse: it would DELETE the failed pass. So
-// the body carries a compact history, which is the part a reviewer actually
-// wants -- what was wrong, and that it is not wrong any more.
+// Editing in place alone would be worse: it would delete the failed pass. So
+// the body carries a compact history, which is the part a reviewer wants;
+// what was wrong, and that it is not wrong any more.
 func (g *Service) comment(ctx context.Context, pr *gitprovider.PullRequest, report string) {
 	isBlocking, headline := g.lastVerdict(report)
 	blocking := boolDigit(isBlocking)
 
 	// Two different questions, deliberately answered by two different scans.
 	//
-	// "Has this already been said?" is about the COMMIT and must consider every
+	// "Has this already been said?" is about the commit and must consider every
 	// author: a previous life of this pod counts, and it is not necessarily
 	// recognisable as us.
 	//
-	// "Which comment may I rewrite?" is about OWNERSHIP -- a host lets an author
-	// edit only its own comments -- so that one is filtered by author, and the
-	// two must not be collapsed into one loop however similar they look.
+	// "Which comment may I rewrite?" is about ownership, a host lets an author
+	// edit only its own comments, so that one is filtered by author, and the two
+	// must not be collapsed into one loop however similar they look.
 	var existing *gitprovider.Comment
 	var history []verdictRow
 	comments, err := g.Git.ListComments(ctx, pr.Number)
@@ -441,8 +441,8 @@ func (g *Service) comment(ctx context.Context, pr *gitprovider.PullRequest, repo
 		// Both scans below are how "never comment twice for one commit" and
 		// "edit our own comment rather than adding another" are enforced, and
 		// an empty list defeats both. Posting a second report is the lesser
-		// harm -- the alternative is a commit with no verdict on it at all --
-		// but it is a real one, and it used to happen with nothing said.
+		// harm, the alternative is a commit with no verdict on it at all, but
+		// it is a real one, and it used to happen with nothing said.
 		g.logf("gate: PR %d: could not read the existing comments, so this report may duplicate one and will not carry the verdict history: %v",
 			pr.Number, err)
 	}
@@ -452,11 +452,11 @@ func (g *Service) comment(ctx context.Context, pr *gitprovider.PullRequest, repo
 		}
 	}
 	// Ours is the one carrying the verdict stamp, which only this code path
-	// writes. NOT the one whose author matches -- Name() is the PROVIDER's
-	// name ("github"), never the account, and a report somebody else posted is
-	// not ours to rewrite anyway. Matching on the stamp is the same question
-	// asked of the artefact instead of the identity, and it is the question
-	// that has an answer here.
+	// writes. Not the one whose author matches, Name() is the provider's name
+	// ("github"), never the account, and a report somebody else posted is not
+	// ours to rewrite anyway. Matching on the stamp is the same question asked
+	// of the artefact instead of the identity, and it is the question that has
+	// an answer here.
 	for i := range comments {
 		if strings.Contains(comments[i].Body, stampVerdict) {
 			existing = &comments[i]
@@ -513,8 +513,8 @@ func (g *Service) lastVerdict(report string) (bool, string) {
 }
 
 // checkout clones the head branch shallowly and adds a worktree at the base
-// branch's current tip -- which is what a merge would actually land on. The
-// base is fetched by NAME, not by SHA: hosts reliably serve their advertised
+// branch's current tip, which is what a merge would land on. The
+// base is fetched by name, not by SHA: hosts reliably serve their advertised
 // refs, and `github.event.pull_request.base.sha` was only ever CI's
 // approximation of the same thing.
 func (g *Service) checkout(ctx context.Context, pr *gitprovider.PullRequest) (string, string, func(), error) {
@@ -567,7 +567,7 @@ func shortSHA8(s string) string {
 // suppressedChecks names the checks this pull request's own configuration
 // turned off.
 //
-// The gate reads .gitops-gate.yaml from the HEAD, which is the right rule --
+// The gate reads.gitops-gate.yaml from the HEAD, which is the right rule,
 // the config describes how to render, not what to render, and the base may
 // predate it entirely, notably on the pull request that introduces the gate.
 // It also means a change can switch a check off, in a file the agent is

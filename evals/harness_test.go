@@ -12,10 +12,10 @@ import (
 // policy that ships. These are the fidelity tests: not "did the model answer
 // well", but "would this answer have been treated the same way in production".
 
-// DefaultDeny is not configuration -- edits.Policy.Check prepends it to
-// whatever Deny holds, so an eval that leaves Deny empty is still running the
-// production deny-list. This pins that, because the day it stops being true the
-// suite would start scoring edits to the gate's own workflows as successes.
+// DefaultDeny is not configuration, edits.Policy.Check prepends it to whatever
+// Deny holds, so an eval that leaves Deny empty is still running the production
+// deny-list. This pins that, because the day it stops being true the suite
+// would start scoring edits to the gate's own workflows as successes.
 func TestTheSuiteRefusesWhatProductionRefuses(t *testing.T) {
 	c := Case{
 		Name:       "a-fixture-that-reaches-for-the-gate",

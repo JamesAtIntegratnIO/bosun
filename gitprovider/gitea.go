@@ -14,14 +14,14 @@ import (
 	"time"
 )
 
-// Gitea implements Provider against Gitea's REST API.
+// Gitea implements Provider against Gitea's rest API.
 //
 // Gitea's API is deliberately GitHub-shaped, so most of this is the same
-// request against a different base path. Three places it is genuinely not,
+// request against a different base path. Three places it is not,
 // and each one is a silent failure rather than an error if you assume
 // otherwise:
 //
-//   - There is no check-runs API. Everything -- including Gitea Actions --
+//   - There is no check-runs API. Everything, including Gitea Actions,
 //     reports as a commit status, so CheckStatus has one surface to read
 //     rather than two.
 //   - Labels are attached by numeric ID on older versions, not by name.
@@ -30,7 +30,7 @@ import (
 //   - Self-hosted is the normal case, not the exception, so the instance URL
 //     is required and a self-signed certificate has to be expressible.
 type Gitea struct {
-	// BaseURL is the instance root -- https://gitea.example.com. Required:
+	// BaseURL is the instance root, https://gitea.example.com. Required:
 	// unlike GitHub there is no public instance to default to.
 	BaseURL string
 	Owner   string
@@ -44,7 +44,7 @@ type Gitea struct {
 	AuthorEmail string
 	// InsecureSkipTLSVerify allows a self-signed certificate. Common enough
 	// on self-hosted instances to be worth a value rather than a fork, and
-	// it is scoped to this client -- it never touches the process default.
+	// it is scoped to this client; it never touches the process default.
 	InsecureSkipTLSVerify bool
 	HTTP                  *http.Client
 }
@@ -94,10 +94,10 @@ func (g *Gitea) do(ctx context.Context, method, path string, body any, out any) 
 	resp, err := g.client().Do(req)
 	if err != nil {
 		// Wrapped, like GitHub's. The token travels in the Authorization
-		// header, not the URL, so a transport error's text cannot carry it --
+		// header, not the URL, so a transport error's text cannot carry it,
 		// redacting here bought nothing and cost the Unwrap chain, which is
 		// what errors.Is and errors.As need. Redaction belongs where the
-		// credential really is embedded: the push remote, in PushFix.
+		// credential is embedded: the push remote, in PushFix.
 		return fmt.Errorf("%s %s: %w", method, path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -152,8 +152,8 @@ func (g *Gitea) GetPullRequest(ctx context.Context, number int) (*PullRequest, e
 	return out, nil
 }
 
-// fromFork decides whether a head repository is this one. An empty name --
-// a deleted fork -- is still not this repository; unknown must not read as
+// fromFork decides whether a head repository is this one. An empty name, a
+// deleted fork, is still not this repository; unknown must not read as
 // trusted.
 func (g *Gitea) fromFork(headRepo string) bool {
 	return !strings.EqualFold(headRepo, g.Owner+"/"+g.Repo)
@@ -214,10 +214,10 @@ func (g *Gitea) ListOpenPullRequests(ctx context.Context) ([]PullRequest, error)
 // hundred is a gate report that disappears on a busy pull request, reported as
 // a gate that published nothing.
 //
-// Paged FORWARD, unlike GitHub's, because Gitea's issue-comments endpoint has
-// no direction parameter -- it returns oldest first and that is the only order
+// Paged forward, unlike GitHub's, because Gitea's issue-comments endpoint has
+// no direction parameter; it returns oldest first and that is the only order
 // on offer. So the bound cannot be made to truncate the half nobody needs, and
-// a pull request that reaches it is an ERROR rather than a short list. Handing
+// a pull request that reaches it is an error rather than a short list. Handing
 // back the oldest two thousand comments and calling it "every comment" is the
 // exact silence this change exists to remove.
 func (g *Gitea) ListComments(ctx context.Context, number int) ([]Comment, error) {
@@ -249,15 +249,15 @@ func (g *Gitea) ListComments(ctx context.Context, number int) ([]Comment, error)
 //
 // Gitea has no check-runs API: Actions, external CI and anything else all
 // report as commit statuses, keyed by `context`. One surface, unlike GitHub's
-// two -- but the same failure mode if the name does not match, so a check
+// two, but the same failure mode if the name does not match, so a check
 // nobody reported is CheckMissing rather than an error.
 //
 // Statuses come back newest first, and a commit carries several for one
 // context as CI re-runs, so the newest is the one that counts.
 //
-// POSITION IS NOT ENOUGH TO FIND IT. Gitea stamps whole seconds, and a gate
+// Position is not enough to find it. Gitea stamps whole seconds, and a gate
 // that announces itself pending and then publishes a verdict routinely lands
-// both inside one -- at which point "newest first" has nothing to sort by and
+// both inside one, at which point "newest first" has nothing to sort by and
 // the order within the tie is arbitrary. Observed on the proving ground:
 // `pending` and `success` both at 01:04:02, pending listed first, and a reader
 // that took the first match saw a check which had gone green in seconds as
@@ -323,8 +323,8 @@ func (g *Gitea) UpdateComment(ctx context.Context, id int64, body string) error 
 // SetCommitStatus posts a commit status. Never a failure state, and pending
 // until there is a verdict: see the interface.
 //
-// Gitea has no check-runs API, so a status is the ONLY way anything reports
-// beside the gate here -- which makes this the surface that matters most on a
+// Gitea has no check-runs API, so a status is the only way anything reports
+// beside the gate here, which makes this the surface that matters most on a
 // self-hosted instance, not a nicety.
 func (g *Gitea) SetCommitStatus(ctx context.Context, sha, name string, state CommitState, description string) error {
 	if len(description) > 140 {

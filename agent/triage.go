@@ -2,14 +2,14 @@
 // request, and what to say about it.
 //
 // The gate answers "did anything structural change". This answers the question
-// after it -- is the change explicable, is it repairable without a human, and
-// if not, what does the human need in front of them. Those are different jobs
+// after it, is the change explicable, is it repairable without a human, and if
+// not, what does the human need in front of them. Those are different jobs
 // with different failure modes, which is why they are different packages: the
 // gate must be boring and deterministic, and this one talks to a model.
 //
 // Everything it reaches for is a consumer-defined interface with a fake beside
-// it -- the git host, the model, the cluster, the upstream resolver, the
-// in-process gate -- so the workflow can be tested end to end without any of
+// it, the git host, the model, the cluster, the upstream resolver, the
+// in-process gate, so the workflow can be tested end to end without any of
 // them. main.go is the only place that knows which implementations are real.
 package agent
 
@@ -54,8 +54,8 @@ const (
 //
 // A consumer-defined interface, like every other seam the agent holds: the one
 // thing it wants is a verdict for a head commit, and everything else the
-// service does -- the sweep, the per-SHA cache, the retry window, publishing
-// the comment -- is none of its business. It also means the tests here supply a
+// service does (the sweep, the per-SHA cache, the retry window, publishing the
+// comment) is none of its business. It also means the tests here supply a
 // verdict directly instead of reaching into the service to seed one.
 type InProcessGate interface {
 	// Ensure returns the verdict for this pull request's head commit, running
@@ -82,7 +82,7 @@ type Promotion struct {
 	// nobody can tell is being ignored on purpose.
 	//
 	// Typed rather than a bare string so its four values are written down
-	// somewhere -- `AutoMerge string` read like a boolean somebody had spelled
+	// somewhere, `AutoMerge string` read like a boolean somebody had spelled
 	// wrong.
 	AutoMerge  MergePolicy `json:"autoMerge"`
 	PRNumber   int         `json:"prNumber"`
@@ -105,13 +105,13 @@ type Triage struct {
 	Policy    edits.Policy
 	CheckName string
 	// MaxAttempts caps self-fixes per pull request. Enforced through labels,
-	// so it survives a restart -- in-memory state would reset the cap every
+	// so it survives a restart, in-memory state would reset the cap every
 	// time the pod moved.
 	MaxAttempts int
 	GatePoll    time.Duration
 	// Gate is the gate: the agent renders and diffs the pull request itself.
 	// The verdict arrives as a value, so there is no report comment to find
-	// and no author to have to trust -- the evidence never left the process.
+	// and no author to have to trust; the evidence never left the process.
 	Gate InProcessGate
 	// Upstream, when set, fetches what the maintainers wrote between the two
 	// versions. Optional: without it the explanation is grounded in the render
@@ -127,12 +127,12 @@ type Triage struct {
 	// the egress package.
 	Egress egress.Policy
 
-	// Cluster, when set, reads what is actually running.
+	// Cluster, when set, reads what is running.
 	//
 	// The one thing CI structurally cannot do, and the reason ADR 0002 put
 	// triage in the cluster. Everything the gate knows is a property of text:
 	// "3 manifests still declare a version this chart stops serving" is a fact
-	// about the repository. Whether anything is STORED on that version is a
+	// about the repository. Whether anything is stored on that version is a
 	// different question and usually the one that decides whether a human
 	// needs waking.
 	//
@@ -143,19 +143,19 @@ type Triage struct {
 
 	// Explain turns on the green-gate explanation: when the gate passes but the
 	// render still changed, say what it changed. Off means the agent only ever
-	// speaks about failures, which is how it was until 0.3.0 -- and why a
-	// bump's real content stayed invisible behind a one-line version diff.
+	// speaks about failures, which is how it was until 0.3.0, and why a bump's
+	// real content stayed invisible behind a one-line version diff.
 	Explain bool
 	// Migrate turns on the deterministic repair for dropped served versions:
 	// when that is the only reason the gate is red, rewrite the declaring
 	// manifests to the version the gate says survives. No model is involved
-	// on this path -- see repairDropped.
+	// on this path, see repairDropped.
 	Migrate bool
 	// Structural turns on the schema-guided half of the repair: when the
 	// apiVersion swap leaves a document the target schema no longer accepts,
 	// show the model both schemas and validate what it returns.
 	//
-	// Default ON, and the reason is that it only runs where the deterministic
+	// Default on, and the reason is that it only runs where the deterministic
 	// path already had authority and the checks in front of it are stricter
 	// than anywhere else in this service.
 	Structural bool
@@ -191,7 +191,7 @@ const defaultBrand = "bosun"
 
 // brand is the operator's name for this agent, or the default.
 //
-// One method rather than the three open-coded copies this replaced -- two of
+// One method rather than the three open-coded copies this replaced, two of
 // which fell back to the literal and one of which lowercased it, so a rename
 // changed the footer and the commit status in different ways.
 func (t *Triage) brand() string {
@@ -210,25 +210,25 @@ func (t *Triage) statusName() string {
 
 // say publishes the agent's verdict as a commit status, and logs it.
 //
-// EVERY exit path calls this, including the ones that do nothing. Before it
+// Every exit path calls this, including the ones that do nothing. Before it
 // existed, "the gate was green so I stopped" and "I was never called" and "I
 // crashed" were the same observation from outside: nothing on the pull
 // request. The whole point is that a no-op is now something you can read.
 //
 // Never fatal. A status is a report, and a report that cannot be filed must
-// not take down the thing it was reporting on -- the most likely cause is a
-// token without the "Commit statuses" WRITE permission, which is worth a loud
+// not take down the thing it was reporting on; the most likely cause is a
+// token without the "Commit statuses" write permission, which is worth a loud
 // log line and nothing more.
 func (t *Triage) say(ctx context.Context, pr *gitprovider.PullRequest, format string, a ...any) {
 	t.status(ctx, pr, gitprovider.StateSuccess, format, a...)
 }
 
-// working says the same thing, PENDING. Use it for anything that is not a
+// working says the same thing, pending. Use it for anything that is not a
 // verdict.
 //
 // The distinction is the whole of this pair. say() used to serve both, writing
 // success on entry, so from the first second a reader saw a green `bosun` and
-// no comment -- which is exactly what a finished run with nothing to report
+// no comment, which is exactly what a finished run with nothing to report
 // looks like. On a green gate that window is a render of both revisions plus a
 // model call: minutes of a status claiming to be done. Silence that reads as
 // completion is the failure this whole service exists to find, and it was
@@ -259,8 +259,8 @@ func (t *Triage) Run(ctx context.Context, p Promotion) error {
 	err = t.run(ctx, p, pr)
 	if err != nil {
 		// Every error below this point used to reach a pod log and nothing
-		// else, leaving the status stuck on "reading <check>" -- which now
-		// means stuck PENDING, and a status that never resolves is as
+		// else, leaving the status stuck on "reading <check>", which now
+		// means stuck pending, and a status that never resolves is as
 		// unreadable as one that lied about being finished.
 		//
 		// The likeliest error here is the gate breaking: `render` fails, the
@@ -292,7 +292,7 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	}
 
 	// Run the gate, or read the run the poller already did. Missing and
-	// pending cannot happen -- Ensure does not return until there is a verdict
+	// pending cannot happen; Ensure does not return until there is a verdict
 	// or a broken gate.
 	out := t.Gate.Ensure(ctx, pr)
 	if out.Err != nil {
@@ -303,7 +303,7 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	}
 	report := out.Report
 
-	// What is actually running, gathered once and used by whichever path this
+	// What is running, gathered once and used by whichever path this
 	// run takes. Deterministic: every number here was counted by code against
 	// a read-only view, and none of it is asserted by a model.
 	live := t.liveFor(ctx, p, report)
@@ -318,16 +318,16 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	// that stopped serving a version blocks because manifests still declare
 	// it; the gate's own report names the kind, the dropped versions and the
 	// destination, so moving those manifests is a function of evidence, not a
-	// judgement. Only when it is the sole reason the gate is red -- a repair
+	// judgement. Only when it is the sole reason the gate is red, a repair
 	// beside an unexplained targeting change would fix the fixable half and
 	// leave a red gate implying it had not.
 	//
 	// The structured marker is authoritative; the prose scrape is the fallback
-	// for a report from a gate old enough not to emit one. They had drifted --
-	// the heading appears for ANY apiVersion object while the count excludes
-	// the ones this repair is itself performing -- so after a partial repair
-	// the scrape reported an unrelated blocker and skipped the retry the
-	// attempt cap exists to allow.
+	// for a report from a gate old enough not to emit one. They had drifted,
+	// the heading appears for any apiVersion object while the count excludes
+	// the ones this repair is itself performing, so after a partial repair the
+	// scrape reported an unrelated blocker and skipped the retry the attempt
+	// cap exists to allow.
 	other := migrate.OtherBlockers(report)
 	if b, ok := migrate.ParseBlockers(report); ok {
 		other = b.OtherThanDropped()
@@ -341,8 +341,8 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	// A red with nothing in this repository to change. Deterministic, and
 	// deliberately not a model call.
 	//
-	// The gate blocks on an object whose apiVersion moved even when the CHART
-	// renders that object and nothing here declares it -- correctly, because
+	// The gate blocks on an object whose apiVersion moved even when the chart
+	// renders that object and nothing here declares it, correctly, because
 	// somebody should look. But there is no edit to propose, and asking a
 	// model to explain that produced a paragraph restating the report and
 	// burying the one sentence that mattered: there are no values to change.
@@ -354,11 +354,11 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	}
 
 	userPrompt := buildUserPrompt(p, pr, report, root)
-	// Live facts are FACT and go in on every path, unlike upstream testimony.
+	// Live facts are fact and go in on every path, unlike upstream testimony.
 	// They widen the evidence string the applier corroborates against, which
 	// is safe here for a reason worth stating: nothing in this block is
-	// version-shaped by `edits.versionish` -- API versions are `v1beta1`, not
-	// `1.2.3`, and counts are bare integers -- so it adds no new value an edit
+	// version-shaped by `edits.versionish`, API versions are `v1beta1`, not
+	// `1.2.3`, and counts are bare integers, so it adds no new value an edit
 	// could claim as corroborated.
 	userPrompt += promptLive(live)
 
@@ -378,13 +378,13 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 
 	case llm.ClassEscalate:
 		t.say(ctx, pr, "escalated: %s", verdict.EscalationReason)
-		// The reason goes to the status and NOT into the comment headline: a
+		// The reason goes to the status and not into the comment headline: a
 		// model's escalationReason is reliably a paraphrase of its summary,
 		// and printing both had every escalation announcing itself twice
 		// before the reasoning announced it a third time. The comment leads
 		// with the verdict marker and the summary; the handoff follows.
 		//
-		// Upstream is read HERE and not earlier: a mechanical verdict never
+		// Upstream is read here and not earlier: a mechanical verdict never
 		// pays for it, and the evidence an edit is corroborated against must
 		// stay the gate report alone.
 		return t.escalateInformed(ctx, pr, "", verdict, nil, t.upstreamFor(ctx, p, report), live)
@@ -398,7 +398,7 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	policy.Evidence = userPrompt
 	// The promotion already reports which files it rewrote, and the prompt
 	// above already tells the model those are the files it may change. This is
-	// what makes that true rather than merely stated: an edit to anything else
+	// what makes that true rather than stated: an edit to anything else
 	// is refused, however well the standing allowlist would have permitted it.
 	policy.Scope = p.Files
 	in := make([]edits.Edit, 0, len(verdict.Edits))
@@ -449,7 +449,7 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 // escalate hands a pull request to a human with the process fact that made it
 // necessary.
 //
-// reason is for PROCESS facts the verdict does not carry -- "rejected before
+// reason is for process facts the verdict does not carry; "rejected before
 // anything was written", "could not push". A model's own escalation reason is
 // passed as "" on purpose: the verdict's summary says the same thing, and the
 // comment should say it once.
@@ -457,14 +457,14 @@ func (t *Triage) escalate(ctx context.Context, pr *gitprovider.PullRequest, reas
 	return t.escalateInformed(ctx, pr, reason, v, nil, nil, nil)
 }
 
-// escalateInformed is escalate plus the applier's result -- so a comment can
-// list every refused edit rather than summarising one of them -- and what the
+// escalateInformed is escalate plus the applier's result, so a comment can
+// list every refused edit rather than summarising one of them, and what the
 // maintainers changed between the two versions.
 //
 // A handoff is somebody's next twenty minutes. "The chart removed its
 // ClusterRole and no release note explains why" is an honest sentence and it
 // hands over a search; the same sentence with the commit that removed it hands
-// over an answer. Attached only where a human is about to spend that time --
+// over an answer. Attached only where a human is about to spend that time,
 // never on the mechanical path, where the evidence for an edit stays the gate
 // report alone.
 func (t *Triage) escalateInformed(ctx context.Context, pr *gitprovider.PullRequest,
@@ -495,7 +495,7 @@ func (t *Triage) escalateInformed(ctx context.Context, pr *gitprovider.PullReque
 // gate's own report line, the rewrite touches nothing but apiVersion values
 // that match them, every file still answers to the deny-list and the
 // allowlist, and the re-run gate re-counts the consumers itself. The scope
-// check is deliberately absent -- the consumers are, by definition, files the
+// check is deliberately absent; the consumers are, by definition, files the
 // promotion did not touch, and the gate rather than the model is what named
 // them.
 func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider.PullRequest,
@@ -509,7 +509,7 @@ func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider
 	// The swap is done. Now: did it finish the job?
 	//
 	// A version that moved a field leaves a document that parses, applies, and
-	// has that field pruned on the way in -- green render, green gate, missing
+	// has that field pruned on the way in, green render, green gate, missing
 	// value. This is where that is caught, and it runs only over files the
 	// swap already rewrote and policy already permitted.
 	var rr *restructureResult
@@ -518,13 +518,13 @@ func (t *Triage) repairDropped(ctx context.Context, p Promotion, pr *gitprovider
 			t.schemasFor(ctx, p, drops), migratedPaths(total), t.maxRestructured())
 	}
 	if rr != nil && len(rr.Refused) > 0 {
-		// NOTHING is pushed, including the swaps that were fine.
+		// Nothing is pushed, including the swaps that were fine.
 		//
 		// A partial push is the worst available outcome here and not the
 		// obvious one, so it is worth saying why. The swap alone makes the
-		// gate GREEN -- the manifests no longer declare a dropped version --
-		// while a document the target schema rejects sits in the tree with a
-		// value the apiserver will silently drop. Pushing 27 correct files and
+		// gate green, the manifests no longer declare a dropped version, while
+		// a document the target schema rejects sits in the tree with a value
+		// the apiserver will silently drop. Pushing 27 correct files and
 		// escalating one would produce a green gate over a broken change,
 		// which is precisely the shape of failure this whole service exists to
 		// find.
@@ -608,9 +608,9 @@ func (t *Triage) maxRestructured() int {
 // path there is exactly one attempt, so the counter described a sequence that
 // never happened and invited the reader to look for a second pass that does
 // not exist. It earns its place only when it is telling you something: that
-// this is a RE-try, and how many are left.
+// this is a re-try, and how many are left.
 //
-// The mechanism stays either way -- the label is the cap's only memory across
+// The mechanism stays either way; the label is the cap's only memory across
 // restarts, and without it a repair that does not turn the gate green would be
 // retried forever.
 func (t *Triage) attemptSuffix(attempt int) string {
@@ -653,7 +653,7 @@ func (t *Triage) clone(ctx context.Context, pr *gitprovider.PullRequest) (string
 //
 // Every path is confined to the checkout before it is read. Promotion.Files
 // arrives in the request body, and this process holds the git token, the LLM
-// key and the App private key -- so `../../../root/.ssh/id_rsa` in that list
+// key and the App private key, so `../../../root/.ssh/id_rsa` in that list
 // would otherwise be read and rendered into a prompt sent to a model. The
 // write path has said this in a comment since it was written; the read path
 // had no equivalent.
@@ -699,13 +699,13 @@ func attemptsSoFar(labels []string, prefix string) int {
 // explainGreen handles a gate that passed.
 //
 // A green gate is not the same as an uneventful change. The gate blocks on
-// structural things -- targeting, sources, apiVersion migrations -- and REPORTS
-// the rest: a chart that added four resources, moved a port, flipped a default.
-// All of that renders green and arrives as a pull request whose visible diff is
-// one version number.
+// structural things (targeting, sources, apiVersion migrations) and reports
+// the rest: a chart that added four resources, moved a port, flipped a
+// default. All of that renders green and arrives as a pull request whose
+// visible diff is one version number.
 //
-// So this is the common case, not the boring one, and until now the agent
-// stopped here and said nothing.
+// This is the common case, and until now the agent stopped here and said
+// nothing.
 //
 // Three things it deliberately does not do:
 //
@@ -759,7 +759,7 @@ func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, 
 	}
 
 	// A green gate is a verdict on the render, not on the bump. This path may
-	// now ask for a human -- it blocks nothing, since the commit status is
+	// now ask for a human; it blocks nothing, since the commit status is
 	// never a failure state, but it labels the pull request and says why.
 	//
 	// Edits are ignored here whatever the model returned. Nothing on the
@@ -805,12 +805,12 @@ const explanationMarker = "<!-- bosun:explanation -->"
 // answer grounded in the render alone, which is the behaviour that existed
 // before this and is still useful.
 //
-// It fetches two things where it can. The RELEASE NOTES are what the
-// maintainers said; the COMMITS between the two tags are what they did, and
+// It fetches two things where it can. The release notes are what the
+// maintainers said; the commits between the two tags are what they did, and
 // the second exists because of the findings the first cannot explain. A chart
 // that quietly dropped its ClusterRole and shipped a release note about
-// performance leaves an explanation with nothing to say -- while the commit
-// that deleted the template says exactly why, in a sentence nobody wrote for a
+// performance leaves an explanation with nothing to say, while the commit that
+// deleted the template says exactly why, in a sentence nobody wrote for a
 // changelog.
 //
 // The commits are aimed by migrate.Subjects: the kinds and names the gate's own
@@ -825,7 +825,7 @@ func (t *Triage) upstreamFor(ctx context.Context, p Promotion, report string) *u
 	}
 
 	// A second interface, type-asserted rather than required: a resolver that
-	// only reads releases keeps working and simply contributes no commits.
+	// only reads releases keeps working and contributes no commits.
 	cr, ok := t.Upstream.(upstream.CompareResolver)
 	if !ok {
 		return n
@@ -852,8 +852,8 @@ func (t *Triage) checkout(ctx context.Context, pr *gitprovider.PullRequest) (str
 	return t.clone(ctx, pr)
 }
 
-// appliedPaths is the files an edits.Result actually wrote, deduplicated in
-// the order they were written -- one edit per key means one path can appear
+// appliedPaths is the files an edits.Result wrote, deduplicated in
+// the order they were written; one edit per key means one path can appear
 // several times, and repeating it in a message helps nobody.
 func appliedPaths(res *edits.Result) []string {
 	seen := map[string]bool{}

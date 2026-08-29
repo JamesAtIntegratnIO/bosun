@@ -150,8 +150,8 @@ func TestUnexpandableGeneratorWarnsRatherThanSilentlyPassing(t *testing.T) {
 	}
 }
 
-// The inventory cannot detect that it is out of date -- only comparing against
-// the live cluster can. What it CAN do is refuse to answer when a selector
+// The inventory cannot detect that it is out of date, only comparing against
+// the live cluster can. What it can do is refuse to answer when a selector
 // asks about a label it has never seen, because the alternative is a silently
 // diminished render that then reports "no change".
 func TestValidateRefusesUnknownSelectorLabels(t *testing.T) {

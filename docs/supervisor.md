@@ -1,17 +1,17 @@
 # The pipeline supervisor
 
-The gate answers a pull request that exists. The supervisor answers a
-different question: **whether the pull requests that should exist are being
-opened at all.**
+The gate answers a pull request that exists. The supervisor answers a different
+question: **whether the pull requests that should exist are being opened at
+all.**
 
 Kargo does a great deal of work unattended, and its failure mode is silence. A
 Warehouse that stopped discovering, a promotion that errored on a transient
-blip, a verification that cannot reach Prometheus — none of these produce an
+blip, a verification that cannot reach Prometheus: none of these produce an
 alert, a red check, or an unhealthy Application. The pipeline stops delivering
-and every signal anyone watches stays green, because every individual object
-really is fine.
+and every signal anyone watches stays green, because every individual object is
+fine.
 
-That is not a criticism of Kargo. It is the shape of any system whose job is to
+This is not a criticism of Kargo. It is the shape of any system whose job is to
 make changes that would otherwise not happen: when it stops, what you observe
 is the *absence* of an event, and nothing observes absences by default.
 
@@ -21,24 +21,23 @@ Against one cluster, with no tuning:
 
 | Finding | Held for |
 |---|---|
-| `argo-cd` — verification failed, Stage promoting nothing | 3 days |
-| `cert-manager` — verification cannot reach Prometheus | 3 days |
-| `open-webui-image` — same | 3 days |
+| `argo-cd`: verification failed, Stage promoting nothing | 3 days |
+| `cert-manager`: verification cannot reach Prometheus | 3 days |
+| `open-webui-image`: same | 3 days |
 
-The cause of the last two was a NetworkPolicy: `allow-controller-egress`
-permits `0.0.0.0/0:443` minus the RFC1918 ranges, and Prometheus is a
-ClusterIP. Every `verify.apps` query had been dropped since the rule was
-written. Nothing had noticed, because a failed AnalysisRun does not fail a
-promotion — the Stage simply goes `Ready=False` and declines to start the next
-one.
+A NetworkPolicy caused the last two: `allow-controller-egress` permits
+`0.0.0.0/0:443` minus the RFC1918 ranges, and Prometheus is a ClusterIP. Every
+`verify.apps` query had been dropped since the rule was written. Nothing had
+noticed, because a failed AnalysisRun does not fail a promotion. The Stage goes
+`Ready=False` and declines to start the next one.
 
 ## What it looks for
 
 | Kind | What it means |
 |---|---|
-| `wedged_promotion` | The latest promotion ended without delivering. **It will never retry** — a terminal promotion is final, and auto-promotion does not re-run one, because from the controller's view that freight *has* been promoted; the attempt merely failed. |
-| `stalled_warehouse` | Not discovering, or has missed two of its own intervals. No new freight means no promotions and no pull requests, which looks exactly like being up to date. |
-| `verification_stuck` | A verification is holding a Stage's queue. If it already **failed**, it is over — Kargo does not re-run it, so the Stage is stuck permanently. |
+| `wedged_promotion` | The latest promotion ended without delivering. **It will never retry.** A terminal promotion is final, and auto-promotion does not re-run one, because from the controller's view that freight *has* been promoted, even though the attempt failed. |
+| `stalled_warehouse` | Not discovering, or has missed two of its own intervals. No new freight means no promotions and no pull requests, which a dashboard cannot distinguish from being up to date. |
+| `verification_stuck` | A verification is holding a Stage's queue. If it already **failed**, it is over. Kargo does not re-run it, so the Stage is stuck permanently. |
 | `dead_pin` | A `yaml-update` key the target file does not have. The step writes nothing, reports success, and the pin looks maintained forever. |
 | `promotion_without_pr` | Running against a pull request that is no longer open, holding the queue until it times out. |
 | `superseded_pr` | More than one open promotion pull request for a Stage. Only the newest can merge; the rest collect gate runs and crowd the list. |
@@ -50,8 +49,8 @@ of reading its source to establish. So every finding carries the exact command,
 and the non-obvious behaviours behind them are:
 
 - `kargo.akuity.io/abort=true` is **silently ignored**. The value is parsed as
-  a request object; a bare `true` is not one. No error, no event, no log line —
-  the promotion just keeps running. It must be
+  a request object, and a bare `true` is not one. No error, no event, no log
+  line; the promotion keeps running. It must be
   `kargo.akuity.io/abort={"action":"terminate"}`.
 - A **Warehouse refresh does not re-run a promotion.** It re-discovers
   artifacts. Freight that already carries a terminal promotion is never
@@ -77,8 +76,8 @@ metrics:
     enabled: true    # /metrics now serves something
 ```
 
-It is **read-only** — three LISTs and a shallow clone — and uses the Kargo read
-the chart's ClusterRole already grants. There is no new permission.
+It is **read-only**, three LISTs and a shallow clone, and it uses the Kargo
+read the chart's ClusterRole already grants. There is no new permission.
 
 Two endpoints:
 
@@ -117,9 +116,9 @@ The obvious rule is worth having:
     description: "Nothing is reporting on promotion health. Absence of findings is not evidence."
 ```
 
-A supervisor whose subject is silent failure has to fail loudly itself.
-Without that second rule, a supervisor that has stopped sweeping looks exactly
-like a pipeline with nothing wrong.
+A supervisor whose subject is silent failure has to fail loudly itself. Without
+that second rule, a supervisor that has stopped sweeping publishes the same
+zero as a pipeline with nothing wrong.
 
 `bosun_pipeline_checked{resource="stages"}` is the same guard one level down: a
 sweep that read zero Stages found no problems, and must never be read as having

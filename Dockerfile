@@ -1,6 +1,6 @@
 # Must not trail go.mod: one module now serves both the agent and the gate, and
 # the gate's dependencies set the floor. A stale tag here fails the build with
-# "go.mod requires go >= 1.26.0 (running go 1.25.x; GOTOOLCHAIN=local)".
+# "go.mod requires go >= 1.26.0 (running go 1.25.X; gotoolchain=local)".
 FROM golang:1.26-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -14,18 +14,18 @@ FROM alpine:3.21
 RUN apk add --no-cache ca-certificates git
 
 # helm, for the same reason the gate carries it: the structural migration needs
-# the schema a chart ships at the version being promoted TO, and the only thing
+# the schema a chart ships at the version being promoted to, and the only thing
 # guaranteed to render a chart the way the cluster's own Helm will is Helm. A
 # library pinned here would be a slower way to drift away from that.
 #
-# Same version as the gate's image, deliberately -- two components rendering the
+# Same version as the gate's image, deliberately, two components rendering the
 # same chart with different Helms is a difference nobody would think to look
 # for.
 ARG HELM_VERSION=v3.19.0
-# NO DEFAULT VALUE. TARGETARCH is a built-in BuildKit arg, and assigning one
-# here SHADOWS what BuildKit injects, which is how the gate's arm64 image once
+# No default value. Targetarch is a built-in BuildKit arg, and assigning one
+# here shadows what BuildKit injects, which is how the gate's arm64 image once
 # came to download amd64 helm and fail exec'ing it under emulation. The
-# fallback is computed inside RUN instead, so BuildKit stays authoritative
+# fallback is computed inside run instead, so BuildKit stays authoritative
 # where it sets the arg and a plain `docker build` still resolves natively.
 ARG TARGETARCH
 # kubeconform joined helm when the gate moved in-process: an agent gating in

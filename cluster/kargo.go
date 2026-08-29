@@ -12,18 +12,18 @@ import (
 // Reading Kargo, for the pipeline supervisor.
 //
 // Two of this package's three rules hold here unchanged: only GET and LIST,
-// and no vendored types. The last earns its keep here more than anywhere else
-// -- these structs name eleven fields out of Kargo's CRDs, and a release that
-// adds a field to any of them cannot break this build.
+// and no vendored types. The last earns its keep here more than anywhere
+// else, these structs name eleven fields out of Kargo's CRDs, and a release
+// that adds a field to any of them cannot break this build.
 //
-// The THIRD rule is deliberately inverted, and the file used to claim
+// The third rule is deliberately inverted, and the file used to claim
 // otherwise. Reader's methods answer with Known/Note because their caller is
 // rendering one line of a brief and has nothing useful to say about a failure.
 // These three return an error instead, because their caller is the sweep, and
 // pipeline.Collector turns each failure into a note naming the detector that
 // therefore did not run ("promotions could not be read, so a wedged Stage
 // would not have been found"). Deciding that is the sweep's job, not this
-// file's -- so the failure has to reach it intact.
+// file's, so the failure has to reach it intact.
 
 const kargoAPI = "/apis/kargo.akuity.io/v1alpha1"
 
@@ -83,9 +83,9 @@ func (a *APIServer) KargoAvailable(ctx context.Context) bool {
 //
 // The `yaml-update` steps are the interesting part and the reason this reads
 // the promotion template at all: they are the authoritative list of which
-// files and keys promotions actually rewrite. Reading the same information
-// out of the repository's Kargo values would answer a different question --
-// what the target list SAYS -- and the two diverge exactly when something is
+// files and keys promotions rewrite. Reading the same information
+// out of the repository's Kargo values would answer a different question,
+// what the target list says, and the two diverge exactly when something is
 // wrong.
 func (a *APIServer) Stages(ctx context.Context) ([]KargoStage, error) {
 	var raw struct {
@@ -230,9 +230,9 @@ func (a *APIServer) Warehouses(ctx context.Context) ([]KargoWarehouse, error) {
 
 // Promotions lists every Promotion, newest last.
 //
-// Both timestamps are carried because a Pending promotion has no StartedAt --
-// it has not begun -- and its age is the only thing that distinguishes a queue
-// that is moving from one that has stopped.
+// Both timestamps are carried because a Pending promotion has no StartedAt, it
+// has not begun, and its age is the only thing that distinguishes a queue that
+// is moving from one that has stopped.
 func (a *APIServer) Promotions(ctx context.Context) ([]KargoPromotion, error) {
 	var raw struct {
 		Items []struct {

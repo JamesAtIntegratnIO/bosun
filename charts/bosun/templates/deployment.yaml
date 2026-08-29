@@ -184,25 +184,25 @@ spec:
               drop: [ALL]
           volumeMounts:
             # The agent clones the pull request's branch here. emptyDir keeps
-            # the root filesystem read-only; nothing is worth persisting -- a
+            # the root filesystem read-only; nothing is worth persisting, a
             # restart mid-triage should start clean rather than resume.
             - name: work
               mountPath: /work
             # A writable /tmp, which a read-only root filesystem otherwise
             # denies. This is not hypothetical tidiness: chart-diff writes the
             # Application's inline values to `os.CreateTemp("", "inline-*.yaml")`
-            # before rendering, and with no /tmp that open fails EROFS. The
-            # gate does not treat it as fatal -- it reports the Application as
-            # "could not render at both versions, so its resource changes are
-            # NOT covered" -- so the symptom is silently reduced coverage on
-            # every version bump, not an error. A CI runner supplied /tmp and
-            # nobody had to think about it.
+            # before rendering, and with no /tmp that open fails erofs. The gate
+            # does not treat it as fatal, it reports the Application as "could
+            # not render at both versions, so its resource changes are not
+            # covered", so the symptom is silently reduced coverage on every
+            # version bump, not an error. A CI runner supplied /tmp and nobody
+            # had to think about it.
             - name: tmp
               mountPath: /tmp
             {{- if .Values.gate.argocd.caSecret }}
             # The CA that verifies argocd-server. Nothing mounts one for it the
             # way the kubelet does for the apiserver, so it has to come from
-            # somewhere -- and a Secret an operator already manages beats a
+            # somewhere, and a Secret an operator already manages beats a
             # certificate baked into the image.
             - name: argocd-ca
               mountPath: /etc/bosun/argocd-ca

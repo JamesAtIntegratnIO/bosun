@@ -1,7 +1,7 @@
-// Package edits applies a model's proposed changes -- deterministically, and
+// Package edits applies a model's proposed changes, deterministically, and
 // only where they are allowed.
 //
-// This is where the agent's safety actually lives. The model proposes; this
+// This is where the agent's safety lives. The model proposes; this
 // package disposes, and it refuses far more than it accepts:
 //
 //   - a path outside the allowlist is rejected, so "never edit the gate" and
@@ -15,11 +15,11 @@
 //
 // # Why gopkg.in/yaml.v3 here and sigs.k8s.io/yaml everywhere else
 //
-// The rest of the module decodes YAML into structs, which sigs.k8s.io/yaml
-// does by round-tripping through JSON -- so it honours `json:` tags and matches
-// what Kubernetes itself accepts. That round trip is exactly what this package
+// The rest of the module decodes YAML into structs, which sigs.k8s.io/yaml does
+// by round-tripping through JSON, so it honours `json:` tags and matches what
+// Kubernetes itself accepts. That round trip is exactly what this package
 // cannot use: it needs yaml.Node, which carries source positions, so a value
-// can be rewritten ON ITS OWN LINE with the indentation, quoting style and
+// can be rewritten on its own line with the indentation, quoting style and
 // trailing comment intact. Re-serialising a whole document instead would
 // reformat the file, discard comments, and turn a one-line change into an
 // unreviewable diff.
@@ -40,16 +40,16 @@ type Policy struct {
 	// Allow are path globs an edit may target. Empty allows nothing, which is
 	// the correct default for a component that can write to a repository.
 	Allow []string
-	// Scope, when non-empty, is the exact set of paths THIS unit of work
-	// touched -- for a Kargo promotion, the files the promotion itself
+	// Scope, when non-empty, is the exact set of paths this unit of work
+	// touched, for a Kargo promotion, the files the promotion itself
 	// rewrote, which it already reports.
 	//
 	// Allow is a standing grant and is deliberately coarse. Scope is what this
 	// particular change is about, and it is much narrower. Without it the
 	// prompt tells the model "these are the files this pull request may
-	// change" while the applier accepts anything under the standing grant --
-	// an instruction where there should be a guarantee, which is the failure
-	// this package exists to rule out.
+	// change" while the applier accepts anything under the standing grant; an
+	// instruction where there should be a guarantee, which is the failure this
+	// package exists to rule out.
 	//
 	// Empty means unscoped, so a caller with no notion of "the files this
 	// change touched" keeps the old behaviour.
@@ -59,21 +59,21 @@ type Policy struct {
 	// matter how the allowlist is configured.
 	Deny []string
 
-	// Evidence is the material the model was given -- the gate report, the
+	// Evidence is the material the model was given, the gate report, the
 	// release notes, the file inventory. When set, any version-shaped value an
 	// edit tries to write must appear somewhere in it.
 	//
 	// This exists because a model asked to fix "requires Gateway API v1.5"
 	// will confidently write v1.5.0 when the answer was v1.5.1. That is the
 	// worst kind of wrong: it renders perfectly and breaks at runtime. Telling
-	// the model not to invent versions does not reliably stop it -- measured,
-	// not assumed -- so the guarantee has to live here instead.
+	// the model not to invent versions does not reliably stop it, measured,
+	// not assumed, so the guarantee has to live here instead.
 	Evidence string
 }
 
 // versionish matches the value shapes where invention is both likely and
 // costly: semver, v-prefixed semver, and date-style release tags. Booleans,
-// ports and names are deliberately not covered -- corroborating those would
+// ports and names are deliberately not covered; corroborating those would
 // reject legitimate toggles, since "false" rarely appears in a failure report.
 var versionish = regexp.MustCompile(`^v?\d+\.\d+(\.\d+)?([.\-+][0-9A-Za-z.\-]+)?$`)
 
@@ -113,8 +113,8 @@ type Rejected struct {
 }
 
 // Edit is the shape the model produces. Declared here rather than imported so
-// this package has no dependency on the model layer -- it is a pure function
-// of "proposed change" plus "policy".
+// this package has no dependency on the model layer; it is a pure function of
+// "proposed change" plus "policy".
 type Edit struct {
 	Path, Key, From, To, Rationale string
 }
@@ -143,10 +143,10 @@ func Apply(root string, policy Policy, in []Edit) (*Result, error) {
 
 		// Join, not Join(root, Clean("/"+path)). Rooting the path at "/" first
 		// resolved every ".." before Join ever saw it, so the containment test
-		// below could not fail -- a guard that read as the traversal defence
-		// and was in fact dead code, with the confinement happening silently
-		// one line earlier. Now Rel is the real test and rejects what it says
-		// it rejects.
+		// below could not fail, a guard that read as the traversal defence and
+		// was in fact dead code, with the confinement happening silently one
+		// line earlier. Now Rel is the real test and rejects what it says it
+		// rejects.
 		full := filepath.Join(root, e.Path)
 		rel, err := filepath.Rel(root, full)
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
@@ -166,9 +166,9 @@ func Apply(root string, policy Policy, in []Edit) (*Result, error) {
 			continue
 		}
 		if err := os.WriteFile(full, updated, 0o644); err != nil {
-			// The result travels WITH the error. A write that fails partway
+			// The result travels with the error. A write that fails partway
 			// leaves the repository holding every edit before it, and this
-			// package's whole contract is that a refusal is never silent --
+			// package's whole contract is that a refusal is never silent;
 			// returning nil here made the loudest possible case, a half-written
 			// repository, the one the caller could say nothing about.
 			return res, fmt.Errorf("writing %s: %w", e.Path, err)
@@ -180,8 +180,8 @@ func Apply(root string, policy Policy, in []Edit) (*Result, error) {
 
 // Check is the path policy on its own: deny-list first, then scope, then the
 // allowlist. Exported for the migration path, which writes through its own
-// multi-document rewriter but must answer to exactly the same policy --
-// two path policies would eventually mean two answers.
+// multi-document rewriter but must answer to exactly the same policy; two
+// path policies would eventually mean two answers.
 func (p Policy) Check(path string) string {
 	clean := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(path)), "./")
 	for _, d := range append(append([]string{}, DefaultDeny...), p.Deny...) {
@@ -217,7 +217,7 @@ func (p Policy) Check(path string) string {
 //
 // The both-ends form (`**/dir/**`) is checked first. Without it the `/**`
 // suffix case claims the pattern, strips only the tail, and then compares a
-// real path against one that still begins with a literal `**/` -- so the entry
+// real path against one that still begins with a literal `**/`, so the entry
 // silently never matches and a deny-list line that looks enforced is not.
 func matchGlob(pattern, path string) bool {
 	switch {
@@ -243,8 +243,8 @@ func matchGlob(pattern, path string) bool {
 
 // setScalar rewrites one scalar in place.
 //
-// The document is parsed to find the node -- so the key path is resolved
-// properly rather than by guessing at text -- but the write is a targeted
+// The document is parsed to find the node, so the key path is resolved
+// properly rather than by guessing at text, but the write is a targeted
 // replacement on that node's own line. Re-serialising the whole document would
 // reformat the file, discard comments, and turn a one-line change into an
 // unreviewable diff.

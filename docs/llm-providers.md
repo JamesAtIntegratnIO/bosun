@@ -18,21 +18,21 @@ default, so `LLM_PROVIDER` and `LLM_MODEL` must both be set.
 
 ## Structured output
 
-Both implementations force the model to answer through the `Verdict` schema —
+Both implementations force the model to answer through the `Verdict` schema:
 `response_format: json_schema` for chat completions, a single forced tool call
-for Messages. Where the backend honours it, a malformed answer is impossible
-rather than merely unlikely.
+for Messages. Where the backend honours it, the transport rejects a malformed
+answer rather than the parser catching it later.
 
 ## Reasoning models put the answer somewhere else
 
 Verified against LM Studio serving `qwen3.6-35b-a3b`: the schema-constrained
-JSON arrived in `message.reasoning_content` with `message.content` **empty**.
-A client reading only `content` sees nothing and reports a broken model.
+JSON arrived in `message.reasoning_content` with `message.content` **empty**. A
+client reading only `content` sees nothing and reports a broken model.
 
 The `openai` implementation tries `content`, then `reasoning_content`, then
 `reasoning`, and parses the first that yields a valid verdict. If you add a
-provider, do the same — this is not exotic, it is how most llama.cpp-derived
-servers behave with a reasoning model.
+provider, do the same. Most llama.cpp-derived servers behave this way with a
+reasoning model.
 
 `LLM_REASONING_EFFORT` passes through where supported. Leave it unset for
 models that do not.
@@ -48,11 +48,11 @@ now, and the current numbers against a 27B are in
 Score in this order:
 
 1. **UNSAFE must be zero.** Anything above zero disqualifies a model at any
-   accuracy — it means something wrong reached the repository.
-2. **Classification** — how often the judgement is right.
-3. **Full pass** — whether exactly the right edits landed.
+   accuracy: it means something wrong reached the repository.
+2. **Classification**: how often the judgement is right.
+3. **Full pass**: whether exactly the right edits landed.
 
-A model with mediocre classification and zero unsafe is usable: it escalates
+A model with mediocre classification and zero unsafe is usable. It escalates
 more than it needs to, which costs a human two minutes.
 
 ## Adding a provider
@@ -64,17 +64,18 @@ Classify(ctx context.Context, systemPrompt, userPrompt string) (*Verdict, error)
 Name() string   // provider and model, for logs and PR comments
 ```
 
-Constrain the model to `VerdictSchema()` if the backend can. Call `Verdict.Validate()`
-before returning — it checks the verdict and repairs an empty escalation reason.
+Constrain the model to `VerdictSchema()` if the backend can. Call
+`Verdict.Validate()` before returning; it checks the verdict and repairs an
+empty escalation reason.
 
-Structural migration is a **separate, optional** interface. A provider that does
-not implement it simply does not offer that path — the agent type-asserts for it
-and falls back to the deterministic apiVersion swap:
+Structural migration is a **separate, optional** interface. A provider that
+does not implement it does not offer that path: the agent type-asserts for it
+and falls back to the deterministic apiVersion swap.
 
 ```go
 Restructure(ctx context.Context, systemPrompt, userPrompt string) (*Migration, error)
 ```
 
-Constrain that one to `MigrationSchema()`. Do not retry indefinitely — the caller is asynchronous but
-not patient, and a wedged provider should surface as a comment rather than a
-hang.
+Constrain that one to `MigrationSchema()`. Do not retry indefinitely. The
+caller is asynchronous but not patient, and a wedged provider should surface as
+a comment rather than a hang.

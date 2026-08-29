@@ -20,8 +20,8 @@ import (
 // that a chart moved from 0.15.2 to 0.16.0 tells you a version changed;
 // knowing that the change removes two containers and adds a DaemonSet, four
 // CRDs and a webhook tells you what will happen. Every incident this gate was
-// built for was of the second kind -- a pull request that renders fine and
-// breaks at runtime -- and none of them are visible at Application level.
+// built for was of the second kind, a pull request that renders fine and
+// breaks at runtime, and none of them are visible at Application level.
 type Object struct {
 	Source     string `json:"source"`
 	Cluster    string `json:"cluster,omitempty"`
@@ -34,19 +34,19 @@ type Object struct {
 	// carries around; embedding every manifest would make it enormous.
 	Hash string `json:"hash"`
 
-	// Body is the normalised object, carried in memory ONLY -- `json:"-"` is
-	// load-bearing. It exists so a "changed" finding can say WHICH fields
+	// Body is the normalised object, carried in memory only, `json:"-"` is
+	// load-bearing. It exists so a "changed" finding can say which fields
 	// changed, and it must never reach the target table, or the artifact that
 	// Hash was invented to keep small becomes the manifests all over again.
 	//
 	// Populated by chart-diff, which renders both versions in the same process
 	// that diffs them. A table loaded from JSON has none, and the field diff is
-	// simply omitted -- the finding is still reported.
+	// omitted; the finding is still reported.
 	Body map[string]any `json:"-"`
 }
 
 // ID identifies an object across revisions. Deliberately excludes apiVersion:
-// a resource whose API version moved is the SAME resource being migrated, and
+// a resource whose API version moved is the same resource being migrated, and
 // reporting it as one removal plus one addition hides exactly the migration a
 // reviewer needs to see.
 func (o Object) ID() string {
@@ -63,12 +63,12 @@ func (o Object) Describe() string {
 
 // isTestHook reports whether an object is a Helm test hook.
 //
-// Test hooks are never applied by a sync -- they run on `helm test` and
-// nothing else -- so reporting them as deployed resources is wrong on its own.
-// They are also the one place charts routinely generate a random name, so
-// every render produces a different one and the diff shows the same three
-// pods added and removed on every single bump. Other hooks (pre-install,
-// post-upgrade) ARE applied, and are deliberately still reported.
+// Test hooks are never applied by a sync, they run on `helm test` and nothing
+// else, so reporting them as deployed resources is wrong on its own. They are
+// also the one place charts routinely generate a random name, so every render
+// produces a different one and the diff shows the same three pods added and
+// removed on every single bump. Other hooks (pre-install, post-upgrade) are
+// applied, and are deliberately still reported.
 func isTestHook(meta map[string]any) bool {
 	ann, _ := meta["annotations"].(map[string]any)
 	h, _ := ann["helm.sh/hook"].(string)
@@ -86,8 +86,8 @@ func isTestHook(meta map[string]any) bool {
 //
 // defaultNS is the Application's destination namespace. A namespaced resource
 // whose manifest omits `metadata.namespace` lands there when ArgoCD applies
-// it, so that is its real identity -- and whether a chart stamps the field at
-// all varies BETWEEN VERSIONS OF THE SAME CHART. podinfo 6.7.0 omits it and
+// it, so that is its real identity, and whether a chart stamps the field at
+// all varies between versions of the same chart. podinfo 6.7.0 omits it and
 // 6.14.1 sets it, which made every object in the chart read as one removal
 // plus one addition rather than a change.
 func objectFrom(source, cluster, defaultNS string, obj map[string]any) (Object, bool) {
@@ -125,8 +125,8 @@ func objectFrom(source, cluster, defaultNS string, obj map[string]any) (Object, 
 
 // FieldChange is one leaf that differs between two renders of an object.
 //
-// Paths are dotted with numeric list indices --
-// `spec.template.spec.containers.0.image` -- the same shape the agent's edit
+// Paths are dotted with numeric list indices,
+// `spec.template.spec.containers.0.image`, the same shape the agent's edit
 // inventory uses, so a human and an agent read the report the same way.
 type FieldChange struct {
 	Path string `json:"path"`
@@ -136,7 +136,7 @@ type FieldChange struct {
 
 // servedVersions is the set of versions a CustomResourceDefinition serves.
 //
-// Empty for anything else, and empty when the body was not carried -- a table
+// Empty for anything else, and empty when the body was not carried; a table
 // loaded from JSON cannot answer this, and saying "no versions removed"
 // because we could not look would be the worst possible answer.
 func servedVersions(o Object) map[string]bool {
@@ -180,7 +180,7 @@ func droppedVersions(before, after Object) []string {
 }
 
 // crdConsumerKind is what a manifest consuming this CRD writes in its `kind:`
-// field -- spec.names.kind, which is not derivable from the CRD's own name.
+// field, spec.names.kind, which is not derivable from the CRD's own name.
 func crdConsumerKind(o Object) string {
 	spec, _ := o.Body["spec"].(map[string]any)
 	names, _ := spec["names"].(map[string]any)
@@ -204,7 +204,7 @@ func survivingVersion(o Object) string {
 // ObjectChangeKind is what happened to a rendered object.
 //
 // A named type, not a string with a comment listing the values: the comment
-// fell behind the code once already, and `Kind` on this struct is a CHANGE
+// fell behind the code once already, and `Kind` on this struct is a change
 // class while `Kind` on Object twenty lines up is the Kubernetes kind. The
 // compiler can keep those apart; a comment cannot.
 type ObjectChangeKind string
@@ -219,7 +219,7 @@ const (
 )
 
 type ObjectChange struct {
-	// Kind is the class of change. Not the Kubernetes kind -- that is
+	// Kind is the class of change. Not the Kubernetes kind; that is
 	// Object.Kind, and for a crdVersionRemoved finding the kind consumers
 	// declare is Resource below.
 	Kind    ObjectChangeKind `json:"kind"`
@@ -231,34 +231,34 @@ type ObjectChange struct {
 	// crdVersionRemoved only. Resource is the kind consumers declare
 	// (spec.names.kind); To above carries the served version they must move
 	// to. ConsumerFiles are the repository manifests still declaring a dropped
-	// version, and ConsumersKnown records that the repository was actually
-	// scanned -- an unscanned finding blocks, because "we could not look" must
-	// never read as "nothing depends on it".
+	// version, and ConsumersKnown records that the repository was scanned; an
+	// unscanned finding blocks, because "we could not look" must never read as
+	// "nothing depends on it".
 	Resource       string   `json:"resource,omitempty"`
 	ConsumerFiles  []string `json:"consumerFiles,omitempty"`
 	ConsumersKnown bool     `json:"consumersKnown,omitempty"`
 
 	// apiVersion only. True when this move is exactly what a
-	// crdVersionRemoved finding in the same diff demands -- same kind, from a
+	// crdVersionRemoved finding in the same diff demands, same kind, from a
 	// dropped version, to the named survivor. That is the repair, not a new
 	// migration, and blocking on it would mean no pull request that fixes a
 	// dropped served version could ever go green: the first live repair
 	// proved it by migrating 27 manifests and turning its own gate red.
 	PartOfMigration bool `json:"partOfMigration,omitempty"`
 
-	// valuesKeyDropped only. Keys are paths this repository SETS that the old
+	// valuesKeyDropped only. Keys are paths this repository sets that the old
 	// chart version declared and the new one does not. Helm ignores an unknown
 	// value rather than failing on it, so every one of these is a setting that
 	// silently stops applying while the render stays green.
 	Keys []string `json:"keys,omitempty"`
 
-	// Note is a computed fact about this change worth a reader's eyes --
+	// Note is a computed fact about this change worth a reader's eyes,
 	// today, a removed binding whose ServiceAccount retains no RBAC in the
 	// new render. Reported under the item, never blocking.
 	Note string `json:"note,omitempty"`
 
 	// Fields are the leaves that differ, when both renders were available in
-	// process. Empty is not "nothing changed" -- it is "not computed here".
+	// process. Empty is not "nothing changed"; it is "not computed here".
 	Fields []FieldChange `json:"fields,omitempty"`
 	// Truncated counts further leaves beyond MaxFieldsPerObject.
 	Truncated int `json:"truncatedFields,omitempty"`
@@ -394,10 +394,10 @@ func diffObjects(base, head []Object) []ObjectChange {
 			})
 		case prev.Hash != o.Hash:
 			// A CRD that stops serving a version is a migration wearing a
-			// content change. The object's own apiVersion does not move --
-			// both sides are apiextensions.k8s.io/v1 -- so the apiVersion rule
-			// cannot see it, and every manifest in the repository still
-			// declaring the dropped version breaks at apply time.
+			// content change. The object's own apiVersion does not move, both
+			// sides are apiextensions.k8s.io/v1, so the apiVersion rule cannot
+			// see it, and every manifest in the repository still declaring the
+			// dropped version breaks at apply time.
 			if gone := droppedVersions(prev, o); len(gone) > 0 {
 				out = append(out, ObjectChange{
 					Kind: ObjectCRDVersionRemoved, Object: o.Describe(), Cluster: o.Cluster,
@@ -421,15 +421,15 @@ func diffObjects(base, head []Object) []ObjectChange {
 	for id, o := range b {
 		if _, ok := h[id]; !ok {
 			// A CRD removed outright is the limiting case of dropping served
-			// versions -- ALL of them, with nowhere to move. It used to sit in
+			// versions, all of them, with nowhere to move. It used to sit in
 			// the plain Removed list, uninspected, while the version-drop path
 			// counted consumers; a reviewer got "12 resources removed" and had
 			// to go looking themselves whether anything here used those APIs.
 			// It now joins the consumer-scanned class: with a worktree, the
 			// report either names every declaring manifest (blocking) or says
 			// outright that nothing in the repository uses the API and the
-			// removal looks safe from inspection. No survivor means no repair
-			// -- the agent's parser deliberately cannot act on it.
+			// removal looks safe from inspection. No survivor means no repair,
+			// the agent's parser deliberately cannot act on it.
 			if versions := servedVersions(o); len(versions) > 0 {
 				var all []string
 				for v := range versions {
@@ -461,7 +461,7 @@ func diffObjects(base, head []Object) []ObjectChange {
 	// sorted rather than concatenated as they arrive: the same input has to
 	// produce the same report, or a reviewer comparing two runs of the gate
 	// sees a difference that is not in the manifests. Membership is a set for
-	// a second reason -- a substring test would treat "hub" as already present
+	// a second reason; a substring test would treat "hub" as already present
 	// once "hub-east" was, and silently drop a cluster from the finding.
 	collapsed := map[string]*ObjectChange{}
 	clusters := map[string]map[string]bool{}
@@ -499,10 +499,10 @@ func diffObjects(base, head []Object) []ObjectChange {
 // unboundSubjects reports the removed binding's ServiceAccounts that no
 // binding in the head render still grants anything, on the same cluster.
 //
-// Empty when the question cannot be answered honestly: a binding without a
+// Empty when the question has no honest answer: a binding without a
 // body (a JSON-loaded table), or any head binding whose subjects cannot be
-// read -- claiming "unbound" past an unreadable binding would be a guess, and
-// the note simply does not appear rather than appearing wrong.
+// read, claiming "unbound" past an unreadable binding would be a guess, and
+// the note does not appear rather than appearing wrong.
 func unboundSubjects(o Object, head []Object) string {
 	if (o.Kind != "ClusterRoleBinding" && o.Kind != "RoleBinding") || o.Body == nil {
 		return ""
@@ -566,12 +566,12 @@ func serviceAccountSubjects(o Object) []string {
 	return out
 }
 
-// versionStamps are labels Helm writes into EVERY object it renders, carrying
+// versionStamps are labels Helm writes into every object it renders, carrying
 // the chart and app version.
 //
-// Hashing them makes a version bump report every single resource as changed --
-// measured at 101 of 105 on one cert-manager bump -- which buries the four
-// that actually changed. They are stripped before hashing, so "changed" means
+// Hashing them makes a version bump report every single resource as changed,
+// measured at 101 of 105 on one cert-manager bump, which buries the four that
+// changed. They are stripped before hashing, so "changed" means
 // something a reader should look at. The version itself is already reported,
 // in the Versions table, once.
 var versionStamps = []string{

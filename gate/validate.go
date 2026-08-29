@@ -17,7 +17,7 @@ import (
 // -ignore-missing-schemas is effectively mandatory rather than a convenience:
 // CRDs outside the big projects are in no published catalogue, and without it
 // one unknown kind fails a run that had nothing wrong with it. The cost is
-// real and worth stating -- those kinds are simply not checked.
+// real and worth stating; those kinds are not checked.
 func ValidateManifests(repoRoot string, cfg *Config, inv *Inventory, w io.Writer) (int, error) {
 	if _, err := exec.LookPath("kubeconform"); err != nil {
 		return 0, fmt.Errorf("kubeconform is not on PATH: %w", err)
@@ -75,7 +75,7 @@ func runKubeconform(cfg *Config, doc []byte) ([]kubeconformResult, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	// kubeconform exits non-zero when a manifest is invalid, which is a result
-	// rather than an execution failure -- so parse the output either way.
+	// rather than an execution failure, so parse the output either way.
 	_ = cmd.Run()
 
 	var parsed struct {

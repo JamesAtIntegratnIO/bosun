@@ -5,7 +5,7 @@
 # This replaced hack/extraction-test.sh on 2026-08-23. That script existed to
 # prove `delivery/` could be lifted out of the platform repository that hosted
 # it, and enforced a one-way link rule to keep the lift cheap. The lift has
-# happened: this repository IS the package, there is no host to reach into, and
+# happened: this repository is the package, there is no host to reach into, and
 # a rule about escaping a directory that no longer exists fails on its own
 # fixtures. What survives here are the checks that were never about extraction.
 set -euo pipefail
@@ -45,12 +45,12 @@ else
   ok "no host-environment literals"
 fi
 
-# The owner's name baked into a CHART is a leak: an adopter installing these
+# The owner's name baked into a chart is a leak: an adopter installing these
 # charts must never inherit our registry or repository as a default.
 #
 # Scoped to charts/ on purpose. Go import paths, workflow image names and
 # Chart.yaml `home:`/`sources:` are this project's own identity, not an
-# assumption about anyone's environment -- flagging those made the old check
+# assumption about anyone's environment; flagging those made the old check
 # fail on facts rather than on faults.
 owner_in_charts() {
   grep -rniE 'jamesatintegratnio' charts/ 2>/dev/null \
@@ -83,18 +83,18 @@ for c in "${charts[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# The ArgoCD egress rule names a POD port.
+# The ArgoCD egress rule names a pod port.
 #
 # A NetworkPolicy matches the destination port of the packet, and a ClusterIP
-# is DNAT'd to the backend pod's port before policy is evaluated -- so this
-# rule has to name argocd-server's container port, not the Service port that
+# is DNAT'd to the backend pod's port before policy is evaluated, so this rule
+# has to name argocd-server's container port, not the Service port that
 # appears in `gate.argocd.baseURL`. Getting it wrong renders clean, lints
 # clean, passes the schema and then drops every packet, which is why the check
 # is here rather than left to a reviewer.
 #
 # What this asserts: the emitted port is `gate.argocd.podPort` and does not
-# move with the URL. Deriving it from `baseURL` -- the obvious-looking
-# simplification -- fails here.
+# move with the URL. Deriving it from `baseURL`, the obvious-looking
+# simplification, fails here.
 # ---------------------------------------------------------------------------
 echo "==> the ArgoCD egress rule names a pod port, not the URL's port"
 argocd_egress_port() { # <baseURL>
@@ -143,7 +143,7 @@ fi
 # The gate's verdict is the output of `helm template`, so the helm that
 # produces it is part of the answer. A contributor whose shell renders with a
 # different helm than the image gets a verdict that is locally true and
-# globally wrong -- and nothing about it looks like a version problem. Both
+# globally wrong, and nothing about it looks like a version problem. Both
 # Dockerfiles already pin helm and kubeconform and say why; this asserts the
 # flake pins the same strings, because three copies of a version number is
 # exactly the shape that drifts.

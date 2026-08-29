@@ -1,13 +1,13 @@
 // bosun triages automated dependency-bump pull requests.
 //
 // Kargo calls it when a pull request opens. It reads the pre-merge gate,
-// explains a red one, and fixes the cases the rendered diff proves -- a chart
+// explains a red one, and fixes the cases the rendered diff proves, a chart
 // default that flipped, a pin that must move with another, a port a policy
 // still names. Everything else it hands to a human.
 //
-// The model never WRITES. It returns a structured proposal -- a verdict with a
+// The model never writes. It returns a structured proposal, a verdict with a
 // set of scalar edits, or one whole document reshaped for a schema that moved
-// its fields -- and this process applies it, behind an allowlist, a from-value
+// its fields, and this process applies it, behind an allowlist, a from-value
 // check and a corroboration check for a scalar, and behind identity,
 // schema-validity and value-provenance checks for a document. So "never edit
 // the gate", "never invent a version" and "never invent data" are properties of
@@ -21,11 +21,11 @@
 // is the reading. Every decision lives in a package that can be imported and
 // tested without this one:
 //
-//	agent        judges a pull request and writes the comment
-//	gateservice  runs the gate in-process, on a timer, per open pull request
-//	supervisor   sweeps the pipeline for the promotions that never happened
-//	gate         renders the repository and diffs it
-//	prompt       what the model is told, and what the eval suite measures
+//	agent judges a pull request and writes the comment
+//	gateservice runs the gate in-process, on a timer, per open pull request
+//	supervisor sweeps the pipeline for the promotions that never happened
+//	gate renders the repository and diffs it
+//	prompt what the model is told, and what the eval suite measures
 //
 // The HTTP surface is here for the same reason the wiring is: Kargo POSTs a
 // promotion, and turning that into a call is plumbing, not judgement.
@@ -83,7 +83,7 @@ func main() {
 	// LoadConfig has already rejected any provider not handled here, so a
 	// nil git would be a programming error rather than a configuration one.
 	var git gitprovider.Provider
-	// The credential the UPSTREAM reader uses. The same credential as the git
+	// The credential the upstream reader uses. The same credential as the git
 	// client's, and not the same object: under App auth it exists only as a
 	// function, because installation tokens are minted per use and the config's
 	// static token is empty.
@@ -101,7 +101,7 @@ func main() {
 			APIBase: cfg.GitAPIBase, Owner: cfg.GitOwner, Repo: cfg.GitRepo,
 			Token: cfg.GitToken, AuthorName: cfg.AuthorName, AuthorEmail: cfg.AuthorEmail,
 		}
-		// Acting as an App is about IDENTITY, not access. A token grants the
+		// Acting as an App is about identity, not access. A token grants the
 		// same rights but belongs to whoever minted it, so every comment
 		// carries that person's name and avatar and reads like a colleague's
 		// until you reach the footer. An App has a face of its own.
@@ -117,16 +117,16 @@ func main() {
 			// Fail at start-up, not on the first pull request. A bad key or an
 			// app installed on the wrong repository should be a pod that will
 			// not start, which somebody notices, rather than a triage that
-			// quietly does nothing -- which is the failure mode this whole
+			// quietly does nothing, which is the failure mode this whole
 			// service keeps finding in itself.
 			if _, err := app.Token(context.Background()); err != nil {
 				log.Fatalf("github app authentication failed: %v", err)
 			}
 			gh.TokenSource = app.Token
 			// Without this the upstream reader ran anonymously against
-			// api.github.com -- 60 requests an hour per IP -- from the moment
-			// the agent became an App, because it was handed cfg.GitToken and
-			// App mode leaves that empty. The failure surfaced as "no upstream
+			// api.github.com, 60 requests an hour per IP, from the moment the
+			// agent became an App, because it was handed cfg.GitToken and App
+			// mode leaves that empty. The failure surfaced as "no upstream
 			// release notes", which is also what an artifact that publishes
 			// none looks like.
 			upstreamToken = app.Token
@@ -178,7 +178,7 @@ func main() {
 	var reader *cluster.APIServer
 	if cfg.LiveReads || cfg.Supervise {
 		reader = &cluster.APIServer{ArgoCDNamespace: cfg.LiveReadsArgoCDNamespace}
-		// Fail at start-up, the same rule as the App's key -- and here it
+		// Fail at start-up, the same rule as the App's key, and here it
 		// matters more, not less. Every failure inside this reader is
 		// deliberately soft: an unreachable apiserver reports "not permitted
 		// to check", a sentence designed to be harmless and therefore a
@@ -222,11 +222,11 @@ func main() {
 
 	// Same fail-at-start-up rule as everything above: an inventory the gate
 	// cannot read would otherwise surface as an `error` status on every pull
-	// request -- a broken required check, discovered by whoever tries to merge
+	// request, a broken required check, discovered by whoever tries to merge
 	// next.
 	//
 	// A timeout here is nearly always the NetworkPolicy, and the value it is
-	// nearly always wrong on is the port -- a ClusterIP is DNAT'd before
+	// nearly always wrong on is the port; a ClusterIP is DNAT'd before
 	// policy is evaluated, so the rule has to name argocd-server's pod port
 	// and not the one in the URL. Saying so here is the difference between
 	// this message and a message that only repeats what the operator already
@@ -352,8 +352,8 @@ func (s *Server) run(ctx context.Context, p agent.Promotion) error {
 // PromotionOpened answers 202 immediately and does the work on a goroutine.
 //
 // This is not an optimisation. Kargo's `http` promotion step is synchronous,
-// so a handler that blocked would put a model round trip -- minutes, on a
-// local model -- inside the critical path of every promotion.
+// so a handler that blocked would put a model round trip, minutes, on a
+// local model, inside the critical path of every promotion.
 func (s *Server) PromotionOpened(w http.ResponseWriter, r *http.Request) {
 	var p agent.Promotion
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&p); err != nil {
@@ -416,8 +416,8 @@ func (s *Server) Wait() { s.wg.Wait() }
 //
 // GitHub-only, and deliberately so: it reuses the token and the api.github.com
 // egress the agent already has for reading the gate. The registry hops needed
-// to find WHICH GitHub repository an artifact comes from are the only new
-// network surface, and they fail softly -- an artifact whose registry is not
+// to find which GitHub repository an artifact comes from are the only new
+// network surface, and they fail softly; an artifact whose registry is not
 // reachable produces an explanation grounded in the render alone, which is
 // what this did before upstream notes existed.
 func upstreamResolver(cfg *Config, tokenSource func(context.Context) (string, error),

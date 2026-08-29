@@ -2,10 +2,10 @@
 // found.
 //
 // The job nobody asks for. Every other part of this system answers a question
-// somebody raised -- is this pull request safe, what did this bump change --
-// and each is triggered by an event. This one asks whether the pull requests
-// that SHOULD exist are being opened at all, and nothing about a promotion
-// that never happened produces an event. A timer is the only way to see it.
+// somebody raised, is this pull request safe, what did this bump change, and
+// each is triggered by an event. This one asks whether the pull requests that
+// should exist are being opened at all, and nothing about a promotion that
+// never happened produces an event. A timer is the only way to see it.
 //
 // pipeline decides what is wrong; this decides when to look and how to hand
 // the answer to an operator or a scrape.
@@ -27,7 +27,7 @@ import (
 // Supervisor runs the pipeline sweep on an interval and holds the last report
 // for the endpoints to serve.
 //
-// It is a SECOND JOB for this agent, and deliberately independent of the
+// It is a second job for this agent, and deliberately independent of the
 // first. Triage answers a pull request that exists; this answers the question
 // nobody asked, which is whether the pull requests that should exist do.
 // Nothing about a promotion that never happened produces an event, so the only
@@ -40,7 +40,7 @@ type Supervisor struct {
 	// Checkout produces a tree to resolve tracked pins against, and is the
 	// difference between the pin check running and quietly never running.
 	//
-	// It is the DEFAULT BRANCH, not a pull request: a pin that writes nowhere
+	// It is the default branch, not a pull request: a pin that writes nowhere
 	// is a property of what is merged, and asking the question of whichever
 	// branch happened to be open would answer about a proposal instead. Nil
 	// disables the check, and the report says so rather than reporting no
@@ -50,7 +50,7 @@ type Supervisor struct {
 	mu   sync.RWMutex
 	last *pipeline.Report
 	// prev is the previous sweep's headline, so the log says something only
-	// when the answer CHANGES. A supervisor that reprints an unchanged report
+	// when the answer changes. A supervisor that reprints an unchanged report
 	// every ten minutes teaches people to filter it out, and then it is not a
 	// supervisor.
 	prev string
@@ -93,8 +93,8 @@ func (s *Supervisor) sweep(ctx context.Context) {
 	//
 	// The root is passed to the sweep rather than written onto the Collector.
 	// Set as a field, it was per-sweep state living on a shared collaborator,
-	// so two overlapping sweeps raced over which checkout the second one read
-	// -- and the deferred reset meant the loser read a directory that had
+	// so two overlapping sweeps raced over which checkout the second one
+	// read, and the deferred reset meant the loser read a directory that had
 	// already been removed.
 	var repoRoot string
 	if s.Checkout != nil {
@@ -163,7 +163,7 @@ func (s *Supervisor) Handler(format string) http.HandlerFunc {
 			return
 		}
 		// ?format=text is the same report without the markdown, for an
-		// operator reading it in a terminal while fixing it -- which is what
+		// operator reading it in a terminal while fixing it, which is what
 		// Report.Text was written for and had no caller to reach it through.
 		if req.URL.Query().Get("format") == "text" {
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")

@@ -18,18 +18,18 @@ import (
 
 // Where the two schemas come from, and why it is not one place.
 //
-// A structural migration needs the shape a document is LEAVING and the shape it
+// A structural migration needs the shape a document is leaving and the shape it
 // is arriving at. They live in different places and neither is optional:
 //
-//   - The OLD shape is only knowable from the CustomResourceDefinition
-//     installed right now. After this pull request merges it is gone, which is
-//     the entire reason this runs pre-merge in the cluster rather than in CI.
-//   - The NEW shape belongs to the chart version being promoted TO, and the
-//     cluster has not seen it yet. It comes from rendering that chart.
+//  - The old shape is only knowable from the CustomResourceDefinition
+//  installed right now. After this pull request merges it is gone, which is
+//  the entire reason this runs pre-merge in the cluster rather than in CI.
+//  - The new shape belongs to the chart version being promoted to, and the
+//  cluster has not seen it yet. It comes from rendering that chart.
 //
 // The live CRD's own copy of the target version is a fallback and is marked as
-// one. It is usually right -- a chart dropping v1beta1 while keeping v1 rarely
-// reshapes v1 in the same release -- and "usually right" is exactly the sort of
+// one. It is usually right, a chart dropping v1beta1 while keeping v1 rarely
+// reshapes v1 in the same release, and "usually right" is exactly the sort of
 // claim that has to be visible in a comment rather than assumed.
 
 // schemaPair is both shapes for one kind, with provenance.
@@ -43,7 +43,7 @@ type schemaPair struct {
 }
 
 // Complete reports whether structural analysis can be attempted. Either schema
-// missing means the plain apiVersion swap ships as it did before -- correct as
+// missing means the plain apiVersion swap ships as it did before, correct as
 // far as it goes, and honest about going no further.
 func (s schemaPair) Complete() bool { return s.Old != nil && s.New != nil }
 
@@ -54,7 +54,7 @@ const helmTimeout = 3 * time.Minute
 // schemasFor gathers the two shapes for each dropped kind.
 //
 // Soft in every direction. No cluster reader, no helm on PATH, an artifact that
-// is not a chart, a chart that ships no CRDs -- all produce an incomplete pair
+// is not a chart, a chart that ships no CRDs, all produce an incomplete pair
 // and a note, and the caller falls back to the swap alone.
 func (t *Triage) schemasFor(ctx context.Context, p Promotion, drops []migrate.Dropped) map[string]schemaPair {
 	out := map[string]schemaPair{}
@@ -102,7 +102,7 @@ func (t *Triage) schemasFor(ctx context.Context, p Promotion, drops []migrate.Dr
 	return out
 }
 
-// renderTargetCRDs renders the chart at the version being promoted TO and
+// renderTargetCRDs renders the chart at the version being promoted to and
 // returns every CRD schema in it, keyed by definition name then version.
 //
 // The value is structural.Schema rather than a third raw map: the runtime
@@ -123,7 +123,7 @@ func (t *Triage) renderTargetCRDs(ctx context.Context, p Promotion) (map[string]
 	}
 
 	// The artifact is parsed by the upstream resolver's parser and turned into
-	// helm arguments by the gate's -- one owner each for "what shape is this
+	// helm arguments by the gate's, one owner each for "what shape is this
 	// artifact" and "how does that become a helm invocation". This file used to
 	// answer the second question itself and got it wrong for classic Helm
 	// repositories; gate.HelmChartArgs carries the account of that.
@@ -135,8 +135,8 @@ func (t *Triage) renderTargetCRDs(ctx context.Context, p Promotion) (map[string]
 	args := append([]string{"template", "schema-probe"}, chartArgs...)
 	args = append(args, "--version", p.To, "--include-crds", "--skip-tests")
 
-	// helm is a SUBPROCESS. The egress transport cannot see inside it, so the
-	// destination is checked and recorded here instead -- otherwise the one
+	// helm is a subprocess. The egress transport cannot see inside it, so the
+	// destination is checked and recorded here instead, otherwise the one
 	// outbound path that downloads an archive would be the one path with no
 	// record.
 	//

@@ -63,7 +63,7 @@ say "5. triage -- the agent reads its own verdict and decides"
 AGENT_POD="$(agent_pod)"
 if [ -n "$AGENT_POD" ]; then
   # The field is prNumber. The handler answers 202 immediately and triages
-  # asynchronously -- Kargo's http step is synchronous, so a blocking handler
+  # asynchronously, Kargo's http step is synchronous, so a blocking handler
   # would put a model round trip inside every promotion's critical path. That
   # means the verdict is in the logs, not the response.
   kc -n bosun exec "$AGENT_POD" -- \
@@ -101,7 +101,7 @@ say "8. verification -- the AnalysisRun asks Prometheus"
 kc -n "$KARGO_PROJECT" get analysisruns --no-headers 2>/dev/null | head -5 | sed 's/^/    /' \
   || step "no AnalysisRun yet"
 
-# Step 9 was "observability -- the metrics must RETURN ROWS". It went with
+# Step 9 was "observability; the metrics must return rows". It went with
 # charts/kargo-observability, which lives in the platform repository this kit
 # was written for: it shares no contract with the gate or the agent, so there
 # is nothing here for it to be checked against.

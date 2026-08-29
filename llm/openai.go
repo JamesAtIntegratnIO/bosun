@@ -38,7 +38,7 @@ func (o *OpenAI) client() *http.Client {
 	if t == 0 {
 		// Deliberately generous. A local model doing real reasoning over a
 		// 20k-token diff can take minutes, and the caller is already
-		// asynchronous -- the promotion is never waiting on this.
+		// asynchronous; the promotion is never waiting on this.
 		t = 10 * time.Minute
 	}
 	return &http.Client{Timeout: t}
@@ -88,8 +88,8 @@ func (o *OpenAI) structured(ctx context.Context, systemPrompt, userPrompt, name 
 			{"role": "system", "content": systemPrompt},
 			{"role": "user", "content": userPrompt},
 		},
-		// Constrained decoding. Where the backend honours it, a malformed
-		// answer becomes impossible rather than merely unlikely.
+		// Constrained decoding. Where the backend honours it, the server
+		// refuses to emit a malformed answer, so the parser never sees one.
 		"response_format": map[string]any{
 			"type": "json_schema",
 			"json_schema": map[string]any{
@@ -133,9 +133,9 @@ func (o *OpenAI) structured(ctx context.Context, systemPrompt, userPrompt, name 
 		Choices []struct {
 			Message struct {
 				Content string `json:"content"`
-				// A reasoning model's thinking channel. LM Studio (and other
+				// A reasoning model's thinking channel. Lm Studio (and other
 				// llama.cpp-derived servers) put the schema-constrained answer
-				// HERE and leave `content` empty -- verified live against
+				// here and leave `content` empty, verified live against
 				// qwen3.6-35b-a3b. Ignoring it makes every reasoning model
 				// look like it returned nothing, silently.
 				ReasoningContent string `json:"reasoning_content,omitempty"`

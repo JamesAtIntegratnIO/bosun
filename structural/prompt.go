@@ -16,7 +16,7 @@ import (
 // It lives here rather than beside its one caller because it is measured as
 // well as used: the eval suite scores the restructure path against this exact
 // string. A copy in the suite would drift from the copy that ships, and the
-// first symptom would be a score describing a prompt nobody is given -- the
+// first symptom would be a score describing a prompt nobody is given, the
 // same reason upstream.Render moved into the package that owns Notes.
 func Prompt(path, body, fromVersion, toVersion string, old, target Schema, findings []Finding) string {
 	var b strings.Builder
@@ -30,30 +30,30 @@ func Prompt(path, body, fromVersion, toVersion string, old, target Schema, findi
 }
 
 // maxSchemaDepth bounds how deep a rendered schema goes. Deep enough for the
-// shapes migrations actually move -- a field into a nested object, an object
-// into a list of objects -- and shallow enough that a chart with a fully
+// shapes migrations move, a field into a nested object, an object
+// into a list of objects, and shallow enough that a chart with a fully
 // specified PodSpec in its CRD does not fill the whole context.
 const maxSchemaDepth = 8
 
 // MaxSchemaChars bounds one rendered schema in a prompt.
 //
 // Measured rather than guessed: the largest schema on a real cluster renders to
-// 43,831 characters -- kyverno's ClusterPolicy v2beta1 -- and a prompt carries
-// TWO of them plus the document plus the gate report. Left uncapped that is the
+// 43,831 characters, kyverno's ClusterPolicy v2beta1, and a prompt carries two
+// of them plus the document plus the gate report. Left uncapped that is the
 // same failure the release-note cap exists to prevent, crowding out the
 // evidence the answer is supposed to be built from.
 //
-// Truncating is SAFE here in a way it would not be elsewhere, and the reason is
-// worth stating: the validators run against the FULL schema whatever the prompt
+// Truncating is safe here in a way it would not be elsewhere, and the reason is
+// worth stating: the validators run against the full schema whatever the prompt
 // showed. A model that never saw the destination field cannot produce a
 // proposal that passes schema-validity, so a truncated schema costs a refusal
-// and an escalation -- never a bad write.
+// and an escalation, never a bad write.
 const MaxSchemaChars = 12000
 
 // RenderSchema prints the shape of a schema and nothing else: field names,
 // types, requirements, and the values the schema itself dictates. Descriptions
 // are dropped, because they are the bulk of a real CRD schema and the model is
-// being asked where a field GOES, not what it means.
+// being asked where a field goes, not what it means.
 func RenderSchema(s Schema) string {
 	var b strings.Builder
 	renderSchemaInto(&b, "", s, 0)

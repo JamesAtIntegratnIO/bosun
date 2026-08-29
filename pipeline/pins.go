@@ -13,9 +13,9 @@ import (
 
 // FileKeys resolves "does this file set this key?" against a checkout.
 //
-// Only the FIRST YAML document is read, and that is not a simplification --
-// it is the same rule Kargo's `yaml-update` follows. A tracked key that lives
-// in the second document of a multi-document file is silently never written,
+// Only the first YAML document is read, and that is not a simplification; it
+// is the same rule Kargo's `yaml-update` follows. A tracked key that lives in
+// the second document of a multi-document file is silently never written,
 // which is one of the ways a pin dies, and reading every document here would
 // hide exactly that.
 type FileKeys struct {
@@ -33,7 +33,7 @@ func NewFileKeys(root string) *FileKeys {
 // Has answers for one path and dotted key. An empty key asks only whether the
 // file is readable, which is how the caller resolves Kargo's clone prefix.
 //
-// The error means "this file could not be read", never "the key is absent" --
+// The error means "this file could not be read", never "the key is absent";
 // the two have different findings and must not collapse.
 func (f *FileKeys) Has(path, key string) (bool, error) {
 	doc, err := f.load(path)
@@ -82,9 +82,9 @@ func (f *FileKeys) load(path string) (map[string]any, error) {
 
 // firstDocument returns the first YAML document's text.
 //
-// The subtlety is which `---` ENDS the first document rather than beginning
+// The subtlety is which `---` ends the first document rather than beginning
 // it. A separator that has nothing but comments and blank lines before it is a
-// leading marker -- and files in the wild open with a licence header or an
+// leading marker, and files in the wild open with a licence header or an
 // explanation far more often than they open with content. Reading such a file
 // as "document one is five comments" makes every key in it look absent, which
 // is a false dead-pin report for the whole file.
@@ -116,10 +116,10 @@ func firstDocument(s string) string {
 // lookup walks a dotted path, supporting the numeric segments Kargo's key
 // syntax allows for list elements.
 //
-// A path this cannot follow returns TRUE, not false. That is deliberate and it
+// A path this cannot follow returns true, not false. That is deliberate and it
 // is the difference between a useful check and a noisy one: "absent" is a
 // claim that produces a finding, so it may only be made about a path that was
-// genuinely walked. Anything unusual is left alone.
+// walked. Anything unusual is left alone.
 func lookup(doc map[string]any, key string) bool {
 	var node any = doc
 	for _, seg := range strings.Split(key, ".") {
@@ -137,7 +137,7 @@ func lookup(doc map[string]any, key string) bool {
 			}
 			node = n[i]
 		default:
-			// A scalar with path left to walk: the key genuinely is not there.
+			// A scalar with path left to walk: the key is not there.
 			return false
 		}
 	}

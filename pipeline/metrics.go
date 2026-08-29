@@ -9,7 +9,7 @@ import (
 
 // Metrics writes the report in Prometheus text exposition format.
 //
-// HAND-ROLLED, and the same argument the cluster package makes about
+// Hand-rolled, and the same argument the cluster package makes about
 // client-go: this is forty lines of fmt against a stable, documented text
 // format, and vendoring a metrics SDK would make the largest dependency in
 // this service the thing that prints six numbers.
@@ -17,14 +17,14 @@ import (
 // # What to alert on
 //
 // The obvious rule is `bosun_pipeline_findings{severity="blocking"} > 0`, and
-// it is worth having. The IMPORTANT one is the other direction:
+// it is worth having. The important one is the other direction:
 //
 //	absent(bosun_pipeline_sweep_timestamp_seconds)
 //	or time() - bosun_pipeline_sweep_timestamp_seconds > 3600
 //
 // A supervisor whose whole subject is silent failure has to be able to fail
 // loudly itself. Without that rule, a supervisor that stopped sweeping looks
-// exactly like a pipeline with nothing wrong -- which is the joke this package
+// exactly like a pipeline with nothing wrong, which is the joke this package
 // would rather not be.
 //
 // `bosun_pipeline_checked` is the same guard one level down: a sweep that read
@@ -98,7 +98,7 @@ func (r *Report) Metrics(w io.Writer) {
 //
 // It must list every Kind the const block declares. A kind missing here has no
 // series at all until something goes wrong, which is the failure mode the zeros
-// exist to prevent -- TestEveryKindHasAMetricSeries pins the two together.
+// exist to prevent, TestEveryKindHasAMetricSeries pins the two together.
 var allKinds = []Kind{
 	KindWedged, KindStalled, KindDeadPin, KindOrphanedPR,
 	KindSupersededPR, KindVerifyStuck, KindPendingStuck,

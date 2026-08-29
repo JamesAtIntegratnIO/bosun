@@ -5,13 +5,13 @@ import (
 	"strings"
 )
 
-// Render puts the maintainers' words in a prompt, clearly labelled as
-// TESTIMONY rather than as the render.
+// Render puts the maintainers' words in a prompt, labelled as
+// testimony rather than as the render.
 //
-// The distinction is the point. The gate report is COMPUTED -- somebody
-// rendered both versions and diffed them. Release notes are CLAIMED -- somebody
-// wrote down what they meant to do. An explanation that blurs the two will
-// state an intention as an outcome, fluently, and the reader cannot tell.
+// The distinction is the point. The gate report is computed, somebody rendered
+// both versions and diffed them. Release notes are claimed; somebody wrote down
+// what they meant to do. An explanation that blurs the two will state an
+// intention as an outcome, fluently, and the reader cannot tell.
 //
 // It lives here, in the package that owns Notes, rather than beside the one
 // caller that used to hold it, because it is now measured as well as used: the
@@ -61,9 +61,9 @@ func (n *Notes) compare() *Compare {
 // testimony label as the release notes and for the same reason.
 //
 // A commit message is a claim about a change, written by whoever made it. It is
-// usually a better claim than a changelog entry -- nobody polishes it, and it
-// sits next to the code -- but it is still not the render, and a prompt that
-// let the two blur would have the model reporting an intention as an outcome.
+// usually a better claim than a changelog entry, nobody polishes it, and it
+// sits next to the code, but it is still not the render, and a prompt that let
+// the two blur would have the model reporting an intention as an outcome.
 //
 // The interesting negative gets said too. "Two hundred commits and none of them
 // mentions this" is a real finding about a bump, and an empty section that just

@@ -11,7 +11,7 @@ import (
 // The whole Kargo reader was untested while pipeline/detect.go, which consumes
 // what it produces, was at 99%. Every detector in that file reasons about
 // fields decoded here, so a field that stops arriving is a detector that
-// silently stops firing -- with the fixtures still green.
+// silently stops firing, with the fixtures still green.
 
 // serveJSON answers every request with the same body.
 func serveJSON(t *testing.T, body string) *APIServer {
@@ -23,7 +23,7 @@ func serveJSON(t *testing.T, body string) *APIServer {
 }
 
 // The `yaml-update` steps are the authoritative list of which files and keys
-// promotions actually rewrite -- which is what the dead-pin detector compares
+// promotions rewrite, which is what the dead-pin detector compares
 // against the repository.
 func TestStagesCarryTheirPromotionUpdates(t *testing.T) {
 	a := serveJSON(t, `{"items":[{
@@ -132,7 +132,7 @@ func TestWarehouseFallsBackToAnImageTag(t *testing.T) {
 	}
 }
 
-// A Pending promotion has no StartedAt -- it has not begun -- so its age comes
+// A Pending promotion has no StartedAt, it has not begun, so its age comes
 // from creation, and that age is what separates a moving queue from a stopped
 // one.
 func TestPromotionsCarryBothTimestamps(t *testing.T) {

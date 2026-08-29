@@ -35,7 +35,7 @@ func TestADenyRuleStopsTheHostAndSaysWhich(t *testing.T) {
 	}
 }
 
-// An empty policy permits everything. That is the point of the change -- a
+// An empty policy permits everything. That is the point of the change, a
 // deny-list on top of an allow-list is two lists and one of them is redundant.
 func TestAnEmptyPolicyPermitsEverything(t *testing.T) {
 	if _, denied := (Policy{}).Denied("anything.example"); denied {

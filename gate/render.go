@@ -17,10 +17,10 @@ import (
 // set of Applications the cluster would end up with.
 //
 //	bootstrap ApplicationSet
-//	  -> one Application per matching cluster
-//	     -> renders the factory chart with that cluster's values layers
-//	        -> N ApplicationSets
-//	           -> one Application each per matching cluster   <- what we return
+//	 -> one Application per matching cluster
+//	 -> renders the factory chart with that cluster's values layers
+//	 -> N ApplicationSets
+//	 -> one Application each per matching cluster <- what we return
 func Render(repoRoot string, cfg *Config, inv *Inventory) (*Table, error) {
 	// Collect every source concurrently. On a fleet this is the difference
 	// between a gate that runs inside a pull request and one nobody waits for:
@@ -89,9 +89,8 @@ func Render(repoRoot string, cfg *Config, inv *Inventory) (*Table, error) {
 				case "Application":
 					// A plain Application needs no expansion: it targets one
 					// destination and is already the thing ArgoCD will create.
-					// Reading these is why a repository that commits
-					// Applications directly -- an extremely common layout --
-					// is covered at all.
+					// Reading these is why a repository that commits Applications
+					// directly, an extremely common layout, is covered at all.
 					row, err := rowFromPlainApplication(d.source, obj, inv)
 					if err != nil {
 						table.Warnings = append(table.Warnings,
@@ -187,7 +186,7 @@ func bootstrapSource(bs map[string]any, p Param, cfg *Config) (string, []string,
 	}
 	tspec, _ := tmpl["spec"].(map[string]any)
 
-	// An Application template carries EITHER `sources` (multi-source, used
+	// An Application template carries either `sources` (multi-source, used
 	// when values come from a second repo via `ref:`) or `source` (singular).
 	// The canonical gitops-bridge bootstrap uses the singular form, so reading
 	// only the plural made the gate unable to parse the most common bootstrap
@@ -250,7 +249,7 @@ func bootstrapSource(bs map[string]any, p Param, cfg *Config) (string, []string,
 
 // helmTemplateRaw renders the factory chart and returns the raw manifest
 // stream. Missing value files are skipped, matching the
-// ignoreMissingValueFiles the bootstraps set -- a values layer that does not
+// ignoreMissingValueFiles the bootstraps set; a values layer that does not
 // exist for a given cluster is normal, not an error.
 func helmTemplateRaw(repoRoot, chartPath string, valueFiles []string) ([]byte, error) {
 	args := []string{"template", "gate", filepath.Join(repoRoot, chartPath)}
@@ -298,7 +297,7 @@ func dedupeRows(rows []Row) []Row {
 	return out
 }
 
-// dedupeOrdered keeps first-seen order and does NOT trim or drop blanks. Named
+// dedupeOrdered keeps first-seen order and does not trim or drop blanks. Named
 // for both, because package main has a dedupeSorted that does the opposite on
 // each count.
 func dedupeOrdered(in []string) []string {
@@ -363,7 +362,7 @@ func helmRender(repoRoot, chartPath string, valueFiles []string) ([]map[string]a
 // files templated from metadata on each ArgoCD cluster Secret.
 //
 // It is one source type rather than the model, because plenty of repositories
-// have no such layer -- but where it exists it is doing real work, and reading
+// have no such layer, but where it exists it is doing real work, and reading
 // it is how the gate learns which values each cluster is rendered with without
 // being told twice.
 func collectBootstrap(repoRoot string, cfg *Config, inv *Inventory, s Source) ([]docs, error) {
@@ -401,14 +400,14 @@ func collectBootstrap(repoRoot string, cfg *Config, inv *Inventory, s Source) ([
 		if err != nil {
 			return nil, fmt.Errorf("source %q (cluster %s): %w", s.Name, p.Cluster.Name, err)
 		}
-		// A bootstrap's source path is EITHER a chart OR a directory of
+		// A bootstrap's source path is either a chart or a directory of
 		// committed manifests that ArgoCD walks with `directory.recurse`.
 		//
-		// The canonical gitops-bridge bootstrap is the second kind -- it
-		// points at a directory and applies every ApplicationSet YAML it
-		// finds. Assuming a chart made the gate blind to that entire pattern,
-		// which is the one most people using this actually run. Detect by
-		// looking for Chart.yaml, exactly as ArgoCD decides.
+		// The canonical gitops-bridge bootstrap is the second kind; it points
+		// at a directory and applies every ApplicationSet YAML it finds.
+		// Assuming a chart made the gate blind to that entire pattern, which
+		// is the one most people using this run. Detect by looking
+		// for Chart.yaml, exactly as ArgoCD decides.
 		objs, err := renderBootstrapPath(repoRoot, chartPath, valueFiles)
 		if err != nil {
 			return nil, fmt.Errorf("source %q (cluster %s): %w", s.Name, p.Cluster.Name, err)
@@ -452,9 +451,9 @@ func renderBootstrapPath(repoRoot, path string, valueFiles []string) ([]map[stri
 // readDirRecursive reads every YAML manifest under a directory, matching
 // ArgoCD's `directory.recurse: true`.
 //
-// Walk and read failures are FATAL, like the parse failure below them. What
+// Walk and read failures are fatal, like the parse failure below them. What
 // this returns is the render, so a manifest that quietly does not arrive is
-// not a smaller answer -- it is the same answer with objects missing from it,
+// not a smaller answer; it is the same answer with objects missing from it,
 // which the diff then attributes to the pull request.
 func readDirRecursive(dir string) ([]map[string]any, error) {
 	var out []map[string]any

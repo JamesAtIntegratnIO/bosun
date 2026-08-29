@@ -14,7 +14,7 @@ import (
 // package main: the triage tests need a git host they can set up and assert on,
 // and this is the only way to give them one without a token and a network.
 //
-// One triage run at a time -- nothing here is synchronised, because the
+// One triage run at a time; nothing here is synchronised, because the
 // workflow it stands in for is sequential and a mutex would force every
 // assertion through an accessor.
 type Fake struct {
@@ -43,7 +43,7 @@ type Fake struct {
 	// test asserting all three has covered the whole write surface.
 	Posted []string
 	// Updated are bodies written by UpdateComment, oldest first. A gate that
-	// re-ran on a repaired pull request should leave ONE report, so a test
+	// re-ran on a repaired pull request should leave one report, so a test
 	// asserting "two runs, one comment" reads len(Posted)==1 && len(Updated)==1.
 	Updated []string
 	// CommentAuthor is the account the fake records as having written a
@@ -107,8 +107,8 @@ func (f *Fake) Comment(_ context.Context, _ int, body string) error {
 	f.Posted = append(f.Posted, body)
 	if f.PR != nil {
 		f.nextID++
-		// Deliberately NOT Name(): that is the provider ("fake"), and a real
-		// host records the ACCOUNT. Conflating them let a bug ship where the
+		// Deliberately not Name(): that is the provider ("fake"), and a real
+		// host records the account. Conflating them let a bug ship where the
 		// agent looked for its own comment by author and never found it,
 		// because the fake had agreed with the mistake.
 		author := f.CommentAuthor
@@ -121,7 +121,7 @@ func (f *Fake) Comment(_ context.Context, _ int, body string) error {
 }
 
 // UpdateComment rewrites a comment in place and records that it did. Tests
-// assert on Updated rather than Posted when the point is that ONE report
+// assert on Updated rather than Posted when the point is that one report
 // exists however many times the gate ran.
 func (f *Fake) UpdateComment(_ context.Context, id int64, body string) error {
 	if f.UpdateErr != nil {

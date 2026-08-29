@@ -1,6 +1,6 @@
 ---
 title: Licence and use
-description: PolyForm Internal Use 1.0.0 — what you may do without asking, what needs a separate licence, and why the line is drawn where it is.
+description: PolyForm Internal Use 1.0.0. What you may do without asking, what needs a separate licence, and why the line is drawn where it is.
 ---
 
 Bosun is licensed under
@@ -29,7 +29,8 @@ That includes:
 **Distribute it.** Not sold, not bundled into a product, not offered as a hosted
 service, not handed on.
 
-This is stricter than "do not sell it" — it rules out free redistribution too:
+This is stricter than "do not sell it", because it rules out free
+redistribution too:
 
 | | |
 |---|---|
@@ -39,19 +40,19 @@ This is stricter than "do not sell it" — it rules out free redistribution too:
 | Offering it as SaaS | Not permitted |
 | Republishing the image or chart | Not permitted |
 
-Providing it to third parties in any form needs a **separate licence**. Ask —
-that is the intended path, not a closed door.
+Providing it to third parties in any form needs a **separate licence**. Ask;
+that is the intended path rather than a closed door.
 
 ## Why this licence
 
 The gate is a security control. A fork that quietly weakens a blocking rule and
-keeps the name is a worse outcome than no gate at all, because the failure looks
-exactly like success — which is the same argument the
-[safety model](/concepts/safety-model/) makes about a model that can edit its
-own checks.
+keeps the name is a worse outcome than no gate at all, because a weakened gate
+reports green in the same words a working one does. The
+[safety model](/concepts/safety-model/) makes that argument about a model that
+can edit its own checks.
 
-Internal use is unrestricted precisely because that risk does not apply there:
-you know what you changed.
+Internal use is unrestricted because that risk does not apply there: you know
+what you changed.
 
 ## Contributing
 
@@ -63,5 +64,4 @@ to prove before it lands.
 
 Open an issue on
 [the repository](https://github.com/JamesAtIntegratnIO/bosun/issues), or get in
-touch directly. Distribution licences are granted; they just have to be asked
-for.
+touch directly. Distribution licences are granted; they have to be asked for.

@@ -40,8 +40,8 @@ func ociServer(t *testing.T, routes map[string]any) *GitHubReleases {
 	return g
 }
 
-// A Helm chart pushed with `helm push`: the source is in the MANIFEST
-// ANNOTATIONS, and the config blob is Chart.yaml metadata that has no Labels
+// A Helm chart pushed with `helm push`: the source is in the manifest
+// Annotations, and the config blob is Chart.yaml metadata that has no Labels
 // map and never will.
 //
 // This is the case that was broken, and it is most of what a Kargo pipeline
@@ -115,7 +115,7 @@ func TestAnImageStillPublishesItsSourceInTheConfigBlob(t *testing.T) {
 }
 
 // A child manifest's annotations are more specific than the index's, and the
-// config blob's Labels are more specific still -- that ordering is what keeps
+// config blob's Labels are more specific still; that ordering is what keeps
 // every image that worked before working identically.
 func TestTheMostSpecificSourceWins(t *testing.T) {
 	g := ociServer(t, map[string]any{
@@ -145,7 +145,7 @@ func TestTheMostSpecificSourceWins(t *testing.T) {
 	}
 }
 
-// An artifact that genuinely says nothing still says nothing -- the message
+// An artifact that says nothing still says nothing; the message
 // this fix makes rare has to stay correct when it is right.
 func TestAnArtifactWithNoSourceStillSaysSo(t *testing.T) {
 	g := ociServer(t, map[string]any{
@@ -164,7 +164,7 @@ func TestAnArtifactWithNoSourceStillSaysSo(t *testing.T) {
 }
 
 // Annotations already in hand are a complete answer. Losing them because the
-// blob hop was blocked would reintroduce the silence this removes -- and a
+// blob hop was blocked would reintroduce the silence this removes, and a
 // blocked blob hop is a real, previously observed failure here.
 func TestAnnotationsSurviveABlockedBlobHop(t *testing.T) {
 	g := ociServer(t, map[string]any{

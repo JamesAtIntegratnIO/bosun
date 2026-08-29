@@ -47,16 +47,16 @@ written down.
     resources: [customresourcedefinitions]
     verbs: [get, list]
 {{- if eq .Values.liveReads.scope "wide" }}
-  # WIDE. Answers every question, and can read Secret contents -- `*` includes
+  # Wide. Answers every question, and can read Secret contents, `*` includes
   # the core group and there is no way to subtract it. Chosen deliberately or
   # not at all.
   - apiGroups: ["*"]
     resources: ["*"]
     verbs: [get, list]
 {{- else }}
-  # GROUPS. Named API groups only, so the core group is never granted beyond
+  # Groups. Named API groups only, so the core group is never granted beyond
   # the `pods, events` above and Secrets stay unreadable. A group nobody listed
-  # degrades to "not permitted to check" in the brief -- soft, honest, and a
+  # degrades to "not permitted to check" in the brief, soft, honest, and a
   # values edit rather than an incident.
   {{- with .Values.liveReads.apiGroups }}
   - apiGroups:

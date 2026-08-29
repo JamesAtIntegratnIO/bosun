@@ -11,7 +11,7 @@ import (
 )
 
 // Every mutating method was 0% covered on both adapters, so the shape of what
-// the agent WRITES was verified only against the fake -- which is written to
+// the agent writes was verified only against the fake, which is written to
 // the same interface and so agrees by construction.
 
 type recorded struct {
@@ -119,7 +119,7 @@ func TestSetCommitStatusTrimsALongDescription(t *testing.T) {
 }
 
 // The attempt cap is a label, so a label that silently does not attach lets
-// the agent retry forever. Gitea before 1.20 answers a list of NAMES with 200
+// the agent retry forever. Gitea before 1.20 answers a list of names with 200
 // and no label attached, which is why the name is resolved to an ID first.
 func TestGiteaAddLabelResolvesTheNameToAnID(t *testing.T) {
 	srv, seen := recorder(t, func(path string) string {
@@ -217,9 +217,9 @@ func TestGitHubName(t *testing.T) {
 	}
 }
 
-// Both surfaces are consulted -- check runs and legacy commit statuses --
-// because a repository can use either and a gate reported through the one you
-// did not look at is indistinguishable from no gate at all.
+// Both surfaces are consulted, check runs and legacy commit statuses, because
+// a repository can use either and a gate reported through the one you did not
+// look at is indistinguishable from no gate at all.
 func TestGitHubCheckStatusConsultsBothSurfaces(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

@@ -8,7 +8,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// TestLiveCRDVersionDetection feeds the served-version comparison two REAL
+// TestLiveCRDVersionDetection feeds the served-version comparison two real
 // CustomResourceDefinitions and checks it finds the removal.
 //
 // cert-manager v1.5.5 served v1alpha2, v1alpha3, v1beta1 and v1; v1.6.0 serves
@@ -21,7 +21,7 @@ import (
 // Render the fixtures with:
 //
 //	helm template cm cert-manager --repo https://charts.jetstack.io \
-//	  --version v1.5.5 --include-crds --set installCRDs=true > old.yaml
+//	 --version v1.5.5 --include-crds --set installCRDs=true > old.yaml
 //
 //	PROBE_OLD=old.yaml PROBE_NEW=new.yaml go test ./gate -run LiveCRDVersion -v
 func TestLiveCRDVersionDetection(t *testing.T) {

@@ -15,19 +15,19 @@ import (
 // and "that bump adds four CRDs, removes a container, and moves a Service
 // port". Every incident worth gating on is of the second kind: a pull request
 // that renders fine and breaks at runtime. The version alone cannot show it,
-// and a reviewer -- or a triage agent -- reading only the version is reasoning
+// and a reviewer, or a triage agent, reading only the version is reasoning
 // from far less than they appear to have.
 //
 // It costs a chart pull and two renders per changed Application, so it runs
-// only for rows whose version actually moved, which on a typical bump pull
+// only for rows whose version moved, which on a typical bump pull
 // request is one.
 //
-// valuesDropped is findings that are NOT object diffs: settings this
+// valuesDropped is findings that are not object diffs: settings this
 // repository makes that the new chart version no longer declares. They come
 // from here because this is the only place that has both chart versions and
 // the Application's own value files in hand.
 //
-// The results are named because two of them are adjacent same-typed slices --
+// The results are named because two of them are adjacent same-typed slices,
 // "the third return" only tells a reader which one to count to, and swapping
 // before and after at a call site would compile and silently invert the diff.
 func ChartDiff(repoRoot string, cfg *Config, base, head *Table) (
@@ -56,7 +56,7 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) (
 
 	// Results are written into a slot per pair rather than appended under a
 	// mutex. Appending publishes them in goroutine-completion order, which is
-	// a different order on every run -- and the drops and warnings go straight
+	// a different order on every run, and the drops and warnings go straight
 	// into the pull request comment, so the gate would report a difference
 	// between two runs that is not a difference in the manifests. Slotting by
 	// index keeps the report in `pairs` order, which is head.Rows order.
@@ -117,8 +117,8 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) (
 			}
 			res.before, res.after = b, a
 
-			// A settings drop is reported even though the render succeeded --
-			// it is invisible in the render BY DEFINITION, because helm
+			// A settings drop is reported even though the render succeeded;
+			// it is invisible in the render by definition, because helm
 			// ignores a value it does not know rather than failing on it.
 			gone, err := droppedValues(repoRoot, p.before, p.after)
 			switch {
@@ -152,7 +152,7 @@ func ChartDiff(repoRoot string, cfg *Config, base, head *Table) (
 }
 
 // renderChartVersion renders one Application's chart at its pinned version,
-// with the value files and inline values that Application actually uses.
+// with the value files and inline values that Application uses.
 func renderChartVersion(repoRoot string, r Row) ([]Object, error) {
 	chartArgs, err := HelmChartArgs(r.ChartRepo, r.Chart)
 	if err != nil {
@@ -164,7 +164,7 @@ func renderChartVersion(repoRoot string, r Row) ([]Object, error) {
 	for _, vf := range r.ValueFiles {
 		// `$values/x` refers to the multi-source values ref, which is this
 		// repository. A file that does not exist for this Application is
-		// normal -- ArgoCD's ignoreMissingValueFiles behaves the same way.
+		// normal, ArgoCD's ignoreMissingValueFiles behaves the same way.
 		clean := vf
 		if i := strings.Index(clean, "/"); strings.HasPrefix(clean, "$") && i > 0 {
 			clean = clean[i+1:]
@@ -186,7 +186,7 @@ func renderChartVersion(repoRoot string, r Row) ([]Object, error) {
 			return nil, err
 		}
 		// Checked: helm is about to read this file, and a short write here
-		// renders a chart with half the Application's inline values -- a diff
+		// renders a chart with half the Application's inline values; a diff
 		// that looks like the bump removed settings it did not touch.
 		if err := f.Close(); err != nil {
 			return nil, fmt.Errorf("writing inline values for %s: %w", r.App, err)
@@ -200,7 +200,7 @@ func renderChartVersion(repoRoot string, r Row) ([]Object, error) {
 		args = append(args, "--namespace", r.Namespace)
 	}
 
-	// CRDs are the point of several of these diffs -- a chart that starts or
+	// CRDs are the point of several of these diffs; a chart that starts or
 	// stops shipping one is exactly what a version bump hides.
 	args = append(args, "--include-crds")
 
@@ -222,22 +222,22 @@ func renderChartVersion(repoRoot string, r Row) ([]Object, error) {
 	return result, nil
 }
 
-// chartRef builds what `helm template` needs: an OCI URL renders directly,
-// a classic repo needs --repo rather than a pre-added repository, so nothing
-// has to mutate the runner's helm config.
+// chartRef builds what `helm template` needs: an OCI URL renders directly, a
+// classic repo needs,repo rather than a pre-added repository, so nothing has
+// to mutate the runner's helm config.
 //
-// For OCI there is no separate chart name -- the repository URL IS the chart,
+// For OCI there is no separate chart name; the repository URL is the chart,
 // and ArgoCD accepts a `repoURL` that already ends in it alongside a `chart`
 // naming the same thing. Appending unconditionally turned
 //
-//	oci://ghcr.io/org/charts/bosun  +  bosun
+//	oci://ghcr.io/org/charts/bosun + bosun
 //
 // into `.../charts/bosun/bosun`, which the registry answers 403. The cost was
 // invisible in the worst way: chart-diff is skipped for that addon and the
-// report says only "NOT covered", so every OCI-repo addon quietly lost its
-// resource-level diff while the gate stayed green.
-// chartRef is the reference a row resolves to, for the egress host check --
-// which needs the destination, not the whole argument list.
+// report says only "not covered", so every OCI-repo addon quietly lost its
+// resource-level diff while the gate stayed green. chartRef is the reference
+// a row resolves to, for the egress host check, which needs the destination,
+// not the whole argument list.
 func chartRef(r Row) string {
 	if !strings.HasPrefix(r.ChartRepo, "oci://") {
 		return r.Chart

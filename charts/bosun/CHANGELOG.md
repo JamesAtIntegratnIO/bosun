@@ -3,6 +3,18 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.22.1] - 2026-08-28
+
+### Changed
+
+- **Documentation only.** `README.md` and the comments in `values.yaml` and the
+  templates are edited for the repository's documentation voice: no em dashes,
+  no emphasis capitals, no filler adverbs. Two corrections came out of the
+  reading. The `liveReads` brief sample now matches what `agent/live.go` emits,
+  and the `git.app` note no longer opens on a dash fragment. No template, value
+  or default changed; the version moves because the README and values ship
+  inside the published chart.
+
 ## [0.22.0]
 
 ### Removed

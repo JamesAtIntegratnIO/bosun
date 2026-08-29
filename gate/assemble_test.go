@@ -4,8 +4,8 @@ import "testing"
 
 // Assemble exists so the in-cluster service and the CLI cannot reach different
 // verdicts on one commit. Without a worktree it must still produce the table
-// diff -- "no repository" is a narrower scan, not a different answer about
-// what it did look at.
+// diff, "no repository" is a narrower scan, not a different answer about what
+// it did look at.
 func TestAssembleWithoutAWorktreeStillDiffsTheTables(t *testing.T) {
 	base := &Table{Rows: []Row{
 		{Cluster: "hub", AppSet: "addons", App: "podinfo", Chart: "podinfo",

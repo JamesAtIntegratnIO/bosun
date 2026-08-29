@@ -1,22 +1,23 @@
 # Git providers
 
 The interface is deliberately small: it carries what the workflow needs and
-nothing more. The methods group into four jobs — read a pull request, read what
+nothing more. The methods group into four jobs: read a pull request, read what
 has been said on it, say something, and push a fix. `gitprovider/provider.go`
-is the authoritative list; a method count repeated here goes stale.
+is the authoritative list, and the listing below goes stale the moment a method
+is added.
 
-ADR 0004 committed to four methods and the interface now carries ten. Reading a
-pull request, discovering open ones, editing a comment and publishing a commit
-status all turned out to be workflow needs too — the growth its "lowest common
-denominator" cost paragraph predicted.
+ADR 0004 committed to four methods. Reading a pull request, discovering open
+ones, editing a comment and publishing a commit status all turned out to be
+workflow needs too, which is the growth its "lowest common denominator" cost
+paragraph predicted.
 
 **On identity.** A token grants the right access and the wrong name: it belongs
 to whoever minted it, so the agent's comments arrive under that person's avatar
-and read like a colleague's until the footer. On GitHub, set `git.app.appId` and
-give it a private key -- an App comments as `yourapp[bot]`, with a face of its
-own, and its installation tokens expire hourly instead of never. On Gitea,
-create a dedicated bot user and mint the token as that user; `local/` does
-exactly this.
+and read like a colleague's until the footer. On GitHub, set `git.app.appId`
+and give it a private key; an App comments as `yourapp[bot]`, with a face of
+its own, and its installation tokens expire hourly instead of never. On Gitea,
+create a dedicated bot user and mint the token as that user, which is what
+`local/` does.
 
 ```go
 // read a pull request
@@ -24,7 +25,7 @@ GetPullRequest(ctx, number)          // title, branch, head SHA, labels
 ListOpenPullRequests(ctx)            // how the gate discovers work: no webhook, no CI event
 
 // read what has been said on it
-ListComments(ctx, number)            // EVERY comment -- see below
+ListComments(ctx, number)            // every comment, see below
 CheckStatus(ctx, sha, checkName)     // pending | success | failure | missing
 
 // say something
@@ -46,8 +47,8 @@ Name() string
 | GitLab | extension point |
 | Bitbucket | extension point |
 
-`GIT_API_BASE` means different things per provider, because the providers do:
-on GitHub it is the API root (`.../api/v3` for Enterprise); on Gitea it is the
+`GIT_API_BASE` means different things per provider, because the providers do.
+On GitHub it is the API root (`.../api/v3` for Enterprise); on Gitea it is the
 **instance** root, because the client appends `/api/v1` itself and also needs
 that root to build a push remote.
 
@@ -59,7 +60,7 @@ provider-specific artifact store. `ListComments` finds it by an HTML marker.
 
 **`ListComments` must return every comment**, not the first page. The gate's
 report is found by scanning that list, so a client that silently stops at one
-hundred makes the report vanish on a busy pull request — and the agent cannot
+hundred makes the report vanish on a busy pull request, and the agent cannot
 tell that from a gate that published nothing, which is a different situation
 with a different answer.
 
@@ -70,9 +71,9 @@ Expect the same split elsewhere.
 
 **Pushes must not re-trigger nothing.** Most hosts suppress workflow triggers
 for pushes made with the CI system's own token. If the agent pushes with that
-token, the gate never re-runs, the status stays red at its previous
-conclusion, and the promotion waits on a result that will never change. Use a
-separate credential.
+token, the gate never re-runs, the status stays red at its previous conclusion,
+and the promotion waits on a result that will never change. Use a separate
+credential.
 
 **Never implement a merge or a close.** The interface deliberately has neither.
 The agent proposes; the gate and the merge policy dispose.

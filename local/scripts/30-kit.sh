@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Installs the kit: Bosun and the pipelines.
 #
-# Everything comes from the WORKING TREE -- the agent image is built here, and
+# Everything comes from the working tree; the agent image is built here, and
 # the charts are the directories beside this one. That is the point of a
 # proving ground: it exercises the code in front of you, not whatever was last
 # published. It also sidesteps the architecture question, since the published
@@ -20,9 +20,9 @@ load_credentials
 #   ArgoCD and the agent take the Service over plain HTTP. No certificate, no
 #   trust store, nothing to configure.
 #
-#   Kargo will not. It REFUSES to send credentials to a plain-HTTP endpoint
+#   Kargo will not. It refuses to send credentials to a plain-HTTP endpoint
 #   ("refused to get credentials for insecure HTTP endpoint"), which is a
-#   defensible rule and one you only discover from a controller log -- the
+#   defensible rule and one you only discover from a controller log. The
 #   promotion itself fails at `git push` with "could not read Username",
 #   naming nothing. So Kargo gets the ingress address over HTTPS, and skips
 #   verification of its self-signed certificate.
@@ -31,24 +31,24 @@ KARGO_REPO_URL="${GITEA_URL}/${GITEA_OWNER}/${SAMPLE_REPO_NAME}.git"
 GITEA_ROOT="${GITEA_SVC}"
 
 # The model endpoint is off-cluster, and the chart's allowPublicHTTPS rule
-# excepts every RFC1918 range -- so a model on your LAN needs its own explicit
+# excepts every RFC1918 range, so a model on your lan needs its own explicit
 # ipBlock or the agent hangs with zero bytes and no error.
 LLM_HOST="$(printf '%s' "$LLM_BASE_URL" | sed -E 's#^https?://##; s#[:/].*$##')"
 LLM_PORT="$(printf '%s' "$LLM_BASE_URL" | sed -nE 's#^https?://[^:/]+:([0-9]+).*#\1#p')"
 : "${LLM_PORT:=80}"
 
-# The NetworkPolicy is ON, and it is not decoration: kindnet in this cluster
-# ENFORCES NetworkPolicy. Measured, not assumed -- a busybox pod reaches
-# 1.1.1.1 with no policy and hangs under a deny-all, which is the same
-# zero-bytes hang every egress incident in this project produced. So the rules
-# below are load-bearing: get the apiserver endpoints wrong and the agent
-# crash-loops instead of quietly answering "not permitted to check".
+# The NetworkPolicy is on, and it is not decoration: kindnet in this cluster
+# enforces NetworkPolicy. Measured, not assumed; a busybox pod reaches 1.1.1.1
+# with no policy and hangs under a deny-all, which is the same zero-bytes hang
+# every egress incident in this project produced. So the rules below are
+# load-bearing: get the apiserver endpoints wrong and the agent crash-loops
+# instead of quietly answering "not permitted to check".
 
 # Live reads need the apiserver, and the apiserver is the destination people
 # get wrong. `kubernetes.default.svc` is a ClusterIP, and a ClusterIP is DNAT'd
-# to a real endpoint BEFORE NetworkPolicy is evaluated -- so an ipBlock naming
-# it matches nothing and the connection hangs with zero bytes rather than being
-# refused. Ask the Service what it actually points at.
+# to a real endpoint before NetworkPolicy is evaluated, so an ipBlock naming it
+# matches nothing and the connection hangs with zero bytes rather than being
+# refused. Ask the Service what it points at.
 APISERVER_EPS="$(kc -n default get endpoints kubernetes \
   -o jsonpath='{range .subsets[*]}{range .addresses[*]}{.ip}{"\n"}{end}{end}' | sed '/^$/d')"
 APISERVER_PORT="$(kc -n default get endpoints kubernetes \
@@ -59,18 +59,18 @@ APISERVER_PORT="$(kc -n default get endpoints kubernetes \
 # The API groups the agent may count objects in. `groups` scope, not `wide`:
 # "everything except the core group" is the intent everyone has here and it is
 # not expressible in Kubernetes RBAC, so this names the groups whose CRDs this
-# cluster actually ships and leaves Secrets unreadable.
+# cluster ships and leaves Secrets unreadable.
 : "${LIVE_READ_GROUPS:=external-secrets.io generators.external-secrets.io cert-manager.io acme.cert-manager.io argoproj.io kargo.akuity.io}"
 
 # The ArgoCD account the gate reads the cluster inventory as. Its own account,
 # not admin: the credential is bearer-equivalent for whatever its ArgoCD RBAC
 # permits, so the ground should hold the one the documentation tells an
-# operator to mint -- `clusters, get` and nothing else.
+# operator to mint, `clusters, get` and nothing else.
 : "${ARGOCD_ACCOUNT:=bosun}"
 
 say "the agent's own account"
 # The agent authenticates as whoever owns its token. Hand it the admin's and
-# every comment and commit it makes carries the admin's name -- which is
+# every comment and commit it makes carries the admin's name, which is
 # indistinguishable, at a glance, from a colleague having written it. So it
 # gets a user of its own, and mints its own token as that user.
 : "${AGENT_USER:=bosun}"
@@ -95,7 +95,7 @@ curl -sk -X PUT -H "Authorization: token ${GITEA_TOKEN}" \
   -H 'Content-Type: application/json' -d '{"permission":"write"}' >/dev/null
 step "granted write on ${SAMPLE_REPO_NAME}"
 
-# Tokens are minted by the user themselves, with basic auth -- an admin token
+# Tokens are minted by the user themselves, with basic auth; an admin token
 # cannot mint one on someone else's behalf.
 AGENT_TOKEN="$(curl -sk -u "${AGENT_USER}:${AGENT_PASSWORD}" \
   -X POST "${GITEA_URL}/api/v1/users/${AGENT_USER}/tokens" \
@@ -114,7 +114,7 @@ ok "agent-git"
 
 say "the gate's ArgoCD account"
 # The inventory the gate expands generators against comes from ArgoCD's API,
-# on an account token. Two ConfigMap edits and a mint -- the same three steps
+# on an account token. Two ConfigMap edits and a mint, the same three steps
 # the chart README asks an operator for, done here so the ground exercises the
 # real path rather than a shortcut through admin.
 #
@@ -233,7 +233,7 @@ helm upgrade --install bosun "$ROOT/../charts/bosun" \
   --set 'triage.egressDeny[0]=*.invalid.localtest.me' \
   --wait --timeout 5m >/dev/null
 # The image tag never changes, so helm sees an identical pod spec and keeps the
-# running pod -- with the OLD binary in it. Every rebuild therefore needs an
+# running pod, with the old binary in it. Every rebuild therefore needs an
 # explicit rollout, or you spend an hour debugging code that is not running.
 kc -n bosun rollout restart deploy/bosun-bosun >/dev/null
 kc -n bosun rollout status deploy/bosun-bosun --timeout=180s >/dev/null
@@ -252,7 +252,7 @@ ok "warehouse and stages created"
 say "kargo git credentials"
 # After the chart, never before: kargo-pipelines owns the Project namespace
 # and helm refuses to adopt one that already exists without its ownership
-# labels. Kargo also matches credentials to a repository by NORMALISED URL,
+# labels. Kargo also matches credentials to a repository by normalised URL,
 # so this repoURL and the Warehouse's must agree down to the trailing .git.
 kc -n "$KARGO_PROJECT" delete secret sample-repo >/dev/null 2>&1 || true
 kc -n "$KARGO_PROJECT" create secret generic sample-repo \

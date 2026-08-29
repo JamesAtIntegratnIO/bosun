@@ -10,10 +10,10 @@ import (
 // conformance rules do not know what a hunk is. diff_test.go was already
 // separate; this is the other half of that split.
 
-// Diff renders a line comparison of two documents for a comment, WITH CONTEXT.
+// Diff renders a line comparison of two documents for a comment, with context.
 //
 // It renders what a model reshaped, and the reader's decision to trust the
-// harness rests on it -- so the one thing it must never do is make a preserved
+// harness rests on it, so the one thing it must never do is make a preserved
 // value look dropped. The first implementation did exactly that. It was a set
 // difference on line text: every line whose exact text appeared on both sides
 // was printed on neither. A Certificate whose `organization: [Example Platform
@@ -23,7 +23,7 @@ import (
 //   - subject:
 //   - organizations:
 //
-// because the list item `    - Example Platform Team` was byte-identical on
+// because the list item ` - Example Platform Team` was byte-identical on
 // both sides and therefore invisible. The value survived; the diff showed it
 // being deleted into an empty field. Directly beneath it sat a "Values not
 // carried across" line, which a reader would read as confirmation.
@@ -32,12 +32,12 @@ import (
 // lines around each change. A moved value now appears as context under its new
 // key, which is the whole question a reader has.
 //
-// KNOWN NOISE, and not a defect in this function: the proposal is re-serialised
+// Known noise, and not a defect in this function: the proposal is re-serialised
 // from a map, so its keys come out sorted and its lists at canonical indent.
 // Every untouched field whose position or indent moved therefore shows as a
 // change, and a six-field migration can render as twenty diff lines. The
-// semantic account -- which field went where, and why -- is written above the
-// diff by the caller; this is the "show me everything" backstop underneath it.
+// semantic account, which field went where, and why, is written above the diff
+// by the caller; this is the "show me everything" backstop underneath it.
 // Removing the noise means preserving the original document's key order and
 // style through the round trip, which is a node-level rewrite of a different
 // size.

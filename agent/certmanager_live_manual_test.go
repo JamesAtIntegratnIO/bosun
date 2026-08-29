@@ -19,25 +19,25 @@ import (
 //
 // cert-manager v1.6 served `v1alpha2`, `v1alpha3`, `v1beta1` and `v1`. v1.7
 // removed all but `v1`. The rename happened back in v0.16 and the old versions
-// were kept alive by a conversion webhook until 1.7 dropped them -- so a
+// were kept alive by a conversion webhook until 1.7 dropped them, so a
 // repository that still declared `cert-manager.io/v1alpha2` had manifests that
 // applied cleanly right up until the bump that deleted the version, and then
 // did not.
 //
-// SIX fields move, in three different shapes, which is why this is a better
+// Six fields move, in three different shapes, which is why this is a better
 // example than a single nested rename:
 //
-//	keyAlgorithm  -> privateKey.algorithm      into a nested object
-//	keySize       -> privateKey.size
-//	keyEncoding   -> privateKey.encoding
-//	emailSANs     -> emailAddresses            renamed in place
-//	uriSANs       -> uris
-//	organization  -> subject.organizations     into a different nested object
+//	keyAlgorithm -> privateKey.algorithm into a nested object
+//	keySize -> privateKey.size
+//	keyEncoding -> privateKey.encoding
+//	emailSANs -> emailAddresses renamed in place
+//	uriSANs -> uris
+//	organization -> subject.organizations into a different nested object
 //
 // Schemas are rendered from the published charts, not written here:
 //
 //	helm template cm cert-manager --repo https://charts.jetstack.io \
-//	  --version v1.6.3 --include-crds --set installCRDs=true
+//	 --version v1.6.3 --include-crds --set installCRDs=true
 //
 //	CM_OLD_SCHEMA=cm-old-v1alpha2.json CM_NEW_SCHEMA=cm-new-v1.json \
 //	DELIVERY_AGENT_LIVE=http://host:1234/v1 DELIVERY_AGENT_MODELS=qwen/qwen3.8-27b \
@@ -51,7 +51,7 @@ func TestLiveCertManagerMigration(t *testing.T) {
 	oldS, newS := schemaFile(t, oldPath), schemaFile(t, newPath)
 
 	// A Certificate in the shape a 2021 repository would hold it, with its
-	// apiVersion ALREADY swapped to v1 -- the state the deterministic pass
+	// apiVersion already swapped to v1; the state the deterministic pass
 	// leaves behind, and the state whose remaining problem nothing else sees.
 	const doc = `apiVersion: cert-manager.io/v1
 kind: Certificate

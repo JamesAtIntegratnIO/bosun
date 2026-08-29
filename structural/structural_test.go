@@ -72,7 +72,7 @@ spec:
 }
 
 // The failure the swap cannot see. `spec.store` parses, applies, and is pruned
-// by the apiserver on the way in -- so the value is gone and nothing in the
+// by the apiserver on the way in, so the value is gone and nothing in the
 // repository, the render or the gate can tell.
 func TestAFieldTheTargetPrunesIsFound(t *testing.T) {
 	d := doc(t, `
@@ -140,7 +140,7 @@ properties:
 	}
 }
 
-// ---- the three validators ----
+// --the three validators,--
 
 const swapped = `
 apiVersion: external-secrets.io/v1
@@ -213,7 +213,7 @@ spec:
 	}
 }
 
-// The other half: a value the SCHEMA dictates is not an invention. Without this
+// The other half: a value the schema dictates is not an invention. Without this
 // the provenance check refuses every correct migration that has to fill in a
 // newly required field.
 func TestAValueTheSchemaItselfDictatesIsNotAnInvention(t *testing.T) {
@@ -258,8 +258,8 @@ spec:
 	}
 }
 
-// Losing a value is not automatically wrong -- a field the target no longer
-// accepts has to go somewhere, and sometimes nowhere. It is always REPORTED,
+// Losing a value is not automatically wrong, a field the target no longer
+// accepts has to go somewhere, and sometimes nowhere. It is always reported,
 // so a human sees exactly what a migration dropped.
 func TestADroppedValueIsReportedRatherThanHidden(t *testing.T) {
 	got := Validate(
@@ -339,7 +339,7 @@ spec:
 }
 
 // The other side of the same rule: a value under a path the target schema
-// REJECTS is exactly what a migration is for, and must be allowed to appear
+// rejects is exactly what a migration is for, and must be allowed to appear
 // somewhere new.
 func TestAValueDisplacedByTheSchemaChangeMayMove(t *testing.T) {
 	got := Validate(
@@ -369,7 +369,7 @@ spec:
 // nearly 44,000 characters. Left uncapped that crowds out the document the
 // migration is supposed to be about.
 //
-// Truncating is safe here and nowhere else: the validators run against the FULL
+// Truncating is safe here and nowhere else: the validators run against the full
 // schema whatever the prompt showed, so a model that never saw the destination
 // field cannot produce a proposal that passes schema-validity. The cost is a
 // refusal, never a bad write.
@@ -391,7 +391,7 @@ func TestAnEnormousSchemaIsCappedAndSaysSo(t *testing.T) {
 	}
 }
 
-// A schema that fits is untouched -- the common case must not grow a footer.
+// A schema that fits is untouched; the common case must not grow a footer.
 func TestASchemaThatFitsIsNotAnnotated(t *testing.T) {
 	got := RenderSchema(schema(t, targetSchema))
 	if strings.Contains(got, "truncated") {

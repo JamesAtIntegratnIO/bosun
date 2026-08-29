@@ -1,10 +1,10 @@
 // Package pipeline supervises artifact promotion.
 //
-// Kargo does a great deal of work unattended, and its failure mode is
-// SILENCE. A Warehouse that stopped discovering, a promotion that errored on a
+// Kargo does a great deal of work unattended, and its failure mode is silence.
+// A Warehouse that stopped discovering, a promotion that errored on a
 // transient DNS blip three days ago, a pin that updates a key the chart no
-// longer reads -- none of these produce an alert, a red check, or an unhealthy
-// Application. The pipeline simply stops delivering, and everything that
+// longer reads, none of these produce an alert, a red check, or an unhealthy
+// Application. The pipeline stops delivering, and everything that
 // reports on it stays green, because every individual object is fine.
 //
 // That is not a criticism of Kargo. It is the shape of any system whose job is
@@ -14,7 +14,7 @@
 //
 // Measured, on one cluster, on one night:
 //
-//   - four Stages had sat on Errored promotions for THREE DAYS after a DNS
+//   - four Stages had sat on Errored promotions for three days after a DNS
 //     lookup failed mid-step. Four addons silently stopped receiving updates.
 //     Nothing said so; every Application was Synced and Healthy throughout.
 //   - the `kubectl` target writes seven keys into kyverno's values file, and
@@ -25,17 +25,17 @@
 //
 // # What this package will and will not do
 //
-// It READS. The chart's ClusterRole has no create, update, patch or delete verb
+// It reads. The chart's ClusterRole has no create, update, patch or delete verb
 // anywhere, and says that a feature which seems to need one is a signal to
 // reconsider the feature. Supervising the pipeline does not need one: every
 // finding here is an observation, and every remedy is a command a human runs.
 //
-// Which makes the REMEDY the most valuable field on a finding. Recovering from
+// Which makes the remedy the most valuable field on a finding. Recovering from
 // each of the states above took an hour of reading Kargo's source, and the
 // answers are not guessable: `kargo.akuity.io/abort=true` is silently ignored
 // where `{"action":"terminate"}` works; a Warehouse refresh re-discovers
 // artifacts but will never re-run a promotion that already reached a terminal
-// phase; a hand-written Promotion needs `generateName` WITHOUT a trailing dot
+// phase; a hand-written Promotion needs `generateName` without a trailing dot
 // or the webhook rejects it on RFC1123. A supervisor that reports a problem
 // and not its cure has moved the work rather than done it.
 package pipeline
@@ -54,7 +54,7 @@ const (
 	// Blocking: the pipeline is not delivering something it was asked to
 	// deliver, and will not start again on its own.
 	Blocking Severity = "blocking"
-	// Degraded: it is still working, but something will bite later -- a pin
+	// Degraded: it is still working, but something will bite later, a pin
 	// writing to a key nothing reads, a duplicate pull request hiding a real
 	// one.
 	Degraded Severity = "degraded"
@@ -100,11 +100,11 @@ type Finding struct {
 	// a Stage name, a Warehouse name, a pull request.
 	Subject string
 	// Summary is one sentence, and the only line a reader is guaranteed to
-	// read. It states the SITUATION, never the mechanism.
+	// read. It states the situation, never the mechanism.
 	Summary string
 	// Detail is the evidence: what was observed, with numbers.
 	Detail string
-	// Remedy is the exact command. Not a description of a command -- the
+	// Remedy is the exact command. Not a description of a command, the
 	// command, ready to paste, because every one of these took an hour to
 	// find the first time.
 	Remedy string
@@ -119,22 +119,22 @@ type Report struct {
 	At         time.Time
 	Findings   []Finding
 	Namespaces []string
-	// Checked records what the sweep actually managed to look at, so that a
+	// Checked records what the sweep managed to look at, so that a
 	// clean report cannot be confused with a sweep that could not look. This
 	// package's whole subject is the difference between those two.
 	Checked Checked
 }
 
 // Checked is the sweep's own accounting. Every count here is a claim that
-// something WAS examined; a zero with an unset flag means nobody looked.
+// something was examined; a zero with an unset flag means nobody looked.
 type Checked struct {
 	Stages       int
 	Warehouses   int
 	Promotions   int
 	PullRequests int
 	// PinsScanned is how many tracked (file, key) pairs were resolved against
-	// a real checkout. Zero means the pin check did not run -- which is not
-	// the same as "every pin is live".
+	// a real checkout. Zero means the pin check did not run, which is not the
+	// same as "every pin is live".
 	PinsScanned int
 	// Notes explains anything the sweep could not do.
 	Notes []string
@@ -151,7 +151,7 @@ func (r *Report) Worst() Severity {
 	return worst
 }
 
-// Clean reports whether the sweep found nothing. It is deliberately NOT
+// Clean reports whether the sweep found nothing. It is deliberately not
 // "len(Findings) == 0 means all is well": a sweep that examined nothing also
 // has no findings, and the two must never render the same.
 func (r *Report) Clean() bool {
@@ -160,7 +160,7 @@ func (r *Report) Clean() bool {
 
 // Sort orders findings the way they should be read: worst first, then by kind
 // so that a class of problem reads as a class, then by subject for stability
-// between sweeps -- a report that reshuffles itself is a report nobody diffs.
+// between sweeps; a report that reshuffles itself is a report nobody diffs.
 func (r *Report) Sort() {
 	sort.SliceStable(r.Findings, func(i, j int) bool {
 		a, b := r.Findings[i], r.Findings[j]

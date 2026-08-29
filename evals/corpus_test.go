@@ -9,9 +9,9 @@ import (
 )
 
 // The corpus is a few hundred lines of fixtures whose only consumer was
-// TestEval, which skips without a live endpoint -- so CI's claim that "the
-// eval suite runs here too, with a fake provider, no model endpoint" was not
-// true of the cases themselves. Nothing checked that a case was even runnable
+// TestEval, which skips without a live endpoint, so CI's claim that "the eval
+// suite runs here too, with a fake provider, no model endpoint" was not true
+// of the cases themselves. Nothing checked that a case was even runnable
 // until somebody stood up a model.
 //
 // These run every case through the real harness against a fake, so a fixture
@@ -85,7 +85,7 @@ func TestEveryCaseBuildsAPrompt(t *testing.T) {
 	}
 }
 
-// And every case must be RUNNABLE: handed the answer it expects, the harness
+// And every case must be runnable: handed the answer it expects, the harness
 // scores it as a pass. A case that cannot pass even when the model is right is
 // measuring the fixture.
 func TestEveryTriageCasePassesWhenTheModelIsRight(t *testing.T) {

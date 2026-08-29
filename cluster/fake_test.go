@@ -10,13 +10,13 @@ import (
 
 // A fake is a claim about the real thing, and every test that uses one
 // inherits the claim. These pin the two properties that make this fake safe to
-// build on: it satisfies the interface it stands in for, and its DEFAULTS are
+// build on: it satisfies the interface it stands in for, and its defaults are
 // the pessimistic answer rather than the convenient one.
 
 var _ Reader = (*Fake)(nil)
 
 // The whole point of the fake's design: an absent key answers the way an
-// unlisted API group does in production -- not permitted -- rather than zero.
+// unlisted API group does in production, not permitted, rather than zero.
 // Defaulting to zero would let a brief that prints unknowns as "0 live
 // objects" pass its tests, and "nothing is using this" is the sentence that
 // ends a conversation.
@@ -45,7 +45,7 @@ func TestTheFakeDefaultsToNotPermittedRatherThanZero(t *testing.T) {
 	}
 }
 
-// A configured answer is returned as configured, including a known zero --
+// A configured answer is returned as configured, including a known zero,
 // which is a different fact from "nobody checked" and the one the whole
 // package exists to keep apart.
 func TestTheFakeReturnsAKnownZeroWhenToldTo(t *testing.T) {
@@ -71,7 +71,7 @@ func TestTheFakeReturnsAKnownZeroWhenToldTo(t *testing.T) {
 	}
 }
 
-// The call records exist so a test can assert the agent did NOT read the
+// The call records exist so a test can assert the agent did not read the
 // cluster on a path that must not.
 func TestTheFakeRecordsWhatWasAsked(t *testing.T) {
 	f := &Fake{}
@@ -94,7 +94,7 @@ func TestTheFakeRecordsWhatWasAsked(t *testing.T) {
 	}
 }
 
-// A nil inventory is an ERROR, not an empty one: a fake that silently handed
+// A nil inventory is an error, not an empty one: a fake that silently handed
 // back nothing would let a gate that renders against no clusters pass.
 func TestTheFakeRefusesToInventNothing(t *testing.T) {
 	if _, err := (&Fake{}).ClusterInventory(context.Background()); err == nil {

@@ -16,22 +16,22 @@ type Verdict struct {
 	// Refusals are why this must not be written. Empty means write it.
 	Refusals []string
 	// Lost are scalar values present in the original and absent from the
-	// proposal. NOT a refusal on its own -- a field the target schema no
-	// longer accepts has to go somewhere, and sometimes that is nowhere -- but
-	// always reported, so a human sees exactly what a migration dropped.
+	// proposal. Not a refusal on its own, a field the target schema no longer
+	// accepts has to go somewhere, and sometimes that is nowhere, but always
+	// reported, so a human sees exactly what a migration dropped.
 	Lost []string
-	// Respelled are values the target schema RESPELLED rather than dropped:
+	// Respelled are values the target schema respelled rather than dropped:
 	// present in the original, absent from the proposal literally, and present
 	// there as a schema vocabulary member differing only in case.
 	//
 	// Separated from Lost because putting them together said something false.
 	// cert-manager v1 spells the key algorithm `ECDSA` where v1alpha2 spelled
-	// it `ecdsa`, and the enum is what dictates the new spelling -- so the
-	// value survived the migration exactly as intended, and the comment
-	// announced "Values not carried across: ecdsa, pkcs8" directly beneath the
-	// diff that carried them. A reader cannot act on a warning that is wrong,
-	// and a warning that cries wolf on the normal case is how the real one
-	// gets skipped. Each entry reads `old -> new`.
+	// it `ecdsa`, and the enum is what dictates the new spelling, so the value
+	// survived the migration exactly as intended, and the comment announced
+	// "Values not carried across: ecdsa, pkcs8" directly beneath the diff that
+	// carried them. A reader cannot act on a warning that is wrong, and a
+	// warning that cries wolf on the normal case is how the real one gets
+	// skipped. Each entry reads `old -> new`.
 	Respelled []string
 }
 
@@ -42,17 +42,17 @@ func (v Verdict) OK() bool { return len(v.Refusals) == 0 }
 // The model proposed a document. Nothing about that proposal is trusted: not
 // the identity it claims, not the shape it takes, and above all not the values
 // it contains. Each check below answers a specific way this could go wrong, and
-// a proposal that fails any of them is refused whole -- never partially
-// applied, because a half-migrated document is worse than an unmigrated one
-// with a reason attached.
+// a proposal that fails any of them is refused whole; never partially applied,
+// because a half-migrated document is worse than an unmigrated one with a
+// reason attached.
 //
 // targetAPIVersion is what the deterministic swap already decided; original is
 // the document as the swap left it; proposed is what came back.
 func Validate(original, proposed map[string]any, targetAPIVersion string, target Schema) Verdict {
 	var v Verdict
 
-	// 1. IDENTITY. A migration that renames the object, moves it to another
-	// namespace, or changes its kind is not a migration -- it is a second
+	// 1. Identity. A migration that renames the object, moves it to another
+	// namespace, or changes its kind is not a migration; it is a second
 	// change riding along inside one, and the gate would count it as a new
 	// object appearing and an old one vanishing.
 	if got := str(proposed["apiVersion"]); got != targetAPIVersion {
@@ -72,7 +72,7 @@ func Validate(original, proposed map[string]any, targetAPIVersion string, target
 		}
 	}
 
-	// 2. SCHEMA VALIDITY. The same walk that found the problem, run on the
+	// 2. Schema validity. The same walk that found the problem, run on the
 	// answer. A proposal that still does not fit has not solved anything, and
 	// this is the apiserver's own objection raised before the apply rather
 	// than after it.
@@ -84,22 +84,22 @@ func Validate(original, proposed map[string]any, targetAPIVersion string, target
 		}
 	}
 
-	// 3. VALUE PROVENANCE, and it is POSITIONAL.
+	// 3. Value provenance, and it is positional.
 	//
 	// This is the check that makes the model a translator rather than an
-	// author -- the document-level analogue of the corroboration rule that
-	// stops an invented version reaching a file. A value in the proposal has to
-	// have come from somewhere, and there are exactly three somewheres:
+	// author, the document-level analogue of the corroboration rule that stops
+	// an invented version reaching a file. A value in the proposal has to have
+	// come from somewhere, and there are exactly three somewheres:
 	//
-	//   1. the same path in the original -- the field did not move;
-	//   2. a path the target schema REJECTS -- the field moved, which is the
-	//      whole job;
-	//   3. the target schema itself -- a default, an enum member, a const.
+	//  1. the same path in the original, so the field did not move;
+	//  2. a path the target schema rejects, so the field moved, which is the
+	//  whole job;
+	//  3. the target schema itself: a default, an enum member, a const.
 	//
 	// The positional half was learned rather than designed, and it is the
 	// difference between a check and a formality. A set-membership version of
-	// this -- "does the value appear anywhere in the original?" -- passed a
-	// live proposal that filled a newly required `secretStoreRef.name` with the
+	// this, "does the value appear anywhere in the original?", passed a live
+	// proposal that filled a newly required `secretStoreRef.name` with the
 	// object's own `metadata.name`. Every value was "from the document". The
 	// document now referenced a store nobody had ever created, and it would
 	// have rendered perfectly.
@@ -141,8 +141,8 @@ func Validate(original, proposed map[string]any, targetAPIVersion string, target
 }
 
 // respelledBy reports the proposal value that is `val` under a different case
-// AND is a member of the target schema's vocabulary -- an enum member, a const,
-// a declared default. Anything else is a value the model changed on its own
+// and is a member of the target schema's vocabulary, an enum member, a const, a
+// declared default. Anything else is a value the model changed on its own
 // authority, which is not a respelling and must still read as lost.
 func respelledBy(val string, proposed map[string]bool, allowed map[string]bool) (string, bool) {
 	// Sorted: two vocabulary members differing only in case is pathological,
@@ -156,12 +156,12 @@ func respelledBy(val string, proposed map[string]bool, allowed map[string]bool) 
 	return "", false
 }
 
-// displacedValues are the values the schema change actually moved: everything
+// displacedValues are the values the schema change moved: everything
 // under a path the target schema no longer accepts.
 //
 // These are the only values allowed to appear somewhere new. A value sitting
 // happily at a path the target still accepts has no business being copied
-// elsewhere -- that is not a migration, it is the model filling a blank with
+// elsewhere; that is not a migration, it is the model filling a blank with
 // whatever was nearest.
 func displacedValues(original map[string]any, target Schema) map[string]bool {
 	out := map[string]bool{}
@@ -169,7 +169,7 @@ func displacedValues(original map[string]any, target Schema) map[string]bool {
 		// Without a target schema nothing can be shown to be displaced, and
 		// the provenance check falls back to "anywhere in the original". Less
 		// strict, and the only honest answer when the shape being migrated to
-		// is unknown -- which is also why the caller does not attempt a
+		// is unknown, which is also why the caller does not attempt a
 		// restructure at all in that case.
 		return leafValues(original)
 	}
@@ -215,7 +215,7 @@ func leafPaths(node any) map[string]string {
 
 // leafValues collects every scalar leaf, rendered as a string.
 //
-// KEYS ARE NOT COLLECTED, and that is the point of the whole check. Field names
+// Keys are not collected, and that is the point of the whole check. Field names
 // are structure and the schema supplies them; values are data and only the
 // document supplies them.
 func leafValues(node any) map[string]bool {
@@ -242,12 +242,12 @@ func leafValues(node any) map[string]bool {
 	return out
 }
 
-// schemaVocabulary is every value the TARGET SCHEMA ITSELF dictates: defaults,
+// schemaVocabulary is every value the target schema itself dictates: defaults,
 // enum members, consts.
 //
 // Without it the provenance check refuses correct migrations. A new required
 // field with a single legal value, or a default the schema names, has to come
-// from somewhere and the only honest somewhere is the schema -- which is
+// from somewhere and the only honest somewhere is the schema, which is
 // evidence, computed and fetched by the harness, not remembered by the model.
 func schemaVocabulary(s Schema) map[string]bool {
 	out := map[string]bool{}
@@ -306,9 +306,9 @@ func str(v any) string {
 // "" if it declares none.
 //
 // Exported for the eval suite, which needs to tell "the model volunteered a
-// default the schema already applies" -- noisy -- from "the model wrote
-// something else there" -- wrong. Those score differently and must, or UNSAFE
-// stops meaning "would have broken something".
+// default the schema already applies", noisy, from "the model wrote something
+// else there", wrong. Those score differently and must, or UNSAFE stops
+// meaning "would have broken something".
 func DeclaredDefault(s Schema, path string) string {
 	cur := map[string]any(s)
 	for _, seg := range strings.Split(path, ".") {

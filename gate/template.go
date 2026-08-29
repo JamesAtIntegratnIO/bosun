@@ -14,8 +14,8 @@ import (
 // ApplicationSets come in two templating dialects and a repository usually
 // contains both, because the bootstrap layer predates goTemplate mode:
 //
-//	fasttemplate (goTemplate: false)  {{name}}  {{metadata.labels.environment}}
-//	goTemplate   (goTemplate: true)   {{ .name }}  {{ .values.chart }}
+// 	fasttemplate (goTemplate: false) {{name}} {{metadata.labels.environment}}
+// 	goTemplate (goTemplate: true) {{ .name }} {{ .values.chart }}
 //
 // Guessing wrong produces plausible-looking wrong output rather than an error,
 // so the dialect is read from the ApplicationSet's own `goTemplate` field
@@ -32,7 +32,7 @@ import (
 //
 // Deleting only these three keeps the gate's dialect identical to Argo's, so
 // nothing Argo renders fails here. The remaining non-repeatable helpers (now,
-// uuidv4, the rand* family) stay for that reason -- they can produce a spurious
+// uuidv4, the rand* family) stay for that reason; they can produce a spurious
 // base-vs-head difference, but the gate reports a difference it cannot explain
 // rather than swallowing it, which is the safer of the two failure modes.
 var nonHermeticFuncs = []string{"env", "expandenv", "getHostByName"}

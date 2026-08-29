@@ -11,9 +11,9 @@ import (
 )
 
 // A cluster with no Kargo installed used to produce three separate read
-// failures -- Stages, Warehouses, promotions -- which reads as three things
-// going wrong rather than one thing being absent, and sends the reader looking
-// for a permissions problem that is not there.
+// failures, Stages, Warehouses, promotions, which reads as three things going
+// wrong rather than one thing being absent, and sends the reader looking for a
+// permissions problem that is not there.
 func TestNoKargoOnTheClusterIsOneNoteNotThree(t *testing.T) {
 	s := (&Collector{Kargo: absentKargo{}, Now: func() time.Time { return now }}).Collect(context.Background(), "")
 

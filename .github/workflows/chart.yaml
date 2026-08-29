@@ -2,15 +2,15 @@ name: Charts
 
 # Publishes every chart under charts/ as an OCI package.
 #
-# Each chart carries its OWN version in its Chart.yaml and publishes at that
-# version, the moment that version reaches main. NOT on a release tag: chart
+# Each chart carries its own version in its Chart.yaml and publishes at that
+# version, the moment that version reaches main. Not on a release tag: chart
 # versions are independent of each other and of the agent's, and tying them to
-# a shared tag meant a chart-only bump published NOTHING until somebody
+# a shared tag meant a chart-only bump published nothing until somebody
 # remembered to tag. kargo-pipelines 0.1.1 sat unpublished for exactly that
 # reason.
 #
 # Safe to run on every push because publishing is idempotent: a version already
-# in the registry is SKIPPED, never overwritten. ArgoCD consumes these by
+# in the registry is skipped, never overwritten. ArgoCD consumes these by
 # version, and a chart that moved underneath a pinned version is the precise
 # failure this repository exists to prevent.
 on:

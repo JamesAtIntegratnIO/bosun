@@ -7,7 +7,7 @@ import (
 )
 
 // The line the gate writes and the migration the agent reads back must be the
-// same thing, and this round-trip is the contract test for it -- the report is
+// same thing, and this round-trip is the contract test for it; the report is
 // the wire format, so drift in either direction is a repair that stops firing.
 func TestReportLineRoundTrips(t *testing.T) {
 	want := []Dropped{{
@@ -56,7 +56,7 @@ func TestOtherBlockersMatchTheGateHeadings(t *testing.T) {
 	}
 }
 
-// GA before beta before alpha, higher numbers first within a class -- the API
+// Ga before beta before alpha, higher numbers first within a class, the API
 // server's own priority, so the destination the gate names is the one a
 // Kubernetes operator would have picked.
 func TestPreferredVersion(t *testing.T) {
@@ -80,7 +80,7 @@ func TestPreferredVersion(t *testing.T) {
 }
 
 // A CRD removed outright renders its own line, and the parser deliberately
-// cannot act on it: there is no destination, so there is no repair -- only
+// cannot act on it: there is no destination, so there is no repair, only
 // the consumer count, which the gate carries itself.
 func TestARemovalLineIsNotRepairable(t *testing.T) {
 	line := Line("CustomResourceDefinition/admissionreports.kyverno.io in kyverno",
@@ -94,8 +94,8 @@ func TestARemovalLineIsNotRepairable(t *testing.T) {
 }
 
 // All three object groups render an identical bullet. A reader that matched
-// the bullet without tracking its group treated an ADDED definition as a
-// removed one -- and every false hit is a live apiserver lookup on a path a
+// the bullet without tracking its group treated an added definition as a
+// removed one, and every false hit is a live apiserver lookup on a path a
 // human is waiting on.
 func TestParseRemovedCRDsOnlyReadsTheRemovedGroup(t *testing.T) {
 	report := strings.Join([]string{
@@ -143,8 +143,8 @@ func TestParseRemovedCRDsFindsNothingWhenNothingWasRemoved(t *testing.T) {
 // questions, and the difference bites exactly on a retry: gate/diff.go prints
 // the apiVersion heading whenever any such object exists, while Blockers
 // excludes the ones the repair is itself performing. Scraping won there, so
-// after a partial repair the deterministic path was skipped on attempt 2 --
-// the attempt the cap exists to allow.
+// after a partial repair the deterministic path was skipped on attempt 2; the
+// attempt the cap exists to allow.
 func TestStructuredCountBeatsTheProseScrapeOnAMigrationRetry(t *testing.T) {
 	report := strings.Join([]string{
 		BlockersMarker + "targeting=0 source=0 apiVersion=0 consumers=2 unscanned=0 valuesDropped=0 schema=0 -->",

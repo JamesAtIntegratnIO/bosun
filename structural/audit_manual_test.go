@@ -13,10 +13,10 @@ import (
 // TestAuditLiveObjects runs the detector against real objects from a real
 // cluster, under the schema the apiserver already accepted them with.
 //
-// Every finding it produces is a FALSE POSITIVE by construction: the object is
+// Every finding it produces is a false positive by construction: the object is
 // live, so the schema admitted it. That makes this the one audit that needs no
-// judgement about what the right answer is -- the right answer is always "no
-// findings" -- and it is the only way to learn whether a hand-rolled walker
+// judgement about what the right answer is, the right answer is always "no
+// findings", and it is the only way to learn whether a hand-rolled walker
 // survives contact with the constructs real CustomResourceDefinitions use.
 //
 // A false finding is not harmless. It calls the model on a document that was
@@ -96,7 +96,7 @@ func TestAuditLiveObjects(t *testing.T) {
 			continue
 		}
 		for _, finding := range fs {
-			// Group by the SHAPE of the complaint, not the exact path: one
+			// Group by the shape of the complaint, not the exact path: one
 			// walker bug shows up as hundreds of paths.
 			key := fmt.Sprintf("%s at %s", finding.Kind, topLevel(finding.Path))
 			byReason[key]++
@@ -133,7 +133,7 @@ func topLevel(path string) string {
 //
 // Real CustomResourceDefinitions that serve several versions are real schema
 // migrations, already shipped by their authors. Checking a live object of one
-// version against ANOTHER version's schema is the exact question the structural
+// version against another version's schema is the exact question the structural
 // migration asks, on data nobody made up.
 //
 // It also measures what those schemas cost in a prompt, which decides whether
@@ -230,10 +230,10 @@ func loadSchemas(t *testing.T, path string) (map[string]Schema, map[string][]str
 }
 
 // TestAuditForwardMigrations is the direction a real migration goes: a document
-// written for an OLD version, checked against the NEWEST one the cluster
+// written for an old version, checked against the newest one the cluster
 // serves. Anything it finds is a genuine incompatibility the chart's own
-// authors shipped -- the exact case the structural migration exists for, and
-// the only honest way to demonstrate it without inventing a schema.
+// authors shipped, the exact case the structural migration exists for, and the
+// only honest way to demonstrate it without inventing a schema.
 func TestAuditForwardMigrations(t *testing.T) {
 	crdPath, objPath := os.Getenv("STRUCTURAL_AUDIT_CRDS"), os.Getenv("STRUCTURAL_AUDIT_OBJECTS")
 	if crdPath == "" || objPath == "" {

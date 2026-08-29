@@ -3,6 +3,16 @@
 All notable changes to `kargo-pipelines`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.1.4] - 2026-08-28
+
+### Changed
+
+- **Documentation only.** `README.md`, `docs/chaining.md`, `docs/targets.md`
+  and the comments in `values.yaml` and the templates lose the em dashes,
+  emphasis capitals and filler adverbs the voice rules cut. The `yaml-update`
+  rules and the merge-policy table keep their reasoning. No template, value or
+  default changed.
+
 ## [0.1.3] - 2026-08-28
 
 ### Changed

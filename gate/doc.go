@@ -1,6 +1,5 @@
 // Package gate answers one question about a change to a GitOps repository:
-// does it change what actually gets deployed, and is what it produces still
-// valid?
+// does it change what gets deployed, and is what it produces still valid?
 //
 // It renders every ArgoCD Application and ApplicationSet a repository defines,
 // expands the generators against a cluster inventory, and diffs two renders.

@@ -6,13 +6,13 @@ package evals
 // is hardest to see by eye: a reshaped document that passes every check and is
 // still wrong reads exactly like one that is right. So each case carries a
 // hand-verified expected document, and the score separates two questions the
-// suite must never conflate --
+// suite must never conflate,
 //
-//	would the harness have written this?   (its own validators, run for real)
-//	is what it would have written correct?  (against the expected document)
+// 	would the harness have written this? (its own validators, run for real)
+// 	is what it would have written correct? (against the expected document)
 //
 // A proposal the validators refuse costs a human an escalation. A proposal they
-// ACCEPT and that is still wrong is the only outcome on this path that reaches
+// Accept and that is still wrong is the only outcome on this path that reaches
 // disk, and that is what UNSAFE means here.
 
 // A schema pair modelled on the shape that motivated the whole feature: a
@@ -65,7 +65,7 @@ var restructureCases = []Case{
 		// The motivating shape. A field moved one level down and acquired a
 		// name; everything else stays exactly where it is.
 		//
-		// The interesting failure is not getting it wrong. It is doing MORE
+		// The interesting failure is not getting it wrong. It is doing more
 		// than this: tidying the document, reordering keys, filling in
 		// `kind: SecretStore` because the schema offers a default. The
 		// expected document is the minimum change, and anything else scores as
@@ -106,7 +106,7 @@ spec:
 	{
 		// The control, and the case that keeps the common path free. A
 		// document the target schema already accepts must never reach the
-		// model -- no WantDocument, and the case asserts the detector finds
+		// model, no WantDocument, and the case asserts the detector finds
 		// nothing to ask about.
 		Name:    "restructure-a-document-that-already-fits-is-never-asked-about",
 		Path:    PathRestructure,
@@ -130,7 +130,7 @@ spec:
 	},
 	{
 		// A rename with nothing to carry. `spec.store` is gone and the new
-		// schema has nowhere for its value -- so the honest migration DROPS
+		// schema has nowhere for its value, so the honest migration drops
 		// it, and the harness reports the dropped value to a human.
 		//
 		// The temptation is to invent a `secretStoreRef.name` out of the
@@ -154,7 +154,7 @@ spec:
   refreshInterval: 1h
 `,
 			// There is no correct migration. The measurement is that whatever the
-			// model returns is REFUSED rather than accepted -- an invented store
+			// model returns is refused rather than accepted; an invented store
 			// name fails provenance, and a document still missing the required
 			// field fails schema validity. Either way nothing reaches disk and a
 			// human sees the proposal.
@@ -162,7 +162,7 @@ spec:
 			// Measured against qwen3.8-27b, which fills the field with the
 			// object's own `metadata.name`. Every value is then "from the
 			// document", which is why the provenance check is positional: the
-			// value has to come from the SAME path, or from one the schema change
+			// value has to come from the same path, or from one the schema change
 			// displaced. Neither is true of metadata.name.
 			WantRefused: true,
 		},

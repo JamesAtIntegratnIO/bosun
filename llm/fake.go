@@ -11,23 +11,23 @@ type Fake struct {
 	// Verdict is returned as-is, unvalidated. A test asserting what the agent
 	// does with a badly calibrated verdict has to be able to supply one.
 	Verdict *Verdict
-	// Err stands in for a model that is down, slow or misconfigured -- a case
+	// Err stands in for a model that is down, slow or misconfigured; a case
 	// the agent must not let look like a verdict.
 	Err error
 	// ID is the name reported in logs and PR comments.
 	ID string
 
 	// System and User record the last prompt, so a test can assert on the
-	// evidence the model was shown -- the same string the applier corroborates
+	// evidence the model was shown, the same string the applier corroborates
 	// version-shaped values against.
 	System string
 	User   string
 	Calls  int
 
 	// Migration is what Restructure returns. A test asserting what the harness
-	// does with a badly shaped document has to be able to supply one -- and
-	// that is most of what the structural path's tests are: crafted proposals
-	// aimed at each validator in turn.
+	// does with a badly shaped document has to be able to supply one, and that
+	// is most of what the structural path's tests are: crafted proposals aimed
+	// at each validator in turn.
 	Migration *Migration
 	// Migrations, when non-empty, is returned one per call, so a test can
 	// exercise a pass over several documents.

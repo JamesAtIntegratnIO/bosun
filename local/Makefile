@@ -21,7 +21,7 @@ help:
 	@echo "required:  LLM_BASE_URL=http://<host>:<port>/v1"
 	@echo "optional:  LLM_MODEL (default qwen/qwen3.5-9b)"
 
-# Order matters and used to be wrong: the platform is DEFINED in the sample
+# Order matters and used to be wrong: the platform is defined in the sample
 # repository now, so it cannot be installed before the repository exists.
 .PHONY: up
 up: runtime cluster seed platform kit
@@ -52,7 +52,7 @@ demo:
 	@bash $(SCRIPTS)/40-demo.sh
 
 # The demo consumes the Freight it promotes, so a second run has nothing left
-# to do. This puts BOTH sides back -- the repository and Kargo's stage state.
+# to do. This puts both sides back, the repository and Kargo's stage state.
 # Act two: a pull request the gate refuses, and an agent that has to answer
 # for it. Run after `make demo`.
 .PHONY: demo-triage
@@ -60,7 +60,7 @@ demo-triage:
 	@bash $(SCRIPTS)/50-demo-triage.sh
 
 # Act one-and-a-half: the gate, proved on three properties a CI workflow could
-# not have by construction -- a rendered answer instead of a paths guess, a
+# not have by construction, a rendered answer instead of a paths guess, a
 # report posted by the agent itself, and a pushed fix re-gated because it
 # exists rather than because a token was minted right.
 .PHONY: demo-cluster-gate

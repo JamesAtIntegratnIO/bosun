@@ -14,7 +14,7 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/structural"
 )
 
-// TestLiveRestructure runs the structural migration end to end against REAL
+// TestLiveRestructure runs the structural migration end to end against real
 // schemas and a real model.
 //
 // It exists because the path had never fired on a live promotion: every chart
@@ -23,12 +23,12 @@ import (
 // the right outcome and it demonstrates nothing.
 //
 // The schemas here are not invented. They are lifted from a running cluster's
-// own CustomResourceDefinition -- external-secrets `v1alpha1` -> `v1beta1`,
-// where the project moved `spec.dataFrom[].{key,property,version}` down into
-// `spec.dataFrom[].extract`. That is a migration external-secrets actually
-// shipped, and it is exactly the shape the plain apiVersion swap cannot handle:
-// swap the line alone and the apiserver prunes `key` on the way in, leaving a
-// manifest that renders green and silently reads nothing.
+// own CustomResourceDefinition, external-secrets `v1alpha1` -> `v1beta1`, where
+// the project moved `spec.dataFrom[].{key,property,version}` down into
+// `spec.dataFrom[].extract`. That is a migration external-secrets shipped, and
+// it is exactly the shape the plain apiVersion swap cannot handle: swap the
+// line alone and the apiserver prunes `key` on the way in, leaving a manifest
+// that renders green and silently reads nothing.
 //
 //	STRUCTURAL_AUDIT_CRDS=crds.json \
 //	DELIVERY_AGENT_LIVE=http://host:1234/v1 DELIVERY_AGENT_MODELS=qwen/qwen3.8-27b \
@@ -41,8 +41,8 @@ func TestLiveRestructure(t *testing.T) {
 	}
 	oldS, newS := esSchemas(t, crdPath)
 
-	// A v1alpha1 ExternalSecret in the shape this repository actually writes
-	// them, with its apiVersion ALREADY swapped -- the state the deterministic
+	// A v1alpha1 ExternalSecret in the shape this repository writes
+	// them, with its apiVersion already swapped; the state the deterministic
 	// pass leaves behind, and the state whose remaining problem nothing else
 	// can see.
 	const doc = `apiVersion: external-secrets.io/v1beta1
@@ -111,10 +111,10 @@ spec:
 	}
 
 	// The half that matters more. A correct proposal proves the prompt works; a
-	// REFUSED one proves the prompt is not what anything depends on.
+	// refused one proves the prompt is not what anything depends on.
 	//
-	// Same real schemas, same original, three ways a model could get this wrong
-	// -- each tampered by hand, because waiting for the model to make the
+	// Same real schemas, same original, three ways a model could get this
+	// wrong, each tampered by hand, because waiting for the model to make the
 	// mistake is not a test.
 	t.Log("\nWHAT THE HARNESS REFUSES (same schemas, tampered proposals)")
 	for _, bad := range []struct {

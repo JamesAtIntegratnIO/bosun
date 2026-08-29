@@ -8,7 +8,7 @@ import (
 )
 
 // gate/validate.go was 0% covered end to end while sitting on the in-cluster
-// path -- and the count it produces now blocks the gate, so nothing between
+// path, and the count it produces now blocks the gate, so nothing between
 // "the manifests are fine" and "the manifests are wrong" was exercised.
 
 // repoWith writes a fixture repository and returns its root.
@@ -41,7 +41,7 @@ data:
   key: value
 `
 
-// A manifest whose replicas is a string, not an integer -- the shape that
+// A manifest whose replicas is a string, not an integer, the shape that
 // renders fine and is rejected at apply.
 const badManifest = `apiVersion: apps/v1
 kind: Deployment
@@ -111,8 +111,8 @@ func TestValidateManifestsCountsAndNamesAFailure(t *testing.T) {
 	}
 }
 
-// skipKinds is a suppression, and the gate now reports it as one -- but it has
-// to actually suppress.
+// skipKinds is a suppression, and the gate now reports it as one, but it has
+// to suppress.
 func TestSkipKindsSuppressesTheFailure(t *testing.T) {
 	needKubeconform(t)
 	root := repoWith(t, map[string]string{"apps/bad.yaml": badManifest})

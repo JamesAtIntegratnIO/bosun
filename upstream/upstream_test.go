@@ -42,7 +42,7 @@ func TestRangeIsExclusiveOfFromAndInclusiveOfTo(t *testing.T) {
 
 // The prerelease trap, which CLAUDE.md records for Kargo's own subscriptions
 // and which this hit for real: numeric comparison reads v2.13.0-rc5 as
-// 2.13.0.5, which sorts ABOVE 2.13.0 and lands inside a 2.13.0 -> 2.13.2
+// 2.13.0.5, which sorts above 2.13.0 and lands inside a 2.13.0 -> 2.13.2
 // range. Caught by running it against argo-cd, not by reading the code.
 func TestAPrereleaseSortsAboveItsOwnRelease(t *testing.T) {
 	if cmpVer(normalise("v2.13.0-rc5"), normalise("v2.13.0")) <= 0 {
@@ -63,17 +63,17 @@ func TestSplitRefAcceptsWhatAPipelineActuallyNames(t *testing.T) {
 		{"oci://ghcr.io/akuity/kargo-charts/kargo", "ghcr.io", "akuity/kargo-charts/kargo", "latest"},
 		{"quay.io/argoproj/argocd:v2.13.2", "quay.io", "argoproj/argocd", "v2.13.2"},
 		{"ghcr.io/o/n@sha256:abc", "ghcr.io", "o/n", "sha256:abc"},
-		// A Docker Hub short form resolves. This REVERSES an earlier decision
-		// here -- "no host is refused rather than assumed to be Docker Hub,
+		// A Docker Hub short form resolves. This reverses an earlier decision
+		// here, "no host is refused rather than assumed to be Docker Hub,
 		// because guessing a registry is the same mistake as guessing a
-		// repository" -- and the reversal is deliberate.
+		// repository", and the reversal is deliberate.
 		//
-		// The principle was right about the wrong thing. Guessing a REPOSITORY
+		// The principle was right about the wrong thing. Guessing a repository
 		// from a registry path invents a fact nobody stated. A short reference
-		// invents nothing: Docker's convention gives it exactly one meaning,
-		// and the promotion pipeline is HANDING us the reference rather than us
-		// inferring one from a name. The cost of the old rule was measured --
-		// four artifacts in the real target list (`redis`, `linuxserver/sonarr`,
+		// invents nothing: Docker's convention gives it exactly one meaning, and
+		// the promotion pipeline is handing us the reference rather than us
+		// inferring one from a name. The cost of the old rule was measured, four
+		// artifacts in the real target list (`redis`, `linuxserver/sonarr`,
 		// `metio/matrix-alertmanager-receiver`, `redimp/otterwiki`) could never
 		// be explained at all.
 		{"nginx", "docker.io", "library/nginx", "latest"},

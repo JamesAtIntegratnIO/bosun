@@ -20,10 +20,10 @@ time, against a live repository.
 | the repository under test | `sample-repo/`, pushed into Gitea |
 
 Everything of this repository's own comes **from your working tree**, not from
-a release — the agent image is built locally and force-rolled, the charts
+a release: the agent image is built locally and force-rolled, and the charts
 install from the checkout. A proving ground that tests the last published
-version is testing the past, and this one exists precisely to prove the change
-you have not shipped yet.
+version is testing the past, and this one exists to prove the change you have
+not shipped yet.
 
 **The platform is reconciled, not installed.** Installing it with
 `helm upgrade --install` would be shorter, but this project's pattern is
@@ -42,14 +42,14 @@ Two things shape `platform/`:
 - **`platform/`, not `apps/`.** The gate's sources are `apps/*.yaml`, so a demo
   pull request renders podinfo and not a fifty-object monitoring chart at two
   versions. It also keeps the real cert-manager separate from the
-  `apps/cert-manager.yaml` the structural demo writes at v1.5.5 — a 2021 chart
+  `apps/cert-manager.yaml` the structural demo writes at v1.5.5, a 2021 chart
   it needs the gate to *render*, never to install. One line in
   `.gitops-gate.yaml` if you ever want the platform gated too.
 - **Sync waves order applies; they do not defer validation.** The ArgoCD
   ServiceMonitor started life as a manifest beside these Applications, in a
   later wave than the chart that installs its CRD. ArgoCD validates every task
-  in an operation *before the first wave runs*, so it was not applied late — it
-  was an unknown kind that invalidated the whole sync, and not one child
+  in an operation *before the first wave runs*, so it was never applied late.
+  It was an unknown kind that invalidated the whole sync, and not one child
   Application was created. The root said only `one or more synchronization
   tasks are not valid`. It is a value of the monitoring chart now
   (`prometheus.additionalServiceMonitors`), created by the chart that owns its
@@ -57,24 +57,23 @@ Two things shape `platform/`:
 
 ## What the agent is installed with
 
-Everything the chart ships, on. Installing the agent with its cautious
-defaults — no live reads, no report-author trust, no egress past the git host
-and the model — would make this a proving ground for a configuration nobody
-runs.
+Everything the chart ships, on. The cautious defaults, no live reads, no
+report-author trust, and no egress past the git host and the model, would make
+this a proving ground for a configuration nobody runs.
 
 | Setting | Here | Why it is not a default |
 |---|---|---|
 | `liveReads.enabled` | on, `groups` scope | "everything except the core group" is not expressible in Kubernetes RBAC, so the API groups this cluster ships CRDs for are named. Secrets stay unreadable. |
 | `networkPolicy.egress.apiServer` | discovered | read from the `kubernetes` Service's own endpoints. A ClusterIP is DNAT'd before policy evaluation, so an ipBlock naming it matches nothing. |
-| `gate.argocd` | an ArgoCD account minted here | The gate reads its inventory from ArgoCD's API, and the account gets `clusters, get` and nothing else — the same three steps the chart README asks an operator for. |
+| `gate.argocd` | an ArgoCD account minted here | The gate reads its inventory from ArgoCD's API, and the account gets `clusters, get` and nothing else: the same three steps the chart README asks an operator for. |
 | `networkPolicy.egress.allowPublicHTTPS` | on | the upstream lookup has to reach a registry at all. |
 | `triage.egressDeny` | one host | so the refusal path is exercised rather than described. |
 
 **The NetworkPolicy is enforced here.** kindnet in this cluster implements
-NetworkPolicy — measured, not assumed: a busybox pod reaches `1.1.1.1` with no
-policy and hangs under a `deny-all`. So these rules are load-bearing, and a
-wrong apiserver endpoint produces a crash loop that names its cause rather than
-a silent hang.
+NetworkPolicy, measured rather than assumed: a busybox pod reaches `1.1.1.1`
+with no policy and hangs under a `deny-all`. So these rules are load-bearing,
+and a wrong apiserver endpoint produces a crash loop that names its cause
+rather than a silent hang.
 
 ## Requirements
 
@@ -93,18 +92,18 @@ money against a vendor you did not choose is a bad default.
 
 ## The flow, and what each step proves
 
-1. **Discovery** — a Warehouse finds a new podinfo chart version
-2. **Promotion** — the Stage rewrites the pin and pushes a branch
-3. **Pull request** — opened against Gitea. Real PR, real API, not a stand-in
-4. **Gate** — renders base and head, diffs the resources, posts a report
-   comment and a `gate` commit status
-5. **Triage** — the agent reads that comment and decides
+1. **Discovery**: a Warehouse finds a new podinfo chart version
+2. **Promotion**: the Stage rewrites the pin and pushes a branch
+3. **Pull request**: opened against Gitea. Real PR, real API, not a stand-in
+4. **Gate**: renders base and head, diffs the resources, posts a report comment
+   and a `gate` commit status
+5. **Triage**: the agent reads that comment and decides
 6. **Merge**
-7. **Reconcile** — ArgoCD syncs podinfo to the new version
-8. **Verify** — the AnalysisRun asks Prometheus whether the app is healthy
+7. **Reconcile**: ArgoCD syncs podinfo to the new version
+8. **Verify**: the AnalysisRun asks Prometheus whether the app is healthy
 
-A ninth step — asserting that every `kargo_*` metric **returns rows** rather
-than merely parsing — lives with `kargo-observability`, which is not part of
+A ninth step, asserting that every `kargo_*` metric **returns rows** rather
+than only parsing, lives with `kargo-observability`, which is not part of
 this repository and shares no contract with the gate or the agent. The
 assertion is worth copying if you run that component: an alert expression can
 parse against a live Prometheus and match nothing for hours, because
@@ -121,7 +120,7 @@ make demo-egress       # a host the agent is told not to visit
 ```
 
 No act runs a gate. Every one of them changes the sample repository, opens a
-pull request and waits for the **agent's own** verdict — the status and the
+pull request and waits for the **agent's own** verdict: the status and the
 report comment it publishes from its sweep. `make demo-cluster-gate` is the
 one that asserts that directly, on three properties a CI workflow could not
 have by construction: a comment-only change answered by a render rather than a
@@ -130,26 +129,26 @@ because the commit exists rather than because a token was minted right.
 
 `make demo-structural` is the one that needs the whole stack at once. It pins
 cert-manager `v1.5.5` with a `cert-manager.io/v1alpha2` Certificate that has
-been correct for years, bumps to `v1.6.0` — which stops serving `v1alpha2`,
-`v1alpha3` and `v1beta1` — and lets the agent repair it.
+been correct for years, bumps to `v1.6.0`, which stops serving `v1alpha2`,
+`v1alpha3` and `v1beta1`, and lets the agent repair it.
 
 Swapping the `apiVersion` line alone leaves a document that parses, applies,
 and has six fields pruned by the apiserver on the way in. The render is fine.
 The gate is green. The certificate has quietly lost its key algorithm, size and
 encoding, its email SANs, its URI SANs and its subject organization. So the
 model is shown the old schema (from the CustomResourceDefinition the cluster
-serves **right now** — after the merge it is gone) and the new one (by rendering
-the chart at the target version), and asked to translate. Every proposal is then
-checked for identity, schema-validity and value provenance before a byte is
-written.
+serves **right now**, since after the merge it is gone) and the new one (by
+rendering the chart at the target version), and asked to translate. Every
+proposal is then checked for identity, schema-validity and value provenance
+before a byte is written.
 
 ## Where this is a stand-in rather than the real thing
 
 **The ArgoCD token is minted with `insecureSkipTLSVerify`.** idpbuilder's
 argocd-server serves a certificate signed by a CA that exists nowhere a pod can
 reach, so the agent is told to accept it. A real install gives the chart
-`gate.argocd.caSecret` instead. Everything else about that path — the account,
-its one RBAC line, the API it reads — is what an operator does.
+`gate.argocd.caSecret` instead. Everything else about that path, the account,
+its one RBAC line and the API it reads, is what an operator does.
 
 **The recorded incidents are not replayed here.** They were, through a verdict
 fed to the agent as a comment; the agent gates in-process now and reads no such
@@ -166,7 +165,7 @@ Each of these is a real defect or a real gap, found by running the thing:
   `refused to get credentials for insecure HTTP endpoint`; the promotion fails
   at `git push` with `could not read Username`, which names nothing. So the
   git host has to be HTTPS, which for a self-hosted instance means a
-  certificate — hence `git.insecureSkipTLSVerify` on kargo-pipelines.
+  certificate, hence `git.insecureSkipTLSVerify` on kargo-pipelines.
 - **An in-cluster destination cannot be expressed as an ipBlock.** A ClusterIP
   is DNAT'd to a pod IP before policy evaluation, so the agent's egress rule
   matched nothing and the connection hung with zero bytes. The chart takes
@@ -184,8 +183,8 @@ Each of these is a real defect or a real gap, found by running the thing:
   its own `triage done`. The triage demo declared "it pushed nothing" about a
   pull request the agent escalated correctly twenty seconds later.
 - **A diff that hid the value it preserved.** The reshape comment's diff was a
-  set difference on line text, so a value that moves without changing column was
-  printed on neither side. `organization: [Example Platform Team]` becoming
+  set difference on line text, so a value that moves without changing column
+  was printed on neither side. `organization: [Example Platform Team]` becoming
   `subject.organizations: [Example Platform Team]` rendered as the key being
   deleted into an empty field, above a "Values not carried across" line. It is a
   real diff with context now.
@@ -203,10 +202,10 @@ Each of these is a real defect or a real gap, found by running the thing:
 
 This covers the half of "egress is open, logged and deniable" that a working
 deployment never shows you: a deny rule only proves itself by stopping
-something that otherwise works. It forbids `*.docker.io`, opens a pull request
-the agent will escalate — the escalate path reaches for upstream notes, and
-reaching for them starts by asking the registry who publishes the artifact —
-and asserts two things:
+something that otherwise works. It forbids `*.docker.io` and opens a pull
+request the agent will escalate. The escalate path reaches for upstream notes,
+and reaching for them starts by asking the registry who publishes the artifact.
+Two assertions follow:
 
 ```
 outbound REFUSED auth.docker.io (egress deny rule "*.docker.io")
@@ -214,25 +213,25 @@ outbound REFUSED registry-1.docker.io (egress deny rule "*.docker.io")
 PR 88: escalated: unexplained namespace move
 ```
 
-that the refusal **names the rule that caused it**, and that the triage still
-**reached a verdict without what it could not read**. A blocked host must
-shorten the brief, not end the run. It changes the running deployment and puts
-it back, including on failure, and verifies the restore against the deployment's
-own spec rather than a log line — during a rollout there are two Running pods
-and `logs deploy/...` picks one of them.
+the refusal **names the rule that caused it**, and the triage still **reached
+a verdict without what it could not read**. A blocked host shortens the brief
+and leaves the run to finish. The demo changes the running deployment and puts
+it back, including on failure, and verifies the restore against the
+deployment's own spec rather than a log line, because during a rollout there
+are two Running pods and `logs deploy/...` picks one of them.
 
 ## What the agent will and will not fix
 
-`make demo-triage` opens a pull request the gate **refuses** -- a bump
-carrying a changed destination namespace -- and the agent escalates rather
-than fixing it. That is worth understanding before you call it a limitation of
-the model. Measured here against both
-`qwen/qwen3.5-9b` and `qwen/qwen3.8-27b`, each independently escalated with a
-sound argument -- the 27B's was *"the cause is not provable from the rendered
-diff alone"*, which is precisely the judgement the prompt asks for.
+`make demo-triage` opens a pull request the gate **refuses**, a bump carrying
+a changed destination namespace, and the agent escalates rather than fixing it.
+That is worth understanding before you call it a limitation of the model.
+Measured here against both `qwen/qwen3.5-9b` and `qwen/qwen3.8-27b`, each
+independently escalated with a sound argument; the 27B's was *"the cause is not
+provable from the rendered diff alone"*, which is the judgement the prompt asks
+for.
 
-The deeper reason is structural, and finding it is the most useful thing this
-proving ground has done — because answering it reshaped the system:
+The reason is structural, and finding it is the most useful thing this proving
+ground has done, because answering it reshaped the system:
 
 | | Blocks the merge | What the agent does |
 |---|---|---|
@@ -247,15 +246,15 @@ proving ground has done — because answering it reshaped the system:
 
 The original finding read: everything the gate blocks on is structural, the
 agent escalates structural changes by design, and everything it can fix is a
-values conflict the gate reports without blocking — *the two sets barely
-intersect, so "gate red, agent fixes it" is close to a null case*. That was
-true, and the answer was not to make the model braver. It was to teach the
-gate a red the harness can repair: a dropped served version blocks exactly
-while manifests still declare it, the report names the destination, and the
-repair — rewriting those manifests — is a deterministic function of the
-report, verified by the gate's own recount on the re-run. The rows where the
-agent escalates are still escalations *by design*: those are the changes no
-version bump can cause, and no one should want a model ratifying them.
+values conflict the gate reports without blocking, so *the two sets barely
+intersect and "gate red, agent fixes it" is close to a null case*. That was
+true. The answer was to teach the gate a red the harness can repair, rather
+than to make the model braver. A dropped served version blocks exactly while
+manifests still declare it, the report names the destination, and rewriting
+those manifests is a deterministic function of the report, verified by the
+gate's own recount on the re-run. The rows where the agent escalates are still
+escalations *by design*: those are the changes no version bump can cause, and
+no one should want a model ratifying them.
 
 ## Running it a second time
 
@@ -264,7 +263,7 @@ fails at step 2 with `a promotion exists (waited 240s)`, because the Stage is
 already fulfilled and Kargo has nothing left to promote.
 
 `make seed` alone does not fix that. It force-pushes `sample-repo/` back over
-`main` — discarding the merge you just watched land — but leaves Kargo holding
+`main`, discarding the merge you just watched land, but leaves Kargo holding
 the Freight it already promoted. Both sides have to go back:
 
 ```bash

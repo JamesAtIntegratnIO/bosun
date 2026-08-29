@@ -55,7 +55,7 @@ func TestInventoryFromSecretsDecodesNameAndServer(t *testing.T) {
 	}
 }
 
-// Labels are selector inputs and are NEVER dropped -- which selector a future
+// Labels are selector inputs and are never dropped, which selector a future
 // bootstrap will match on is unknowable, and dropping one reintroduces the
 // stale-fixture failure this export exists to prevent. Annotations are trimmed
 // to what the repository templates with.
@@ -80,7 +80,7 @@ func TestLabelsSurviveAndAnnotationsAreTrimmed(t *testing.T) {
 }
 
 // Noisy keys churn without changing what any selector or template sees, and a
-// check that always fails gets switched off -- which is worse than not having
+// check that always fails gets switched off, which is worse than not having
 // it.
 func TestStripDropsNoisyKeysExactlyAndByPrefix(t *testing.T) {
 	f := ExportFilter{IgnoreKeys: append(append([]string{}, defaultNoisyKeys...), "site.example/*")}
@@ -146,10 +146,10 @@ func TestDecodeRejectsWhatIsNotBase64(t *testing.T) {
 	}
 }
 
-// The keep-list is DERIVED from the repository rather than configured: a list
+// The keep-list is derived from the repository rather than configured: a list
 // an operator maintains by hand is a list that goes wrong, and the answer is
-// already in the repository. It scans the whole tree, not just the bootstraps
-// -- the inner ApplicationSets template with annotations too.
+// already in the repository. It scans the whole tree, not just the
+// bootstraps, the inner ApplicationSets template with annotations too.
 func TestAnnotationsUsedByScansTheWholeRepository(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{
@@ -178,7 +178,7 @@ func TestAnnotationsUsedByScansTheWholeRepository(t *testing.T) {
 			t.Errorf("%q is templated with and was not found: %v", want, got)
 		}
 	}
-	// Only the extensions that can be templates, and never .git.
+	// Only the extensions that can be templates, and never.git.
 	if got["not_scanned"] || got["never"] {
 		t.Errorf("scanned something it should not have: %v", got)
 	}

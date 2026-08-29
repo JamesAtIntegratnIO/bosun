@@ -1,14 +1,14 @@
 // Package upstream answers "what did the maintainers say changed?".
 //
-// The gate reports what a bump does to the RENDER -- resources added, ports
+// The gate reports what a bump does to the render; resources added, ports
 // moved, defaults flipped. That is the what. It cannot tell you the why: a
 // chart that adds a DaemonSet does not say whether that is a new feature, a
 // security fix, or a rewrite that will need attention in six months.
 //
 // The maintainers said so somewhere, and this goes and reads it.
 //
-// The resolution is deliberately AUTHORITATIVE rather than clever. An artifact
-// reference is not a repository name -- ghcr.io/akuity/kargo-charts/kargo is
+// The resolution is deliberately authoritative rather than clever. An artifact
+// reference is not a repository name, ghcr.io/akuity/kargo-charts/kargo is
 // published from github.com/akuity/kargo, and no amount of string-munging
 // discovers that. What does is the OCI label the publisher set:
 //
@@ -29,7 +29,7 @@ type Release struct {
 	URL  string
 }
 
-// Notes is what was found, and -- when nothing was -- why.
+// Notes is what was found, and, when nothing was, why.
 //
 // Note is not decoration. An explanation built without upstream context must
 // say so, and this is what it says. Silence about a missing source is how a
@@ -41,21 +41,21 @@ type Notes struct {
 	Releases []Release
 	// Note explains an empty or partial result in one sentence, for the reader.
 	Note string
-	// Origin says WHERE the notes came from: OriginReleases, or a changelog's
-	// path. Not decoration -- a GitHub Release is written once at the moment
-	// of release, and a changelog is a file at the default branch that can
-	// have been edited since. A reader weighing an explanation should know
-	// which they got.
+	// Origin says where the notes came from: OriginReleases, or a changelog's
+	// path. Not decoration; a GitHub Release is written once at the moment of
+	// release, and a changelog is a file at the default branch that can have
+	// been edited since. A reader weighing an explanation should know which
+	// they got.
 	//
-	// One string carrying a sentinel OR a path, which is a union the type
-	// does not express. Kept because the two are genuinely alternatives and
+	// One string carrying a sentinel or a path, which is a union the type
+	// does not express. Kept because the two are alternatives and
 	// the renderers print whichever it is, but compare against OriginReleases
 	// rather than the literal: it was spelled out at four sites in three
 	// files, and a value that means "not a path" has to mean it everywhere.
 	Origin string
 	// Truncated is set when releases or bodies were cut to fit a prompt.
 	Truncated bool
-	// Compare is what the maintainers CHANGED between the two tags, when a
+	// Compare is what the maintainers changed between the two tags, when a
 	// caller asked for it. Nil when it was not asked for or could not be had,
 	// which is why every reader goes through Compare.Any().
 	//
@@ -69,8 +69,8 @@ func (n *Notes) Any() bool { return n != nil && len(n.Releases) > 0 }
 
 // Resolver finds what the maintainers said between two versions.
 //
-// An implementation must NEVER return an error for "nothing found" -- that is
-// an ordinary outcome, described in Note. Errors are for a resolver that could
+// An implementation must never return an error for "nothing found"; that is an
+// ordinary outcome, described in Note. Errors are for a resolver that could
 // not do its job at all, and even then the caller is expected to carry on
 // without upstream context rather than fail.
 type Resolver interface {

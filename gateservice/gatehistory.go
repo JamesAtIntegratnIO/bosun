@@ -9,11 +9,11 @@ import (
 //
 // A gate with no database still has to answer "what did I say last time on
 // this pull request", and the only per-pull-request storage every git host
-// offers is the comment itself. So the answers go in as HTML comments --
-// invisible in every markdown surface -- and are read back on the next run.
+// offers is the comment itself. So the answers go in as HTML comments,
+// invisible in every markdown surface, and are read back on the next run.
 //
 // Split from gateservice.go, which is the poll loop and the verdict: this is a
-// FORMAT, with a writer and a reader that must not drift, and it has nothing
+// Format, with a writer and a reader that must not drift, and it has nothing
 // to do with when the gate runs.
 
 // Stamps the gate leaves in its own comment so the next run can read what the
@@ -54,7 +54,7 @@ func parseHistory(body string) []verdictRow {
 	return out
 }
 
-// currentAsRow turns the body's OWN verdict into a history row, which is what
+// currentAsRow turns the body's own verdict into a history row, which is what
 // makes the failed pass survive being edited over.
 func currentAsRow(body string) []verdictRow {
 	var sha string

@@ -9,7 +9,7 @@ import (
 //
 // cert-manager v1 moves `organization` under `subject.organizations`. The list
 // item itself does not move a column, so its line is byte-identical on both
-// sides -- and the set-difference implementation printed it on neither. The
+// sides, and the set-difference implementation printed it on neither. The
 // comment showed the value being deleted into an empty field, directly above a
 // "Values not carried across" line. A reader had every reason to believe the
 // migration had lost it.
@@ -50,7 +50,7 @@ func TestDiffShowsContextAroundAChange(t *testing.T) {
 	}
 }
 
-// Identical documents produce nothing at all -- not a wall of context.
+// Identical documents produce nothing at all, not a wall of context.
 func TestDiffOfNoChangeIsEmpty(t *testing.T) {
 	doc := "a\nb\nc"
 	if got := Diff(doc, doc); got != "" {
@@ -87,7 +87,7 @@ func TestDiffCountsRepeatedLines(t *testing.T) {
 	}
 }
 
-// ---- respelled is not lost ----
+// --respelled is not lost,--
 
 const certTarget = `
 type: object
@@ -111,10 +111,10 @@ properties:
 // cert-manager v1 spells the key algorithm `ECDSA` where v1alpha2 spelled it
 // `ecdsa`, and the enum is what dictates the new spelling. Reported as lost,
 // that says the migration dropped a value on exactly the bump where it did its
-// job -- directly beneath the diff that carried it.
+// job, directly beneath the diff that carried it.
 func TestRespelledIsNotLost(t *testing.T) {
 	got := Validate(
-		// The apiVersion is ALREADY the target: the deterministic swap runs
+		// The apiVersion is already the target: the deterministic swap runs
 		// first and the model is only ever shown a document whose version has
 		// moved. Feeding the pre-swap document here would refuse on the
 		// apiVersion itself and test the wrong thing.
@@ -147,7 +147,7 @@ spec:
 }
 
 // The escape hatch must not become one. A value the model changed on its own
-// authority is not a respelling, however similar it looks -- the target
+// authority is not a respelling, however similar it looks, the target
 // schema's vocabulary is the only thing that can excuse a new spelling.
 func TestACaseChangeTheSchemaDidNotDictateIsStillLost(t *testing.T) {
 	got := Validate(

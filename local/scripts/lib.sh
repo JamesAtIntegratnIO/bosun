@@ -19,9 +19,9 @@ set -euo pipefail
 # where you are standing.
 #
 #   GITEA_URL     through the ingress, TLS with a self-signed certificate.
-#                 For anything running on the HOST -- the seed push, the gate.
+#                 For anything running on the host: the seed push, the gate.
 #   GITEA_SVC     the Service, plain HTTP, no certificate involved.
-#                 For anything running IN the cluster -- Kargo, ArgoCD, the
+#                 For anything running in the cluster: Kargo, ArgoCD, the
 #                 agent. Kargo's git-clone fails on the ingress address with
 #                 `SSL certificate ... self-signed certificate (18)`, and
 #                 teaching every in-cluster component to trust a throwaway CA
@@ -60,8 +60,8 @@ wait_for() {
 # The agent pod, resolved safely.
 #
 # Every demo script used `get pod -l ... | head -1` and kept the answer for the
-# rest of the run. During a rollout there are TWO pods matching that label, one
-# of them terminating, and `head -1` picks by name order -- so a script that
+# rest of the run. During a rollout there are two pods matching that label, one
+# of them terminating, and `head -1` picks by name order, so a script that
 # starts moments after anything restarted the deployment can hold the name of a
 # pod that is about to vanish. Every later `kc logs` then fails, and because
 # those pipe into `wc -l` under `set -o pipefail`, the script dies with no
@@ -69,10 +69,10 @@ wait_for() {
 #
 # That killed the scenario replay on its first case, immediately after the
 # egress demo had rolled the deployment twice. It also killed an earlier run
-# that was written off at the time as "the pod was probably being replaced" --
+# that was written off at the time as "the pod was probably being replaced",
 # which was correct, and should have been fixed then rather than noted.
 #
-# Waits for the rollout to settle, then returns a pod that is actually Running.
+# Waits for the rollout to settle, then returns a pod that is Running.
 agent_pod() {
   kubectl --context "$CLUSTER_CONTEXT" -n bosun rollout status deploy/bosun-bosun \
     --timeout=180s >/dev/null 2>&1 || true
@@ -99,15 +99,15 @@ load_credentials() {
   export GITEA_TOKEN GITEA_PASSWORD
 }
 
-# The address the AGENT dials argocd-server on, which is not the one a human
+# The address the agent dials argocd-server on, which is not the one a human
 # uses. It is the Service, and whether it speaks TLS on it is a property of
 # this ArgoCD rather than a preference: `server.insecure` in
 # argocd-cmd-params-cm makes argocd-server serve plain HTTP, and idpbuilder
 # sets it because ArgoCD sits behind the ingress here. Guessing wrong is the
-# worst failure in this file -- the pod hangs for the full timeout and dies
-# blaming ArgoCD -- so it is read rather than assumed.
+# worst failure in this file, the pod hangs for the full timeout and dies
+# blaming ArgoCD, so it is read rather than assumed.
 #
-# The POD port is 8080 either way, and that is the whole point of
+# The pod port is 8080 either way, and that is the whole point of
 # gate.argocd.podPort: the Service publishes 80 and 443 against the same
 # container port, and a NetworkPolicy is matched after the ClusterIP has been
 # DNAT'd away.
@@ -136,12 +136,12 @@ head_sha() { # <pr> -> sha
 }
 
 # One status, by context name. Gitea has no check-runs API, so this is the
-# whole surface. It arrives newest first -- but Gitea stamps whole seconds, and
+# whole surface. It arrives newest first, but Gitea stamps whole seconds, and
 # the gate posts `pending` and then its verdict inside one of them, so the
 # order within that tie is arbitrary and taking the first match is a coin flip.
 # A demo lost that flip on its first run: it watched a `pending` from 01:04:02
 # while the `success` beside it, same second, went unread for 180s. Newest
-# wins, and a tie is broken on meaning -- a verdict cannot precede the pending
+# wins, and a tie is broken on meaning; a verdict cannot precede the pending
 # that announced it. The same rule the Gitea client itself applies.
 gate_status() { # <sha> -> "state description"
   gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/statuses/$1?limit=50" \

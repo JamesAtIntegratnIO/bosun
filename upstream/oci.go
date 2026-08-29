@@ -19,7 +19,7 @@ import (
 func (g *GitHubReleases) sourceRepo(ctx context.Context, artifact, version string) (string, error) {
 	// A chart's artifact is `repoURL SPACE chartName`; an image's is just a
 	// reference. Splitting first is what lets the two kinds of chart
-	// repository go to the two places their publishers actually declare a
+	// repository go to the two places their publishers declare a
 	// source.
 	ref, chart := ParseArtifact(artifact)
 	if IsHelmRepo(ref) {
@@ -38,26 +38,26 @@ func (g *GitHubReleases) sourceRepo(ctx context.Context, artifact, version strin
 }
 
 // helmConfigMediaType is what `helm push` writes as an OCI artifact's config.
-// It is Chart.yaml metadata -- name, version, description -- and it has no
+// It is Chart.yaml metadata, name, version, description, and it has no
 // `config.Labels` map, because it is not an image config and never claimed to
 // be.
 const helmConfigMediaType = "application/vnd.cncf.helm.config.v1+json"
 
 // artifactLabels walks the registry and returns everything the publisher said
-// about an artifact, from BOTH of the places OCI lets them say it.
+// about an artifact, from both of the places OCI lets them say it.
 //
 // This read one place for its whole life, and that place is the wrong one for
 // most of what a Kargo pipeline promotes.
 //
-//	IMAGES      keep them in the image config blob, as Docker-style `Labels`.
-//	HELM CHARTS keep them in the MANIFEST ANNOTATIONS. `helm push` maps
-//	            Chart.yaml's `sources[0]` to org.opencontainers.image.source
-//	            there, and its config blob is Chart.yaml metadata with no
-//	            Labels map at all.
+//	Images keep them in the image config blob, as Docker-style `Labels`.
+//	HELM charts keep them in the manifest annotations. `helm push` maps
+//	 Chart.yaml's `sources[0]` to org.opencontainers.image.source
+//	 there, and its config blob is Chart.yaml metadata with no
+//	 Labels map at all.
 //
 // So every chart promotion resolved to "publishes no
-// org.opencontainers.image.source" -- a sentence that is not merely unhelpful
-// but FALSE, and false in the direction that sends a reader to go and check
+// org.opencontainers.image.source"; a sentence that is not only unhelpful
+// but false, and false in the direction that sends a reader to go and check
 // their chart's metadata. This project's own chart publishes that label
 // correctly and was reported as not publishing it, on the pull request that
 // upgraded the agent to the release which said so.
@@ -71,7 +71,7 @@ func (g *GitHubReleases) artifactLabels(ctx context.Context, artifact, version s
 		return nil, fmt.Errorf("%s is a Helm repository, not an OCI registry", plain)
 	}
 	host, repo, ref := splitRef(plain)
-	// A promotion names the artifact WITHOUT a tag -- the tag is the thing
+	// A promotion names the artifact without a tag; the tag is the thing
 	// being promoted, and arrives separately. Resolving `latest` instead 404s
 	// on every registry that does not publish one, which is most of them.
 	if ref == "latest" && version != "" {
@@ -98,8 +98,8 @@ func (g *GitHubReleases) artifactLabels(ctx context.Context, artifact, version s
 	mergeLabels(out, man.Annotations)
 
 	// An index points at per-platform manifests. Any of them carries the same
-	// label, so take the first with a real platform rather than preferring one
-	// -- an arm64-only publisher is as valid as an amd64 one.
+	// label, so take the first with a real platform rather than preferring
+	// one, an arm64-only publisher is as valid as an amd64 one.
 	if len(man.Manifests) > 0 {
 		child := ""
 		for _, m := range man.Manifests {
@@ -125,9 +125,9 @@ func (g *GitHubReleases) artifactLabels(ctx context.Context, artifact, version s
 		mergeLabels(out, man.Annotations)
 	}
 
-	// The blob is where an IMAGE keeps its labels. Skipped for a Helm chart,
+	// The blob is where an image keeps its labels. Skipped for a Helm chart,
 	// whose config blob is Chart.yaml metadata by declared media type and
-	// cannot carry Labels -- which also spares the blob hop entirely, and with
+	// cannot carry Labels, which also spares the blob hop entirely, and with
 	// it the second registry host a blob redirect needs in an egress
 	// allow-list.
 	if man.Config.Digest == "" || man.Config.MediaType == helmConfigMediaType {
@@ -201,8 +201,8 @@ func (g *GitHubReleases) manifest(ctx context.Context, host, repo, ref, tok stri
 // The Docker registry auth dance in miniature: an unauthenticated request is
 // answered with a WWW-Authenticate header naming a token service, and the
 // token it hands back is what the real request carries. Registries that need
-// no token at all simply return 200 to the first call, which is why an error
-// here is not fatal -- the caller retries unauthenticated.
+// no token at all return 200 to the first call, which is why an error
+// here is not fatal, the caller retries unauthenticated.
 func (g *GitHubReleases) registryToken(ctx context.Context, host, repo string) (string, error) {
 	svc := host
 	if host == "docker.io" || host == "registry-1.docker.io" {
@@ -273,9 +273,9 @@ func (g *GitHubReleases) client() *http.Client {
 // a repository.
 func splitRef(ref string) (host, repo, tag string) {
 	ref = strings.TrimPrefix(ref, "oci://")
-	// A Docker Hub short form is not ambiguous -- convention gives it exactly
-	// one meaning -- and the pipeline is handing us the reference rather than
-	// us inferring one. What stays refused is a string that is not a reference.
+	// A Docker Hub short form is not ambiguous, convention gives it exactly one
+	// meaning, and the pipeline is handing us the reference rather than us
+	// inferring one. What stays refused is a string that is not a reference.
 	if full, ok := dockerHubRef(ref); ok {
 		ref = full
 	}
@@ -338,8 +338,8 @@ func (g *GitHubReleases) getJSONReq(req *http.Request, out any) error {
 //
 // The distinction earns its place: rate limiting is a credential problem with
 // a fix, and every other failure here is an ordinary absence. Reporting them
-// with the same sentence -- which is what happened before, because everything
-// was fmt.Errorf -- sends a reader to check whether a project publishes
+// with the same sentence, which is what happened before, because everything
+// was fmt.Errorf, sends a reader to check whether a project publishes
 // releases when the answer is that they were there and nobody was allowed to
 // read them.
 type httpError struct {
@@ -347,7 +347,7 @@ type httpError struct {
 	StatusCode int
 	Status     string
 	// Limited is set for a rate-limit refusal. GitHub says so in two ways: 429,
-	// and -- more often -- a 403 whose X-RateLimit-Remaining is zero.
+	// and, more often, a 403 whose X-RateLimit-Remaining is zero.
 	Limited bool
 }
 
@@ -385,7 +385,7 @@ func isRateLimited(err error) bool {
 // be correct, and a publisher that sets the label has already answered the
 // question this would otherwise be guessing at.
 //
-// Empty rather than an error when the label is absent -- an artifact without it
+// Empty rather than an error when the label is absent; an artifact without it
 // is ordinary, not broken.
 func (g *GitHubReleases) artifactRevision(ctx context.Context, artifact, version string) (string, error) {
 	labels, err := g.artifactLabels(ctx, artifact, version)

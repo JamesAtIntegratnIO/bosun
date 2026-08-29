@@ -17,7 +17,7 @@ func (denyNone) Denied(string) (string, bool) { return "", false }
 
 // The destination rule lives in egress now, because two private copies fed the
 // same deny check and disagreed about a chart repository written without a
-// scheme -- which is a real destination, and one of them skipped it.
+// scheme, which is a real destination, and one of them skipped it.
 func TestAChartRepositoryWithoutASchemeIsStillADestination(t *testing.T) {
 	for _, tc := range []struct{ ref, want string }{
 		{"oci://ghcr.io/org/chart", "ghcr.io"},
@@ -45,7 +45,7 @@ func TestEgressCheckRefusesASchemelessDeniedHost(t *testing.T) {
 }
 
 // helm is a subprocess, so the egress transport cannot see inside it. Without
-// this check the in-cluster gate -- the default deployment -- pulled remote
+// this check the in-cluster gate, the default deployment, pulled remote
 // charts with no policy applied and no record kept.
 func TestEgressCheckRefusesADeniedHost(t *testing.T) {
 	cfg := &Config{Egress: denyAll{rule: "*.example.io"}}
@@ -79,8 +79,8 @@ func TestNoPolicyIsOpen(t *testing.T) {
 	}
 }
 
-// A bare chart name reaches nothing on its own -- the repository is where the
-// host lives -- so it must not be treated as a destination.
+// A bare chart name reaches nothing on its own, the repository is where the
+// host lives, so it must not be treated as a destination.
 func TestALocalChartNameIsNotADestination(t *testing.T) {
 	cfg := &Config{Egress: denyAll{rule: "everything"}}
 	if reason := cfg.egressCheck("podinfo", "podinfo", "6.0.0"); reason != "" {
