@@ -11,10 +11,37 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.25.0]
+
+### Changed
+
+- **`appVersion` moves to 0.25.0, which is the point of this bump.** 0.24.0
+  carried the chart half of a security review and deliberately left
+  `appVersion` alone, so it published pointing at an image built before that
+  review: the NetworkPolicy, RBAC and schema changes landed and none of the
+  agent's did. A consumer leaving `image.tag` unset, which is what this chart
+  expects, got the new policy around the old binary.
+
+  Nothing in the templates changed here. Take this version rather than 0.24.0;
+  0.24.0 is not wrong, it is half-applied.
+
+  **The agent skips 0.24.0.** Chart 0.24.0 is already published meaning "the
+  security chart, on the old agent", so releasing an agent 0.24.0 would leave
+  two different things answering to that number and only one of them carrying
+  the agent fixes. The chart and the agent are versioned independently and this
+  is the case where saying so out loud is cheaper than the collision: both are
+  0.25.0, there is no v0.24.0 tag, and there never will be.
+
+  The agent side is a breaking change of its own, and the root changelog is
+  where it is written down: internal address space is closed to outbound
+  requests unless named in `triage.egressAllowPrivate`, and the edit scope is
+  read from the pull request's diff rather than from the promotion body.
+
 ## [0.24.0]
 
 A security review of the chart. `appVersion` stays at 0.23.0: nothing here cuts
-a release.
+a release. **Superseded by 0.25.0**, which is the same chart pointed at an
+image that has the matching agent fixes.
 
 ### Added
 
