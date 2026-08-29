@@ -127,7 +127,7 @@ type CRD struct {
 type Reader interface {
 	// CountLive counts the objects live on one group/version/plural.
 	//
-	// The coordinates come from the gate'S report, not from a cluster lookup.
+	// The coordinates come from the gate's report, not from a cluster lookup.
 	// That matters precisely when it is most wanted: for a CustomResourceDefinition
 	// removed outright, an apiextensions GET would 404 at the moment the
 	// question "is anything still using this" is most worth answering.
