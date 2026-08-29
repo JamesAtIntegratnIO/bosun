@@ -3,6 +3,14 @@
 All notable changes to the `bosun` chart. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+Every version below 0.9.2 reached `main` but never reached the registry: the
+oldest chart ghcr serves is 0.9.2. The workflow published on a `v*` tag until
+[`1266a07`](https://github.com/JamesAtIntegratnIO/bosun/commit/1266a07) moved
+it to publish on a push to `main`. Most of those versions carry a `v*` tag
+with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
+**never published** were bumped on a branch and bumped again before merging,
+so the version after them is what shipped.
+
 ## [0.23.2]
 
 ### Changed
@@ -242,6 +250,103 @@ All notable changes to the `bosun` chart. Format follows
   `sources` already says. No template, value or default changed; the chart
   version moves with `appVersion`.
 
+## [0.18.5] - 2026-08-28
+
+### Changed
+
+- **appVersion 0.18.5.** The agent advances the pull request's head SHA after
+  it pushes a repair, so the status it writes afterwards lands on the commit
+  that is now the branch head. Before this the verdict went to the pre-push
+  SHA, leaving the real head with a green gate and no verdict, and a required
+  check that could never be satisfied. No chart template, value or default
+  changed.
+
+## [0.18.4] - 2026-08-25
+
+### Changed
+
+- **appVersion 0.18.4.** Carries the three gaps a re-review found in the
+  security work that shipped in 0.18.x. No chart template, value or default
+  changed; the fixes are in the agent image.
+
+## [0.18.3] - 2026-08-24
+
+### Changed
+
+- **appVersion 0.18.3.** The supervisor stops reporting a merged pull request
+  as a lost one. No chart template, value or default changed.
+
+## [0.18.2] - 2026-08-24
+
+### Changed
+
+- **appVersion 0.18.2.** Every finding kind is emitted even at zero, so an
+  alert rule can compare against it and a graph can return to the axis. A
+  metric that only appears when it fires cannot be alerted on. No chart
+  template, value or default changed.
+
+## [0.18.1] - 2026-08-24
+
+### Changed
+
+- **appVersion 0.18.1.** A failed verification is over rather than pending, and
+  the finding carries `kargo.akuity.io/reverify` rather than a refresh that
+  does nothing. No chart template, value or default changed.
+
+## [0.18.0] - 2026-08-24
+
+### Added
+
+- **`supervise.enabled` (default `true`) and `supervise.interval` (default
+  `10m`)**, rendered as `SUPERVISE_PIPELINE` and `SUPERVISE_INTERVAL`, with
+  both keys constrained in `values.schema.json`. This is the pipeline sweep:
+  the promotions that never happened. Nothing about a promotion that did not
+  occur produces an event, so a timer is the only way to see it.
+
+  It is read-only and needs no new permission. The Kargo read the ClusterRole
+  already grants covers it, and `metrics.serviceMonitor.enabled` decides
+  whether `/metrics` gets scraped.
+
+## [0.17.2] - 2026-08-24
+
+### Changed
+
+- **appVersion 0.17.2.** The gate finds its own report comment by the marker it
+  stamps rather than by the comment's author, so the report is still found when
+  the token that posted it is not the token reading it. No chart template, value
+  or default changed.
+
+## [0.17.1] - 2026-08-24
+
+### Changed
+
+- **appVersion 0.17.1.** A failing commit status says why it failed rather than
+  reporting a bare failure. No chart template, value or default changed.
+
+## [0.17.0] - 2026-08-24
+
+### Deprecated
+
+- **`branding.mark` is ignored.** The deployment no longer sets
+  `AGENT_BRAND_MARK`, and comments carry no identity header at all.
+  Authenticating as a GitHub App already puts the name and avatar above every
+  comment, so a bold mark underneath was the agent introducing itself twice.
+  The value is still accepted, so setting it does not fail an upgrade; it does
+  nothing. The footer still names the agent and says whether a model was
+  involved.
+
+## [0.16.1] - 2026-08-24
+
+### Fixed
+
+- **A writable `/tmp`**, as an `emptyDir` mounted beside the read-only root
+  filesystem. chart-diff writes an Application's inline values to a temporary
+  file before rendering, and with no writable `/tmp` that open fails `EROFS`.
+  The gate does not treat it as fatal: it reports the Application as one it
+  could not render at both versions, so the symptom was silently reduced
+  coverage on every version bump rather than an error. In the CI placement the
+  runner supplied `/tmp` and nobody had to think about it.
+
 ## [0.16.0]
 
 ### Added
@@ -284,6 +389,11 @@ stopped reporting schema-dictated respellings as values it had dropped. See the
 repository CHANGELOG.
 
 ## [0.15.1]
+
+**Never published.** The chart version was bumped on a branch and bumped again
+before it merged, so 0.15.2 is what reached the registry. The entry stays
+because the change it describes shipped inside 0.15.2.
+
 
 No change to this chart's surface -- no new value, no template change. The
 version moves because it tracks `appVersion`, and the agent gained a fix: the
@@ -434,6 +544,10 @@ column. See the repository CHANGELOG.
 
 ## [0.11.0]
 
+**Never published.** Bumped on a branch and bumped again before it merged, so
+0.12.0 is what reached the registry. The entry stays because the change it
+describes shipped inside 0.12.0.
+
 ### Added
 
 - **`triage.upstreamNotes.maxCommits`** (default `10`) -- how many upstream
@@ -497,6 +611,29 @@ column. See the repository CHANGELOG.
   PAT's owner -- set this to that account. The symptom of getting it wrong is
   the agent reporting that it ignored a report and naming the author it saw,
   which is the fix instruction.
+
+## [0.9.3] - 2026-08-23
+
+### Changed
+
+- **appVersion 0.9.3.** A removed CustomResourceDefinition is inspected rather
+  than listed, and a legacy commit author in configuration is ignored rather
+  than honoured. No chart template, value or default changed.
+
+## [0.9.2] - 2026-08-23
+
+### Fixed
+
+- **`git.author.name` and `git.author.email` default to empty**, and the
+  deployment sets `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL` only when they carry
+  a value. Empty means the agent derives its own identity, which as a GitHub
+  App is `<slug>[bot]`.
+
+  The old default was `bosun@users.noreply.github.com`. That namespace belongs
+  to GitHub accounts, so every commit the first live repair pushed was
+  attributed, avatar and all, to an unrelated account named `bosun`. If you set
+  an email here, never use a `users.noreply.github.com` address that is not
+  your bot's own.
 
 ## [0.6.0]
 

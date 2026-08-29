@@ -50,6 +50,17 @@ All notable changes to `bosun`. Format follows
   page now says so.
 - **The link-preview card and the landing hero disagreed.** Both now lead on
   the same finding, and `og.png` is regenerated from the pinned Node.
+- **`charts/bosun/CHANGELOG.md` was missing twelve published versions.**
+  0.9.2, 0.9.3, 0.16.1, 0.17.0 through 0.17.2 and 0.18.0 through 0.18.5 are all
+  in the registry and had no entry. Reconstructed from git: each version's
+  commit, date and chart diff, so the entries say what changed in the chart
+  rather than what changed that release. Every version ghcr serves is now
+  documented.
+
+  Four headings describe versions that never published, and the file now says
+  which and why. 0.11.0 and 0.15.1 were bumped on a branch and bumped again
+  before merging, so 0.12.0 and 0.15.2 are what shipped. Everything below
+  0.9.2 predates the move from tag-triggered to push-triggered publishing.
 - **`charts/kargo-pipelines/CHANGELOG.md` filed 0.1.0 under `[Unreleased]`.**
   `f6ef4de` created the chart at `version: 0.1.0` and wrote that section;
   `86af473` cut 0.1.1 and left the earlier one labelled. 0.1.0 has been in the
