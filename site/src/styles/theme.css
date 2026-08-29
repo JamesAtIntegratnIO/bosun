@@ -82,6 +82,9 @@
 
   --bo-surface: #12243599;
   --bo-surface-solid: #122435;
+  /* The landing page's alternating section band. A shade off the page rather
+     than a panel: it should read as a change of ground, not as a card. */
+  --bo-band: #0f2032a8;
   --bo-rule: color-mix(in srgb, var(--bo-teal-300) 14%, transparent);
   --bo-glow: color-mix(in srgb, var(--bo-teal-500) 22%, transparent);
   --bo-code-bg: #0c1a27;
@@ -137,6 +140,7 @@
 
   --bo-surface: #ffffffaa;
   --bo-surface-solid: #ffffff;
+  --bo-band: #f0e7d3c4;
   --bo-rule: color-mix(in srgb, var(--bo-navy-700) 12%, transparent);
   --bo-glow: color-mix(in srgb, var(--bo-teal-600) 16%, transparent);
   --bo-code-bg: #10233480;
