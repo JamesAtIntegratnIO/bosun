@@ -82,14 +82,19 @@ spec:
            `inventorySource` and the failure mode of forgetting it is the worst
            one in this file: a ClusterIP is DNAT'd before policy is evaluated,
            so the connection hangs with zero bytes and the pod dies at start-up
-           blaming ArgoCD. */}}
+           blaming ArgoCD.
+
+           `podPort` and not the port in `baseURL`, for the same DNAT reason:
+           the packet arriving at this rule is addressed to the pod. Deriving
+           the port from the URL here would reintroduce the exact bug the
+           name is defending against. */}}
     - to:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ $.Values.liveReads.argocdNamespace }}
       ports:
         - protocol: TCP
-          port: {{ $.Values.gate.argocd.port }}
+          port: {{ $.Values.gate.argocd.podPort }}
     {{- end }}
     {{- /* The apiserver, for live cluster reads. Its own key because it is the
            destination people get wrong: `kubernetes.default.svc` is a

@@ -3,6 +3,43 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.21.0] - 2026-08-28
+
+### Fixed
+
+- **The NetworkPolicy value that reaches argocd-server named the wrong port,
+  and its comment argued for the wrong one.** `gate.argocd.port`, added in
+  0.20.0, is written into the chart's egress rule to the ArgoCD namespace. A
+  NetworkPolicy matches the destination port of the packet, and a ClusterIP is
+  DNAT'd to the backend pod's port *before* policy is evaluated — so that
+  value has to be argocd-server's container port, and it defaulted to `443`
+  while its comment read as though the port belonged to `baseURL`.
+
+  Setting the two consistently — `baseURL` and the port both on 80 — is what
+  the comment invited, and it renders clean, passes `helm lint`, passes the
+  values schema, and then drops every packet. Nothing errors at either end:
+  the connection hangs for the full HTTP timeout and the pod dies at start-up
+  saying argocd-server is unreachable, which is true and says nothing about
+  why. That is a production outage this repository had already documented the
+  cause of in three other places.
+
+  The value is now **`gate.argocd.podPort`, defaulting to `8080`** — a
+  breaking values change, taken because `gate.argocd` is
+  `additionalProperties: false`, so a values file carrying the old `port:`
+  fails the upgrade with a named error instead of silently switching ports.
+  See the [chart CHANGELOG](charts/bosun/CHANGELOG.md) for the one-line
+  migration.
+
+### Changed
+
+- **The start-up failure now names the port trap.** `gate.mode is cluster and
+  the inventory could not be read` was the operator's only signal, and with
+  `inventorySource: argocd` its remedy listed everything except the thing that
+  is nearly always wrong. It now says to check the NetworkPolicy ports at both
+  ends — bosun's egress and argocd-server's ingress — and that the port is the
+  pod's, not the URL's. It also names `gate.argocd.caSecret`, the value that
+  exists, rather than `gate.argocd.caFile`, which never did.
+
 ## [0.20.0] - 2026-08-28
 
 ### Added

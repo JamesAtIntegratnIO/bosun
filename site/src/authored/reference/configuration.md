@@ -96,7 +96,7 @@ the score to optimise is *unsafe actions = 0* rather than accuracy.
 | `gate.reportAuthor` | `GATE_REPORT_AUTHOR` | *(per-host)* | Whose gate report the agent will believe — see below |
 | `gate.inventorySource` | `INVENTORY_SOURCE` | `secrets` | Where cluster mode reads the live inventory — see below |
 | `gate.argocd.baseURL` | `ARGOCD_BASE_URL` | `https://argocd-server.argocd.svc` | The ArgoCD API. `inventorySource: argocd` only |
-| `gate.argocd.port` | *(NetworkPolicy only)* | `443` | The port the chart's egress rule opens to the ArgoCD namespace |
+| `gate.argocd.podPort` | *(NetworkPolicy only)* | `8080` | The port **argocd-server's pod** listens on. Not the port in `baseURL` — see below |
 | `gate.argocd.existingSecret` | `ARGOCD_TOKEN` | *(none)* | Secret holding the ArgoCD account token, key `tokenKey` |
 | `gate.argocd.caSecret` | `ARGOCD_CA_FILE` | *(none)* | Secret holding the CA that verifies argocd-server, key `caKey` |
 | `gate.argocd.insecureSkipTLSVerify` | `ARGOCD_INSECURE_SKIP_TLS_VERIFY` | `false` | Accept any certificate from argocd-server |
@@ -131,6 +131,38 @@ second TLS story, because argocd-server serves its own certificate rather than
 the one the kubelet mounts into every pod. The chart adds the NetworkPolicy
 egress rule for the ArgoCD namespace itself — argocd-server is a ClusterIP, and
 forgetting that hangs with zero bytes.
+
+### `gate.argocd.podPort` is the pod's port, not the URL's
+
+The rule the chart adds opens `gate.argocd.podPort`, and **that is normally not
+the port in `baseURL`.** A NetworkPolicy matches the destination port of the
+packet, and a ClusterIP is DNAT'd to the backend pod's port *before* policy is
+evaluated: whatever port the Service published, the packet reaching the rule is
+addressed to the pod, on `8080`.
+
+Setting it to the Service port instead renders clean, passes `helm lint`,
+passes the chart's schema, and then drops every packet. There is no error at
+either end — the connection hangs for the full HTTP timeout, and the pod dies
+at start-up saying argocd-server is unreachable, which is true and points
+nowhere near the values file.
+
+`8080` is argocd-server's container port in the upstream argo-cd chart, and it
+does not move with `server.insecure`: the Service publishes both 80 and 443
+against the same container port, and argocd-server decides per connection
+whether to speak TLS on it. So the two common installs differ only in the URL —
+`http://argocd-server.argocd.svc` with nothing to verify, or
+`https://argocd-server.argocd.svc` with `caSecret` — and both want `podPort:
+8080`. Confirm yours:
+
+```bash
+kubectl -n argocd get svc argocd-server -o jsonpath='{.spec.ports[*].targetPort}{"\n"}'
+```
+
+The chart writes bosun's *egress*. argocd-server's *ingress* policy lives in
+your ArgoCD release, and until both exist the connection is dropped with
+nothing logged at either end; the
+[chart README](https://github.com/JamesAtIntegratnIO/bosun/blob/main/charts/bosun/README.md)
+carries a copy-pasteable rule for it.
 
 ### `gate.forkPRs` is off for a reason
 

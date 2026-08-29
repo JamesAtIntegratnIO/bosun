@@ -27,6 +27,7 @@ loop names its cause in the log; a degraded process does not.
 | `INVENTORY_SOURCE is argocd but ARGOCD_BASE_URL is empty` | `gate.inventorySource: argocd` without `gate.argocd.baseURL` | Set it to the ArgoCD API server, e.g. `https://argocd-server.argocd.svc` |
 | `INVENTORY_SOURCE is argocd but ARGOCD_TOKEN is empty` | No ArgoCD account token | `argocd account generate-token --account <account>`, and give that account `clusters, get` in ArgoCD's RBAC |
 | `INVENTORY_SOURCE "…" is not a source (secrets or argocd)` | Typo | `secrets` or `argocd` |
+| `gate.mode is cluster and the inventory could not be read: … context deadline exceeded` | With `inventorySource: argocd`, nothing refused the connection — it hung until the timeout. Almost always a NetworkPolicy naming the wrong port | `gate.argocd.podPort` must be argocd-server's **pod** port (`8080`), not the port in `baseURL` — see [Configuration](/reference/configuration/#gateargocdpodport-is-the-pods-port-not-the-urls). argocd-server's own ingress policy must admit bosun's namespace on that same port |
 | `github app authentication failed` | Wrong `appId`, wrong key, or the App is not installed on the repository | Check `git.app.privateKeyKey` matches the Secret's key |
 
 ## The gate never reports on a pull request

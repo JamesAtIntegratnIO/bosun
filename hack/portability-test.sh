@@ -82,6 +82,47 @@ for c in "${charts[@]}"; do
   fi
 done
 
+# ---------------------------------------------------------------------------
+# The ArgoCD egress rule names a POD port.
+#
+# A NetworkPolicy matches the destination port of the packet, and a ClusterIP
+# is DNAT'd to the backend pod's port before policy is evaluated -- so this
+# rule has to name argocd-server's container port, not the Service port that
+# appears in `gate.argocd.baseURL`. Getting it wrong renders clean, lints
+# clean, passes the schema and then drops every packet, which is why the check
+# is here rather than left to a reviewer.
+#
+# What this asserts: the emitted port is `gate.argocd.podPort` and does not
+# move with the URL. Deriving it from `baseURL` -- the obvious-looking
+# simplification -- fails here.
+# ---------------------------------------------------------------------------
+echo "==> the ArgoCD egress rule names a pod port, not the URL's port"
+argocd_egress_port() { # <baseURL>
+  helm template t charts/bosun -f charts/bosun/ci/lint-values.yaml \
+    --show-only templates/networkpolicy.yaml \
+    --set gate.mode=cluster --set gate.inventorySource=argocd \
+    --set gate.argocd.existingSecret=placeholder \
+    --set gate.argocd.baseURL="$1" 2>/dev/null \
+    | awk '/metadata.name: argocd$/{f=1} f&&/^ *port: /{print $2; exit}'
+}
+declared="$(sed -n 's/^ *podPort: \([0-9]*\).*/\1/p' charts/bosun/values.yaml)"
+http_port="$(argocd_egress_port http://argocd-server.argocd.svc)"
+https_port="$(argocd_egress_port https://argocd-server.argocd.svc)"
+if [ -z "$declared" ]; then
+  bad "charts/bosun/values.yaml declares no gate.argocd.podPort"
+elif [ "$http_port" != "$declared" ] || [ "$https_port" != "$declared" ]; then
+  bad "the ArgoCD egress rule opened ${http_port:-<none>} (http) and ${https_port:-<none>} (https), not podPort ${declared}"
+elif [ "$declared" = "80" ] || [ "$declared" = "443" ]; then
+  # The default itself, separately. The comparison above stays true if someone
+  # sets the default back to a Service port, because it compares the render to
+  # the default rather than to reality. 80 and 443 are the two numbers that
+  # cannot be a container port here: they are what the argocd-server Service
+  # publishes, and the packet has been DNAT'd past them.
+  bad "gate.argocd.podPort defaults to ${declared}, which is a Service port -- the rule needs the pod's"
+else
+  ok "gate.argocd.podPort ${declared} is the egress port for both http and https baseURLs"
+fi
+
 if command -v go >/dev/null 2>&1; then
   if go build ./... >/dev/null 2>&1; then ok "go build ./..."; else
     go build ./... 2>&1 | sed 's/^/        /' | head -10; bad "go build ./..."

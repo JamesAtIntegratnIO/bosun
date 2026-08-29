@@ -219,7 +219,7 @@
             "baseURL": {
               "type": "string"
             },
-            "port": {
+            "podPort": {
               "type": "integer",
               "minimum": 1,
               "maximum": 65535
