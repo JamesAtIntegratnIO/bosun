@@ -445,12 +445,19 @@ different is a second change riding inside this one.
 For each finding you are shown:
 
 - a key the new schema REJECTS: decide whether the chart RENAMED it or DROPPED
-  it, and say which in the notes.
-  - renamed: put the same value, unchanged, under the new name the schema
-    declares. Never under a name that already has a value.
-  - dropped: leave it out. The chart stopped reading it; there is nowhere for
-    it to go, and the harness names every value that did not come across so a
-    human sees exactly what this bump switched off.
+  it, and say which in the notes. You are shown what the new schema declares
+  beside each refused key and your values do not set. That list is computed
+  from the two documents rather than suggested, and it is how the two cases
+  are told apart:
+  - a free slot beside it, of a type that fits: the chart renamed the key.
+    Put the same value, unchanged, under the new name. Never under a name that
+    already has a value.
+  - nothing free beside it: the chart dropped the key. Leave it out. There is
+    nowhere for it to go, and the harness names every value that did not come
+    across, so a human sees exactly what this bump switched off.
+  Dropping a value that had somewhere to go is the one mistake here that
+  renders perfectly: the chart is happy, and a setting somebody chose has
+  silently stopped applying.
 - a key the new schema REQUIRES that is missing: fill it only from the values
   you were shown or from the schema'"'"'s own default, enum or const. If neither
   has an answer, return the values unchanged and say so: that one needs a

@@ -107,6 +107,148 @@ func ValidateValues(original, proposed map[string]any, target Schema) Verdict {
 	return v
 }
 
+// Vacancies is, for each key the target schema refuses, the keys it declares
+// beside that one and this document does not set.
+//
+// Computed evidence, and the reason it exists is a measurement. The schema is
+// already in the prompt in full, `podPort: integer` sitting directly under the
+// section `port` was refused from, and a live model dropped the value anyway:
+// it read "this key is not allowed" and removed it, which is one of the two
+// correct answers and was the wrong one. A refused key and an empty slot
+// beside it is what distinguishes a rename from a removal, and stating it is
+// cheaper than hoping the schema dump is read that closely.
+//
+// It is evidence rather than a hint. Nothing here is a judgement about which
+// vacancy is the right one, or whether there is one at all; it is a fact about
+// two documents, derived the same way the findings above it are. A refused key
+// with nothing beside it is reported as such, which is the other half of the
+// signal: that one really was dropped.
+func Vacancies(doc map[string]any, target Schema) []string {
+	if target == nil {
+		return nil
+	}
+	set := leafPaths(doc)
+	var out []string
+	for _, f := range Check(doc, target) {
+		if f.Kind != Rejected {
+			continue
+		}
+		parent := ""
+		if i := strings.LastIndexByte(f.Path, '.'); i >= 0 {
+			parent = f.Path[:i]
+		}
+		sub := target
+		if parent != "" {
+			sub = schemaAt(target, parent)
+		}
+		props, _ := map[string]any(sub)["properties"].(map[string]any)
+		refused, _ := valueAt(doc, f.Path)
+
+		var free []string
+		for _, name := range slices.Sorted(maps.Keys(props)) {
+			path := name
+			if parent != "" {
+				path = parent + "." + name
+			}
+			if _, taken := set[path]; taken {
+				continue
+			}
+			// A section is free only when nothing in the document lives
+			// inside it. Tested that way round: the section itself is never a
+			// leaf, so asking whether the document sets it is always no, and
+			// `gate.argocd` would be offered as somewhere to put a value while
+			// holding two of its own.
+			if holdsSomething(path, set) {
+				continue
+			}
+			// A slot that cannot hold this value is not where it went. A big
+			// chart declares hundreds of keys and a refused one at the root
+			// would otherwise be answered with all of them, which is the same
+			// as answering with none.
+			//
+			// A free section stays on the list whatever the value's type: a
+			// rename can move a scalar inside a new object, and the section
+			// being empty is what makes it a candidate.
+			if !couldHold(props[name], refused) {
+				continue
+			}
+			free = append(free, name+declaredType(props[name]))
+		}
+		if len(free) == 0 {
+			out = append(out, f.Path+" -> nothing free beside it")
+			continue
+		}
+		if n := len(free) - maxVacancies; n > 0 {
+			free = append(free[:maxVacancies], fmt.Sprintf("…and %d more", n))
+		}
+		out = append(out, f.Path+" -> "+strings.Join(free, ", "))
+	}
+	return out
+}
+
+// maxVacancies bounds one refused key's list. The finding is "here is where
+// this could have gone"; twenty candidates make that point worse than four do,
+// and the type filter above has usually already left one.
+const maxVacancies = 8
+
+// couldHold reports whether a declared slot could take a value: same type, an
+// undeclared type, or a section, which can hold anything inside it.
+func couldHold(slot any, v any) bool {
+	m, ok := slot.(map[string]any)
+	if !ok {
+		return true
+	}
+	t, _ := m["type"].(string)
+	switch t {
+	case "", "object":
+		return true
+	case "array":
+		_, isList := v.([]any)
+		return isList
+	}
+	return v == nil || scalarFits(v, t)
+}
+
+// valueAt looks a dotted path up in a decoded document.
+func valueAt(doc map[string]any, path string) (any, bool) {
+	var cur any = doc
+	for _, seg := range strings.Split(path, ".") {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		cur, ok = m[seg]
+		if !ok {
+			return nil, false
+		}
+	}
+	return cur, true
+}
+
+// holdsSomething reports whether the document sets anything at or beneath a
+// path.
+func holdsSomething(path string, set map[string]string) bool {
+	for p := range set {
+		if p == path || strings.HasPrefix(p, path+".") || strings.HasPrefix(p, path+"[") {
+			return true
+		}
+	}
+	return false
+}
+
+// declaredType renders " (type)" for a schema, or "" when it names none.
+func declaredType(sub any) string {
+	m, ok := sub.(map[string]any)
+	if !ok {
+		return ""
+	}
+	t, _ := m["type"].(string)
+	if t == "" {
+		return ""
+	}
+	return " (" + t + ")"
+}
+
 // NeedsAnAuthor is every field the target schema requires that neither the
 // document nor the schema can supply a value for.
 //

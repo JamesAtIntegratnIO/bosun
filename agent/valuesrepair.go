@@ -197,10 +197,6 @@ func (t *Triage) migrateOneApplication(ctx context.Context, root string, u gate.
 			u.Head.Chart, strings.Join(quoteAll(needs), ", "))
 	}
 
-	body, err := yaml.Marshal(original)
-	if err != nil {
-		return nil, err
-	}
 	// Best effort, and often absent: the version being left is exactly the one
 	// that was permissive enough for these values to work, so it frequently
 	// shipped no schema at all. When it is there it is what makes a rename
@@ -216,7 +212,7 @@ func (t *Triage) migrateOneApplication(ctx context.Context, root string, u gate.
 
 	res.ModelCalls++
 	m, err := rs.Restructure(ctx, prompt.ValuesMigration, structural.ValuesPrompt(
-		u.Head.Chart, u.From, u.Head.Version, string(body),
+		u.Head.Chart, u.From, u.Head.Version, original,
 		structural.Schema(oldSchema), structural.Schema(target), findings))
 	if err != nil || m == nil {
 		return nil, fmt.Errorf("the model could not be reached (%v)", err)

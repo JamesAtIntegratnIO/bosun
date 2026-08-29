@@ -206,3 +206,72 @@ func TestAValuesKeyNamedForTheAPIMachineryIsStillJudged(t *testing.T) {
 		t.Errorf("the API machinery's own fields must not be judged here: %v", quiet)
 	}
 }
+
+// The evidence that turned a live model's answer around. Measured: with the
+// whole new schema in the prompt and `podPort: integer` sitting directly under
+// the section `port` was refused from, qwen3.8-27b dropped the value. Told
+// that `port` had one free slot beside it and the other three keys had none,
+// it moved the first and dropped the rest.
+func TestVacanciesTellARenameFromARemoval(t *testing.T) {
+	got := Vacancies(
+		valuesOf(t, `
+gate:
+  mode: service
+  wait: true
+  argocd:
+    baseURL: https://argocd.example
+    port: 8080
+`),
+		schemaOf(t, `{"type":"object","additionalProperties":false,
+		  "properties":{"gate":{"type":"object","additionalProperties":false,
+		    "properties":{"argocd":{"type":"object","additionalProperties":false,
+		      "properties":{"baseURL":{"type":"string"},"podPort":{"type":"integer"}}}}}}}`))
+
+	want := []string{
+		"gate.argocd.port -> podPort (integer)",
+		// Nothing free beside them is the other half of the signal: these
+		// really were dropped, and a model told so stops looking for a home.
+		"gate.mode -> nothing free beside it",
+		"gate.wait -> nothing free beside it",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("Vacancies:\n got %v\nwant %v", got, want)
+	}
+}
+
+// A section holding two of its own keys is not somewhere free to put a third.
+// Asked the other way round -- "does the document set `gate.argocd`?" -- the
+// answer is always no, because a section is never a leaf, and every occupied
+// section in the chart would be offered as a destination.
+func TestAnOccupiedSectionIsNotAVacancy(t *testing.T) {
+	got := Vacancies(
+		valuesOf(t, "legacy: true\nkept:\n  a: 1\n"),
+		schemaOf(t, `{"type":"object","additionalProperties":false,
+		  "properties":{"kept":{"type":"object","properties":{"a":{"type":"integer"}}}}}`))
+
+	if len(got) != 1 || got[0] != "legacy -> nothing free beside it" {
+		t.Errorf("Vacancies = %v, want the occupied section left out", got)
+	}
+}
+
+// A slot that cannot hold the value is not where the value went. A big chart
+// declares hundreds of keys, and answering a refused one with all of them is
+// the same as answering with none.
+func TestVacanciesLeaveOutSlotsThatCouldNotHoldTheValue(t *testing.T) {
+	got := Vacancies(
+		valuesOf(t, "port: 8080\n"),
+		schemaOf(t, `{"type":"object","additionalProperties":false,
+		  "properties":{
+		    "podPort":{"type":"integer"},
+		    "name":{"type":"string"},
+		    "enabled":{"type":"boolean"},
+		    "service":{"type":"object","properties":{"port":{"type":"integer"}}}
+		  }}`))
+
+	// The integer slot, and the empty section a rename could move it inside.
+	// Not the string and not the boolean.
+	want := "port -> podPort (integer), service (object)"
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("Vacancies = %v, want [%q]", got, want)
+	}
+}

@@ -143,9 +143,31 @@ All notable changes to `bosun`. Format follows
 
   Behind `triage.structuralMigration`, which is the flag the document migration
   already uses; an operator who has not turned that on has not turned this on
-  either. The eval suite gains a fourth path and four cases for it, scored by
-  the shipped validators and against hand-verified answers; they have not been
-  run against a live model here.
+  either.
+
+  **Measured on `qwen/qwen3.8-27b`:** classification **27/27**, full pass
+  **26/27**, **UNSAFE 0** across all four paths (6m36s). The previous
+  measurement on this model was 22/22 and 21/22, and the one non-full-pass is
+  the same case for the same reason: on the reference-moved restructure case
+  the model produces the correct migration and also writes out a default the
+  schema already applies. Noisier than asked, not wrong.
+
+  The suite gains a fourth path and four cases for it, and the first run of
+  them found the failure ADR 0013 names as the one its harness cannot catch.
+  On the 0.20.0 -> 0.25.1 case the model dropped `port: 8080` rather than
+  moving it to `podPort`, and every validator accepted that -- correctly,
+  because dropping a key the schema refuses is exactly what the other three
+  keys in that bump needed. **full pass 0/1, UNSAFE 1.**
+
+  The fix is not a firmer instruction. The prompt already carried the whole
+  new schema, with `podPort: integer` printed directly under the section
+  `port` was refused from. `structural.Vacancies` now states the fact instead:
+  for each refused key, what the new schema declares beside it that these
+  values do not set, filtered to slots that could hold the value. That is a
+  fact about two documents, derived the way the findings above it are, and its
+  other half carries as much as the first -- *nothing free beside it* is what
+  tells a model to stop looking for a home. Same model, same case: **full pass
+  1/1, UNSAFE 0**. `docs/prompt-contract.md` carries it as Lever 7.
 
 ### Changed
 
@@ -235,8 +257,12 @@ All notable changes to `bosun`. Format follows
   would otherwise pass every check the applier makes: putting the version
   back. The old version is named in the gate report, so a revert corroborates
   cleanly and undoes the promotion instead of repairing it. The eval suite
-  gains the 0.20.0 -> 0.25.1 bump as a case; it has not been re-scored
-  against a live model here, and should be before the next release.
+  gains the 0.20.0 -> 0.25.1 bump as a case, and it is worth being exact about
+  what that measured: `qwen/qwen3.8-27b` classifies it `escalate` with the rule
+  and without it, so on this model the rule changed nothing. It stays for the
+  failure it names, which this corpus contains the temptation for and does not
+  reproduce; the levers in `docs/prompt-contract.md` exist for the smaller
+  models, and this one is recorded as unproven rather than as a win.
 - **A selector that matches on a label being absent no longer demands that
   label be present.** `selectorKeys` handed every `matchExpressions` key to
   `Inventory.Validate`, `NotIn` and `DoesNotExist` included. Those two select

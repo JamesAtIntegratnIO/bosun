@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"sigs.k8s.io/yaml"
 )
 
 // Prompt assembles the evidence for one document migration.
@@ -40,11 +42,27 @@ func Prompt(path, body, fromVersion, toVersion string, old, target Schema, findi
 // the version that was permissive enough for these values to work. When it is
 // there it says what the keys used to mean, which is what makes a rename
 // recognisable rather than guessable.
-func ValuesPrompt(chart, fromVersion, toVersion, body string, old, target Schema, findings []Finding) string {
+func ValuesPrompt(chart, fromVersion, toVersion string, values map[string]any,
+	old, target Schema, findings []Finding) string {
+
+	body, err := yaml.Marshal(values)
+	if err != nil {
+		// Cannot happen for a document that was decoded from YAML, and a
+		// prompt is not the place to invent an error return: an empty values
+		// block produces a proposal every validator refuses, which is the
+		// same outcome an error would have reached by a longer route.
+		body = nil
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "CHART: %s, %s -> %s\n\n", chart, fromVersion, toVersion)
 	fmt.Fprintf(&b, "VALUES THIS REPOSITORY SETS\n\n%s\n", body)
 	fmt.Fprintf(&b, "\nWHY THE CHART REFUSES THEM\n\n%s\n", Summarise(findings))
+	if free := Vacancies(values, target); len(free) > 0 {
+		fmt.Fprintf(&b, "\nWHAT THE NEW SCHEMA DECLARES BESIDE EACH REFUSED KEY, AND THESE VALUES DO NOT SET\n\n")
+		for _, line := range free {
+			fmt.Fprintf(&b, "- %s\n", line)
+		}
+	}
 	if old != nil {
 		fmt.Fprintf(&b, "\nOLD VALUES SCHEMA (%s)\n\n%s\n", fromVersion, RenderSchema(old))
 	} else {

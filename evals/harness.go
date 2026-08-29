@@ -616,14 +616,9 @@ func runValues(ctx context.Context, p llm.Provider, system string, c Case) Resul
 		return res
 	}
 
-	body, err := yaml.Marshal(set)
-	if err != nil {
-		res.Notes = append(res.Notes, "values: "+err.Error())
-		return res
-	}
 	start := time.Now()
 	m, err := rs.Restructure(ctx, system, structural.ValuesPrompt(
-		"chart", "old", "new", string(body), old, target, findings))
+		"chart", "old", "new", set, old, target, findings))
 	res.Elapsed = time.Since(start)
 	if err != nil || m == nil {
 		res.Notes = append(res.Notes, fmt.Sprintf("provider error: %v", err))

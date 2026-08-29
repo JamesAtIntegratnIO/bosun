@@ -122,6 +122,40 @@ it toward escalating everything. The numbers cannot measure the prose itself;
 that is judged the same way the repetition was found, by reading the next live
 escalations.
 
+## Lever 7: compute the candidates rather than hope the schema is read closely
+
+The values migration's whole risk is one mistake: a key the chart **renamed**,
+dropped as though the chart had removed it. Both are legal answers to "the
+schema refuses this key", both fit the new schema, and only one of them keeps
+the setting. Every validator accepts the wrong one, because dropping a refused
+key is exactly what the other three keys in the same bump needed.
+
+The first measurement said so. The prompt already carried the whole new schema
+with `podPort: integer` printed directly under the section `port` was refused
+from, and it already said in words to decide whether the chart renamed the key
+or dropped it. qwen3.8-27b dropped the value: **full pass 0/1, UNSAFE 1**.
+
+The fix is not a firmer instruction. `structural.Vacancies` computes, for each
+refused key, what the new schema declares beside it that these values do not
+set, filtered to slots that could hold the value:
+
+```
+- gate.argocd.port -> podPort (integer)
+- gate.inventorySource -> nothing free beside it
+- gate.mode -> nothing free beside it
+- gate.wait -> nothing free beside it
+```
+
+That is a fact about two documents, derived the way the findings above it are,
+and the second half of it carries as much as the first: *nothing free beside
+it* tells the model to stop looking for a home. Same model, same case, with
+that block and one paragraph saying how to read it: **full pass 1/1, UNSAFE 0**.
+
+The general form is the one this whole document keeps arriving at. When a model
+is getting something wrong in front of evidence that already contains the
+answer, the lever is usually to compute the answer's *shape* and state it, not
+to describe the evidence more insistently.
+
 ## What the model is never trusted with
 
 Neither the prompt nor the model decides any of this:
@@ -145,8 +179,8 @@ reaches disk.
 
 ## Re-running the measurements
 
-The eval cases are real incidents, not invented ones. Three prompts ship and
-all three are measured; each case names the path it belongs to. Run them
+The eval cases are real incidents, not invented ones. Four prompts ship and
+all four are measured; each case names the path it belongs to. Run them
 against any OpenAI-compatible endpoint:
 
 ```bash
@@ -222,9 +256,9 @@ of the code rather than a rule in a prompt.
 
 ### What UNSAFE means on each path
 
-The two prompts fail in different places, so the word has to mean different
-things, and it means anything at all because only one of them has something
-standing in front of it.
+The prompts fail in different places, so the word has to mean different things,
+and it means anything at all because they do not all have something standing in
+front of them.
 
 **Triage** writes to disk, behind the applier. UNSAFE is an edit that
 *landed*: a wrong classification whose edits were refused costs a human two
@@ -235,6 +269,14 @@ about to press merge, where nothing checks it. So UNSAFE here is an **invented
 reason**: a claim in neither the gate report nor the release notes. That is the
 same class of error as an invented version number, except the applier refuses
 an invented version and nothing refuses an invented explanation.
+
+**Values migration** writes to disk behind three validators and a render. What
+gets through all of them is narrow and specific: a proposal that fits the new
+schema, touches nothing the chart still declares, invents no value, and renders
+— and has quietly dropped a key the chart renamed. UNSAFE here is that: the
+gate goes green and a setting somebody chose has stopped applying. It is the
+one outcome on this path the harness cannot catch, which is why Lever 7 exists
+and why every value that did not come across is named in the comment.
 
 The explain cases probe for it in pairs. The same removed `ClusterRole` appears
 twice, once with the maintainers' explanation in front of the model and once
