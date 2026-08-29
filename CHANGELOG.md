@@ -14,6 +14,28 @@ All notable changes to `bosun`. Format follows
   agent parses back are unchanged. `adr/` and the changelogs keep their own
   voice.
 
+### Removed
+
+- **BREAKING: the standalone `gitops-gate` CLI and its image.**
+  [ADR 0010](adr/0010-the-cli-goes-too.md) is the argument. The gate ships in
+  one binary -- the agent's -- and `gate/cmd/gitops-gate`, `gate/Dockerfile`,
+  `clusters export`, the checked-in inventory snapshot, and the image
+  workflow's scope and retag jobs are gone with it. The published
+  `gitops-gate` images stay in the registry as history; nothing publishes
+  over them and nothing new arrives.
+
+  `.gitops-gate.yaml` loses the keys only the CLI read: `clusters` and
+  `clustersExport.ignoreKeys` are now rejected at parse, by name. Delete the
+  line and nothing else changes. `clustersExport.knownAbsentLabels` stays,
+  unrenamed, because it was always render configuration and renaming a key
+  every live install sets would break them for tidiness.
+
+  The gate's own changelog retired with the CLI. Its entries are folded into
+  this file under the releases that first shipped them -- 0.2.0, 0.7.0,
+  0.8.0, 0.9.1 through 0.9.3, and 0.16.0, checked by tag ancestry -- because
+  the gate never had a version line of its own: the numbers its images
+  carried were the agent's `appVersion`, stamped on at release.
+
 ### Fixed
 
 - **The quickstart documented `gate.mode: cluster`, removed in 0.22.0.** It is
@@ -624,6 +646,17 @@ cuts a tag, and the site should ship as something you can point at.
   coexists with it — but the mode is a default change, and the migration
   checklist in `docs/onboarding.md` is the tidy path. Set `gate.mode: ci`
   to keep the old shape unchanged.
+
+- **The engine is a package; the CLI is one caller of it.** `gate/` compiled
+  as a single main package, so the only way to run a render was the binary.
+  Now the engine is importable -- the agent imports it and runs the gate
+  in-cluster (ADR 0008) -- and the CLI moved to `cmd/gitops-gate` with
+  identical flags, output and exit codes. Two consequences visible from
+  outside: `clusters` in `.gitops-gate.yaml` is required only where the
+  snapshot is actually read (the CLI; a live-inventory caller has no use for
+  the key), and the ArgoCD Secret decode is one shared function, so the
+  exported snapshot and the agent's live read can never disagree about what
+  a Secret means.
 
 ### Added
 
@@ -1316,6 +1349,29 @@ CRD it found real, already-shipped migrations -- `spec.provider.onepassword` and
   line, so the App derives its own bot identity; an author somebody actually
   chose is still honored.
 
+### Added
+
+- **A removed CRD is inspected, not just listed.** Removal is the limiting
+  case of dropping served versions -- all of them, no survivor -- but it sat
+  in the plain Removed list while the version-drop path counted consumers, so
+  a reviewer got "12 resources removed" and went looking themselves whether
+  anything here used those APIs. Asked live, on the kyverno 3.9.0 promotion:
+  *"why didn't it look to see if I was consuming that api anywhere ... or
+  tell me I wasn't and that the update looks safe from its inspection?"* Now
+  it joins the consumer-scanned class: consumers present block and are named;
+  counted at zero, the report says outright that nothing in the repository
+  uses the API and from inspection the removal looks safe. No survivor means
+  no repair -- the agent's parser deliberately cannot act on the removal line.
+
+- **A removed binding names the ServiceAccount it orphans.** A dropped
+  ClusterRoleBinding is either routine chart tidying or a workload silently
+  losing every permission it runs on, and the difference is whether its
+  ServiceAccount is still bound to anything in the new render. The gate now
+  checks, and the Removed entry carries the answer when it is bad news. No
+  note when the subject is re-bound (routine is not a finding), and no note
+  when any head binding's subjects cannot be read -- claiming "unbound" past
+  an unreadable binding would be a guess.
+
 ## [0.9.2] - 2026-08-24
 
 ### Fixed
@@ -1333,17 +1389,41 @@ CRD it found real, already-shipped migrations -- `spec.provider.onepassword` and
   The token-mode fallback moves to `bosun@noreply.invalid` (RFC 2606), which
   maps to nobody. Chart author defaults are now empty, meaning "derive";
   setting them still wins.
+
+- **The repair's own apiVersion moves no longer re-block the gate.** The
+  first live repair migrated every consumer to the survivor, the recount
+  found zero -- and the gate went red anyway, on the migration itself: each
+  rewritten manifest is an object whose apiVersion moved, and the apiVersion
+  rule cannot tell an unexplained migration from the one its own report
+  demanded. A move is now marked as part of the migration when a
+  crdVersionRemoved finding in the same diff names exactly it -- same
+  consumer kind, from a dropped version, to the named survivor -- and such
+  moves are reported (with the reason) but do not block. The match is exact
+  on purpose: another target version, or another kind, still blocks.
+
 ## [0.9.1] - 2026-08-24
 
 ### Fixed
 
 - **The v0.9.0 gitops-gate image never existed.** Its Dockerfile copied only
   `gate/` into the build and the gate now imports `migrate/`, so the release
-  published the agent image and died on the gate's -- see the gate changelog.
+  published the agent image and died on the gate's -- the entry below.
   This release exists to run the release machinery over the fixed Dockerfile:
   the version path publishes both images, so v0.9.1 is the first tag since
   the repair feature whose gate image is real. Nothing about the agent binary
   changed since 0.9.0.
+
+- **The gate image copies the module it builds.** The Dockerfile hand-picked
+  `gate/` into the build stage, and the day the gate first imported a sibling
+  package -- `migrate`, in the very release that shipped consumer-aware
+  blocking -- the v0.9.0 image build died on `no required module provides
+  package .../migrate` while CI's `go build ./...` stayed green: CI builds
+  the checkout, the image builds the COPY list, and only one of them follows
+  the import graph. The build stage now copies the module wholesale, as the
+  agent's Dockerfile always has. The image workflow's scope filter learned
+  the same lesson: `migrate/` now rebuilds the gate image too, so a change to
+  the shared scanner cannot ship a stale gate.
+
 ## [0.9.0] - 2026-08-24
 
 ### Changed
@@ -1430,6 +1510,55 @@ CRD it found real, already-shipped migrations -- `spec.provider.onepassword` and
 
   Off switch: `triage.migrateDroppedVersions` (env
   `MIGRATE_DROPPED_VERSIONS=false`), default on.
+
+- **A CustomResourceDefinition that stops serving a version now blocks.** The
+  apiVersion rule watches the apiVersion an object *is*. A CRD dropping a
+  version it *serves* is `apiextensions.k8s.io/v1` on both sides, so the rule
+  could not see it -- while every manifest still declaring the dropped version
+  breaks on apply. That is a migration, and it is the most dangerous shape
+  available: it renders perfectly.
+
+  Measured against the real held promotion, external-secrets **0.10.3 ->
+  2.9.0**. Before, the gate passed it GREEN and the agent described it as
+  "adds 11 new CRDs and changes 25 existing resources". Now:
+
+      A CustomResourceDefinition stopped serving a version
+        externalsecrets.external-secrets.io:        no longer serves v1alpha1, v1beta1
+        clustersecretstores.external-secrets.io:    no longer serves v1alpha1, v1beta1
+        secretstores.external-secrets.io:           no longer serves v1alpha1, v1beta1
+        clusterexternalsecrets.external-secrets.io: no longer serves v1beta1
+
+  In the consuming repository that is **33 manifests** declaring one of those
+  versions and **29 live objects** on them.
+
+  `served` defaults to true in apiextensions/v1, so an absent key means served;
+  reading it otherwise would invent removals. A version left listed but turned
+  off counts as dropped, because it is gone from the point of view of anything
+  that declares it. And without object bodies -- a table loaded from the JSON
+  artifact -- the question cannot be answered, so the change is still reported
+  as `changed` rather than claimed safe.
+
+### Changed
+
+- **A dropped served version blocks exactly while manifests still declare it.**
+  The finding's blast radius is the consuming manifests -- they are what
+  breaks at apply -- so with `-repo`, the gate now scans the worktree for them
+  (shared `migrate` package, one scanner for the gate and the agent), lists
+  them in the report, and blocks only while any remain. Counted at zero, the
+  finding is reported and does not block; not scanned at all -- no `-repo`, or
+  a finding whose CRD body carried no consumer kind -- still blocks, because
+  "we could not look" must never read as safe.
+
+  This is what closes the repair loop: the agent migrates the consumers the
+  report names, the re-run gate counts again and finds none, and the same red
+  that used to be a hand-written migration becomes green with the work done.
+  The report line now carries the repair contract -- the consumer kind from
+  `spec.names.kind` and the surviving served version, chosen by API-server
+  priority -- and is rendered by the shared package, so the line the gate
+  writes and the migration the agent reads back cannot drift apart. Helm chart
+  `templates/` directories are excluded from the consumer scan: their render
+  is chart-diff's to judge.
+
 ## [0.7.0] - 2026-08-23
 
 There is no 0.6.0 here. Chart 0.6.0 was a chart-only release -- FQDN egress
@@ -1465,6 +1594,83 @@ versions skip from 0.5.0 straight to 0.7.0.
   escalates on the major boundary; trivy-operator-explorer escalates on its
   removed ClusterRole and ClusterRoleBinding; authentik stays `no_action`,
   reasoning that the render is structurally safe. Three samples, one run each.
+
+### Added
+
+- **A changed resource now says WHICH fields changed.** The gate rendered both
+  versions, compared them, and then reported `Changed (25)` -- a list of names.
+  That is the same non-answer the version number already gave, and it asks a
+  reviewer for judgement while withholding the evidence for it. The agent said
+  so on every green pull request it explained: *the report does not say which
+  fields changed or why*. It was right.
+
+  Each changed object now carries its differing leaves, as dotted paths with
+  before and after values, folded into a `<details>` block. Paths use the same
+  shape as the agent's edit inventory -- `spec.template.spec.containers.0.image`
+  -- so a human and an agent read the report the same way.
+
+  Run against a real promotion (trivy-operator-explorer chart 0.4.6 -> 0.5.1,
+  previously reported as two changed objects and nothing else), it surfaced
+  three things nobody knew were in it:
+
+      spec.template.spec.containers.0.image:
+        ghcr.io/…/trivy-operator-explorer:v0.5.8 -> :v1.0.0
+      spec.template.spec.containers.0.ports.1:
+        set to {"containerPort":8081,"name":"mcp","protocol":"TCP"}
+      spec.template.spec.containers.0.resources.limits.cpu:
+        removed (was 500m)
+
+  A **major** application version inside a minor chart bump, a new port that
+  needs a NetworkPolicy half, and a dropped CPU limit.
+
+  `Object.Body` carries the parsed manifest in memory and is `json:"-"`, which
+  is load-bearing: `Hash` exists so the target table stays small enough to pass
+  between CI jobs, and serialising bodies would undo exactly that. A table
+  loaded from JSON has no bodies, so the field list is omitted and the finding
+  is still reported -- never silently downgraded. Bounded at
+  `MaxFieldsPerObject` per object, because a report nobody can open is worth
+  less than a short one.
+
+### Fixed
+
+- **An OCI repository URL is the chart; stop appending the chart name to it.**
+  ArgoCD accepts a `repoURL` that already ends in the chart alongside a `chart`
+  field naming the same thing, and this repository's own addons are configured
+  that way. `chartRef` appended regardless, turning
+  `oci://ghcr.io/org/charts/bosun` + `bosun` into `.../charts/bosun/bosun` --
+  which the registry answers **403 denied**, not 404, so it reads like a
+  credentials problem and is not one.
+
+  The cost was quiet and total: chart-diff is skipped for any addon it cannot
+  render at both versions, so **every OCI-repo addon lost its resource-level
+  diff** while the gate stayed green and said only "NOT covered". Here that was
+  `bosun` and `kargo-pipelines` -- the two components that judge everything
+  else.
+
+  Verified against the live registry: `charts/bosun` answers 200 anonymously,
+  `charts/bosun/bosun` answers 403.
+
+- **A move between clusters is only reported when it is one.** Targeting
+  removals and additions were bucketed by ApplicationSet and then paired
+  positionally, so two departures and two arrivals became two confident
+  "moved" rows. Nothing in the render says which arrival answers which
+  departure; the pairing was a guess presented as a finding.
+
+  Both slices were also built by ranging a Go map, so the guess was not stable:
+  identical input could describe two different moves on two runs. A report that
+  varies without its input varying is one nobody can review. There is now a
+  test that runs the same diff fifty times and compares the report, and it
+  fails against the old code on the second run.
+
+  A move is reported when there is exactly one candidate on each side.
+  Otherwise both sides are reported plainly and the reviewer draws the line.
+
+- **A move names the ApplicationSet, not the Application that arrived.** An
+  Application's name carries its cluster, so the row read
+  ``metrics-server-vcluster-media | no longer targets the-cluster`` -- naming a
+  departure by something that did not exist before the change. It reads as the
+  gate contradicting itself, and it is what prompted this fix. The
+  ApplicationSet is the identity that survives a move.
 
 ## [0.5.0] - 2026-08-23
 
@@ -1719,6 +1925,85 @@ with nothing to do.
 
   The agent's Dockerfile moves to `golang:1.26-alpine`: one module means the
   gate's dependencies set the floor.
+
+  The gate itself arrived carrying everything below, developed in
+  `gitops_homelab_2_0` as `delivery/gate` and previously licensed Apache 2.0.
+  It is published as `ghcr.io/jamesatintegratnio/gitops-gate`, **multi-arch**
+  (amd64 + arm64) -- it was amd64-only, justified by reasoning about cluster
+  nodes, which the gate never runs on. Its Dockerfile builds from the
+  repository root, since go.mod lives there: `docker build -f gate/Dockerfile .`
+
+- **The gate: `render`, `diff`, `validate`.** `render` expands both levels of
+  the ApplicationSet hierarchy into the flat set of Applications a cluster
+  would end up with, including the bootstrap Applications themselves. `diff`
+  compares two renders: it blocks on cluster-targeting changes and on a source
+  changing underneath an unchanged Application, and reports version changes
+  without blocking. `validate` schema-validates every rendered stream via
+  kubeconform. `clusters export` regenerates the cluster inventory from live
+  ArgoCD cluster Secrets, with `-check` for drift detection.
+
+  `diff` separates a brand-new addon (`introduced`, non-blocking) from an
+  existing addon gaining or losing a cluster (`targeting`, blocking). Only the
+  second is the leak; blocking on the first would make every new-addon pull
+  request red for no reason and train people to override the check.
+
+  Both ApplicationSet templating dialects are supported, chosen from the
+  ApplicationSet's own `goTemplate` field rather than guessed. Generators that
+  cannot be expanded (git, matrix, list) produce an explicit "not covered"
+  warning rather than silently reporting full coverage.
+
+- **Source model.** A repository's manifests are obtained through a list of
+  sources -- `manifests`, `helm`, `kustomize`, `argocd-bootstrap` -- which can
+  be combined. The previous version understood exactly one topology (an
+  app-of-apps ApplicationSet rendering a chart) and was silently blind to every
+  other, including committed ApplicationSets and plain Applications, which are
+  the most common ArgoCD layouts there are.
+
+  `argocd-bootstrap` resolves its source path the way ArgoCD does: a directory
+  with `Chart.yaml` is a chart, anything else is read recursively as manifests.
+  The canonical gitops-bridge bootstrap is the second kind. Both the singular
+  `source:` and multi-source `sources:` Application template forms are read;
+  gitops-bridge uses the singular. Plain `Application` manifests are read, with
+  `destination.server` resolved against the inventory so they key the same way
+  generated ones do. Concurrent rendering, and `argocd:` on sources and
+  clusters for fleets running more than one ArgoCD. `scope: cluster | fleet`
+  for per-cluster renders, because whether an ApplicationSet expands
+  fleet-wide depends on hub-and-spoke versus per-cluster ArgoCD, and guessing
+  is silent. Topology fixtures cover each shape, plus a 50-cluster fleet.
+
+- **chart-diff** (`diff -repo <path>`) -- every chart whose version moved is
+  rendered at BOTH versions, with that Application's own value files and
+  inline `valuesObject`, and the resources are compared. Turns "cert-manager
+  moved to v1.22.0" into "adds two RBAC objects, changes six CRDs and three
+  Deployments". Helm's per-object version stamps are excluded from the
+  comparison: hashing them reported 101 of 105 resources as changed on one
+  bump, burying the 15 that had.
+
+- **`type: rendered`** -- reads manifests already committed to git and diffs
+  them at RESOURCE level: added, removed, changed, and `apiVersion` changed
+  called out separately as the one that blocks. Supports ArgoCD's source
+  hydrator output, Kargo's rendered promotion branches, or any CI job that
+  commits its render. See `gate/docs/rendered-manifests.md`.
+
+- **`ReportMarker`** -- `diff -report` leads its output with
+  `<!-- gitops-gate -->`, and a test asserts it on both a blocking report and a
+  green one. This is a contract, not decoration: the triage finds the gate's
+  verdict by searching a pull request's comments for that string. It
+  previously lived in one shell script in the local proving ground and in **no
+  CI adapter at all**, so a report published by CI was one no agent could
+  locate.
+
+- **Chart diff no longer reports a chart's whole resource set as removed and
+  re-added** when the two versions disagree about stamping
+  `metadata.namespace`. Whether a chart sets it varies between versions of the
+  same chart -- podinfo omits it at 6.7.0 and sets it at 6.14.1 -- and a
+  namespaced resource without it lands in the Application's destination
+  namespace anyway, so that is now its identity. On a real 6.7.0 -> 6.14.1
+  bump the report went from 5 added + 5 removed to the 2 resources that
+  actually changed. Helm **test** hooks are excluded too: they are never
+  applied by a sync, and they are the one place charts routinely generate a
+  random name, so all three of podinfo's test pods appeared as added AND
+  removed on every render. Other hooks are applied and are still reported.
 
 ### Changed
 

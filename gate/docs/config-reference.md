@@ -1,10 +1,9 @@
 # `.gitops-gate.yaml`
 
-The gate binary knows nothing about any particular repository. This file is the
+The gate knows nothing about any particular repository. This file is the
 whole of that knowledge, and it lives at the root of the repository being gated.
 
 ```yaml
-clusters: .gitops-gate/clusters.yaml
 valuesRef: values
 concurrency: 8
 
@@ -35,7 +34,6 @@ sources:
     path: overlays/production
 
 clustersExport:
-  ignoreKeys: [platform.example.com/reconcile-at]
   knownAbsentLabels: [aws_cluster_name]
 
 validate:
@@ -112,27 +110,23 @@ Parallel renders, default 8. Fleets are the reason: fifty clusters is fifty
 chart renders per revision, and serial execution turns a ninety-second gate
 into something people route around.
 
-## `clusters`
-
-Path to the cluster inventory snapshot, relative to the repository root.
-Generate it with `gitops-gate clusters export`. **CLI only**: the in-cluster
-gate reads the inventory live and ignores this key.
-
 ## `valuesRef`
 
 The `ref:` name your bootstrap ApplicationSet gives its values source. Multi-source
 Applications refer to it as `$values/…` in `valueFiles`, and the gate has to strip
 that prefix to find the file on disk. Defaults to `values`.
 
-## `clustersExport.ignoreKeys`
+## `clustersExport.knownAbsentLabels`
 
-Labels and annotations to drop from the exported inventory because they churn
-without affecting any selector or template: a resync timestamp, a content hash.
-A trailing `*` matches by prefix.
+Label keys a selector matches on that no cluster is expected to carry. Without
+this the gate refuses to render: a selector matching on a label the inventory
+has never seen renders a fraction of the real Applications and then reports
+"no targeting change" with total confidence, so the mismatch is an error rather
+than a wrong answer. List a label here only when the absence is deliberate; an
+addon inherited from upstream whose selector is never satisfied on this fleet.
 
-`clusters export -check` compares a fresh export against the checked-in file. A
-timestamp annotation left in makes that check fail every run, and a check that
-always fails gets switched off.
+The key's name has outlived the export subcommand it was written for. It stays
+because renaming it would break every config that sets it, for tidiness.
 
 ## `validate`
 
@@ -144,40 +138,12 @@ The cost is that those kinds are then **not validated at all**. The gate
 reports how many kinds it skipped, so the gap is visible rather than assumed
 away.
 
-## The cluster inventory (CLI only)
+## The cluster inventory
 
-```yaml
-generatedAt: "2026-08-22T12:00:00Z"
-clusters:
-  - name: hub
-    server: https://kubernetes.default.svc
-    labels:
-      argocd.argoproj.io/secret-type: cluster
-      cluster_role: control-plane
-      environment: production
-    annotations:
-      addons_repo_path: charts/application-sets
-```
-
-**The `clusters:` key and this file are for the CLI.** The agent reads the
-inventory live from ArgoCD's API on every run ([ADR
-0008](../../adr/0008-the-gate-moves-in-cluster.md)), and has no snapshot to
-keep current. The snapshot below is the gate's weakest joint wherever it is
-still in use.
-
-Generators resolve selectors against **live** cluster labels. A workstation run
-has only the snapshot, so if a cluster's labels change, or a cluster is added,
-the CLI keeps answering confidently and wrongly: it reports "no targeting
-change" for a change that does move targeting, because it is comparing against
-a world that no longer exists.
-
-The snapshot cannot detect that about itself. The check has to run somewhere
-with cluster access:
-
-```bash
-gitops-gate clusters export -out .gitops-gate/clusters.yaml -check
-```
-
-Exit non-zero means the snapshot has drifted. Wire it into whatever already
-runs against your cluster, a scheduled job or an operator's health command, and
-treat a drifted inventory as a broken gate rather than a stale file.
+There is nothing to configure. The agent reads the inventory live from
+ArgoCD's API on every run ([ADR
+0008](../../adr/0008-the-gate-moves-in-cluster.md)), so generators resolve
+selectors against the cluster labels ArgoCD reports at that moment, and there
+is no snapshot to keep current. The checked-in snapshot and the `clusters:`
+key that named it went with the CLI
+([ADR 0010](../../adr/0010-the-cli-goes-too.md)).

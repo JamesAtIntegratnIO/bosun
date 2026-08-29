@@ -128,8 +128,7 @@ providers](/reference/git-providers/).
 ## Do I need Kargo?
 
 For the **gate**, no. It renders and diffs a pull request; where the pull
-request came from is not its business, and the same engine runs from a
-workstation as a container.
+request came from is not its business.
 
 For the **agent's triage**, yes in practice. It wants the promotion context
 (artifact, from, to, the files the promotion touched) that arrives as a POST
@@ -139,9 +138,7 @@ when the promotion opens the pull request. Anything that can POST that shape to
 ## Do I need ArgoCD?
 
 Yes. ArgoCD's clusters *are* the inventory the gate expands ApplicationSets
-against, and the agent reads them from ArgoCD's API. The CLI works against a
-checked-in snapshot of the same thing, maintained by `gitops-gate clusters
-export`.
+against, and the agent reads them from ArgoCD's API on every run.
 
 ## Why are the gate and the agent in one repository?
 
@@ -166,17 +163,13 @@ escalate](/concepts/classification/). Demoting them cost no repair that was
 ever correct; each one names the file and the value, so a human applies it in
 one keystroke.
 
-## Can I use it without the agent at all?
+## Can I use it without the model at all?
 
-Yes. The gate is a container with an exit code:
-
-```bash
-docker run --rm -v "$PWD:/repo" -w /repo \
-  ghcr.io/jamesatintegratnio/gitops-gate:main \
-  diff -base targets-base.json -head targets-head.json -repo . -report report.md
-```
-
-Multi-arch, so it runs on an arm64 laptop as well as an amd64 machine.
+Yes. `triage.enabled: false` is the chart's default: the agent renders, gates
+and reports every pull request with no model configured and no LLM call ever
+made. What you cannot do is run the gate without the agent; the standalone
+`gitops-gate` CLI and its image were retired once the agent was the only
+consumer left ([ADR 0010](/decisions/0010-the-cli-goes-too/)).
 
 ## Can I redistribute it, fork it publicly, or run it for a client?
 

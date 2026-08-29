@@ -1,8 +1,15 @@
-# `render-diff.json`
+# The diff result
 
-The machine-readable output of `gitops-gate diff`, and the contract the
-delivery agent reads. Treat it as a published interface: the agent depends on
-these field names.
+What the gate's diff reports, and the contract the agent reads. `Assemble`
+returns it as a `DiffResult` and the agent consumes it in-process; the JSON
+below is the struct's own shape, shown because it is the compact way to see
+the whole contract at once. Nothing writes it to a file: the `render-diff.json`
+artifact was the CLI's, and went with it
+([ADR 0010](../../adr/0010-the-cli-goes-too.md)).
+
+The field names are still an interface. The report the agent publishes is
+rendered from these buckets, and the deterministic repair reads findings back
+out of them.
 
 ```json
 {
@@ -81,4 +88,4 @@ Applications they generate are **not** covered by any of the above.
 This is deliberately loud. A gate that quietly skips what it cannot handle
 reports "no targeting change" with exactly the same words whether it checked
 everything or nothing, and the reader has no way to tell which. Anything
-consuming this file should surface warnings rather than filtering them out.
+consuming the result should surface warnings rather than filtering them out.

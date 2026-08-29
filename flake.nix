@@ -28,8 +28,8 @@
           # the verdict CI or the cluster got.
           #
           # hack/portability-test.sh asserts these two strings equal the ARGs
-          # in Dockerfile and gate/Dockerfile, so the pin cannot drift in
-          # silence. Bump them together or the check fails.
+          # in Dockerfile, so the pin cannot drift in silence. Bump them
+          # together or the check fails.
           # ------------------------------------------------------------------
           helmVersion = "3.19.0";
           kubeconformVersion = "0.7.0";

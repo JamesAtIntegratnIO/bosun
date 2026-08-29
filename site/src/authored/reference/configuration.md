@@ -200,7 +200,7 @@ from. Every entry is a way to make a red gate green without fixing anything:
 ```
 .github/**            the workflows that run the gate
 .gitops-gate.yaml     what the gate renders, and how
-.gitops-gate/**       the cluster inventory it compares against
+.gitops-gate/**       the retired inventory-snapshot directory; a leftover copy must not be editable either
 delivery/**           the kit itself, including this agent and its prompt
 .gitlab-ci.yml        the GitLab and Bitbucket equivalents
 bitbucket-pipelines.yml

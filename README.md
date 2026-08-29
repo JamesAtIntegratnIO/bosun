@@ -39,7 +39,7 @@ piece doing its one job.
 
 | Piece | What it does |
 |---|---|
-| [`gate/`](gate) | **The inspection round.** Renders your ApplicationSets at base and at head, fails on a *cluster-targeting* change, an apiVersion migration, or a CRD dropping a served version your manifests still declare; diffs the old and new chart render down to the field; schema-validates the result. One engine, two faces: the agent runs it in-cluster against the live inventory by default, and the same code ships as a container with an exit code for local runs and CI. |
+| [`gate/`](gate) | **The inspection round.** Renders your ApplicationSets at base and at head, fails on a *cluster-targeting* change, an apiVersion migration, or a CRD dropping a served version your manifests still declare; diffs the old and new chart render down to the field; schema-validates the result. A package, not a binary: the agent imports it and runs it in-cluster against the live inventory, which is the only place the gate runs. |
 | [`agent/`](agent) | **The rounds and the repair.** Acts on the verdict: migrates manifests off dropped API versions deterministically, fixes what the rendered diff *proves* is mechanical, explains what a green gate cannot show, and escalates the rest as a handoff. |
 | [`gateservice/`](gateservice) | Runs the gate in-process for every open pull request, on a timer, and publishes the verdict, so the agent reads it as a value instead of scraping its own comment. |
 | [`supervisor/`](supervisor) | Sweeps the Kargo pipeline for the promotions that *never happened*. Nothing about one produces an event, so a timer is the only way to see it. |
@@ -123,23 +123,12 @@ helm install bosun oci://ghcr.io/jamesatintegratnio/charts/bosun \
   -f my-values.yaml
 ```
 
-then protect the `addons-gate` check and commit a sources-only
+then protect the `addons-gate` check and commit a
 `.gitops-gate.yaml`. The agent is the gate: it renders every open pull request
 against the live cluster inventory, read from ArgoCD's API, and posts the
 status and report itself. No CI workflow, no checked-in inventory snapshot, no
-paths filter.
-
-The same gate is also a container with an exit code, for local runs before
-pushing:
-
-```bash
-docker run --rm -v "$PWD:/repo" -w /repo \
-  ghcr.io/jamesatintegratnio/gitops-gate:main \
-  diff -base targets-base.json -head targets-head.json -repo . -report report.md
-```
-
-Multi-arch, so it runs on an arm64 laptop as well as an amd64 machine. Nobody
-reproduces a gate locally that they cannot run locally.
+paths filter, and no second way to run the gate
+([ADR 0010](adr/0010-the-cli-goes-too.md)).
 
 The chart deploys the service, its RBAC and both halves of its NetworkPolicy.
 It consumes **existing Secrets by name**, so bring your own secret manager. See
@@ -198,7 +187,7 @@ go test ./evals/...    # just the evals
 hack/lint.sh           # helm lint + values schema validation
 ```
 
-The dev shell pins helm to the version the images carry, because the gate's
+The dev shell pins helm to the version the image carries, because the gate's
 verdict is the output of `helm template`. Render locally with a different helm
 and the verdict changes while nothing about the symptom points at helm. See
 [`CONTRIBUTING.md`](CONTRIBUTING.md#the-toolchain).

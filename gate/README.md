@@ -1,42 +1,33 @@
-# gitops-gate
+# gate
 
 The deterministic half of the delivery gate. One Go package that answers one
 question about a pull request: **does this change what gets deployed, and is
 what it produces still valid?**
 
-The same engine ships in two forms, reaching the same verdict. The agent
-imports it and runs it in-cluster against the live cluster inventory, read from
-ArgoCD's API ([ADR 0008](../adr/0008-the-gate-moves-in-cluster.md)). That is
-how every pull request gets its verdict, and onboarding does not involve this
-directory at all. It also ships as a CLI ([`cmd/gitops-gate`](cmd/gitops-gate))
-whose exit code is the verdict, for running locally before a push. The CLI
-renders against a checked-in inventory snapshot, which is what `clusters
-export` maintains.
+The agent imports this package and runs it in-cluster against the live cluster
+inventory, read from ArgoCD's API ([ADR 0008](../adr/0008-the-gate-moves-in-cluster.md)).
+That is how every pull request gets its verdict. No model is involved at this
+layer: the AI half lives in the agent that calls this package.
 
-> **Status: shipped and judging every pull request** on the platform it was
-> built for, published as `ghcr.io/jamesatintegratnio/gitops-gate`.
-> [`CHANGELOG.md`](CHANGELOG.md) records what has changed since. No model is
-> involved at this layer: the AI half lives in the agent that calls this
-> package.
+There is no second way to run it. The standalone `gitops-gate` CLI and its
+image were retired by [ADR 0010](../adr/0010-the-cli-goes-too.md) once the gate
+in the agent was the only consumer left; the engine's history from that era is
+folded into the repository's [CHANGELOG.md](../CHANGELOG.md).
 
-## Subcommands
+## What it does
 
-| Command | Does |
-|---|---|
-| `render` | Renders every bootstrap ApplicationSet declared in `.gitops-gate.yaml`, for every cluster in the inventory, expanding the generators. Emits a normalized target table. |
-| `diff` | Compares two target tables. With `-repo`, also renders every chart whose version moved, at both versions, and diffs the resources down to the fields that changed. Emits the report and `render-diff.json`. |
-| `validate` | Schema-validates every rendered stream. |
-| `clusters export` | Regenerates the CLI's inventory snapshot from the live ArgoCD cluster Secrets. **Workstation only**: it shells out to `kubectl` against a kubeconfig, and `kubectl` is not in the gate's image. |
+`Render` expands every source declared in `.gitops-gate.yaml`, for every
+cluster in the inventory, expanding the generators, and emits a normalized
+target table. `Assemble` compares two target tables; when a repository root is
+available, it also renders every chart whose version moved, at both versions,
+and diffs the resources down to the fields that changed. `ValidateManifests`
+schema-validates every rendered stream with kubeconform. The rendered report
+and the `DiffResult` it comes from are the contract the agent consumes.
 
-### What the image carries
-
-`helm` and `kubeconform`, both pinned. Nothing else. Two paths therefore need a
-binary the image does not have, and both say so rather than failing obscurely:
-
-| Path | Needs | Where it runs |
-|---|---|---|
-| `clusters export` | `kubectl` | a workstation, against a kubeconfig. The in-cluster gate reads the same four fields from ArgoCD's API instead, and needs no snapshot. |
-| a `kustomize` source in `.gitops-gate.yaml` | `kustomize` **or** `kubectl` | a workstation. Not in-cluster. |
+It shells out to `helm` and `kubeconform` rather than vendoring their
+libraries: chart rendering has to match what the cluster's own Helm does, and
+pinning a library version is a slower way to drift away from that. Both ship
+in the agent's image, pinned.
 
 ## What blocks, and why
 
@@ -48,16 +39,8 @@ binary the image does not have, and both say so rather than failing obscurely:
 | A CRD stops serving a version **that manifests in the repository still declare** | yes, while any remain | those manifests break at apply. The report names the consumer kind, the surviving version and the declaring files, which is the contract [the agent's deterministic repair](../docs/safety-model.md) executes, and the recount on the re-run is what verifies it. Counted at zero, the finding is reported and does not block |
 | Resources added, removed, changed; versions moved | no, reported | that is what a version bump legitimately does, reported with per-field diffs so the reviewer judges evidence rather than a count |
 
-## Exit codes
-
-| Code | Meaning |
-|---|---|
-| `0` | No blocking change. |
-| `1` | Blocking change; see the table above. |
-| `2` | The gate itself could not run (bad config, unreachable chart repo). Distinct from `1` so a caller can tell "this change is bad" from "the gate is broken". |
-
 ## Reference
 
 - [`docs/config-reference.md`](docs/config-reference.md): the full `.gitops-gate.yaml` schema
-- [`docs/render-diff-schema.md`](docs/render-diff-schema.md): the JSON contract the agent consumes
+- [`docs/render-diff-schema.md`](docs/render-diff-schema.md): the diff result the agent consumes, bucket by bucket
 - [`docs/rendered-manifests.md`](docs/rendered-manifests.md): the rendered-manifests pattern, and why ArgoCD's source hydrator cannot gate a merge

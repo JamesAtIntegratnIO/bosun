@@ -72,7 +72,7 @@ func TestLiveArgoCDMatchesTheSecrets(t *testing.T) {
 	if err := json.Unmarshal(out, &list); err != nil {
 		t.Fatal(err)
 	}
-	fromSecrets := gate.InventoryFromSecrets(list.Items, gate.ExportFilter{})
+	fromSecrets := gate.InventoryFromSecrets(list.Items)
 	if len(fromSecrets.Clusters) == 0 {
 		fromSecrets = implicitLocalCluster()
 	}

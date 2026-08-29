@@ -10,12 +10,9 @@ import (
 )
 
 // Config is.gitops-gate.yaml; everything the gate needs to know about a
-// repository it has never seen. The binary itself knows nothing about any
+// repository it has never seen. The gate itself knows nothing about any
 // particular layout; this file is the whole of that knowledge.
 type Config struct {
-	// Clusters is the path to the cluster inventory, relative to the repo root.
-	Clusters string `json:"clusters"`
-
 	// Sources describe how to obtain the Applications and ApplicationSets this
 	// repository defines. A repository usually has more than one shape at
 	// once, some things committed as plain YAML, some rendered from a chart,
@@ -44,7 +41,7 @@ type Config struct {
 	Validate ValidateConfig `json:"validate"`
 
 	// Egress is the operator's outbound deny-list, applied before helm pulls a
-	// remote chart. Nil is open, which is what the standalone CLI wants.
+	// remote chart. Nil is open.
 	//
 	// Not from the config file; it is the host's policy, not the reviewed
 	// repository's, and a pull request that could widen its own egress rules
@@ -55,7 +52,10 @@ type Config struct {
 	// operator should have to choose rather than get by omission.
 	Log func(string, ...any) `json:"-"`
 
-	// ClustersExport tunes `clusters export`.
+	// ClustersExport holds the one key left under a name that has outlived
+	// its export: knownAbsentLabels is render configuration, read by
+	// Inventory.Validate. The key stays `clustersExport` because renaming it
+	// would break every config that sets it, for tidiness.
 	ClustersExport ClustersExportConfig `json:"clustersExport"`
 }
 
@@ -150,16 +150,10 @@ type Bootstrap struct {
 }
 
 type ClustersExportConfig struct {
-	// IgnoreKeys are labels and annotations to drop from the exported
-	// inventory because they churn without affecting any selector or
-	// template, a resync stamp, a content hash. A trailing `*` matches by
-	// prefix. Without this, every export reports drift and a check that
-	// always fails gets switched off.
-	IgnoreKeys []string `json:"ignoreKeys"`
-
 	// KnownAbsentLabels are label keys a selector matches on that no cluster
 	// is expected to carry. Without this the gate refuses to render, on the
-	// grounds that it usually means a stale inventory.
+	// grounds that it usually means the selector and the fleet have drifted
+	// apart.
 	KnownAbsentLabels []string `json:"knownAbsentLabels"`
 }
 
@@ -185,10 +179,7 @@ func LoadConfig(path string) (*Config, error) {
 }
 
 // ParseConfig parses and normalises a config already read from somewhere, a
-// file, or a git revision that is not checked out. `clusters` is not
-// required here: it names the checked-in inventory snapshot, which only the
-// CLI reads. A caller with a live inventory has no use for the key, and the
-// CLI enforces it where the snapshot is loaded.
+// file, or a git revision that is not checked out.
 func ParseConfig(raw []byte, path string) (*Config, error) {
 	var c Config
 	if err := yaml.UnmarshalStrict(raw, &c); err != nil {

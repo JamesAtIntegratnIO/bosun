@@ -1,11 +1,7 @@
 package gate
 
 import (
-	"bufio"
-	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"sort"
 	"strings"
 )
@@ -70,59 +66,6 @@ func (t *Table) Sort() {
 		}
 		return t.Rows[i].App < t.Rows[j].App
 	})
-}
-
-func (t *Table) WriteJSON(w io.Writer) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(t)
-}
-
-func WriteTableFile(path string, t *Table) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	if err := writeThenClose(f, path, func() error {
-		bw := bufio.NewWriter(f)
-		if err := t.WriteJSON(bw); err != nil {
-			return err
-		}
-		return bw.Flush()
-	}); err != nil {
-		return err
-	}
-	return nil
-}
-
-// writeThenClose runs write against an open file and closes it, reporting
-// whichever failed.
-//
-// Close is checked rather than deferred. On a file that was written to, close
-// is where a short write finally surfaces, and this one produces the target
-// table the whole diff is computed against; a truncated table is a diff that
-// quietly compares against less than it says it did.
-func writeThenClose(f *os.File, path string, write func() error) error {
-	if err := write(); err != nil {
-		_ = f.Close()
-		return fmt.Errorf("writing %s: %w", path, err)
-	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("closing %s: %w", path, err)
-	}
-	return nil
-}
-
-func ReadTableFile(path string) (*Table, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("reading target table %s: %w", path, err)
-	}
-	var t Table
-	if err := json.Unmarshal(raw, &t); err != nil {
-		return nil, fmt.Errorf("parsing target table %s: %w", path, err)
-	}
-	return &t, nil
 }
 
 // Describe renders a row's source in one human-readable string.

@@ -1,28 +1,14 @@
 name: Image
 
-# Publishes the two images this repository ships: the agent (`bosun`) and the
-# gate (`gitops-gate`). They share one Go module and one workflow, but they do
-# not share a reason to be rebuilt.
-#
-# Why the scope job exists: both images used to be one matrix behind one
-# `paths-ignore`, so any commit touching Go source anywhere republished both. A
-# triage-only fix would publish a byte-identical gate under a new `main-<sha>`
-# tag, and the consumer of that tag (gitops_homelab_2_0, Kargo target
-# `gitops-gate`, strategy NewestBuild) opened a pull request for every one of
-# them. It cannot dedupe them either: the `org.opencontainers.image.revision`
-# label carries the commit sha, so even an identical build has a different
-# digest.
-#
-# That pin is `autoMerge: never` on purpose, the gate judges every other
-# promotion, so a human has to read the bump. Bumps that change nothing about
-# the gate are exactly what teaches that human to stop reading them.
+# Publishes the one image this repository ships: the agent (`bosun`). The gate
+# is a package the agent compiles in, not a second image; the standalone
+# `gitops-gate` CLI and its image were retired by ADR 0010.
 
 on:
   push:
     branches: [main]
     tags: ['v*']
-    # A cheap pre-filter for what cannot affect either image. Which of the two
-    # a qualifying push affects is the `scope` job's problem.
+    # What cannot affect the image. Prose and charts reach no binary.
     paths-ignore:
       - 'local/**'
       - 'charts/**'
@@ -45,187 +31,12 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  scope:
-    name: Which images changed?
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.pick.outputs.matrix }}
-      any: ${{ steps.pick.outputs.any }}
-      retagGate: ${{ steps.pick.outputs.retagGate }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # the pushed range, to diff against
-
-      - name: Pick the images this revision changed
-        id: pick
-        env:
-          # `inputs.version` is the only reliable sign of a release call. A
-          # called workflow inherits the caller's event context: release.yaml
-          # runs on a push to main, so `github.event_name` reads `push` and
-          # `github.ref_type` reads `branch` inside this workflow too. Deciding
-          # from those would path-filter a release, which must ship both images
-          # at the tagged revision whatever the last commit touched.
-          VERSION: ${{ inputs.version }}
-          EVENT: ${{ github.event_name }}
-          REF_TYPE: ${{ github.ref_type }}
-          BEFORE: ${{ github.event.before }}
-          SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-
-          agent='{"name":"bosun","image":"jamesatintegratnio/bosun","dockerfile":"Dockerfile","platforms":"linux/amd64"}'
-          gate='{"name":"gitops-gate","image":"jamesatintegratnio/gitops-gate","dockerfile":"gate/Dockerfile","platforms":"linux/amd64,linux/arm64"}'
-
-          build_agent=false
-          build_gate=false
-          retag_gate=false
-          zero=0000000000000000000000000000000000000000
-
-          # A release is not A reason to rebuild the gate.
-          #
-          # This built both on every release, and the comment defending it said
-          # a release "must ship both images at the tagged revision whatever the
-          # last commit touched". The tagged revision part is right. The rebuild
-          # is not, and it costs exactly what the scope job was created to stop:
-          #
-          # `is_default_branch` is true inside a release call, so the tag list
-          # below publishes a fresh `main-<sha>` for both images. That tag is
-          # what the consumer's Kargo target tracks with NewestBuild, and the
-          # `org.opencontainers.image.revision` label means a byte-identical
-          # gate still gets a new digest. Every agent-only release therefore
-          # opened a gate bump pull request, `autoMerge: never`, so a human
-          # reads it, describing no change to the gate. Bumps that change
-          # nothing are what teach that human to stop reading them, which is the
-          # exact failure this file already argues against one paragraph up.
-          #
-          # So: on a release the gate is rebuilt only if the gate MOVED since
-          # the previous release. If it did not, the existing image is given the
-          # release tag with `imagetools create`, same digest, no new
-          # `main-<sha>`, nothing for Kargo to notice.
-          if [ -n "${VERSION}" ]; then
-            build_agent=true
-            prev=$(git tag --list 'v*' --sort=-v:refname | grep -v "^v${VERSION}$" | head -1)
-            if [ -z "${prev}" ] || ! git cat-file -e "${prev}^{commit}" 2>/dev/null; then
-              build_gate=true
-              why="release build of ${VERSION} (no previous release tag to diff against)"
-            elif git diff --name-only "${prev}" "${SHA}" \
-                 | grep -qE '^gate/|^migrate/|^go\.(mod|sum)$|^\.github/workflows/image\.yaml$'; then
-              build_gate=true
-              why="release build of ${VERSION} (the gate moved since ${prev})"
-            else
-              retag_gate=true
-              why="release build of ${VERSION} (the gate is unchanged since ${prev}; re-tagging, not rebuilding)"
-            fi
-          elif [ "${EVENT}" != push ] || [ "${REF_TYPE}" = tag ]; then
-            build_agent=true; build_gate=true
-            why="${EVENT} (${REF_TYPE}) -- no diff to reason from"
-          elif [ -z "${BEFORE}" ] || [ "${BEFORE}" = "${zero}" ] || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
-            # A new branch, a force-push, or history this checkout does not
-            # have. Unknown means build, never means skip.
-            build_agent=true; build_gate=true
-            why="no usable base commit (${BEFORE:-none})"
-          else
-            changed=$(git diff --name-only "${BEFORE}" "${SHA}")
-            echo "changed files:"
-            printf '%s\n' "${changed}" | sed 's/^/  /'
-
-            # Prose and charts reach no image. Repeated from `paths-ignore`
-            # rather than relying on it: a push that mixes charts with code
-            # passes that filter with the chart files still in the diff.
-            code=$(printf '%s\n' "${changed}" | grep -vE '(^|/)(docs|adr)/|\.md$|^charts/|^local/' || true)
-
-            # What the gate compiles: gate/ itself plus migrate/, the scanner
-            # it shares with the agent so the report line and its parser
-            # cannot drift. This list mirrors `go list -deps ./gate` filtered
-            # to this module, re-run that before editing it, not memory: the
-            # last time this comment said "the gate imports nothing else" the
-            # claim was checked once and outlived its truth by one feature.
-            if printf '%s\n' "${code}" | grep -qE '^gate/|^migrate/|^go\.(mod|sum)$|^\.github/workflows/image\.yaml$'; then
-              build_gate=true
-            fi
-
-            # Everything else in the module is the agent's. Deliberately the
-            # loose half of the pair: an unnecessary agent build costs a runner
-            # and nothing else, because nothing downstream tracks its
-            # `main-<sha>` tags, the chart's appVersion decides what deploys.
-            if printf '%s\n' "${code}" | grep -qvE '^gate/|^$'; then
-              build_agent=true
-            fi
-
-            why="from the diff ${BEFORE:0:7}..${SHA:0:7}"
-          fi
-
-          # `if`, not `[ ... ] && ...`: under `set -e` a false test on the
-          # last-and-only command of the line ends the step.
-          entries=""
-          if [ "${build_agent}" = true ]; then entries="${agent}"; fi
-          if [ "${build_gate}" = true ]; then entries="${entries:+${entries},}${gate}"; fi
-
-          echo "retagGate=${retag_gate}" >> "$GITHUB_OUTPUT"
-
-          if [ -z "${entries}" ]; then
-            echo "any=false" >> "$GITHUB_OUTPUT"
-            echo "matrix=[]" >> "$GITHUB_OUTPUT"
-            echo "::notice::Nothing to publish (${why})."
-          else
-            echo "any=true" >> "$GITHUB_OUTPUT"
-            echo "matrix=[${entries}]" >> "$GITHUB_OUTPUT"
-            echo "::notice::Publishing agent=${build_agent} gate=${build_gate} retag=${retag_gate} (${why})."
-          fi
-
-  # The release tag for a gate that did not change.
-  #
-  # `imagetools create` writes a new tag pointing at an existing manifest. No
-  # rebuild, no new digest, and, the point of all this, no new `main-<sha>` for
-  # the consumer's Kargo target to open a pull request about.
-  retag-gate:
-    name: Tag the unchanged gate at ${{ inputs.version }}
-    needs: scope
-    if: needs.scope.outputs.retagGate == 'true' && inputs.version != ''
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Point the release tag at the gate that is already published
-        env:
-          IMAGE: ghcr.io/jamesatintegratnio/gitops-gate
-          V: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-          # `:main` is the gate that was last built, which, because it did not
-          # change, is the gate this release ships.
-          docker buildx imagetools create -t "${IMAGE}:${V}" "${IMAGE}:main"
-          docker buildx imagetools inspect "${IMAGE}:${V}" --format '{{.Manifest.Digest}}'
-          echo "::notice::${IMAGE}:${V} now points at the existing :main build; no new image was published."
-
   build-and-push:
-    needs: scope
-    if: needs.scope.outputs.any == 'true'
+    name: bosun
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    strategy:
-      fail-fast: false
-      # The images, and their per-image build settings, come from the `scope`
-      # job: `on:` has no way to filter paths per matrix entry, which is the
-      # whole reason the two were entangled.
-      #
-      # bosun is amd64 only: it runs in a cluster whose nodes are all amd64, so
-      # an arm64 image has no consumer. gitops-gate is multi-arch, because that
-      # one never runs in the cluster; its consumers are CI runners (amd64) and
-      # developer machines (arm64 Macs). An amd64-only gate cannot be
-      # reproduced locally except under emulation.
-      matrix:
-        include: ${{ fromJSON(needs.scope.outputs.matrix) }}
-    name: ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -239,7 +50,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ matrix.image }}
+          images: ${{ env.REGISTRY }}/jamesatintegratnio/bosun
           # No 'latest'. An unpinned tag is how an image silently changes
           # underneath a cluster, which is the incident class this service
           # exists to prevent; shipping one here would be embarrassing.
@@ -253,11 +64,6 @@ jobs:
           # no branch, `{{branch}}` expands to nothing, and the result is the
           # literal `:-<sha>`, which buildx rejects as an invalid reference
           # and fails the whole build.
-          #
-          # `:main` moves only when the image it names is rebuilt, which is now
-          # only when that image changed. That is the point, not a regression:
-          # a gate whose source did not move should keep pointing at the build
-          # that was tested.
           tags: |
             type=raw,value=main,enable={{is_default_branch}}
             type=sha,prefix={{branch}}-,enable={{is_default_branch}}
@@ -268,13 +74,13 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          # Root context for both: one module, and go.mod lives here.
           context: .
-          file: ${{ matrix.dockerfile }}
-          platforms: ${{ matrix.platforms }}
+          file: Dockerfile
+          # amd64 only: the agent runs in a cluster whose nodes are all amd64,
+          # so an arm64 image has no consumer.
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
-          # Scoped per image or the two overwrite each other's cache.
-          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=bosun
+          cache-from: type=gha,scope=bosun
