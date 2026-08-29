@@ -39,16 +39,12 @@ updates:
       go:
         patterns: ['*']
 
-  # Two Dockerfiles, two entries: Dependabot scans a directory, and the gate's
-  # image is not in the root one. Both pin the same golang and alpine digests
-  # on purpose, so expect these two to open matching pull requests.
+  # One Dockerfile, one entry. Dependabot scans a directory and errors on one
+  # holding no manifest, so a second entry for `/gate` outlived the image it
+  # tracked: ADR 0010 retired the standalone gate binary, and this file was
+  # written against the tree before that landed.
   - package-ecosystem: docker
     directory: /
-    schedule:
-      interval: weekly
-
-  - package-ecosystem: docker
-    directory: /gate
     schedule:
       interval: weekly
 
