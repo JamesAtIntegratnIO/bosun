@@ -146,11 +146,9 @@ All notable changes to `bosun`. Format follows
   either.
 
   **Measured on `qwen/qwen3.8-27b`:** classification **27/27**, full pass
-  **26/27**, **UNSAFE 0** across all four paths (6m36s). The previous
-  measurement on this model was 22/22 and 21/22, and the one non-full-pass is
-  the same case for the same reason: on the reference-moved restructure case
-  the model produces the correct migration and also writes out a default the
-  schema already applies. Noisier than asked, not wrong.
+  **27/27**, **UNSAFE 0** across all four paths (4m59s). The previous
+  measurement on this model was 22/22 and 21/22; the case behind that 21 is
+  fixed below, so this is the first clean sweep the suite has recorded.
 
   The suite gains a fourth path and four cases for it, and the first run of
   them found the failure ADR 0013 names as the one its harness cannot catch.
@@ -263,6 +261,26 @@ All notable changes to `bosun`. Format follows
   failure it names, which this corpus contains the temptation for and does not
   reproduce; the levers in `docs/prompt-contract.md` exist for the smaller
   models, and this one is recorded as unproven rather than as a win.
+- **A schema render that invited the mistake its own prompt forbade.** Since
+  the restructure path shipped, one case has scored correct-but-noisy: the
+  model produced the right migration for `spec.store` -> `spec.secretStoreRef`
+  and also wrote out `kind: SecretStore`, a default the schema already
+  applies. That was recorded as the cost of doing business.
+
+  It was the evidence. `RenderSchema` printed
+  `kind: string default=SecretStore` directly beside
+  `name: string (required)`, which reads as two fields to fill; and the rule
+  against it, forty lines above, named a category -- OPTIONAL -- that the
+  render never printed, so the only way to know a field was optional was the
+  absence of a marker. The render now says
+  `kind: string (optional, unset means SecretStore)`: the same schema fact
+  with the reason to write it removed, at the line where the decision is made.
+  A required field keeps its default printed, because that one may have to be
+  filled from the schema.
+
+  Both schema-guided prompts are measurably shorter-answered for it, and the
+  suite reaches **full pass 27/27** for the first time.
+  `docs/prompt-contract.md` carries it as Lever 8.
 - **A selector that matches on a label being absent no longer demands that
   label be present.** `selectorKeys` handed every `matchExpressions` key to
   `Inventory.Validate`, `NotIn` and `DoesNotExist` included. Those two select

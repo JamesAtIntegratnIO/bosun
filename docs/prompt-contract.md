@@ -151,10 +151,52 @@ and the second half of it carries as much as the first: *nothing free beside
 it* tells the model to stop looking for a home. Same model, same case, with
 that block and one paragraph saying how to read it: **full pass 1/1, UNSAFE 0**.
 
-The general form is the one this whole document keeps arriving at. When a model
-is getting something wrong in front of evidence that already contains the
-answer, the lever is usually to compute the answer's *shape* and state it, not
-to describe the evidence more insistently.
+The general form is the one this whole document keeps arriving at, and Lever 8
+is the same shape found again a measurement later. When a model is getting
+something wrong in front of evidence that already contains the answer, the
+lever is usually to compute the answer's *shape* and state it where the
+decision is made, not to describe the evidence more insistently somewhere
+above.
+
+## Lever 8: label the category the rule names, at the line the rule is about
+
+The same lesson, found a second time on a different path, one measurement
+later.
+
+The restructure prompt has said since it shipped: *do not add an OPTIONAL field
+just because the new schema declares a default for it*. The schema render, forty
+lines below that sentence, printed
+
+```
+kind: string default=SecretStore one of [SecretStore, ClusterSecretStore]
+name: string (required)
+```
+
+which reads as two fields to fill, and qwen3.8-27b filled both -- the correct
+migration, plus a default the schema already applies, on the one path whose
+entire product is a small diff. That non-full-pass had been in the changelog
+since the path shipped, recorded as noise rather than error.
+
+Two things were wrong with the evidence, and neither was the instruction. The
+rule named a category, OPTIONAL, that the render never printed: the only way to
+know a field was optional was the *absence* of `(required)`. And the one
+annotation that field did carry said, in effect, here is a good value for this.
+
+```
+kind: string (optional, unset means SecretStore) one of [SecretStore, ClusterSecretStore]
+```
+
+Same schema fact, with the reason to write it removed, at the line where the
+decision is made. **full pass 27/27, UNSAFE 0** across all four paths, up from
+26/27, and a minute faster because the answers are shorter.
+
+Required fields keep `default=` printed: those may have to be filled from the
+schema, and the value is how. The marker goes nowhere else. Marking every
+optional field would be redundant with the required ones being marked -- both
+prompts now say only those have to be present -- and it is not free: enums are
+ordinary in a CRD schema, the largest measured renders to 43,831 characters
+against a 12,000-character budget, and eleven characters a line is fields the
+model stops being shown at all.
 
 ## What the model is never trusted with
 

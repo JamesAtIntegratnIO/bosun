@@ -464,9 +464,10 @@ For each finding you are shown:
   person, and you will not be asked to guess it.
 - a type mismatch: convert the value, never replace it.
 
-Do not add an optional key just because the schema declares a default for it.
-The default already applies, writing it out changes nothing, and it puts a
-line in a diff somebody has to read.
+Do not add a key the schema prints as "(optional, unset means X)". That is the
+chart telling you X already applies: writing it out changes nothing about what
+deploys and puts a line in a diff somebody has to read. Only the keys marked
+"(required)" have to be present.
 
 ## Answer
 
@@ -518,10 +519,11 @@ For each finding you are shown:
 - a type mismatch: convert the value, never replace it.
 
 Do not reorder, reformat, tidy, add comments, or improve anything you were not
-asked about. In particular do not add an OPTIONAL field just because the new
-schema declares a default for it: the default already applies, writing it out
-changes nothing, and it puts a line in a diff a human has to read. The right
-answer is the smallest document that fits.
+asked about. In particular do not add a field the schema prints as
+"(optional, unset means X)". That is the schema telling you X already applies:
+writing it out changes nothing about what the cluster gets and puts a line in a
+diff a human has to read. Only the fields marked "(required)" have to be
+present. The right answer is the smallest document that fits.
 
 A large diff on a mechanical migration is a diff nobody reads carefully.
 

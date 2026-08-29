@@ -398,3 +398,51 @@ func TestASchemaThatFitsIsNotAnnotated(t *testing.T) {
 		t.Errorf("a small schema was marked truncated:\n%s", got)
 	}
 }
+
+// Optionality is stated, and where a field offers a value to volunteer it is
+// stated as a consequence rather than as a fact.
+//
+// Measured: `kind: string default=SecretStore` printed beside
+// `name: string (required)` reads as two fields to fill, and qwen3.8-27b
+// filled both -- the correct migration, plus a default the schema already
+// applies, on the one path whose whole product is a small diff. Both prompts
+// said not to, in a paragraph well above the schema, using a word ("optional")
+// this render never printed. `unset means SecretStore` is the same schema fact
+// with the reason to write it removed.
+func TestTheRenderSaysWhichFieldsNeedNotBeWritten(t *testing.T) {
+	got := RenderSchema(Schema{
+		"type":     "object",
+		"required": []any{"name", "mode"},
+		"properties": map[string]any{
+			"name":     map[string]any{"type": "string"},
+			"mode":     map[string]any{"type": "string", "default": "service"},
+			"kind":     map[string]any{"type": "string", "default": "SecretStore", "enum": []any{"SecretStore", "ClusterSecretStore"}},
+			"tier":     map[string]any{"type": "string", "enum": []any{"a", "b"}},
+			"replicas": map[string]any{"type": "integer"},
+		},
+	})
+
+	for _, want := range []string{
+		// Optional, and the schema says what not writing it means.
+		"kind: string (optional, unset means SecretStore) one of [SecretStore, ClusterSecretStore]",
+		// Required keeps its default printed: that one may have to be filled
+		// from the schema, and the value is how.
+		"mode: string (required) default=service",
+		"name: string (required)",
+		// No default, so nothing misleading to correct. Marking it would be
+		// redundant with the required fields being marked, and a marker on
+		// every line of a 43,831-character schema is fields the model stops
+		// being shown at all.
+		"tier: string one of [a, b]",
+		"replicas: integer\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("want %q in:\n%s", want, got)
+		}
+	}
+	// The bare form is what invited the mistake, and it must not come back for
+	// a field nobody has to write.
+	if strings.Contains(got, "kind: string default=") {
+		t.Errorf("an optional default is printed as a consequence, not as a value:\n%s", got)
+	}
+}

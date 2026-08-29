@@ -148,11 +148,36 @@ func renderSchemaInto(b *strings.Builder, indent string, s Schema, depth int) {
 		if typ != "" {
 			line += ": " + typ
 		}
-		if required[name] {
+		// Optionality is stated, and where a field offers a value to
+		// volunteer it is stated as the consequence rather than the fact.
+		//
+		// `kind: string default=SecretStore` beside `name: string (required)`
+		// reads as two fields to fill, and a live model filled both: correct
+		// migration, plus a default the schema already applies, on the one
+		// path whose whole product is a small diff. Both prompts already said
+		// not to, in a paragraph well above this, and the word they used --
+		// OPTIONAL -- was a category this render never labelled. So the reader
+		// had to infer optionality from the absence of a marker, and the only
+		// marker present said "here is a good value for this".
+		//
+		// `unset means SecretStore` is the same schema fact with the reason to
+		// write it removed. A required field keeps its default printed: that
+		// one may have to be filled from the schema, and the value is how.
+		//
+		// Only where a default is declared, and nowhere else. Marking every
+		// optional field would be redundant with the required ones being
+		// marked -- both prompts say only those have to be present -- and it
+		// is not free: enums are ordinary in a CRD schema, the largest one
+		// measured renders to 43,831 characters against a 12,000-character
+		// budget, and eleven characters a line is fields the model stops
+		// being shown at all.
+		switch d, hasDefault := sub["default"]; {
+		case required[name] && hasDefault:
+			line += fmt.Sprintf(" (required) default=%v", d)
+		case required[name]:
 			line += " (required)"
-		}
-		if d, ok := sub["default"]; ok {
-			line += fmt.Sprintf(" default=%v", d)
+		case hasDefault:
+			line += fmt.Sprintf(" (optional, unset means %v)", d)
 		}
 		if e, ok := sub["enum"].([]any); ok {
 			parts := make([]string, 0, len(e))
