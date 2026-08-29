@@ -18,6 +18,26 @@ service:
 # gratuitous exposure -- so this chart deliberately renders no Ingress or
 # HTTPRoute at all.
 
+# Who may call POST /v1/promotion-opened.
+#
+# The NetworkPolicy admits the whole namespace, which is the granularity a
+# NetworkPolicy has. The payload that endpoint accepts names the pull request
+# the agent will edit and the FILES it will read into a prompt that gets
+# published -- so without a token, "may trigger the agent and choose what it
+# reads" is every workload in the namespace.
+#
+# Set existingSecret to a Secret holding a shared token, and put the same value
+# on Kargo's http step (kargo-pipelines: `triage.authorization`). Empty leaves
+# the endpoint open and says so in the pod log at every start-up.
+promotionAuth:
+  existingSecret: ""
+  tokenKey: token
+
+# How many pull requests may be triaged at once. Each one is a clone, a helm
+# render and a model call, so this is about the pod's memory and your git
+# host's rate limit rather than about throughput.
+maxConcurrentTriage: 4
+
 # What the agent calls itself. This is NOT the same as the account its token
 # belongs to -- the token's owner is whoever minted it, and every comment and
 # commit will carry that person's name unless you give the agent an account of

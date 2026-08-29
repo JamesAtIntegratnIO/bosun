@@ -33,11 +33,14 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -98,7 +101,8 @@ func main() {
 		}
 	default:
 		gh := &gitprovider.GitHub{
-			APIBase: cfg.GitAPIBase, Owner: cfg.GitOwner, Repo: cfg.GitRepo,
+			APIBase: cfg.GitAPIBase, RepoURL: cfg.GitRepoURL,
+			Owner: cfg.GitOwner, Repo: cfg.GitRepo,
 			Token: cfg.GitToken, AuthorName: cfg.AuthorName, AuthorEmail: cfg.AuthorEmail,
 		}
 		// Acting as an App is about IDENTITY, not access. A token grants the
@@ -266,7 +270,19 @@ func main() {
 		logger.Printf("egress: open except %v, and every outbound request is logged", cfg.EgressDeny)
 	}
 
-	srv := &Server{Triage: t, Log: logger, Timeout: cfg.LLMTimeout + 5*time.Minute}
+	srv := &Server{
+		Triage: t, Log: logger, Timeout: cfg.LLMTimeout + 5*time.Minute,
+		Token: cfg.PromotionToken, MaxConcurrent: cfg.MaxConcurrentTriage,
+	}
+	if srv.Token == "" {
+		// Loud, and every start-up. The endpoint takes a pull request number
+		// and a list of files the agent will edit and read into a published
+		// prompt; unauthenticated, the boundary is whatever the namespace's
+		// NetworkPolicy admits, which is every workload in it.
+		logger.Printf("WARNING: POST /v1/promotion-opened is unauthenticated -- " +
+			"any workload the NetworkPolicy admits can trigger a triage and name the files it edits. " +
+			"Set PROMOTION_TOKEN (and the matching Authorization header on Kargo's http step) to require a bearer token.")
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/promotion-opened", srv.PromotionOpened)
@@ -329,17 +345,72 @@ type Server struct {
 	Log     *log.Logger
 	Timeout time.Duration
 
+	// Token, when set, is the bearer token this endpoint requires.
+	//
+	// The handler used to trust every caller a NetworkPolicy admitted, which
+	// is namespace-level and therefore every workload in it. The payload it
+	// trusts names a pull request number and the FILES the agent may edit and
+	// will read into a published prompt, so "anything in the namespace" was
+	// the real authorization boundary on the agent's write access.
+	//
+	// Optional because it must be: an operator upgrading into this would
+	// otherwise get a service that silently stops answering Kargo. Unset is
+	// announced loudly at start-up instead.
+	Token string
+
+	// MaxConcurrent bounds triage goroutines. Zero means the default.
+	MaxConcurrent int
+
 	wg sync.WaitGroup
-	// inFlight collapses duplicate calls for the same pull request. Kargo
-	// retries a step whose response it did not like, and a retry must not
-	// start a second triage of the same PR.
+	// inFlight is the promotion currently being triaged for a pull request,
+	// keyed by PR number. Kargo retries a step whose response it did not
+	// like, and a retry must not start a second triage of the same PR.
+	//
+	// pending is the newest promotion that arrived while one was running.
+	// Collapsing on PR number alone acknowledged a genuinely new promotion
+	// with 202 and dropped it: the second Freight into a stage that already
+	// had an open pull request got a verdict about the FIRST one, and nothing
+	// ever revisited it. Newest wins, and exactly one re-run follows.
 	mu       sync.Mutex
-	inFlight map[int]bool
+	inFlight map[int]agent.Promotion
+	pending  map[int]agent.Promotion
+
+	sem     chan struct{}
+	semOnce sync.Once
 
 	// runFn is the work the handler dispatches. Defaults to agent.Triage.Run; tests
 	// substitute it so the handler's concurrency behaviour can be exercised
 	// without a git host or a model behind it.
 	runFn func(agent.Promotion) error
+}
+
+// maxConcurrentTriage is the default ceiling on simultaneous triages. Each one
+// is a clone, a helm render and a model call, so this is about the pod's
+// memory and the host's rate limit rather than about throughput.
+const maxConcurrentTriage = 4
+
+func (s *Server) acquire() chan struct{} {
+	s.semOnce.Do(func() {
+		n := s.MaxConcurrent
+		if n <= 0 {
+			n = maxConcurrentTriage
+		}
+		s.sem = make(chan struct{}, n)
+	})
+	return s.sem
+}
+
+// authorized checks the bearer token when one is configured.
+//
+// Constant-time, because the comparison is against a shared secret and the
+// caller can retry: a byte-at-a-time short circuit is a slow oracle, and this
+// is one line either way.
+func (s *Server) authorized(r *http.Request) bool {
+	if s.Token == "" {
+		return true
+	}
+	got := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+	return subtle.ConstantTimeCompare([]byte(got), []byte(s.Token)) == 1
 }
 
 func (s *Server) run(ctx context.Context, p agent.Promotion) error {
@@ -355,6 +426,10 @@ func (s *Server) run(ctx context.Context, p agent.Promotion) error {
 // so a handler that blocked would put a model round trip -- minutes, on a
 // local model -- inside the critical path of every promotion.
 func (s *Server) PromotionOpened(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	var p agent.Promotion
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&p); err != nil {
 		http.Error(w, "invalid payload", http.StatusBadRequest)
@@ -367,15 +442,29 @@ func (s *Server) PromotionOpened(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 	if s.inFlight == nil {
-		s.inFlight = map[int]bool{}
+		s.inFlight = map[int]agent.Promotion{}
 	}
-	if s.inFlight[p.PRNumber] {
+	if s.pending == nil {
+		s.pending = map[int]agent.Promotion{}
+	}
+	if running, busy := s.inFlight[p.PRNumber]; busy {
+		// A RETRY of the promotion already running is the case this dedup was
+		// built for, and it is identified by the promotion, not by the pull
+		// request. A different promotion for the same pull request is new
+		// work: held as pending and run once the current one finishes, rather
+		// than acknowledged and forgotten.
+		status := "already in progress"
+		if !samePromotion(running, p) {
+			s.pending[p.PRNumber] = p
+			status = "queued behind the promotion in progress"
+		}
 		s.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		_, _ = w.Write([]byte(`{"status":"already in progress"}`))
+		_, _ = fmt.Fprintf(w, "{%q:%q}", "status", status)
 		return
 	}
-	s.inFlight[p.PRNumber] = true
+	s.inFlight[p.PRNumber] = p
 	s.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -386,27 +475,63 @@ func (s *Server) PromotionOpened(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer s.wg.Done()
 		defer func() {
-			s.mu.Lock()
-			delete(s.inFlight, p.PRNumber)
-			s.mu.Unlock()
 			if rec := recover(); rec != nil {
 				s.Log.Printf("PR %d: triage panicked: %v", p.PRNumber, rec)
 			}
 		}()
 
-		// Detached from the request context on purpose: the response has
-		// already gone back to Kargo, so cancelling with it would abort every
-		// triage immediately.
-		ctx, cancel := context.WithTimeout(context.Background(), s.Timeout)
-		defer cancel()
+		// Bounded. Each triage is a clone, a helm render and a model call, and
+		// the handler starts one per distinct pull request number with nothing
+		// in between.
+		sem := s.acquire()
 
-		start := time.Now()
-		if err := s.run(ctx, p); err != nil {
-			s.Log.Printf("PR %d: triage failed after %s: %v", p.PRNumber, time.Since(start).Round(time.Second), err)
-			return
+		for cur := p; ; {
+			func() {
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				// Detached from the request context on purpose: the response
+				// has already gone back to Kargo, so cancelling with it would
+				// abort every triage immediately.
+				ctx, cancel := context.WithTimeout(context.Background(), s.Timeout)
+				defer cancel()
+
+				start := time.Now()
+				if err := s.run(ctx, cur); err != nil {
+					s.Log.Printf("PR %d: triage failed after %s: %v",
+						cur.PRNumber, time.Since(start).Round(time.Second), err)
+					return
+				}
+				s.Log.Printf("PR %d: triage done in %s", cur.PRNumber, time.Since(start).Round(time.Second))
+			}()
+
+			s.mu.Lock()
+			next, queued := s.pending[cur.PRNumber]
+			if !queued {
+				delete(s.inFlight, cur.PRNumber)
+				s.mu.Unlock()
+				return
+			}
+			delete(s.pending, cur.PRNumber)
+			s.inFlight[cur.PRNumber] = next
+			s.mu.Unlock()
+			s.Log.Printf("PR %d: running the promotion that arrived while the last one was in flight", cur.PRNumber)
+			cur = next
 		}
-		s.Log.Printf("PR %d: triage done in %s", p.PRNumber, time.Since(start).Round(time.Second))
 	}()
+}
+
+// samePromotion decides whether an incoming call is a retry of the one already
+// running rather than new work.
+//
+// PromotionID is the identity when there is one -- Kargo mints one per
+// promotion and repeats it on retry. Without it there is nothing to tell a
+// retry from a new event, and treating an unidentified call as a retry is the
+// safe reading: the alternative re-runs triage for every duplicate delivery.
+func samePromotion(a, b agent.Promotion) bool {
+	if a.PromotionID == "" || b.PromotionID == "" {
+		return true
+	}
+	return a.PromotionID == b.PromotionID
 }
 
 // Wait blocks until in-flight triage finishes.

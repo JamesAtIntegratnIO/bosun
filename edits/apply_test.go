@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/JamesAtIntegratnIO/bosun/safepath"
 )
 
 const sample = `# MetalLB, L2 only.
@@ -162,7 +164,7 @@ func TestRejectsTraversalOutOfTheRepository(t *testing.T) {
 		if len(res.Applied) != 0 {
 			t.Fatalf("%s escaped the repository", path)
 		}
-		if len(res.Rejected) != 1 || res.Rejected[0].Reason != "path escapes the repository" {
+		if len(res.Rejected) != 1 || !strings.Contains(res.Rejected[0].Reason, safepath.ErrEscapes.Error()) {
 			t.Errorf("%s: want the containment refusal, got %+v", path, res.Rejected)
 		}
 	}

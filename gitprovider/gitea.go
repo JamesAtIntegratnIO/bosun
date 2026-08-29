@@ -339,6 +339,14 @@ func (g *Gitea) SetCommitStatus(ctx context.Context, sha, name string, state Com
 		}, nil)
 }
 
+// The label walk's bounds. Same shape as the comment walk and for the same
+// reason: past this something is wrong with paging, and a paging bug must not
+// become a loop against somebody's API quota.
+const (
+	labelPageSize = 100
+	maxLabelPages = 20
+)
+
 // AddLabel attaches a label by resolving its name to an ID first.
 //
 // Gitea before 1.20 accepts only numeric IDs here and answers a list of names
@@ -346,18 +354,29 @@ func (g *Gitea) SetCommitStatus(ctx context.Context, sha, name string, state Com
 // silent no-op would let the agent retry forever. Resolving the name is one
 // extra call and works on every version.
 func (g *Gitea) AddLabel(ctx context.Context, number int, label string) error {
-	var labels []struct {
-		ID   int64  `json:"id"`
-		Name string `json:"name"`
-	}
-	if err := g.do(ctx, http.MethodGet, g.repoPath("/labels?limit=100"), nil, &labels); err != nil {
-		return fmt.Errorf("listing labels: %w", err)
-	}
-	for _, l := range labels {
-		if l.Name == label {
-			return g.do(ctx, http.MethodPost,
-				g.repoPath(fmt.Sprintf("/issues/%d/labels", number)),
-				map[string][]int64{"labels": {l.ID}}, nil)
+	// Paged, not the first hundred. The unpaged read made an existing label
+	// past the hundredth invisible, so this fell through to creating it, the
+	// create failed on the name already being taken, and AddLabel returned an
+	// error -- which is now what refuses the push. A repository with a busy
+	// label list would have stopped every automatic repair.
+	for page := 1; page <= maxLabelPages; page++ {
+		var labels []struct {
+			ID   int64  `json:"id"`
+			Name string `json:"name"`
+		}
+		if err := g.do(ctx, http.MethodGet,
+			g.repoPath(fmt.Sprintf("/labels?limit=%d&page=%d", labelPageSize, page)), nil, &labels); err != nil {
+			return fmt.Errorf("listing labels: %w", err)
+		}
+		for _, l := range labels {
+			if l.Name == label {
+				return g.do(ctx, http.MethodPost,
+					g.repoPath(fmt.Sprintf("/issues/%d/labels", number)),
+					map[string][]int64{"labels": {l.ID}}, nil)
+			}
+		}
+		if len(labels) < labelPageSize {
+			break
 		}
 	}
 	// Creating it is the right move rather than an error: the agent's labels

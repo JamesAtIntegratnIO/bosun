@@ -3,6 +3,81 @@
 All notable changes to `bosun`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.23.0] - 2026-08-28
+
+Seven defects from an external security review, and the checks that pin them.
+
+### Security
+
+- **Path containment is a filesystem test, not a string test.** `edits`, the
+  agent's prompt builder and the migration walker each held their own lexical
+  check; a tracked symlink at a permitted path passed all three and resolved
+  wherever it pointed — a Secret mounted in the pod, read into a prompt that
+  gets published, or a `.github/**` file under a write the deny-list exists to
+  refuse. They now share `safepath.Resolve`, which rejects any path crossing a
+  symbolic link rather than resolving it: resolving would keep the escape out of
+  the filesystem and not out of the repository.
+
+- **An empty `from` no longer skips the value check.** The comparison was
+  conditional, so `"from": ""` overwrote any scalar in any permitted file while
+  the schema, the prompt and the package documentation all promised the current
+  value was checked. It is compared unconditionally; an empty scalar matches
+  `""` and nothing else.
+
+- **A scalar edit lands on the token it names.** The rewrite replaced the first
+  text on the line resembling the old value, so an edit to `b` in
+  `{a: old, b: old}` rewrote `a`, and one to the value in `version: version`
+  rewrote the key. It is anchored to the YAML node's column, preserves the
+  quoting style through the swap, and refuses block scalars rather than
+  guessing.
+
+- **A verdict names the commit that was inspected.** Checkouts clone a branch
+  while verdicts are keyed to the head SHA read moments earlier, so a push in
+  that window had the gate render one commit and publish the answer against
+  another. `gitprovider.EnsureHead` fetches the exact commit where the host
+  serves it and aborts the run where it does not.
+
+- **The attempt cap fails closed.** Both repair paths pushed first and wrote the
+  attempt label after, logging failures — so a token with push permission and no
+  permission to label repaired, failed to record it, and counted zero attempts
+  forever. The label is reserved before the push and the push is refused without
+  it. The Gitea label lookup is paged, so an existing label past the hundredth
+  no longer breaks it.
+
+- **GitHub Enterprise pushes where it reads.** `APIBase` supported Enterprise
+  while the push remote was hardcoded to `github.com`, sending the fix and a
+  live installation token at whatever holds that `owner/repo` on the public
+  host. The remote is built from `GIT_REPO_URL`.
+
+- **`POST /v1/promotion-opened` can require a bearer token.** Set
+  `promotionAuth.existingSecret` on the bosun chart and `triage.authorization`
+  on kargo-pipelines. Opt-in, so an upgrade does not stop answering Kargo;
+  unset, the pod logs a warning at every start-up. The endpoint's payload names
+  the pull request the agent edits and the files it reads into a published
+  prompt, and a NetworkPolicy admits a whole namespace.
+
+### Fixed
+
+- **A new promotion for a busy pull request is run, not dropped.** Deduplication
+  keyed on the pull-request number alone answered `202 already in progress` and
+  discarded the payload. Retries are identified by `PromotionID`; a different
+  promotion is held as pending and run once, newest wins.
+
+### Changed
+
+- **BREAKING: `GIT_API_BASE` / `git.apiBase` is required for Gitea.** There is
+  no public instance to default to, so an empty value was a pod that started
+  healthy and could not read a pull request.
+
+- **BREAKING: an invalid boolean is a configuration error.** `EXPLAIN_GREEN=treu`
+  read as `false`, so a setting somebody deliberately turned on was silently off.
+
+- **BREAKING: durations must be positive.** `GATE_POLL=0` is not a faster poll;
+  it spun the sweep against the git host's API as fast as it answered.
+
+- **`MAX_CONCURRENT_TRIAGE` / `maxConcurrentTriage`** bounds simultaneous
+  triages, default 4. Each is a clone, a helm render and a model call.
+
 ## [0.22.0] - 2026-08-28
 
 The gate runs in one place and reads its inventory from one source.

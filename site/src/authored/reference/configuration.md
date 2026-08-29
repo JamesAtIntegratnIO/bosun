@@ -90,7 +90,7 @@ the score to optimise is *unsafe actions = 0* rather than accuracy.
 |---|---|---|---|
 | `gate.checkName` | `GATE_CHECK_NAME` | `addons-gate` | Must match your branch protection rule |
 | `gate.forkPRs` | `GATE_FORK_PRS` | `false` | Render pull requests whose head is in another repository |
-| `gate.poll` | `GATE_POLL` | `30s` | Paces the sweep for pull requests with no verdict yet |
+| `gate.poll` | `GATE_POLL` | `30s` | Paces the sweep for pull requests with no verdict yet. Must be positive; `0` is not a faster poll but no wait at all, and the process refuses to start with it |
 | `gate.argocd.baseURL` | `ARGOCD_BASE_URL` | *(none)* | **Required.** The ArgoCD API the inventory is read from — see below |
 | `gate.argocd.podPort` | *(NetworkPolicy only)* | `8080` | The port **argocd-server's pod** listens on. Not the port in `baseURL` — see below |
 | `gate.argocd.existingSecret` | `ARGOCD_TOKEN` | *(none)* | **Required.** Secret holding the ArgoCD account token, key `tokenKey` |
@@ -298,6 +298,9 @@ a hang with zero bytes, not an error.
 | `replicaCount` | — | `1` |
 | `service.port` | `AGENT_ADDR` | `8080` |
 | `branding.name` | `AGENT_BRAND` | `Bosun` |
+| `promotionAuth.existingSecret` | — | *(unset)* |
+| `promotionAuth.tokenKey` | → `PROMOTION_TOKEN` | `token` |
+| `maxConcurrentTriage` | `MAX_CONCURRENT_TRIAGE` | `4` |
 | `serviceAccount.create` / `.name` | — | `true` / *(fullname)* |
 | `rbac.create` | — | `true` |
 | `resources` | — | `25m` CPU / `64Mi` requested, `512Mi` memory limit |
@@ -319,6 +322,31 @@ Kargo calls this in-cluster. Nothing else needs to reach it, and publishing
 something that can spend money and write to your repository would be gratuitous
 exposure — so the chart renders no Ingress or HTTPRoute at all.
 :::
+
+### Authenticating the promotion endpoint
+
+`POST /v1/promotion-opened` takes a pull-request number and the list of files
+the agent may edit and will read into the prompt it publishes. The NetworkPolicy
+restricts callers to the namespace, which is as narrow as a NetworkPolicy gets —
+every workload in that namespace qualifies.
+
+`promotionAuth.existingSecret` names a Secret holding a shared token; the value
+at `promotionAuth.tokenKey` becomes `PROMOTION_TOKEN`, and requests then need
+`Authorization: Bearer <token>`. Kargo sends it via the kargo-pipelines value
+`triage.authorization`, which is the whole header, so a Kargo expression keeps
+the token out of your values file:
+
+```yaml
+triage:
+  authorization: '${{ "Bearer " + secrets.bosun.token }}'
+```
+
+It is opt-in, so an upgrade does not silently stop answering Kargo. Unset, the
+endpoint is open and the pod logs a warning saying so at every start-up.
+
+`maxConcurrentTriage` bounds how many pull requests are triaged at once. Each is
+a clone, a helm render and a model call, so the ceiling is about the pod's memory
+and your git host's rate limit, not throughput.
 
 ## The gate's own config file
 

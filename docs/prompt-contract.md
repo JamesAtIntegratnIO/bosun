@@ -135,7 +135,7 @@ Neither the prompt nor the model decides any of this:
 | Cannot overwrite a value it misread | `from` must match the file |
 | Cannot invent a version | corroboration against the evidence |
 | Cannot add keys with a scalar edit | the key must already resolve to a scalar |
-| Cannot escape the repository | path traversal check |
+| Cannot escape the checkout | `safepath.Resolve` — `..` rejected, and any path crossing a symbolic link refused |
 | Cannot try forever | attempt cap, tracked by label |
 | Cannot invent data when reshaping a document | every value must be in the original or dictated by the target schema |
 | Cannot rename what it reshapes | identity fields byte-identical |

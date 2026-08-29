@@ -97,6 +97,66 @@ func TestTheLegacyAuthorIsIgnoredNotHonored(t *testing.T) {
 	}
 }
 
+// Seven boolean settings had drifted into two idioms -- `== "true"` and
+// `!= "false"` -- which agree on nothing except the exact strings "true" and
+// "false". LIVE_READS=1 was off; EXPLAIN_GREEN=no was on.
+func TestEveryBooleanSettingAcceptsTheSameWords(t *testing.T) {
+	onWords := []string{"1", "t", "true", "TRUE", "yes", "on"}
+	offWords := []string{"0", "f", "false", "FALSE", "no", "off"}
+
+	get := func(t *testing.T, k string, def bool) bool {
+		t.Helper()
+		v, err := envBool(k, def)
+		if err != nil {
+			t.Fatalf("%s: %v", k, err)
+		}
+		return v
+	}
+
+	// Off by default: absent means off, and every on-word turns it on.
+	for _, k := range []string{"GIT_INSECURE_SKIP_TLS_VERIFY", "GATE_FORK_PRS", "LIVE_READS"} {
+		if get(t, k, false) {
+			t.Errorf("%s: unset must stay off", k)
+		}
+		for _, w := range onWords {
+			t.Setenv(k, w)
+			if !get(t, k, false) {
+				t.Errorf("%s=%s must be on", k, w)
+			}
+		}
+	}
+
+	// On by default: absent means on, and every off-word turns it off.
+	for _, k := range []string{"EXPLAIN_GREEN", "MIGRATE_DROPPED_VERSIONS", "UPSTREAM_NOTES",
+		"STRUCTURAL_MIGRATION", "SUPERVISE_PIPELINE"} {
+		if !get(t, k, true) {
+			t.Errorf("%s: unset must stay on", k)
+		}
+		for _, w := range offWords {
+			t.Setenv(k, w)
+			if get(t, k, true) {
+				t.Errorf("%s=%s must be off", k, w)
+			}
+		}
+	}
+}
+
+// A typo used to read as false, so a setting somebody deliberately turned on
+// was silently off and nothing said so.
+func TestABooleanTypoIsAConfigurationError(t *testing.T) {
+	for _, w := range []string{"treu", "ON!", "2", "maybe", "tru"} {
+		t.Setenv("EXPLAIN_GREEN", w)
+		if _, err := envBool("EXPLAIN_GREEN", true); err == nil {
+			t.Errorf("EXPLAIN_GREEN=%q: want a configuration error, got none", w)
+		}
+	}
+}
+
+// Each of these three is validated in one switch and dispatched in another, in
+// a different file. A value the validator accepts and the dispatcher does not
+// is a pod that starts healthy and then does nothing -- so the two sets have to
+// be the same, and a named type is what lets a test say so.
+
 // Each of these two is validated in one switch and dispatched in another, in a
 // different file. A value the validator accepts and the dispatcher does not is
 // a pod that starts healthy and then does nothing -- so the two sets have to be
@@ -115,6 +175,11 @@ func TestTheValidatorAcceptsExactlyTheValuesThatDispatch(t *testing.T) {
 	for _, p := range []GitProviderName{GitGitHub, GitGitea} {
 		c := base()
 		c.GitProvider = p
+		if p == GitGitea {
+			// Gitea has no public API to default to; see the dedicated test
+			// below. This one is about dispatch parity, not about that rule.
+			c.GitAPIBase = "https://gitea.example.com"
+		}
 		if err := c.validate(); err != nil {
 			t.Errorf("GIT_PROVIDER %q is dispatched but rejected: %v", p, err)
 		}
@@ -169,5 +234,35 @@ func TestTheInventoryNeedsAnArgoCDURLAndAToken(t *testing.T) {
 	c.ArgoCDToken = ""
 	if err := c.validate(); err == nil || !strings.Contains(err.Error(), "ARGOCD_TOKEN") {
 		t.Errorf("a missing ArgoCD token must name the setting: %v", err)
+	}
+}
+
+// GitHub defaults to the public API when GIT_API_BASE is empty. Gitea has no
+// public instance to default to, so an empty base URL is a pod that starts
+// healthy and then cannot read a pull request or push a fix -- and PushFix
+// says so only once a fix is ready to push, minutes and one model call later.
+func TestGiteaRequiresAnAPIBase(t *testing.T) {
+	base := func() *Config {
+		return &Config{
+			GitOwner: "o", GitRepo: "r", GitRepoURL: "u", GitToken: "t",
+			GitProvider: GitGitea,
+			LLMProvider: LLMAnthropic, LLMModel: "m",
+			AllowPaths:    []string{"addons/**"},
+			ArgoCDBaseURL: "https://argocd-server.argocd.svc", ArgoCDToken: "tok",
+		}
+	}
+	if err := base().validate(); err == nil {
+		t.Error("gitea with no GIT_API_BASE must not start")
+	}
+	c := base()
+	c.GitAPIBase = "https://gitea.example.com"
+	if err := c.validate(); err != nil {
+		t.Errorf("gitea with a base URL must start: %v", err)
+	}
+	// The rule is Gitea's alone: GitHub's default is the public API.
+	c = base()
+	c.GitProvider = GitGitHub
+	if err := c.validate(); err != nil {
+		t.Errorf("github with no GIT_API_BASE must start: %v", err)
 	}
 }
