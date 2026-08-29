@@ -104,8 +104,8 @@ const PAGES = [
   {
     src: 'gate/docs/render-diff-schema.md',
     out: 'gate/render-diff-schema',
-    title: 'render-diff.json schema',
-    description: 'The JSON contract between the gate and the agent that consumes its verdict.',
+    title: 'The diff result',
+    description: 'The contract between the gate and the agent that consumes its verdict: four buckets, and why each blocks or does not.',
   },
 
   // --- Reference ----------------------------------------------------------

@@ -115,10 +115,7 @@ func (a *ArgoCD) ClusterInventory(ctx context.Context) (*gate.Inventory, error) 
 		})
 	}
 
-	// Same filter as the live Secret read, the zero value, which keeps
-	// everything. Filtering exists to stabilise a snapshot against churn, and
-	// a live read is never diffed against anything.
-	inv := gate.InventoryFromClusters(cs, gate.ExportFilter{})
+	inv := gate.InventoryFromClusters(cs)
 	if len(inv.Clusters) == 0 {
 		return implicitLocalCluster(), nil
 	}

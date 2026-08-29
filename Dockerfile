@@ -13,25 +13,21 @@ FROM alpine:3.21
 # and pushes the fix as an ordinary commit.
 RUN apk add --no-cache ca-certificates git
 
-# helm, for the same reason the gate carries it: the structural migration needs
-# the schema a chart ships at the version being promoted to, and the only thing
-# guaranteed to render a chart the way the cluster's own Helm will is Helm. A
-# library pinned here would be a slower way to drift away from that.
-#
-# Same version as the gate's image, deliberately, two components rendering the
-# same chart with different Helms is a difference nobody would think to look
-# for.
+# helm, because chart rendering has to match what the cluster's own Helm does:
+# the gate renders charts at both sides of a bump, the structural migration
+# needs the schema a chart ships at the version being promoted to, and the
+# only thing guaranteed to render a chart the way the cluster's own Helm will
+# is Helm. A library pinned here would be a slower way to drift away from that.
 ARG HELM_VERSION=v3.19.0
 # No default value. Targetarch is a built-in BuildKit arg, and assigning one
-# here shadows what BuildKit injects, which is how the gate's arm64 image once
-# came to download amd64 helm and fail exec'ing it under emulation. The
-# fallback is computed inside run instead, so BuildKit stays authoritative
-# where it sets the arg and a plain `docker build` still resolves natively.
+# here shadows what BuildKit injects, which is how an arm64 build once came to
+# download amd64 helm and fail exec'ing it under emulation. The fallback is
+# computed inside run instead, so BuildKit stays authoritative where it sets
+# the arg and a plain `docker build` still resolves natively.
 ARG TARGETARCH
-# kubeconform joined helm when the gate moved in-process: an agent gating in
-# cluster mode runs the same schema validation the CI adapter ran, and a
-# missing binary would silently mean "validate: enabled" validates nothing.
-# Same version as the gate's image, same reason as helm.
+# kubeconform joined helm when the gate moved in-process: the agent runs the
+# gate's schema validation itself, and a missing binary would silently mean
+# "validate: enabled" validates nothing.
 ARG KUBECONFORM_VERSION=v0.7.0
 RUN set -eux; \
     arch="${TARGETARCH:-$(apk --print-arch | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')}"; \
@@ -51,8 +47,7 @@ COPY --from=build /out/bosun /usr/local/bin/bosun
 RUN adduser -D -u 10001 agent && mkdir -p /work && chown 10001 /work
 USER 10001
 ENV CLONE_ROOT=/work
-# helm needs somewhere to put its cache and uid 10001 has no home directory --
-# the same accommodation the gate's CI job makes when it overrides the user.
+# helm needs somewhere to put its cache and uid 10001 has no home directory.
 ENV HOME=/work
 WORKDIR /work
 

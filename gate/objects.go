@@ -29,19 +29,17 @@ type Object struct {
 	Kind       string `json:"kind"`
 	Namespace  string `json:"namespace,omitempty"`
 	Name       string `json:"name"`
-	// Hash is of the whole object, so a changed field is detectable without
-	// storing the object itself. The table is an artifact a pull request
-	// carries around; embedding every manifest would make it enormous.
+	// Hash is of the whole object, so a changed field is detectable by
+	// comparing two tables without either carrying the manifests themselves.
 	Hash string `json:"hash"`
 
-	// Body is the normalised object, carried in memory only, `json:"-"` is
-	// load-bearing. It exists so a "changed" finding can say which fields
-	// changed, and it must never reach the target table, or the artifact that
-	// Hash was invented to keep small becomes the manifests all over again.
+	// Body is the normalised object. It exists so a "changed" finding can say
+	// which fields changed.
 	//
 	// Populated by chart-diff, which renders both versions in the same process
-	// that diffs them. A table loaded from JSON has none, and the field diff is
-	// omitted; the finding is still reported.
+	// that diffs them. A table whose objects came from anywhere else has none,
+	// and the field diff is omitted; the finding is still reported, never
+	// silently downgraded.
 	Body map[string]any `json:"-"`
 }
 
@@ -137,8 +135,9 @@ type FieldChange struct {
 // servedVersions is the set of versions a CustomResourceDefinition serves.
 //
 // Empty for anything else, and empty when the body was not carried; a table
-// loaded from JSON cannot answer this, and saying "no versions removed"
-// because we could not look would be the worst possible answer.
+// whose objects came from anywhere but chart-diff cannot answer this, and
+// saying "no versions removed" because we could not look would be the worst
+// possible answer.
 func servedVersions(o Object) map[string]bool {
 	if o.Kind != "CustomResourceDefinition" || o.Body == nil {
 		return nil

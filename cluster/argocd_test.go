@@ -44,8 +44,9 @@ func TestArgoCDAndSecretsDecodeTheSameClusterIdentically(t *testing.T) {
 	}
 	annotations := map[string]string{"addons_repo_path": "charts/application-sets"}
 
-	// Decoded from JSON rather than built as a literal, because that is how
-	// `clusters export` gets one: from `kubectl get secrets -o json`.
+	// Decoded from JSON rather than built as a literal, because that is the
+	// shape the apiserver hands a Secret over in: `data` values base64 on the
+	// wire.
 	raw, _ := json.Marshal(map[string]any{
 		"metadata": map[string]any{"name": "cluster-hub", "labels": labels, "annotations": annotations},
 		"data":     map[string]string{"name": b64("hub"), "server": b64("https://media.example:6443")},
@@ -54,7 +55,7 @@ func TestArgoCDAndSecretsDecodeTheSameClusterIdentically(t *testing.T) {
 	if err := json.Unmarshal(raw, &secret); err != nil {
 		t.Fatal(err)
 	}
-	fromSecrets := gate.InventoryFromSecrets([]gate.ClusterSecret{secret}, gate.ExportFilter{})
+	fromSecrets := gate.InventoryFromSecrets([]gate.ClusterSecret{secret})
 
 	argo := argoFor(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, clusterList(map[string]any{
@@ -72,8 +73,8 @@ func TestArgoCDAndSecretsDecodeTheSameClusterIdentically(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(fromSecrets, fromArgo) {
-		t.Fatalf("the API and the export decode disagree about the same cluster, so a "+
-			"snapshot would not describe what the gate renders against:\n  secrets: %+v\n  argocd:  %+v",
+		t.Fatalf("the API read and the Secret decode disagree about the same cluster, so "+
+			"the inventory depends on which source was read:\n  secrets: %+v\n  argocd:  %+v",
 			fromSecrets.Clusters, fromArgo.Clusters)
 	}
 }

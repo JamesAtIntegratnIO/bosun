@@ -74,7 +74,7 @@ jobs:
           git push origin "v${V}"
 
   images:
-    name: Publish images at v${{ needs.version.outputs.version }}
+    name: Publish the image at v${{ needs.version.outputs.version }}
     needs: [version, tag]
     # Called rather than triggered. A tag pushed with GITHUB_TOKEN does not
     # start a workflow run, so waiting for image.yaml's `tags: ['v*']` trigger

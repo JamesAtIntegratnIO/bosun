@@ -388,7 +388,7 @@ func collectBootstrap(repoRoot string, cfg *Config, inv *Inventory, s Source) ([
 			"source %q matched no cluster in the inventory.\n\n"+
 				"Nothing it generates can be checked, so the comparison would be made\n"+
 				"against an empty set and report no change.\n\n"+
-				"Almost always a stale inventory: re-run `gitops-gate clusters export`.\n"+
+				"Check the source's selector against the cluster labels ArgoCD reports.\n"+
 				"If it genuinely targets no cluster here, remove it from .gitops-gate.yaml\n"+
 				"rather than leaving the gate blind to it", s.Name)
 	}

@@ -3,10 +3,7 @@
 //
 // It renders every ArgoCD Application and ApplicationSet a repository defines,
 // expands the generators against a cluster inventory, and diffs two renders.
-// The inventory can come from a checked-in snapshot (the CLI in cmd/gitops-gate,
-// for a run from a workstation) or from the live ArgoCD API (the agent, which
-// runs in-cluster and has no snapshot to go stale).
-//
-// The CLI and the in-cluster gate call the same functions in here. That is the
-// point of the package boundary: two delivery surfaces, one verdict.
+// The agent imports this package and runs the gate in-cluster, with the
+// inventory read live from the ArgoCD API (the cluster package). No model is
+// involved at this layer; the AI half lives in the agent that calls it.
 package gate

@@ -143,28 +143,26 @@ fi
 # The gate's verdict is the output of `helm template`, so the helm that
 # produces it is part of the answer. A contributor whose shell renders with a
 # different helm than the image gets a verdict that is locally true and
-# globally wrong, and nothing about it looks like a version problem. Both
-# Dockerfiles already pin helm and kubeconform and say why; this asserts the
-# flake pins the same strings, because three copies of a version number is
+# globally wrong, and nothing about it looks like a version problem. The
+# Dockerfile already pins helm and kubeconform and says why; this asserts the
+# flake pins the same strings, because two copies of a version number is
 # exactly the shape that drifts.
 # ---------------------------------------------------------------------------
 echo "==> the dev shell and the images agree on what renders"
 if [ -f flake.nix ]; then
   check_pin() { # <flake attribute> <Dockerfile ARG>
-    local attr="$1" arg="$2" fv dv f mismatch=0
+    local attr="$1" arg="$2" fv dv
     fv="$(sed -n "s/^ *${attr} = \"\([^\"]*\)\";.*/\1/p" flake.nix | head -1)"
     if [ -z "$fv" ]; then
       bad "flake.nix does not pin ${attr}"
       return 0
     fi
-    for f in Dockerfile gate/Dockerfile; do
-      dv="$(sed -n "s/^ARG ${arg}=v\{0,1\}\(.*\)/\1/p" "$f" | head -1)"
-      if [ "$dv" != "$fv" ]; then
-        bad "${f} builds with ${arg}=${dv:-<unset>}, the dev shell with ${attr}=${fv}"
-        mismatch=1
-      fi
-    done
-    if [ "$mismatch" -eq 0 ]; then ok "${attr} ${fv} matches both images"; fi
+    dv="$(sed -n "s/^ARG ${arg}=v\{0,1\}\(.*\)/\1/p" Dockerfile | head -1)"
+    if [ "$dv" != "$fv" ]; then
+      bad "Dockerfile builds with ${arg}=${dv:-<unset>}, the dev shell with ${attr}=${fv}"
+    else
+      ok "${attr} ${fv} matches the image"
+    fi
     return 0
   }
   check_pin helmVersion HELM_VERSION
@@ -183,11 +181,10 @@ for c in "${charts[@]}"; do
     [ -f "$d/$f" ] && ok "$d/$f" || bad "$d/$f is missing"
   done
 done
-# The two commands. The agent is the root package, so its docs are the root's.
-for d in . gate; do
-  for f in README.md CHANGELOG.md; do
-    [ -f "$d/$f" ] && ok "${d#./}/$f" || bad "$d/$f is missing"
-  done
+# The agent is the root package, so its docs are the root's. The gate is a
+# package with a README; its changes are recorded in the root CHANGELOG.
+for f in README.md CHANGELOG.md gate/README.md; do
+  [ -f "$f" ] && ok "$f" || bad "$f is missing"
 done
 
 echo

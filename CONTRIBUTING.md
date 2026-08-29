@@ -80,19 +80,15 @@ it deliberately does not:
 | `cluster/`, `gitprovider/`, `llm/`, `upstream/`, `egress/` | the outside world, one seam each, every one with a fake |
 | root | the composition root: read the environment, build one of each, wire, serve |
 
-There are three `main` packages, in three shapes, and the shapes mean different
+There are two `main` packages, in two shapes, and the shapes mean different
 things:
 
-- **root** is the module's primary binary. Idiomatic Go for a module that ships
-  one thing; `cmd/bosun/` would say there are several.
-- **`gate/cmd/gitops-gate/`** is a second shipped binary inside a
-  self-contained sub-product with its own README, CHANGELOG and Dockerfile. The
-  `cmd/` is what keeps `gate/` importable as a library, which the agent depends
-  on.
+- **root** is the module's only shipped binary. Idiomatic Go for a module that
+  ships one thing; `cmd/bosun/` would say there are several.
 - **`evals/export/`** is a development tool, beside the thing it exports rather
   than in a top-level `cmd/`, because it is useless without it.
 
-A new binary belongs in whichever of those three it is.
+A new binary belongs in whichever of those two it is.
 
 ## The toolchain
 
@@ -108,9 +104,9 @@ than from nixpkgs, which currently ships Helm 4.
 That pin earns its keep. The gate's verdict *is* the output of `helm template`,
 so the helm that produced it is part of the answer: render with a different one
 and you get a verdict that is locally true and globally wrong, and nothing
-about the symptom points at a version. Both Dockerfiles already say this where
-they pin, and `hack/portability-test.sh` asserts the flake agrees with both,
-because three copies of a version number drift.
+about the symptom points at a version. The Dockerfile already says this where
+it pins, and `hack/portability-test.sh` asserts the flake agrees with it,
+because two copies of a version number drift.
 
 Two tools stay outside the shell, because they manage host state a second copy
 would fight over: **colima** (a VM with state in `~/.colima`) and
@@ -152,22 +148,14 @@ say so in the changelog with the model it was measured against.
   independent of each other and of the agent's, so nothing waits on a shared
   tag. Publishing refuses to overwrite, so re-running is harmless.
 - **A release is cut when `charts/bosun`'s `appVersion` changes on main.**
-  `release.yaml` tags it and publishes the images at that version. `appVersion`
+  `release.yaml` tags it and publishes the image at that version. `appVersion`
   is already the single source of truth for which image deploys, since the
   consuming addon leaves `image.tag` unset, so deriving the tag from the same
   field means the tag, the chart and the running image cannot disagree.
-- **A merge publishes only the images it changed.** `image.yaml` diffs the
-  push: `gate/**` (plus `go.mod`/`go.sum`) rebuilds `gitops-gate`, anything
-  else in the module rebuilds `bosun`, a release or a manual run builds both.
-  Rule 1a cuts both ways: the gate imports nothing from the agent, so a triage
-  fix is not a reason to republish the gate.
-
-  Publishing both from one matrix costs more than the build minutes. The
-  consumer pins the gate by `main-<sha>` and will not auto-merge it, because
-  the gate judges every other promotion and a human has to read the bump.
-  Republishing an identical gate under a new sha, and it is never
-  byte-identical since the revision label carries the commit, spends that
-  attention on nothing.
+- **A merge publishes the one image this repository ships.** `image.yaml`
+  builds `bosun` on any push to main that reaches code, and skips prose-only
+  pushes via `paths-ignore`. The gate is a package the agent compiles in, not
+  a second image ([ADR 0010](adr/0010-the-cli-goes-too.md)).
 
 - **CI refuses a pull request that changes a chart without bumping its
   version.** Publishing already refuses to overwrite, but silently and after

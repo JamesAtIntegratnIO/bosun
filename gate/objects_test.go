@@ -277,9 +277,9 @@ func TestChangedObjectReportsWhichFieldsMoved(t *testing.T) {
 	}
 }
 
-// A table loaded from the JSON artifact has no bodies; Hash exists precisely
-// so the artifact stays small. The finding must still be reported; only the
-// field list is absent.
+// Only chart-diff carries bodies, so a table whose objects came from anywhere
+// else compares by Hash alone. The finding must still be reported; only the
+// field list is absent, because "we could not look" must never read as safe.
 func TestFieldDiffIsOmittedWhenBodiesWereNotCarried(t *testing.T) {
 	got := diffObjects(
 		[]Object{{Cluster: "prod", Kind: "Deployment", Name: "explorer", APIVersion: "apps/v1", Hash: "aaa"}},
@@ -293,8 +293,10 @@ func TestFieldDiffIsOmittedWhenBodiesWereNotCarried(t *testing.T) {
 	}
 }
 
-// The body must never reach the target table. Hash exists so the artifact a
-// pull request carries between jobs stays small.
+// Body is memory-only, and the `json:"-"` that keeps it so is asserted rather
+// than trusted. Nothing serialises a table today, so this guards the struct's
+// documented shape (gate/docs/render-diff-schema.md) against the day something
+// does: a body reaching it would be every manifest all over again.
 func TestObjectBodyIsNeverSerialised(t *testing.T) {
 	o := objWith("x", map[string]any{
 		"apiVersion": "v1", "kind": "ConfigMap",
@@ -309,7 +311,7 @@ func TestObjectBodyIsNeverSerialised(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(blob), "do-not-serialise-me") {
-		t.Errorf("the object body reached the table artifact: %s", blob)
+		t.Errorf("the object body reached the table's serialised shape: %s", blob)
 	}
 }
 

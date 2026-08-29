@@ -127,8 +127,8 @@ func collectHelm(repoRoot string, inv *Inventory, s Source) ([]docs, error) {
 	if len(out) == 0 {
 		return nil, fmt.Errorf("source %q matched no cluster in the inventory.\n\n"+
 			"Nothing it defines can be checked, so the comparison would be made\n"+
-			"against an empty set and report no change. Usually a stale inventory:\n"+
-			"re-run `gitops-gate clusters export`", s.Name)
+			"against an empty set and report no change. Check the source's selector\n"+
+			"against the cluster labels ArgoCD reports", s.Name)
 	}
 	return out, nil
 }

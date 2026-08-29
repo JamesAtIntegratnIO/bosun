@@ -95,7 +95,7 @@ var DefaultDeny = []string{
 	".gitlab-ci.yml", //
 	"bitbucket-pipelines.yml",
 	".gitops-gate.yaml",     // what the gate renders, and how
-	".gitops-gate/**",       // the cluster inventory the gate compares against
+	".gitops-gate/**",       // the retired snapshot directory; a leftover copy must not be editable either
 	"delivery/**",           // the kit itself, including this agent
 	"**/kargo-projects/**",  // merge policy and constraints
 	"**/kargo-pipelines/**", // the promotion pipelines themselves

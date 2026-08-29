@@ -8,8 +8,7 @@ The agent runs the gate itself ([ADR
 requests, renders base and head against the live cluster inventory read from
 ArgoCD's API, and posts the `addons-gate` status and report comment on its own.
 There is no CI workflow to install, no cluster-inventory snapshot to export and
-keep fresh, and no paths filter to hand-edit. The [CLI
-appendix](#appendix-the-cli) covers running the same engine from a workstation.
+keep fresh, and no paths filter to hand-edit.
 
 ## 1. What you need before anything
 
@@ -103,9 +102,7 @@ sources:
 
 Source types (`manifests`, `argocd-bootstrap`, `helm`, `kustomize`, `rendered`)
 and every optional key are in
-[`gate/docs/config-reference.md`](../gate/docs/config-reference.md). You do
-**not** need the `clusters:` key or a `.gitops-gate/` directory. That is the
-checked-in snapshot, and it exists only for the CLI.
+[`gate/docs/config-reference.md`](../gate/docs/config-reference.md).
 
 **Verify:** open this change as a pull request. The gate should render it, post
 an `addons-gate` status, and, since the config is read from the pull request's
@@ -160,26 +157,9 @@ Zero means the hook is not rendered into your Stages.
 ## 6. Keep it healthy
 
 Nothing here needs a schedule. The live inventory is read fresh on every gate
-run, so there is no snapshot to keep current. The `clusters export -check`
-drift cron that a snapshot would need does not exist here.
+run, so there is no snapshot to keep current.
 
 What remains is ordinary operations: watch the agent's log, and treat an
 `error`-state `addons-gate` ("the gate could not run") as a page. That state
 means the gate is broken, which is deliberately distinct from "this change is
 bad".
-
----
-
-## Appendix: the CLI
-
-The gate is the same engine from a workstation, against the checked-in
-snapshot, for a local run before pushing:
-
-```bash
-gitops-gate clusters export -out .gitops-gate/clusters.yaml
-gitops-gate render -repo . -out targets.json
-gitops-gate diff -base targets-base.json -head targets-head.json -repo .
-```
-
-The snapshot is a CLI-only concern: the in-cluster gate reads the inventory
-live and never opens that file.

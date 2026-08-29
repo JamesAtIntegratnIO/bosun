@@ -5,10 +5,10 @@ import "github.com/JamesAtIntegratnIO/bosun/egress"
 // EgressPolicy is the operator's deny-list, consulted before the gate lets a
 // subprocess reach a remote chart repository.
 //
-// An interface rather than the egress package's type so the standalone
-// gitops-gate binary keeps its short dependency list. egress.Policy satisfies
-// it as-is, which is how the in-cluster service passes the same policy the
-// triage side already applies to its own helm calls.
+// An interface rather than the egress package's concrete type, so the policy
+// stays the caller's to construct. egress.Policy satisfies it as-is, which is
+// how the in-cluster service passes the same policy the triage side already
+// applies to its own helm calls.
 type EgressPolicy interface {
 	// Denied reports whether a host is forbidden, and by which rule.
 	Denied(host string) (rule string, denied bool)
@@ -25,7 +25,7 @@ type EgressPolicy interface {
 // banner both described a control that covered every outbound request.
 //
 // Returns the reason to report when the host is denied, empty when the call may
-// proceed. An unset policy is open, which is what the CLI wants.
+// proceed. An unset policy is open.
 func (c *Config) egressCheck(ref, chart, version string) string {
 	host := egress.HostOf(ref)
 	if host == "" {

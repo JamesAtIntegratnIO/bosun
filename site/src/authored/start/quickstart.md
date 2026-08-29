@@ -215,9 +215,7 @@ sources:
     path: bootstrap/addons.yaml
 ```
 
-You do **not** need the `clusters:` key or a `.gitops-gate/` directory. That is
-the checked-in snapshot, and it exists only for the CLI. Every source type and
-option is in the
+Every source type and option is in the
 [`.gitops-gate.yaml` reference](/gate/config-reference/).
 
 **Verify:** open that change as a pull request. The config is read from the
@@ -257,7 +255,7 @@ kubectl get stages -A -o json | grep -c promotion-opened
 Zero means the hook is not rendered into your Stages.
 :::
 
-- [Onboarding](/start/onboarding/): the full six-step path, with the CLI appendix
+- [Onboarding](/start/onboarding/): the full six-step path
 - [Configuration](/reference/configuration/): every value, and the env var it becomes
 - [Troubleshooting](/reference/troubleshooting/): symptoms, causes, fixes
 - [The loop, end to end](/start/the-loop/): what you just installed, walked through one pull request
