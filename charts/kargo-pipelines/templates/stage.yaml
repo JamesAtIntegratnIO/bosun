@@ -173,6 +173,10 @@ spec:
             headers:
               - name: Content-Type
                 value: application/json
+              {{- with $.Values.triage.authorization }}
+              - name: Authorization
+                value: {{ . | quote }}
+              {{- end }}
             body: {{ include "kp.triageBody" (dict
                       "target" $t "norm" $n "artifact" $artifact
                       "files" (include "kp.stageFiles" (dict "stage" $st) | fromJsonArray)

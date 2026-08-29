@@ -64,11 +64,12 @@ gate — not a model — that named them.
 | Cannot edit CI config, the gate, or the merge policy | `edits.DefaultDeny`, checked before any write and not overridable by configuration |
 | Cannot edit outside the configured area | `Policy.Allow`; an empty allowlist refuses everything, and the process refuses to start with one |
 | Cannot edit a file this change did not touch | `Policy.Scope`, set per request from the promotion's own file list. `Allow` is a standing grant and deliberately coarse; `Scope` is what *this* pull request is about. Without it the prompt asks for the files this pull request may change while the applier accepts anything under the standing grant — an instruction where there should be a guarantee |
-| Cannot overwrite a value it misread | the edit's `from` must equal what the file holds |
+| Cannot overwrite a value it misread | the edit's `from` must equal what the file holds, compared unconditionally — an empty `from` matches an empty scalar and nothing else |
+| Cannot rewrite a neighbouring token | the replacement is anchored to the scalar's own line **and column**, so `b` in `{a: old, b: old}` and the value in `version: version` are the tokens that change |
 | Cannot invent a version | version-shaped values must appear in the evidence the model was shown |
 | Cannot add or restructure with a scalar edit | the key must already resolve to an existing scalar. Restructuring is only available on the document path, under the three checks above |
-| Cannot escape the repository | path traversal is rejected after cleaning |
-| Cannot retry forever | attempt cap, tracked by pull-request label |
+| Cannot escape the checkout | `safepath.Resolve`, on every read and every write. A lexical test answers a question about strings while `ReadFile` asks one about the filesystem, so containment is both: `..` is rejected, and a path is refused outright if any component of it is a symbolic link. A tracked link at a permitted path is what would otherwise reach a Secret mounted in the pod, or a denied file elsewhere in the repository |
+| Cannot retry forever | attempt cap, tracked by pull-request label. The label is written **before** the push and the push is refused if it cannot be written, so a token that may push and may not label escalates instead of looping |
 | Cannot write to the default branch | the only push path targets the pull request's own branch |
 | Cannot block a merge | its commit status is never a failure state, whatever the verdict. A red status here would make the agent a second gate; the description carries the meaning instead of the colour. It is `pending` while triage runs and `success` once there is a verdict — pending on a check nobody requires blocks nothing, and it is what stops "still thinking" reading as "nothing to say" |
 | Cannot reach anything it was not given | upstream lookup talks to `api.github.com` and to the registries named in `networkPolicy.egress.fqdns`, and nothing else. Every failure degrades to a render-only explanation that says so |
@@ -113,6 +114,34 @@ An operator can add to the deny-list. They cannot remove from it.
 Labels live on the pull request, so the cap survives a restart, a rescheduled
 pod, and a second replica. In-memory state would reset every time the pod
 moved, which is exactly when a loop would be most expensive.
+
+The label is the cap's only memory, so it is reserved before the fix is pushed
+rather than recorded after. A token with permission to push and none to label
+would otherwise push, fail to label, count zero attempts on the next run and
+repair again — a model call and a commit per iteration, with no ceiling. When
+the label cannot be written, nothing is pushed and the pull request is handed
+to a human with that reason.
+
+## Who may call the promotion endpoint
+
+`POST /v1/promotion-opened` takes a pull-request number and the list of files
+the agent may edit and will read into the prompt it publishes. The chart's
+NetworkPolicy limits callers to the namespace, which is the granularity a
+NetworkPolicy has — every workload in it qualifies.
+
+Set `promotionAuth.existingSecret` on the bosun chart and
+`triage.authorization` on kargo-pipelines to require a bearer token. It is
+opt-in: leaving it unset keeps the endpoint open, and the pod says so in its
+log at every start-up.
+
+## Why a verdict names a commit
+
+Every checkout clones a branch; every verdict is published against the head SHA
+the host reported moments before. A push landing between those two operations
+would have the gate render one commit and publish the answer against another.
+After cloning, `gitprovider.EnsureHead` compares `HEAD` with that SHA, fetches
+the exact commit where the host serves it, and aborts the run where it does
+not.
 
 ## Failure is always visible
 

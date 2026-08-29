@@ -533,6 +533,28 @@ func (g *Service) checkout(ctx context.Context, pr *gitprovider.PullRequest) (st
 
 	for _, cmd := range [][]string{
 		{"git", "clone", "--quiet", "--depth", "1", "--branch", pr.Branch, g.RepoURL, head},
+	} {
+		c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
+		var out strings.Builder
+		c.Stderr = &out
+		if err := c.Run(); err != nil {
+			cleanup()
+			return "", "", func() {}, fmt.Errorf("%s: %w: %s", strings.Join(cmd[:2], " "), err, out.String())
+		}
+	}
+
+	// Before the base is fetched, because the head is what the verdict is
+	// ABOUT. A branch clone is an approximation of a commit and the whole
+	// service treats it as the commit: the outcome is cached under
+	// pr.HeadSHA, the status is written to pr.HeadSHA, and a push landing in
+	// this window would cache commit B's render as commit A's verdict --
+	// green, published, and about something nobody rendered.
+	if err := gitprovider.EnsureHead(ctx, head, pr.HeadSHA); err != nil {
+		cleanup()
+		return "", "", func() {}, err
+	}
+
+	for _, cmd := range [][]string{
 		{"git", "-C", head, "fetch", "--quiet", "--depth", "1", "origin", baseRef},
 		{"git", "-C", head, "worktree", "add", "--quiet", "--detach", base, "FETCH_HEAD"},
 	} {

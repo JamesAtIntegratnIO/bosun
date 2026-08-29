@@ -48,8 +48,16 @@ Name() string
 
 `GIT_API_BASE` means different things per provider, because the providers do:
 on GitHub it is the API root (`.../api/v3` for Enterprise); on Gitea it is the
-**instance** root, because the client appends `/api/v1` itself and also needs
-that root to build a push remote.
+**instance** root, because the client appends `/api/v1` itself.
+
+`GIT_API_BASE` is required for Gitea and the process refuses to start without
+it — there is no public Gitea to default to. GitHub defaults to the public API.
+
+**Reads and writes must name the same host.** The GitHub client builds its push
+remote from `GIT_REPO_URL`, the same value the checkouts clone, so an
+Enterprise deployment pushes where it read. Deriving the remote from
+`owner/repo` against `github.com` sends the fix — and a live installation token
+— to whatever repository happens to hold that name on the public host.
 
 ## Things a new implementation has to get right
 

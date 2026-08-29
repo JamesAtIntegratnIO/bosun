@@ -54,7 +54,13 @@ type Fake struct {
 	UpdateErr error
 	nextID    int64
 	Labelled  []string
-	Pushes    []Push
+	// LabelErr makes every AddLabel fail, which is the shape of a token with
+	// push permission and no permission to label -- the case that used to
+	// make the automatic-attempt cap fail open.
+	LabelErr error
+	// LabelAttempts records every AddLabel call, refused ones included.
+	LabelAttempts []string
+	Pushes        []Push
 }
 
 // Push is one recorded PushFix, including the working tree as it stood. The
@@ -148,7 +154,15 @@ func (f *Fake) SetCommitStatus(_ context.Context, sha, name string, state Commit
 }
 
 func (f *Fake) AddLabel(_ context.Context, _ int, label string) error {
+	if f.LabelErr != nil {
+		// Recorded as attempted even though it failed: the attempt cap's
+		// whole correctness argument is about what happens when the host
+		// refuses this call, and a test cannot see that if the fake is silent.
+		f.LabelAttempts = append(f.LabelAttempts, label)
+		return f.LabelErr
+	}
 	f.Labelled = append(f.Labelled, label)
+	f.LabelAttempts = append(f.LabelAttempts, label)
 	if f.PR != nil {
 		f.PR.Labels = append(f.PR.Labels, label)
 	}

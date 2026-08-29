@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
 	"github.com/JamesAtIntegratnIO/bosun/prompt"
+	"github.com/JamesAtIntegratnIO/bosun/safepath"
 	"github.com/JamesAtIntegratnIO/bosun/structural"
 )
 
@@ -136,7 +136,14 @@ func (t *Triage) restructureAll(ctx context.Context, root string, drops []migrat
 	sorted := append([]string(nil), files...)
 	sort.Strings(sorted)
 	for _, rel := range sorted {
-		full := filepath.Join(root, filepath.FromSlash(rel))
+		// Contained even though these paths came from the migration rather
+		// than from a model: the migration got them from a walk of the
+		// checkout, and a walk reports links as readily as it reports files.
+		full, err := safepath.Resolve(root, rel)
+		if err != nil {
+			res.Skipped = append(res.Skipped, fmt.Sprintf("`%s` was refused: %v", rel, err))
+			continue
+		}
 		data, err := os.ReadFile(full)
 		if err != nil {
 			// Never silent: the struct has a channel for exactly this, and a

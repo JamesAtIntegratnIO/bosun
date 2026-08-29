@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/JamesAtIntegratnIO/bosun/safepath"
 )
 
 // Hit is one file with at least one manifest declaring a dropped version.
@@ -86,6 +88,14 @@ func walkYAML(root string, visit func(rel string, data []byte)) error {
 		switch filepath.Ext(entry.Name()) {
 		case ".yaml", ".yml":
 		default:
+			return nil
+		}
+		// A walk reports a symbolic link as an ordinary entry, and reading it
+		// leaves the checkout: `manifests/app.yaml` can be a link to anything
+		// the pod can open. Skipped rather than read -- what this walk finds
+		// gets rewritten and sent to a model, and neither belongs to a file
+		// that is not in this repository.
+		if entry.Type()&fs.ModeSymlink != 0 {
 			return nil
 		}
 		data, err := os.ReadFile(path)
@@ -295,7 +305,16 @@ func Migrate(root string, drops []Dropped, check func(path string) string) (*Res
 				fmt.Sprintf("%d declaration(s) would survive the rewrite -- leaving the file untouched", len(left))})
 			return
 		}
-		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(rel)), updated, 0o644); err != nil {
+		// Resolved rather than joined. The walk that produced `rel` already
+		// skips links, but this write answers to the same policy edits.Apply
+		// does and must fail the same way if anything about the tree changed
+		// underneath it.
+		full, err := safepath.Resolve(root, rel)
+		if err != nil {
+			res.Refused = append(res.Refused, Refused{rel, err.Error()})
+			return
+		}
+		if err := os.WriteFile(full, updated, 0o644); err != nil {
 			res.Refused = append(res.Refused, Refused{rel, fmt.Sprintf("cannot write: %v", err)})
 			return
 		}
