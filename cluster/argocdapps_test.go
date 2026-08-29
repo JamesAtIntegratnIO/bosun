@@ -40,6 +40,13 @@ func argoServing(t *testing.T, fixture string) *ArgoCD {
 	}))
 }
 
+// forbidden is an ArgoCD that refuses every read.
+func forbidden() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "no", http.StatusForbidden)
+	})
+}
+
 func appNamed(t *testing.T, apps []Application, name string) Application {
 	t.Helper()
 	for _, a := range apps {

@@ -91,13 +91,24 @@ triage:
 
 Two things to know at this step, both loud rather than silent:
 
-- **The gate reads its inventory from ArgoCD's API**, not from the cluster
-  Secrets those clusters are stored in. Mint an account token, give it
-  `clusters, get` in `argocd-rbac-cm` and nothing else, and put it in
-  `gate.argocd.existingSecret`. The API redacts the credential block; a Secret
-  read could not, because RBAC has no way to say "the labels but not the data".
-  The cost is a credential to rotate and a component that can be down on its
-  own, since argocd-server is not up whenever the apiserver is.
+- **The gate reads from ArgoCD's API**, not from the cluster Secrets those
+  clusters are stored in. Mint an account token, put it in
+  `gate.argocd.existingSecret`, and give it exactly three read lines in
+  `argocd-rbac-cm`:
+
+  ```
+  p, bosun, clusters, get, *, allow
+  p, bosun, applications, get, */*, allow
+  p, bosun, applicationsets, get, */*, allow
+  ```
+
+  The first is the cluster inventory. The other two are what your repository
+  deploys, which the gate derives rather than reading out of a file you keep in
+  step by hand ([ADR 0012](../adr/0012-the-repo-stops-repeating-the-ship.md)).
+  The API redacts the credential block; a Secret read could not, because RBAC
+  has no way to say "the labels but not the data". The cost is a credential to
+  rotate and a component that can be down on its own, since argocd-server is
+  not up whenever the apiserver is.
 - **The NetworkPolicy has two halves and the chart can only write one.** The
   chart's own policy needs your model endpoint and, for `standard` flavor, the
   apiserver's real endpoints (`kubectl get endpoints kubernetes -n default`; a
@@ -131,36 +142,54 @@ Two things to know at this step, both loud rather than silent:
 or the inventory rather than running degraded, and the log says `gate:
 in-cluster, polling for open pull requests every 30s`.
 
-## 3. Commit `.gitops-gate.yaml`
+## 3. Open a pull request and read the scope
 
-One file at the repository root, telling the gate what to render. A typical one
-is under ten lines:
+There is usually nothing to commit at this step. The gate asks ArgoCD which
+Applications and ApplicationSets exist, keeps the ones pointing at this
+repository, and renders their paths from the pull request's own checkout. The
+two RBAC lines from step 2 are the configuration.
 
-```yaml
-sources:
-  - name: apps
-    type: manifests
-    paths: ["apps/*.yaml"]
-  - name: bootstrap
-    type: argocd-bootstrap
-    path: bootstrap/addons.yaml
+So open any pull request, even an empty one, and read the report's **What was
+rendered** section. It says how many sources were derived from how many live
+Applications, which is the number to check against what you expect:
+
+```
+Derived 14 sources from 65 Applications and 60 ApplicationSets that ArgoCD
+serves, and rendered 16 sources in total.
 ```
 
-Source types (`manifests`, `argocd-bootstrap`, `helm`, `kustomize`, `rendered`)
-and every optional key are in
-[`gate/docs/config-reference.md`](../gate/docs/config-reference.md).
+Two things it may also tell you, both worth acting on before protection is on:
 
-**Verify:** open this change as a pull request. The gate should render it, post
-an `addons-gate` status, and, since the config is read from the pull request's
-head, gate the very pull request that introduces it. Read the report comment;
-the **Not covered** section is the honest list of what the gate could not
-expand, and the time to care about it is now, before protection is on.
+- **A root rendered from the applied spec.** An ApplicationSet nothing in
+  ArgoCD created is a root, and if no manifest in this repository declares it,
+  the gate falls back to the spec ArgoCD has applied. Edits to that root are
+  then invisible to the gate until they apply. If its file *is* here and the
+  scan missed it, or if you are about to add one, name it:
+
+  ```yaml
+  # .bosun.yaml
+  roots:
+    - bootstrap/addons.yaml
+  ```
+
+- **Anything under Not covered.** The honest list of what the gate could not
+  expand. The time to care about it is now.
+
+A file is still read if you have one, and `.gitops-gate.yaml` keeps working
+unchanged. Write sources by hand where derivation gets something wrong: they
+take precedence over derived ones.
+[`gate/docs/config-reference.md`](../gate/docs/config-reference.md) has the
+whole schema, and leads with why you probably do not need it.
+
+**Verify:** the `addons-gate` status is posted, and the scope line matches the
+size of the fleet you expect this repository to reach.
 
 ## 4. Protect the branch
 
 Order matters, and step 2 is the one most often skipped:
 
-1. Merge the config. Watch the gate answer a handful of real pull requests.
+1. Watch the gate answer a handful of real pull requests, and check the
+   derived scope on each.
 2. **Only then** make `addons-gate`, and only `addons-gate`, a required check
    on your default branch.
 3. If you are the only human committer: with classic protection, leave *Include

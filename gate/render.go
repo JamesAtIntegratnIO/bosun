@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -252,6 +253,18 @@ func bootstrapSource(bs map[string]any, p Param, cfg *Config) (string, []string,
 // ignoreMissingValueFiles the bootstraps set; a values layer that does not
 // exist for a given cluster is normal, not an error.
 func helmTemplateRaw(ctx context.Context, repoRoot, chartPath string, valueFiles []string) ([]byte, error) {
+	return helmTemplateRawWith(ctx, repoRoot, chartPath, valueFiles, nil)
+}
+
+// helmTemplateRawWith is helmTemplateRaw plus values that live in an
+// Application rather than in a file.
+//
+// The inline block is written to a temporary file outside the checkout and
+// passed last, which is both the precedence ArgoCD gives `helm.valuesObject`
+// and the only way to hand helm values it can read. Outside the checkout
+// because writing into a worktree the gate is about to diff would put the
+// gate's own scratch file in the answer.
+func helmTemplateRawWith(ctx context.Context, repoRoot, chartPath string, valueFiles []string, inline map[string]any) ([]byte, error) {
 	chartFull, err := containedPath(repoRoot, chartPath)
 	if err != nil {
 		return nil, fmt.Errorf("chart path %q: %w", chartPath, err)
@@ -270,6 +283,26 @@ func helmTemplateRaw(ctx context.Context, repoRoot, chartPath string, valueFiles
 			continue // ignoreMissingValueFiles: true
 		}
 		args = append(args, "-f", full)
+	}
+
+	if len(inline) > 0 {
+		raw, marshalErr := yaml.Marshal(inline)
+		if marshalErr != nil {
+			return nil, fmt.Errorf("inline values for %s: %w", chartPath, marshalErr)
+		}
+		f, tmpErr := os.CreateTemp("", "bosun-values-*.yaml")
+		if tmpErr != nil {
+			return nil, fmt.Errorf("inline values for %s: %w", chartPath, tmpErr)
+		}
+		defer func() { _ = os.Remove(f.Name()) }()
+		_, writeErr := f.Write(raw)
+		if closeErr := f.Close(); writeErr == nil {
+			writeErr = closeErr
+		}
+		if writeErr != nil {
+			return nil, fmt.Errorf("inline values for %s: %w", chartPath, writeErr)
+		}
+		args = append(args, "-f", f.Name())
 	}
 
 	out, err := run(ctx, repoRoot, "helm", args...)
@@ -357,8 +390,8 @@ func bootstrapRow(bs map[string]any, p Param, appsetName, chartPath string) (Row
 }
 
 // helmRender renders a chart and returns every object in the output.
-func helmRender(ctx context.Context, repoRoot, chartPath string, valueFiles []string) ([]map[string]any, error) {
-	stream, err := helmTemplateRaw(ctx, repoRoot, chartPath, valueFiles)
+func helmRender(ctx context.Context, repoRoot, chartPath string, valueFiles []string, inline map[string]any) ([]map[string]any, error) {
+	stream, err := helmTemplateRawWith(ctx, repoRoot, chartPath, valueFiles, inline)
 	if err != nil {
 		return nil, err
 	}
@@ -447,7 +480,7 @@ func renderBootstrapPath(ctx context.Context, repoRoot, path string, valueFiles 
 		return nil, fmt.Errorf("source path %q: %w", path, err)
 	}
 	if _, err := os.Stat(filepath.Join(full, "Chart.yaml")); err == nil {
-		return helmRender(ctx, repoRoot, path, valueFiles)
+		return helmRender(ctx, repoRoot, path, valueFiles, nil)
 	}
 	info, err := os.Stat(full)
 	if err != nil {
@@ -471,6 +504,21 @@ func renderBootstrapPath(ctx context.Context, repoRoot, path string, valueFiles 
 // not a smaller answer; it is the same answer with objects missing from it,
 // which the diff then attributes to the pull request.
 func readDirRecursive(dir string) ([]map[string]any, error) {
+	return readArgoDirectory(dir, true, "", "")
+}
+
+// readArgoDirectory reads a path the way ArgoCD reads a directory source.
+//
+// Three rules, and every one of them changes what deploys. Without recurse,
+// ArgoCD reads the path's own files and descends into nothing, so a gate that
+// always recursed would render subdirectories nobody applies. `include` and
+// `exclude` are globs over each file's path relative to the source path, with
+// exclude winning, which is how a repository keeps a directory of fragments
+// beside the manifests that use them. Measured on a live install: a source
+// carrying `exclude: exclude/*` had a bootstrap manifest sitting under that
+// path, so ignoring the pattern would have rendered an ApplicationSet the
+// cluster does not have.
+func readArgoDirectory(dir string, recurse bool, include, exclude string) ([]map[string]any, error) {
 	var out []map[string]any
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -480,11 +528,24 @@ func readDirRecursive(dir string) ([]map[string]any, error) {
 			if d.Name() == ".git" {
 				return filepath.SkipDir
 			}
+			// The root itself is always entered; anything below it only when
+			// recursing, which is ArgoCD's own rule.
+			if !recurse && p != dir {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		switch filepath.Ext(p) {
 		case ".yaml", ".yml", ".json":
 		default:
+			return nil
+		}
+		rel, relErr := filepath.Rel(dir, p)
+		if relErr != nil {
+			return fmt.Errorf("%s: %w", p, relErr)
+		}
+		rel = filepath.ToSlash(rel)
+		if !directoryAllows(rel, include, exclude) {
 			return nil
 		}
 		raw, readErr := os.ReadFile(p)
@@ -499,4 +560,86 @@ func readDirRecursive(dir string) ([]map[string]any, error) {
 		return nil
 	})
 	return out, err
+}
+
+// directoryAllows applies ArgoCD's include/exclude pair to one relative path.
+//
+// Exclude wins, and an empty include means everything, both of which are
+// ArgoCD's semantics rather than a choice made here.
+func directoryAllows(rel, include, exclude string) bool {
+	if exclude != "" && globMatches(exclude, rel) {
+		return false
+	}
+	return include == "" || globMatches(include, rel)
+}
+
+// globMatches applies one include/exclude pattern to a relative path.
+//
+// `*` and `?` stop at a path separator and `**` crosses them, which is the
+// reading every tool that distinguishes the two uses, and brace groups are
+// expanded first because ArgoCD accepts `{a,b/*}`.
+//
+// Where this is an approximation, it is approximate in the direction that
+// shows. ArgoCD compiles these patterns with its own glob library, and if its
+// `*` turns out to cross separators where this one does not, the difference is
+// that `exclude: build/*` keeps out `build/x.yaml` here and `build/a/x.yaml`
+// there. The gate then renders an object ArgoCD does not, and it appears in
+// the report as an object nobody deployed, which a reader can see and chase.
+// The opposite error, excluding more than ArgoCD does, removes objects from
+// the render with no symptom at all: the diff compares two sets that are both
+// missing the same things and finds no difference. Write `**` where "and
+// everything below" is meant.
+//
+// A pattern this cannot compile matches nothing, so the file is included, for
+// the same reason.
+func globMatches(pattern, rel string) bool {
+	for _, p := range expandBraces(pattern) {
+		re, err := regexp.Compile(globRegexp(p))
+		if err != nil {
+			continue
+		}
+		if re.MatchString(rel) {
+			return true
+		}
+	}
+	return false
+}
+
+// globRegexp converts one glob to an anchored regular expression.
+func globRegexp(pattern string) string {
+	var b strings.Builder
+	b.WriteString("^")
+	for i := 0; i < len(pattern); i++ {
+		switch c := pattern[i]; c {
+		case '*':
+			if i+1 < len(pattern) && pattern[i+1] == '*' {
+				b.WriteString(".*")
+				i++
+				continue
+			}
+			b.WriteString("[^/]*")
+		case '?':
+			b.WriteString("[^/]")
+		default:
+			b.WriteString(regexp.QuoteMeta(string(c)))
+		}
+	}
+	b.WriteString("$")
+	return b.String()
+}
+
+// expandBraces turns `a{b,c}d` into `abd` and `acd`. One group, which is what
+// ArgoCD supports; a pattern with none comes back as itself.
+func expandBraces(pattern string) []string {
+	open := strings.Index(pattern, "{")
+	closeIdx := strings.Index(pattern, "}")
+	if open < 0 || closeIdx < open {
+		return []string{pattern}
+	}
+	prefix, suffix := pattern[:open], pattern[closeIdx+1:]
+	var out []string
+	for _, alt := range strings.Split(pattern[open+1:closeIdx], ",") {
+		out = append(out, prefix+alt+suffix)
+	}
+	return out
 }

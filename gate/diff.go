@@ -78,6 +78,19 @@ type DiffResult struct {
 	// without saying so" rule holds everywhere except where it matters most.
 	Suppressed []string `json:"suppressed,omitempty"`
 
+	// Scope is how the set of things rendered was arrived at: how many
+	// sources were derived from how many live Applications, and any root
+	// rendered from ArgoCD's applied spec rather than from this repository.
+	//
+	// Not folded into Suppressed, which means "the gate was told not to
+	// look". This means "here is what the gate looked at", and it is on every
+	// report rather than only on the interesting ones, because scope now
+	// depends on cluster state: an ArgoCD serving a smaller fleet than
+	// yesterday produces a smaller scope, a correct "no change" within it, and
+	// no other symptom. A reader who can see the scope can notice that; a
+	// reader who cannot, cannot.
+	Scope []string `json:"scope,omitempty"`
+
 	// SchemaFailures is manifests the target cluster's schemas reject, set by
 	// the caller that ran validation.
 	//
@@ -719,10 +732,17 @@ func (d *DiffResult) Report(w io.Writer) {
 	}
 	if len(d.Suppressed) > 0 {
 		fmt.Fprintf(w, "### Turned off by this pull request's configuration\n\n")
-		fmt.Fprintf(w, "The gate reads `.gitops-gate.yaml` from the head revision, so a change can "+
+		fmt.Fprintf(w, "The gate reads its configuration from the head revision, so a change can "+
 			"switch a check off. These did not run:\n\n")
 		for _, sup := range d.Suppressed {
 			fmt.Fprintf(w, "- %s\n", inline(strings.TrimSpace(sup)))
+		}
+		fmt.Fprintln(w)
+	}
+	if len(d.Scope) > 0 {
+		fmt.Fprintf(w, "### What was rendered\n\n")
+		for _, s := range d.Scope {
+			fmt.Fprintf(w, "- %s\n", inline(strings.TrimSpace(s)))
 		}
 		fmt.Fprintln(w)
 	}

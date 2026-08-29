@@ -90,9 +90,9 @@ const PAGES = [
   {
     src: 'gate/docs/config-reference.md',
     out: 'gate/config-reference',
-    title: '.gitops-gate.yaml reference',
+    title: 'Configuring the gate',
     description:
-      'The full schema of the one file the gate reads from the repository being gated: sources, selectors, scope and validation.',
+      'Why most repositories need no config file at all, and the full schema for the cases derivation cannot reach: roots, sources, selectors and scope.',
   },
   {
     src: 'gate/docs/rendered-manifests.md',

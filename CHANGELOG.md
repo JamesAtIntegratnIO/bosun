@@ -7,6 +7,55 @@ All notable changes to `bosun`. Format follows
 
 ### Added
 
+- **The gate derives what to render from ArgoCD, and `.gitops-gate.yaml`
+  becomes optional.** [ADR 0012](adr/0012-the-repo-stops-repeating-the-ship.md)
+  is the argument; this is the implementation. The Applications and
+  ApplicationSets ArgoCD serves supply the pointers and the root identities,
+  and the pull request's checkout supplies every byte that renders. A
+  repository whose Applications ArgoCD already serves is now gated with nothing
+  committed at all.
+
+  **Head wins over live wherever both can answer.** An ApplicationSet whose
+  manifest is in the gated repository renders from the pull request's copy, not
+  from the applied spec, because the applied spec is the previous answer and
+  the question is what this change does. The live spec is the fallback for one
+  case: a root whose file this repository does not hold, and every report names
+  those, because an edit to one is invisible until it applies.
+
+  **`.bosun.yaml` is the new filename, and `roots:` is the one thing it is
+  for.** A root ApplicationSet carries no tracking annotation, so nothing leads
+  to it; naming its file gates its edits from head, and makes a root a pull
+  request *introduces* render at all. `sources:` is still there for anything
+  derivation gets wrong, and takes precedence over derived sources.
+  `.gitops-gate.yaml` keeps working unchanged, both filenames are read, and
+  both present is an error rather than a precedence rule.
+
+  **An empty scope refuses.** No derived source and none configured is an
+  error, not a green: two empty sets have no difference between them, and
+  reporting that passes every pull request. A refused or unreachable ArgoCD is
+  an error for the same reason the inventory's is.
+
+  Every report gains a **What was rendered** section: how many sources were
+  derived from how many live Applications, which file is in force, and which
+  roots rest on the applied spec. Scope now depends on cluster state, and an
+  ArgoCD serving a smaller fleet than yesterday fails quiet, so the size of the
+  world the verdict was reached in is on every report rather than only the
+  interesting ones.
+
+  The probe that measured this is now a test: a fixture repository rendered
+  from its committed config and from a derivation produce the same rows.
+
+- **`sources[].type: directory`, with ArgoCD's own semantics.** `recurse`,
+  `include` and `exclude`, matched against each file's path relative to the
+  source path. It is what most derived Applications become, and it is
+  expressible in the file too. Measured on a live install: a source carrying
+  `exclude: exclude/*` had a bootstrap manifest under that path, so ignoring
+  the pattern renders an ApplicationSet the cluster does not have.
+
+- **`helm.valuesObject` reaches the render**, as `valuesInline`. Values written
+  into an Application rather than into a file have nothing in the checkout to
+  read, and a render that dropped them rendered a chart nobody deploys.
+
 - **[ADR 0012](adr/0012-the-repo-stops-repeating-the-ship.md): the repository
   stops repeating the ship.** `.gitops-gate.yaml` calls itself "the whole of
   that knowledge", and has not been since the gate moved in-cluster: `sources`
@@ -59,6 +108,24 @@ All notable changes to `bosun`. Format follows
 
 ### Changed
 
+- **BREAKING: the ArgoCD account needs two more read lines.**
+  `applications, get, */*` and `applicationsets, get, */*` in
+  `argocd-rbac-cm`, beside the `clusters, get` it already has. No Kubernetes
+  RBAC change, no new credential, no new mount. An install that upgrades
+  without adding them gets an `error` status naming the exact policy line,
+  which is the loud direction to be wrong in.
+- **`concurrency` and `validate` move to the chart** as `gate.concurrency` and
+  `gate.validate.*`. The renders happen in the operator's pod, against that
+  pod's limits, so how hard the gate works and what it checks are decisions
+  about that cluster rather than about the repository under review, the same
+  line the egress deny-list is on. Both are unset by default, and unset leaves
+  the gated repository's own file alone, so an install that configured either
+  in its `.gitops-gate.yaml` keeps exactly what it had.
+- **`valuesRef` retires for derived sources.** A multi-source Application names
+  its own values source in `sources[].ref`, so `$values/` now resolves through
+  the Application that used it rather than through one repository-wide guess
+  that was wrong the moment two Applications disagreed. The key is still read
+  for sources written in the file.
 - **The agent's deny-list drops `.gitops-gate/**` and adds `.bosun.yaml`.**
   Every entry on that list is supposed to be a way to make a red gate green
   without fixing anything, and the list is now kept to that test in both

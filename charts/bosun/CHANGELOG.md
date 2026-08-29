@@ -11,6 +11,41 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.26.0]
+
+### Added
+
+- **`gate.concurrency` and `gate.validate.*`.** How hard the gate works and
+  what it schema-checks are now values here rather than keys in the gated
+  repository's own config file, on the same line the egress deny-list is on:
+  the renders happen in this pod, against this pod's limits, beside every other
+  open pull request's, so they are decisions about your cluster rather than
+  about the repository under review.
+
+  Every key is `null` or empty by default, and unset means "leave the gated
+  repository's file alone" -- an install that configured either in its
+  `.gitops-gate.yaml` keeps exactly what it had. The environment variable is
+  emitted only when the value is set, because an empty string reads as `false`
+  and would have switched validation off for precisely those installs.
+  `concurrency` is capped at 32 whatever either side asks for.
+
+### Changed
+
+- **The ArgoCD account needs two more read lines.** Alongside
+  `clusters, get`, it now needs `applications, get, */*` and
+  `applicationsets, get, */*` in `argocd-rbac-cm`. The gate derives what the
+  repository deploys from what ArgoCD serves rather than from a file the
+  repository keeps in step by hand
+  ([ADR 0012](https://bosun.integratn.io/decisions/0012-the-repo-stops-repeating-the-ship/)),
+  and without them it refuses to run rather than rendering a scope it could not
+  see. The refusal names the exact line to add.
+
+  **This is a breaking upgrade for the RBAC, and only for the RBAC.** No
+  Kubernetes RBAC changes, no new credential, no new mount: the same account
+  token, with two more lines beside the one it already has. An install that
+  upgrades without adding them gets an `error` status on open pull requests
+  naming the missing policy, which is the loud direction to be wrong in.
+
 ## [0.25.1]
 
 ### Fixed

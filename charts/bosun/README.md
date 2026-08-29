@@ -58,9 +58,28 @@ triage:
 The agent is the gate. It polls the open pull requests, renders base and head
 against the live cluster inventory, and posts the `gate.checkName` status and
 report comment itself. Nothing to install in CI, no inventory snapshot to keep
-fresh. One cost comes with that: the render runs over pull-request content
+fresh, and since
+[ADR 0012](https://bosun.integratn.io/decisions/0012-the-repo-stops-repeating-the-ship/)
+no config file in the gated repository either: what to render is derived from
+the Applications and ApplicationSets ArgoCD serves, and every byte that renders
+comes from the pull request's own checkout.
+
+Two costs come with that. The render runs over pull-request content
 in-cluster, so **fork pull requests are refused** with an `error` status unless
-`gate.forkPRs` says otherwise.
+`gate.forkPRs` says otherwise. And the scope now depends on cluster state: an
+ArgoCD that is down fails loud, while one serving a smaller fleet than
+yesterday produces a smaller scope and a confident "no change" within it, which
+is why every report carries a **What was rendered** line.
+
+### How hard it works, and what it checks
+
+`gate.concurrency` and `gate.validate.*` are here rather than in the gated
+repository's own file, on the same line the egress deny-list is on: the renders
+happen in this pod, against this pod's limits, beside every other open pull
+request's. Every key is unset by default, and unset leaves whatever that
+repository's file says; set one and it wins. `concurrency` is capped at 32
+whatever either side asks for, because each worker is a helm subprocess with a
+chart download behind it.
 
 ### Where the inventory comes from
 
@@ -90,16 +109,25 @@ gate:
     caSecret: bosun-argocd-ca      # or insecureSkipTLSVerify: true
 ```
 
-and in `argocd-rbac-cm`, the smallest policy that answers the question:
+and in `argocd-rbac-cm`, the smallest policy that answers the questions:
 
 ```
 p, bosun, clusters, get, *, allow
+p, bosun, applications, get, */*, allow
+p, bosun, applicationsets, get, */*, allow
 ```
+
+Three reads. The first is the cluster inventory. The other two are what the
+gated repository deploys, which the gate derives from ArgoCD rather than from a
+file the repository keeps in step by hand
+([ADR 0012](https://bosun.integratn.io/decisions/0012-the-repo-stops-repeating-the-ship/));
+without them it refuses to run rather than rendering a scope it could not see,
+and the refusal names the line to add.
 
 What it costs, as plainly as the grant it replaces:
 
 - A credential to mint, store and rotate, bearer-equivalent for whatever its
-  ArgoCD RBAC permits. Give it that one line and nothing else.
+  ArgoCD RBAC permits. Give it those three lines and nothing else.
 - A component that can be down on its own. The apiserver is up whenever the
   cluster is; argocd-server is not.
 - Its own TLS story, because argocd-server serves its own certificate rather

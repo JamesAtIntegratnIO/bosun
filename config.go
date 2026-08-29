@@ -84,6 +84,24 @@ type Config struct {
 	MaxAttempts                 int
 	GatePoll                    time.Duration
 
+	// GateConcurrency caps parallel renders, and is the host's answer rather
+	// than the gated repository's. Zero leaves whatever the repository's own
+	// config file says.
+	//
+	// Same reasoning as the egress deny-list, and ADR 0012 makes it explicit:
+	// the renders run in this pod, against this pod's limits, and how hard to
+	// work is a decision about this cluster rather than about the repository
+	// being reviewed.
+	GateConcurrency int
+	// GateValidate* are the operator's schema-validation policy. Each is
+	// tri-state: unset leaves the repository's config file alone, which is
+	// what keeps an install that configured validation in its own file
+	// working unchanged.
+	GateValidateEnabled              *bool
+	GateValidateIgnoreMissingSchemas *bool
+	GateValidateSchemaLocations      []string
+	GateValidateSkipKinds            []string
+
 	// Supervise turns on the pipeline sweep: a periodic read of Kargo that
 	// reports what has silently stopped. Independent of the gate, and
 	// deliberately cheap; it only ever LISTs.
@@ -244,6 +262,17 @@ func LoadConfig() (*Config, error) {
 	if c.GatePoll, err = envDur("GATE_POLL", 30*time.Second); err != nil {
 		return nil, err
 	}
+	if c.GateConcurrency, err = envInt("GATE_CONCURRENCY", 0); err != nil {
+		return nil, err
+	}
+	if c.GateValidateEnabled, err = envBoolOpt("GATE_VALIDATE_ENABLED"); err != nil {
+		return nil, err
+	}
+	if c.GateValidateIgnoreMissingSchemas, err = envBoolOpt("GATE_VALIDATE_IGNORE_MISSING_SCHEMAS"); err != nil {
+		return nil, err
+	}
+	c.GateValidateSchemaLocations = envList("GATE_VALIDATE_SCHEMA_LOCATIONS")
+	c.GateValidateSkipKinds = envList("GATE_VALIDATE_SKIP_KINDS")
 	if c.LLMTimeout, err = envDur("LLM_TIMEOUT", 10*time.Minute); err != nil {
 		return nil, err
 	}
@@ -462,6 +491,24 @@ func envBool(k string, def bool) (bool, error) {
 		// people's systems.
 		return false, fmt.Errorf("%s: %q is not a boolean (true/false, yes/no, on/off, 1/0)", k, v)
 	}
+}
+
+// envBoolOpt reads a bool that may not be set at all.
+//
+// Distinct from envBool, which takes a default, because here "false" and "not
+// set" are different answers: a chart value defaulting to false would turn
+// validation off for every install that had switched it on in its own config
+// file, and the only symptom would be a report that stopped mentioning
+// schemas.
+func envBoolOpt(k string) (*bool, error) {
+	if strings.TrimSpace(os.Getenv(k)) == "" {
+		return nil, nil
+	}
+	v, err := envBool(k, false)
+	if err != nil {
+		return nil, err
+	}
+	return &v, nil
 }
 
 func envInt(k string, def int) (int, error) {

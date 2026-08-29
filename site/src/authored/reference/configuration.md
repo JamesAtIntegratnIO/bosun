@@ -138,8 +138,11 @@ credential block redacted. Mint the token with
 argocd account generate-token --account bosun
 ```
 
-and give it one line in `argocd-rbac-cm`, `p, bosun, clusters, get, *, allow`,
-and nothing else.
+and give it three read lines in `argocd-rbac-cm` -- `clusters, get`,
+`applications, get, */*` and `applicationsets, get, */*` -- and nothing else.
+The first is the cluster inventory; the other two are what the gated repository
+deploys, which the gate derives rather than reading out of a file that
+repository keeps in step by hand.
 
 **It is the API and not the cluster Secrets those clusters are stored in
 because that read cannot be made small enough.** Kubernetes RBAC has no
@@ -414,6 +417,18 @@ and your git host's rate limit, not throughput.
 
 ## The gate's own config file
 
-`.gitops-gate.yaml` lives in the **repository being gated**, not in this chart.
-It is documented separately in the
-[`.gitops-gate.yaml` reference](/gate/config-reference/).
+Most repositories have none. The gate asks ArgoCD which Applications and
+ApplicationSets exist and renders their paths from the pull request's checkout,
+so the pointers are read live rather than restated in a file somebody keeps in
+step by hand ([ADR 0012](/decisions/0012-the-repo-stops-repeating-the-ship/)).
+
+Where a file is wanted it is `.bosun.yaml`, in the **repository being gated**,
+not in this chart, and `.gitops-gate.yaml` is still read under its old name.
+Both is an error. [Configuring the gate](/gate/config-reference/) is the whole
+schema, and leads with why you probably need none of it.
+
+Two of its keys have moved here instead: `gate.concurrency` and
+`gate.validate.*` below. The renders happen in this pod, so how hard the gate
+works and what it checks are decisions about your cluster rather than about the
+repository under review, the same line the egress deny-list is on. Each is
+unset by default, and unset leaves the gated repository's own file alone.

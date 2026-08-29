@@ -21,8 +21,9 @@ loop names its cause in the log; a degraded process does not.
 | `unknown LLM_PROVIDER "…" (openai or anthropic)` | Typo, or a provider that does not exist | Only `openai` and `anthropic` are implemented |
 | `GIT_PROVIDER "…" is not implemented yet` | `gitlab` or `bitbucket` | Those are extension points, not implementations. See [Git providers](/reference/git-providers/) |
 | `ARGOCD_BASE_URL is empty` | `gate.argocd.baseURL` unset. It has no default | Set it to the ArgoCD API server, e.g. `https://argocd-server.argocd.svc` |
-| `ARGOCD_TOKEN is empty` | No ArgoCD account token | `argocd account generate-token --account <account>`, and give that account `clusters, get` in ArgoCD's RBAC |
+| `ARGOCD_TOKEN is empty` | No ArgoCD account token | `argocd account generate-token --account <account>`, and give that account `clusters, get`, `applications, get` and `applicationsets, get` in ArgoCD's RBAC |
 | `the cluster inventory could not be read: … 401` | The token is wrong, expired, or its account lacks `clusters, get` | Check `p, <account>, clusters, get, *, allow` is in `argocd-rbac-cm` |
+| `the ArgoCD account may not read applications` (or `applicationsets`) | The account has the inventory line but not the two the derived scope needs | Paste the line the error names into `argocd-rbac-cm`. The gate refuses rather than rendering a scope it could not see |
 | `the cluster inventory could not be read: … context deadline exceeded` | Nothing refused the connection; it hung until the timeout. Almost always a NetworkPolicy naming the wrong port | `gate.argocd.podPort` must be argocd-server's **pod** port (`8080`), not the port in `baseURL`. See [Configuration](/reference/configuration/#gateargocdpodport-is-the-pods-port-not-the-urls). argocd-server's own ingress policy must admit bosun's namespace on that same port |
 | `github app authentication failed` | Wrong `appId`, wrong key, or the App is not installed on the repository | Check `git.app.privateKeyKey` matches the Secret's key |
 

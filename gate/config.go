@@ -23,8 +23,27 @@ type Config struct {
 	// exactly equivalent to one `type: argocd-bootstrap` source each.
 	Bootstraps []Bootstrap `json:"bootstraps"`
 
+	// Roots are paths to root ApplicationSets that live in this repository.
+	//
+	// The one fact ArgoCD cannot supply, and the whole reason a config file
+	// still exists. A root is an ApplicationSet nothing in ArgoCD created, so
+	// it carries no tracking annotation and there is nothing to follow to it;
+	// naming its file here means its edits are gated from this pull request's
+	// content rather than from the spec that is already applied, and means a
+	// root this pull request *introduces* is rendered at all.
+	//
+	// Each entry suppresses the live-spec fallback for the identity its file
+	// declares, so naming a root that also exists live renders it once, from
+	// head.
+	Roots []string `json:"roots"`
+
 	// ValuesRef is the `ref:` name a multi-source Application gives its values
 	// source, so `$values/…` paths map back to repo paths.
+	//
+	// Only consulted for sources written in this file. A derived source
+	// resolves `$ref/…` through the ref the Application itself declares, which
+	// is per-Application and exact where this is one guess applied to all of
+	// them at once.
 	ValuesRef string `json:"valuesRef"`
 
 	// Concurrency caps parallel renders. Fleets are the reason this exists: a
@@ -92,6 +111,27 @@ const (
 	// ApplicationSet, the gitops-bridge shape, where cluster metadata on the
 	// ArgoCD cluster Secret drives which chart is rendered and with what.
 	SourceArgoCDBootstrap SourceType = "argocd-bootstrap"
+
+	// SourceDirectory reads one path with ArgoCD's own `directory` semantics:
+	// recurse or not, and an include/exclude glob pair.
+	//
+	// Distinct from `manifests`, which takes glob patterns of this
+	// repository's choosing. This one takes the path an Application points at
+	// and the rules ArgoCD applies to it, so what the gate reads is what
+	// ArgoCD reads rather than an approximation somebody maintains by hand.
+	// It is the shape most derived Applications land in.
+	SourceDirectory SourceType = "directory"
+
+	// SourceLive carries manifests the caller supplies rather than any this
+	// repository holds.
+	//
+	// It has exactly one producer: the fallback for an untracked
+	// ApplicationSet whose manifest is not in the gated repository, where
+	// the applied spec is the only copy there is. Configuration cannot set it,
+	// and ParseConfig refuses it by name, because a source that renders
+	// whatever it was handed would be a way to put content into the verdict
+	// that no revision of this repository contains.
+	SourceLive SourceType = "live"
 )
 
 // Source is one way to obtain manifests.
@@ -111,6 +151,25 @@ type Source struct {
 	// expressible without listing every combination by hand.
 	Chart      string   `json:"chart"`
 	ValueFiles []string `json:"valueFiles"`
+
+	// ValuesInline is values written into an Application rather than into a
+	// file, ArgoCD's `helm.valuesObject`. There is no file in the checkout to
+	// read for these, so a render that ignored them would render a chart
+	// nobody deploys. Written to a temporary file and passed as one more `-f`,
+	// last, which is the precedence ArgoCD gives it.
+	ValuesInline map[string]any `json:"valuesInline"`
+
+	// Recurse, Include and Exclude are ArgoCD's `directory` semantics, for
+	// `directory`. Recurse false reads the path's own files and no
+	// subdirectory; the two globs are matched against each file's path
+	// relative to the source path, exclude winning over include.
+	Recurse bool   `json:"recurse"`
+	Include string `json:"include"`
+	Exclude string `json:"exclude"`
+
+	// Objects are manifests supplied by the caller, for `live`. Not settable
+	// from configuration, which is what the missing tag says.
+	Objects []map[string]any `json:"-"`
 
 	// Selector limits which clusters this source is rendered for. Omitted, a
 	// helm source renders once with no cluster context; a manifests or
@@ -205,9 +264,12 @@ func ParseConfig(raw []byte, path string) (*Config, error) {
 	}
 	c.Bootstraps = nil
 
-	if len(c.Sources) == 0 {
-		return nil, fmt.Errorf("%s: at least one entry under `sources` is required", path)
-	}
+	// No requirement that anything be listed. Since ADR 0012 the file is not
+	// the only thing that says what to render, so an empty one is a
+	// repository that derives its whole scope, and a file holding nothing but
+	// `roots:` or `validate:` is an ordinary shape rather than a mistake. The
+	// refusal for "nothing to render at all" belongs where the derivation is
+	// also known, and lives there.
 	for i := range c.Sources {
 		if err := c.Sources[i].validate(path, i); err != nil {
 			return nil, err
@@ -243,10 +305,17 @@ func (s *Source) validate(cfgPath string, i int) error {
 		if s.Chart == "" {
 			return fmt.Errorf("%s: source %q is type helm and needs `chart`", cfgPath, s.Name)
 		}
-	case SourceKustomize, SourceArgoCDBootstrap:
+	case SourceKustomize, SourceArgoCDBootstrap, SourceDirectory:
 		if s.Path == "" {
 			return fmt.Errorf("%s: source %q is type %s and needs `path`", cfgPath, s.Name, s.Type)
 		}
+	case SourceLive:
+		// validate runs on sources that came out of a file, and only on
+		// those, which is what makes this the right place to refuse the one
+		// type a file may not set.
+		return fmt.Errorf("%s: source %q is type live, which configuration cannot set. "+
+			"It is how the gate carries an ApplicationSet ArgoCD serves but this repository "+
+			"does not contain", cfgPath, s.Name)
 	case "":
 		return fmt.Errorf("%s: source %q has no `type` (%s)", cfgPath, s.Name, sourceTypeList())
 	default:
@@ -313,8 +382,12 @@ func (c *Config) workers() int {
 
 // sourceTypes is every value a source's `type` may take, in the order the const
 // block declares them.
+// SourceLive is deliberately absent: the list is what an operator may write,
+// and offering a type the parser then refuses would be worse than not
+// mentioning it.
 var sourceTypes = []SourceType{
 	SourceManifests, SourceRendered, SourceHelm, SourceKustomize, SourceArgoCDBootstrap,
+	SourceDirectory,
 }
 
 // sourceTypeList renders them for the "you did not set one" error.

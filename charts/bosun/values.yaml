@@ -190,6 +190,37 @@ gate:
   # How often the sweep looks for pull requests with no verdict yet.
   poll: 30s
 
+  # How hard the gate works, and what it checks. Both live here rather than in
+  # the gated repository's own config file, for the same reason the egress
+  # deny-list does: the renders happen in this pod, against this pod's limits,
+  # beside every other open pull request's, so they are a decision about your
+  # cluster rather than about the repository being reviewed
+  # (https://bosun.integratn.io/decisions/0012-the-repo-stops-repeating-the-ship/).
+  #
+  # Every key here is unset by default, and unset means "leave the repository's
+  # own config file alone". An install that configured either in its
+  # `.gitops-gate.yaml` keeps exactly what it had until you set the value.
+
+  # Parallel renders. A fleet is the reason it exists: fifty clusters is fifty
+  # chart renders per revision. The gate caps whatever it is given at 32,
+  # because every worker is a helm subprocess with a chart download behind it.
+  concurrency: null
+
+  validate:
+    # Schema-validate the rendered manifests with kubeconform.
+    enabled: null
+    # Almost always required where validation is on: CRDs outside the large
+    # projects appear in no published schema catalogue, and without this one
+    # unknown kind fails a run that had nothing wrong with it. The cost is
+    # that those kinds are then not validated at all, and the report says how
+    # many it skipped.
+    ignoreMissingSchemas: null
+    # Passed to kubeconform as -schema-location. Empty leaves the
+    # repository's own list, or kubeconform's default when it has none.
+    schemaLocations: []
+    # Kinds to skip entirely.
+    skipKinds: []
+
   # Where the gate reads the live cluster inventory: ArgoCD's own API, which
   # serves the four fields the gate wants (name, server, labels, annotations)
   # with the credential block redacted.
@@ -252,9 +283,18 @@ gate:
     # and in argocd-rbac-cm, the smallest policy that answers this question:
     #
     #   p, bosun, clusters, get, *, allow
+    #   p, bosun, applications, get, */*, allow
+    #   p, bosun, applicationsets, get, */*, allow
     #
-    # Nothing else. A token with more is a bigger credential than the Secret
-    # read it replaced, which would defeat the point.
+    # Nothing else, and all three are reads. The first is the cluster
+    # inventory. The other two are what this repository deploys, which the
+    # gate derives from ArgoCD rather than from a file the repository keeps in
+    # step by hand; without them the gate refuses to run rather than rendering
+    # a scope it could not see
+    # (https://bosun.integratn.io/decisions/0012-the-repo-stops-repeating-the-ship/).
+    #
+    # A token with more is a bigger credential than the Secret read it
+    # replaced, which would defeat the point.
     existingSecret: ""      # REQUIRED
     tokenKey: token
     # argocd-server's default certificate is self-signed. Give this its CA (a

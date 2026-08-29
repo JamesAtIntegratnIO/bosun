@@ -204,17 +204,29 @@ func TestABrokenInventoryIsAnErrorNotAVerdict(t *testing.T) {
 	}
 }
 
-func TestAMissingConfigIsAnError(t *testing.T) {
+// A missing config file used to be the error on its own. Since ADR 0012 it is
+// an ordinary shape -- most repositories need no file -- and the error is
+// reserved for the thing that was always the real problem underneath it:
+// nothing to render, from either the file or ArgoCD.
+//
+// The refusal matters more than it looks. An empty scope renders two empty
+// sets, finds no difference between them, and passes every pull request with
+// total confidence.
+func TestNothingToRenderIsAnError(t *testing.T) {
 	files := map[string]string{
 		"apps/podinfo.yaml": appManifest("podinfo", "https://kubernetes.default.svc", "6.7.0")}
 	h := newGateHarness(t, files, files)
 
 	out := h.gs.Ensure(context.Background(), gatePR("nocfg"))
 	if out.Err == nil {
-		t.Fatal("no config means the gate cannot know what to render, which is exit 2, not a green")
+		t.Fatal("an empty scope must be exit 2, not a green on two empty sets")
 	}
-	if s := lastStatus(t, h.git); s.State != gitprovider.StateError || !strings.Contains(s.Description, ".gitops-gate.yaml") {
-		t.Fatalf("the error should name the missing file: %s %q", s.State, s.Description)
+	s := lastStatus(t, h.git)
+	if s.State != gitprovider.StateError || !strings.Contains(s.Description, "nothing to render") {
+		t.Fatalf("the error should say the scope is empty: %s %q", s.State, s.Description)
+	}
+	if !strings.Contains(s.Description, ".bosun.yaml") {
+		t.Fatalf("it should name the file that could fix it: %q", s.Description)
 	}
 }
 
@@ -487,7 +499,7 @@ func TestTheReportNamesChecksThisPullRequestTurnedOff(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := suppressedChecks(write(t, cfgOff), head, cfg)
+		got := suppressedChecks(write(t, cfgOff), head, cfg, ".gitops-gate.yaml")
 		if len(got) != 1 || !strings.Contains(got[0], "Schema validation") {
 			t.Fatalf("want the disabled check named, got %v", got)
 		}
@@ -498,7 +510,7 @@ func TestTheReportNamesChecksThisPullRequestTurnedOff(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := suppressedChecks(write(t, cfgOff), write(t, cfgOn), cfg)
+		got := suppressedChecks(write(t, cfgOff), write(t, cfgOn), cfg, ".gitops-gate.yaml")
 		if len(got) != 1 || !strings.Contains(got[0], "changed in this pull request") {
 			t.Fatalf("want the config change named, got %v", got)
 		}
@@ -509,7 +521,7 @@ func TestTheReportNamesChecksThisPullRequestTurnedOff(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := suppressedChecks(write(t, cfgOn), write(t, cfgOn), cfg); len(got) != 0 {
+		if got := suppressedChecks(write(t, cfgOn), write(t, cfgOn), cfg, ".gitops-gate.yaml"); len(got) != 0 {
 			t.Fatalf("nothing was suppressed, but the report says %v", got)
 		}
 	})

@@ -253,13 +253,24 @@ func main() {
 	gs := &gateservice.Service{
 		Git:       git,
 		Inventory: argo.ClusterInventory,
-		CheckName: cfg.CheckName,
-		RepoURL:   cfg.GitRepoURL,
-		CloneRoot: cfg.CloneRoot,
-		ForkPRs:   cfg.GateForkPRs,
-		Poll:      cfg.GatePoll,
-		Log:       func(f string, a ...any) { logger.Printf(f, a...) },
-		Egress:    egressPolicy,
+		// What this repository deploys, read live rather than restated in a
+		// file it maintains by hand (ADR 0012). The same account token as the
+		// inventory, plus `applications, get` and `applicationsets, get`.
+		Derive:      argo.Derive,
+		CheckName:   cfg.CheckName,
+		RepoURL:     cfg.GitRepoURL,
+		CloneRoot:   cfg.CloneRoot,
+		ForkPRs:     cfg.GateForkPRs,
+		Poll:        cfg.GatePoll,
+		Concurrency: cfg.GateConcurrency,
+		Validate: gateservice.ValidatePolicy{
+			Enabled:              cfg.GateValidateEnabled,
+			IgnoreMissingSchemas: cfg.GateValidateIgnoreMissingSchemas,
+			SchemaLocations:      cfg.GateValidateSchemaLocations,
+			SkipKinds:            cfg.GateValidateSkipKinds,
+		},
+		Log:    func(f string, a ...any) { logger.Printf(f, a...) },
+		Egress: egressPolicy,
 	}
 	t.Gate = gs
 	go gs.Run(runCtx)

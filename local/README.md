@@ -65,7 +65,7 @@ this a proving ground for a configuration nobody runs.
 |---|---|---|
 | `liveReads.enabled` | on, `groups` scope | "everything except the core group" is not expressible in Kubernetes RBAC, so the API groups this cluster ships CRDs for are named. Secrets stay unreadable. |
 | `networkPolicy.egress.apiServer` | discovered | read from the `kubernetes` Service's own endpoints. A ClusterIP is DNAT'd before policy evaluation, so an ipBlock naming it matches nothing. |
-| `gate.argocd` | an ArgoCD account minted here | The gate reads its inventory from ArgoCD's API, and the account gets `clusters, get` and nothing else: the same three steps the chart README asks an operator for. |
+| `gate.argocd` | an ArgoCD account minted here | The gate reads its inventory, and what the repository deploys, from ArgoCD's API; the account gets `clusters, get`, `applications, get` and `applicationsets, get` and nothing else: the same three steps the chart README asks an operator for. |
 | `networkPolicy.egress.allowPublicHTTPS` | on | the upstream lookup has to reach a registry at all. |
 | `triage.egressDeny` | one host | so the refusal path is exercised rather than described. |
 

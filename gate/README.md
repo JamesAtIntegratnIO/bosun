@@ -16,9 +16,12 @@ folded into the repository's [CHANGELOG.md](../CHANGELOG.md).
 
 ## What it does
 
-`Render` expands every source declared in `.gitops-gate.yaml`, for every
-cluster in the inventory, expanding the generators, and emits a normalized
-target table. `Assemble` compares two target tables; when a repository root is
+`Render` expands every source it is given, for every cluster in the inventory,
+expanding the generators, and emits a normalized target table. Those sources
+are derived from the Applications and ApplicationSets ArgoCD serves
+([ADR 0012](../adr/0012-the-repo-stops-repeating-the-ship.md)), merged with
+whatever the gated repository's own `.bosun.yaml` adds; live supplies the
+pointers, and the pull request's checkout supplies every byte that renders. `Assemble` compares two target tables; when a repository root is
 available, it also renders every chart whose version moved, at both versions,
 and diffs the resources down to the fields that changed. `ValidateManifests`
 schema-validates every rendered stream with kubeconform. The rendered report
@@ -41,6 +44,6 @@ in the agent's image, pinned.
 
 ## Reference
 
-- [`docs/config-reference.md`](docs/config-reference.md): the full `.gitops-gate.yaml` schema
+- [`docs/config-reference.md`](docs/config-reference.md): why most repositories need no config file, and the full `.bosun.yaml` schema for the ones that do
 - [`docs/render-diff-schema.md`](docs/render-diff-schema.md): the diff result the agent consumes, bucket by bucket
 - [`docs/rendered-manifests.md`](docs/rendered-manifests.md): the rendered-manifests pattern, and why ArgoCD's source hydrator cannot gate a merge

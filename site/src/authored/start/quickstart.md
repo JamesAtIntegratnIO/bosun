@@ -183,7 +183,7 @@ helm install bosun oci://ghcr.io/jamesatintegratnio/charts/bosun \
 :::caution[Two things to get right here]
 **The gate reads its inventory from ArgoCD's API**, so `gate.argocd.baseURL` and
 `gate.argocd.existingSecret` are required and have no defaults. Mint the token
-with `argocd account generate-token`, give the account `clusters, get` in
+with `argocd account generate-token`, give the account `clusters, get`, `applications, get` and `applicationsets, get` in
 `argocd-rbac-cm` and nothing else. The API redacts the credential block; a read
 of the cluster Secrets could not, which is why the chart creates no Role over
 Secrets at all.
@@ -200,28 +200,37 @@ or read the inventory rather than running degraded, and the log says:
 gate: polling for open pull requests every 30s
 ```
 
-### 4. Commit `.gitops-gate.yaml`
+### 4. Open a pull request and read the scope
 
-One file at the repository root, telling the gate what to render. A typical one
-is under ten lines:
+There is usually nothing to commit. The gate asks ArgoCD which Applications and
+ApplicationSets exist, keeps the ones pointing at this repository, and renders
+their paths from the pull request's own checkout. The RBAC lines from step 3
+are the configuration.
 
-```yaml
-sources:
-  - name: apps
-    type: manifests
-    paths: ["apps/*.yaml"]
-  - name: bootstrap
-    type: argocd-bootstrap
-    path: bootstrap/addons.yaml
+Open any pull request and read the report's **What was rendered** line:
+
+```
+Derived 14 sources from 65 Applications and 60 ApplicationSets that ArgoCD
+serves, and rendered 16 sources in total.
 ```
 
-Every source type and option is in the
-[`.gitops-gate.yaml` reference](/gate/config-reference/).
+If it names a root rendered from the applied spec, that root's manifest is not
+in this repository as far as the scan could tell, and edits to it stay
+invisible until they apply. Name its file and that stops:
 
-**Verify:** open that change as a pull request. The config is read from the
-pull request's head, so the gate gates the very pull request that introduces
-it. Read the report comment: the **Not covered** section is the honest list of
-what the gate could not expand, and the time to care about it is now, before
+```yaml
+# .bosun.yaml
+roots:
+  - bootstrap/addons.yaml
+```
+
+A file is still read where you want one, and `.gitops-gate.yaml` keeps working
+unchanged. [Configuring the gate](/gate/config-reference/) has the whole
+schema, and leads with why you probably need none of it.
+
+**Verify:** the status is posted, the scope line matches the fleet you expect,
+and the **Not covered** section, the honest list of what the gate could not
+expand, is empty or understood. The time to care about it is now, before
 anything depends on the verdict.
 
 ### 5. Then, and only then, protect the branch
