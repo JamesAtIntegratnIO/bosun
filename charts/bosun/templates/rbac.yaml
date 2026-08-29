@@ -5,9 +5,9 @@ failure against live state, and writes only to pull requests. There is no
 create, update, patch or delete verb anywhere in this chart -- if a future
 feature seems to need one, that is a signal to reconsider the feature.
 
-One read stands out and gets its own comment where it is granted: cluster-mode
-gating reads the ArgoCD cluster Secrets (the live inventory), via a Role
-scoped to that one namespace at the bottom of this file.
+No Secret is readable through anything in here. The gate's cluster inventory --
+the one read that used to need it -- comes from ArgoCD's own API instead, on an
+account token, so there is no namespaced Secret Role to grant.
 */ -}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -55,10 +55,9 @@ written down.
     verbs: [get, list]
 {{- else }}
   # GROUPS. Named API groups only, so the core group is never granted beyond
-  # the `pods, events` above and Secrets stay unreadable cluster-wide (the one
-  # namespaced exception, for the gate's inventory, is the Role at the bottom
-  # of this file). A group nobody listed degrades to "not permitted to check"
-  # in the brief -- soft, honest, and a values edit rather than an incident.
+  # the `pods, events` above and Secrets stay unreadable. A group nobody listed
+  # degrades to "not permitted to check" in the brief -- soft, honest, and a
+  # values edit rather than an incident.
   {{- with .Values.liveReads.apiGroups }}
   - apiGroups:
       {{- range . }}
@@ -84,51 +83,4 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "bosun.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
-{{- if and (eq .Values.gate.mode "cluster") (eq .Values.gate.inventorySource "secrets") }}
----
-{{- /*
-The one grant in this chart worth stopping on. The in-cluster gate renders
-against the live inventory, and the inventory IS the ArgoCD cluster Secrets --
-the same objects that carry cluster credentials. RBAC cannot grant "the labels
-but not the data": there are no deny rules, `resourceNames` does not apply to
-`list` (a list request carries no name for the authorizer to match), and the
-label selector the gate sends is a filter the apiserver applies AFTER
-authorising -- so a token holding this Role can drop it and read every Secret
-in the namespace. The honest response is to make the grant as small as it can
-be: a namespaced Role in the ArgoCD namespace only, get/list only, existing
-only while gate.mode is cluster AND the inventory comes from the Secrets.
-
-Two ways to not make it at all. `gate.inventorySource: argocd` reads the same
-four fields from the ArgoCD API, which draws the line RBAC cannot, and this
-Role stops rendering. `gate.mode: ci` keeps the checked-in snapshot and its
-whole drift-check apparatus instead.
-*/}}
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: {{ include "bosun.fullname" . }}-gate-inventory
-  namespace: {{ .Values.liveReads.argocdNamespace }}
-  labels:
-    {{- include "bosun.labels" . | nindent 4 }}
-rules:
-  - apiGroups: [""]
-    resources: [secrets]
-    verbs: [get, list]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: {{ include "bosun.fullname" . }}-gate-inventory
-  namespace: {{ .Values.liveReads.argocdNamespace }}
-  labels:
-    {{- include "bosun.labels" . | nindent 4 }}
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: {{ include "bosun.fullname" . }}-gate-inventory
-subjects:
-  - kind: ServiceAccount
-    name: {{ include "bosun.serviceAccountName" . }}
-    namespace: {{ .Release.Namespace }}
-{{- end }}
 {{- end }}

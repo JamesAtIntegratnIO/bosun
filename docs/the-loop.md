@@ -34,10 +34,10 @@ promotion also POSTs to Bosun.
 
 ## 2. The gate renders the truth
 
-Where the gate runs is a configuration value. By default the agent runs it
-in-cluster against the live ArgoCD inventory ([ADR
-0008](../adr/0008-the-gate-moves-in-cluster.md)); `gate.mode: ci` runs the same
-engine as a container in CI. Nothing below this point differs between the two —
+The agent runs the gate in-cluster, against the live cluster inventory read
+from ArgoCD's API ([ADR
+0008](../adr/0008-the-gate-moves-in-cluster.md)). The same engine is also a
+container with an exit code, for a run from a workstation before pushing —
 same renders, same report, same check name.
 
 The gate runs twice — once at the base revision, once at the head — and each
@@ -152,12 +152,12 @@ and "it works" stay different facts.
 
 ## Watching it run
 
-The [local proving ground](../local) builds a disposable cluster and runs
-this entire page against it — `make demo` for the happy path, `make
-demo-triage` for a pull request the gate refuses, `make scenarios` to replay
-the recorded red-gate incidents in [`evals/`](../evals) against the live agent.
-(The explain-path cases in that suite are not replayed there — they need a green
-gate, and the scenario script seeds a red one.)
+The [local proving ground](../local) builds a disposable cluster and runs this
+entire page against it — `make demo` for the happy path, `make demo-triage` for
+a pull request the gate refuses, `make demo-structural` for one the swap alone
+cannot fix. The recorded incidents in [`evals/`](../evals) are scored by `go
+test ./evals/...` rather than replayed there: the gate renders the sample
+repository, so there is nowhere to put a recorded verdict.
 
 ## Where each piece is specified
 

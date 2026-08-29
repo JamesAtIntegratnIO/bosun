@@ -16,7 +16,7 @@ by people debugging it at 3am. Write for those two readers.
 
 ## Applies to
 
-`docs/`, `gate/docs/`, `charts/*/README.md`, `charts/*/docs/`, `ci/**/README.md`,
+`docs/`, `gate/docs/`, `charts/*/README.md`, `charts/*/docs/`,
 `local/README.md`, `site/src/authored/`, `README.md`, `CONTRIBUTING.md`.
 
 **Exempt, deliberately:** `adr/` is a decision record — narrative argument with a
@@ -123,9 +123,8 @@ became "Cannot read a Secret, outside one namespace" because that is what the
 RBAC says. A guarantee stated wider than the code is worse than none: it is the
 failure mode this project exists to prevent, committed in its own documentation.
 
-Same for defaults. If a mitigation is opt-in, say so — `gate.inventorySource:
-argocd` removes a grant, and the sentence has to carry that the default is still
-`secrets`.
+Same for defaults. If a mitigation is opt-in, say so: a sentence describing what
+a value removes has to carry whether an install gets it without asking.
 
 ## Mechanics
 

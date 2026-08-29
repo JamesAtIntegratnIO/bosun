@@ -42,14 +42,21 @@ gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls/${PR}" \
 # ---------------------------------------------------------------------------
 say "4. the gate -- renders both sides and diffs the resources"
 # ---------------------------------------------------------------------------
-set +e
-bash "$ROOT/scripts/gate-run.sh" "$PR"
-GATE_EXIT=$?
-set -e
-[ -f "/tmp/gate-report-${PR}.md" ] && sed 's/^/    /' "/tmp/gate-report-${PR}.md" | head -25
+# Nothing is run here. The agent sweeps the open pull requests and gates them
+# itself, so this waits for the verdict it publishes.
+SHA="$(head_sha "$PR")"
+step "waiting for the sweep to render ${SHA:0:8} -- both revisions, so it takes a moment"
+GATE_STATE=""
+for _ in $(seq 1 60); do
+  GATE_STATE="$(gate_status "$SHA" | cut -d' ' -f1)"
+  case "$GATE_STATE" in success|failure|error) break ;; esac
+  sleep 5
+done
+step "gate: ${GATE_STATE:-<no verdict yet>}"
+gate_report "$PR" | sed 's/^/    /' | head -25
 
 # ---------------------------------------------------------------------------
-say "5. triage -- the agent reads the gate's comment and decides"
+say "5. triage -- the agent reads its own verdict and decides"
 # ---------------------------------------------------------------------------
 # Kargo's triage step fires this on promotion, but calling it directly makes
 # the demo deterministic and shows the request and the verdict.
@@ -76,11 +83,11 @@ fi
 # ---------------------------------------------------------------------------
 say "6. merge"
 # ---------------------------------------------------------------------------
-if [ "$GATE_EXIT" -eq 0 ]; then
+if [ "${GATE_STATE:-}" = "success" ]; then
   gitea_api POST "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls/${PR}/merge" \
     -d '{"Do":"squash"}' >/dev/null && ok "merged #${PR}"
 else
-  step "gate exit ${GATE_EXIT} -- not merging, which is the gate doing its job"
+  step "gate ${GATE_STATE:-<no verdict>} -- not merging, which is the gate doing its job"
 fi
 
 # ---------------------------------------------------------------------------

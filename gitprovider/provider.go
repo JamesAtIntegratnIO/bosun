@@ -52,9 +52,9 @@ type Comment struct {
 	// both were throwing it away; it is what lets a log line name WHICH
 	// comment the agent read rather than quoting it back.
 	ID int64
-	// Author is the account that wrote it. Load-bearing: the agent reads the
-	// gate's verdict out of a comment, and a comment is something anyone with
-	// write access to the pull request can forge. See Triage.GateReportAuthor.
+	// Author is the account that wrote it. Load-bearing: the gate finds its own
+	// report comment to update in place, and a comment carrying its marker is
+	// something anyone with write access to the pull request can write.
 	Author string
 	Body   string
 	// CreatedAt is when the host recorded it. The agent wants the NEWEST
@@ -82,8 +82,8 @@ const (
 // The agent wears two hats and they use different halves of this. Its OWN
 // branded status is advisory and uses only pending and success -- everything
 // that is not "still working" is a verdict, and a red advisory status would
-// quietly become a second gate. The GATE status it posts in cluster mode is
-// the opposite: it exists to block, failure is its whole point, and error is
+// quietly become a second gate. The GATE status it posts is the opposite:
+// it exists to block, failure is its whole point, and error is
 // how "the gate broke" stays distinguishable from "this change is bad" --
 // the same distinction the CLI draws between exit 1 and exit 2.
 type CommitState string
@@ -143,8 +143,8 @@ type Provider interface {
 	// report per head commit left a repaired pull request carrying two
 	// twenty-thousand-character comments that differed only in their verdict,
 	// and a reader could not tell which was current without comparing head
-	// SHAs. Editing in place was the CI adapter's behaviour and the contract
-	// the marker was designed for; cluster mode dropped it by accident.
+	// SHAs. Editing in place is the gate's behaviour and the contract the
+	// marker was designed for.
 	UpdateComment(ctx context.Context, id int64, body string) error
 
 	// SetCommitStatus publishes the agent's OWN verdict as a commit status, so

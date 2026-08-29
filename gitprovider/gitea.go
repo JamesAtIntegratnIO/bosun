@@ -259,11 +259,10 @@ func (g *Gitea) ListComments(ctx context.Context, number int) ([]Comment, error)
 // that announces itself pending and then publishes a verdict routinely lands
 // both inside one -- at which point "newest first" has nothing to sort by and
 // the order within the tie is arbitrary. Observed on the proving ground:
-// `pending` and `success` both at 01:04:02, pending listed first, and the
-// agent -- which took the first match -- read a check that had gone green in
-// seconds as permanently pending, waited out GATE_WAIT, and reported "still
-// had no verdict". Nothing failed, which is how it survived a demo whose CI
-// adapter happens to write exactly one status per context.
+// `pending` and `success` both at 01:04:02, pending listed first, and a reader
+// that took the first match saw a check which had gone green in seconds as
+// permanently pending. Nothing failed, which is how it survived a demo whose
+// writer happened to leave exactly one status per context.
 //
 // So ties are broken on meaning rather than on position: a settled state beats
 // pending, because a verdict cannot precede the pending that announced it. A

@@ -12,9 +12,7 @@ help:
 	@echo "make demo    run the whole flow, asserted at every step"
 	@echo "make demo-cluster-gate  the gate with no CI anywhere: the agent renders, blocks, re-gates"
 	@echo "make demo-triage  a PR the gate REFUSES, and the agent's verdict on it"
-	@echo "make scenarios    replay the ten recorded incidents against the live agent"
 	@echo "make demo-structural  a bump the swap cannot fix, and the model that can"
-	@echo "make demo-forged  a gate report the agent refuses to believe"
 	@echo "make demo-egress  a host the agent is told not to visit"
 	@echo "make reset   put the flow back to the start so demo can run again"
 	@echo "make down    delete the cluster; colima keeps running"
@@ -61,23 +59,13 @@ demo:
 demo-triage:
 	@bash $(SCRIPTS)/50-demo-triage.sh
 
-# Act one-and-a-half: gate.mode=cluster, proved on three properties the CI
-# shape could not have by construction -- a rendered answer instead of a paths
-# guess, a report posted by the agent itself, and a pushed fix re-gated
-# because it exists rather than because a token was minted right. Flips the
-# running deployment to cluster mode and puts it back.
+# Act one-and-a-half: the gate, proved on three properties a CI workflow could
+# not have by construction -- a rendered answer instead of a paths guess, a
+# report posted by the agent itself, and a pushed fix re-gated because it
+# exists rather than because a token was minted right.
 .PHONY: demo-cluster-gate
 demo-cluster-gate:
 	@bash $(SCRIPTS)/45-demo-cluster-gate.sh
-
-# The eval suite's cases, replayed as real pull requests against the live
-# in-cluster agent. The gate report each posts is the recorded one; the agent,
-# the model and every commit it pushes are live. Referenced by both READMEs
-# since the day the script landed -- and wired to a target only after a reader
-# followed the instruction and found nothing there.
-.PHONY: scenarios
-scenarios:
-	@bash $(SCRIPTS)/60-demo-scenarios.sh
 
 # Act three: the bump the deterministic repair cannot finish, where the model
 # writes the migration and three checks decide whether it is allowed to.
@@ -87,14 +75,7 @@ scenarios:
 demo-structural:
 	@bash $(SCRIPTS)/70-demo-structural.sh
 
-# Act four: a report carrying the gate's marker, written by an account that is
-# not the gate. Asserts the refusal AND that it says whose report it ignored --
-# a silent refusal is indistinguishable from a crash.
-.PHONY: demo-forged
-demo-forged:
-	@bash $(SCRIPTS)/80-demo-forged-report.sh
-
-# Act five: the deny half of "egress is open and logged". Forbids a host the
+# Act four: the deny half of "egress is open and logged". Forbids a host the
 # agent is about to need, proves the refusal names its rule, and proves the
 # triage still reaches a verdict without it. Changes the running deployment and
 # puts it back, including on failure.

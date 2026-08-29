@@ -14,11 +14,11 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 )
 
-// The gate service is the CI adapter rebuilt as a loop the agent owns, so
-// these tests are about the properties the adapter had to document and hope
-// for: every head commit gets a verdict, a broken gate is an error rather
-// than a failure, the report is posted once, and the verdict the triage
-// consumes is the one this run produced -- not one scraped off a comment.
+// The gate service is a loop the agent owns, so these tests are about the
+// properties a CI job could only document and hope for: every head commit gets
+// a verdict, a broken gate is an error rather than a failure, the report is
+// posted once, and the verdict the triage consumes is the one this run
+// produced -- not one scraped off a comment.
 
 const gateConfig = `sources:
   - name: apps
@@ -128,7 +128,7 @@ func TestAVersionBumpIsGreenAndReported(t *testing.T) {
 		t.Fatalf("a version bump must not block; got %s", out.State)
 	}
 	if h.git.Statuses[0].State != gitprovider.StatePending {
-		t.Fatal("the first status must be pending -- a verdict-shaped silence while rendering is the CI adapter's bug, not this one's")
+		t.Fatal("the first status must be pending -- a verdict-shaped silence while rendering is somebody else's bug, not this one's")
 	}
 	if s := lastStatus(t, h.git); s.State != gitprovider.StateSuccess || !strings.Contains(s.Description, "1 version change") {
 		t.Fatalf("status %s %q", s.State, s.Description)
@@ -291,8 +291,7 @@ func TestASettledStatusIsNotRelitigated(t *testing.T) {
 		"apps/podinfo.yaml": appManifest("podinfo", "https://kubernetes.default.svc", "6.7.0")}
 	h := newGateHarness(t, files, files)
 	h.git.OpenPRs = []gitprovider.PullRequest{*gatePR("50171ed")}
-	// A verdict already on the commit -- a previous pod, or a CI adapter
-	// still running during a migration.
+	// A verdict already on the commit, from a previous life of this pod.
 	h.git.Check = gitprovider.CheckSuccess
 
 	h.gs.sweep(context.Background())

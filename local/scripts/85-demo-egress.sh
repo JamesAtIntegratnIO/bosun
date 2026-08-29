@@ -98,23 +98,12 @@ PR="$(gitea_api POST "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls" \
 [ -n "$PR" ] || bad "could not open a pull request"
 ok "pull request #${PR}"
 
-HEAD_SHA="$(gitea_api GET "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/pulls/${PR}" \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["head"]["sha"])')"
-python3 - > "$WORK/comment.json" <<'PY'
-import json
-print(json.dumps({"body": """<!-- gitops-gate -->
-### Source changed
-
-| Application | Cluster | From | To |
-|---|---|---|---|
-| `podinfo-hub` | local | `podinfo-hub` | `podinfo-tenant` |
-"""}))
-PY
-gitea_api POST "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/issues/${PR}/comments" \
-  --data-binary @"$WORK/comment.json" >/dev/null
-gitea_api POST "/repos/${GITEA_OWNER}/${SAMPLE_REPO_NAME}/statuses/${HEAD_SHA}" \
-  -d '{"context":"gate","state":"failure","description":"blocking change"}' >/dev/null
-step "gate report posted, status gate=failure"
+# Nothing seeds a verdict here. The namespace move is a real change to what
+# gets deployed, so the agent's own sweep renders it and blocks it -- which is
+# what the triage below then has to answer for.
+HEAD_SHA="$(head_sha "$PR")"
+step "waiting for the sweep to render ${HEAD_SHA:0:8}"
+wait_for "the gate blocked it" 300 status_is "$HEAD_SHA" failure
 
 say "2. where it went, and where it was stopped"
 BEFORE="$(kc -n bosun logs "$POD" | wc -l | tr -d ' ')"

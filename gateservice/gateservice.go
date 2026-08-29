@@ -23,38 +23,36 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 )
 
-// Service is the gate, run by the agent instead of by CI.
+// Service is the gate, run by the agent.
 //
-// The CI shape existed because ADR 0002 said "CI is where the checkout
+// It used to run in CI, because ADR 0002 said "CI is where the checkout
 // already is" -- and then the agent grew its own checkout, its own commit
-// statuses, its own poll loop and live cluster access, at which point the CI
-// adapter, the checked-in cluster inventory it exists to work around, and the
+// statuses, its own poll loop and live cluster access, at which point that
+// shape, the checked-in cluster inventory it existed to work around, and the
 // report-comment contract for reading the verdict back were all vestige. See
 // ADR 0008.
 //
 // The loop is the same one the agent already runs for check states: poll the
 // open pull requests, and for every head commit that has no verdict, render
 // the repository at the base and the head, diff, and publish -- a commit
-// status for branch protection, and the same report comment CI would have
-// posted, for humans. The verdict itself stays in memory, where the triage
-// reads it without scraping its own comment back off the pull request.
+// status for branch protection, and a report comment for humans. The verdict
+// itself stays in memory, where the triage reads it as a value.
 //
-// There is deliberately NO relevance filter. The CI adapter needed a paths
-// job because a skipped required check bricks the pull request and CI minutes
-// are billed; in here the status is always posted, so the safe answer to "is
-// this change relevant?" is to render it and let the diff say "no change to
-// what gets deployed". A docs-only pull request costs one render and gets a
-// truthful green instead of a guessed one.
+// There is deliberately NO relevance filter. A paths filter is what CI needed,
+// because a skipped required check bricks the pull request and CI minutes are
+// billed; in here the status is always posted, so the safe answer to "is this
+// change relevant?" is to render it and let the diff say "no change to what
+// gets deployed". A docs-only pull request costs one render and gets a truthful
+// green instead of a guessed one.
 type Service struct {
 	Git gitprovider.Provider
 	// Inventory reads the live cluster inventory. In production this is
-	// cluster.APIServer.ClusterInventory; there is no snapshot fallback in
-	// here, because a snapshot is a CI concern and CI mode does not run this
-	// service.
+	// cluster.ArgoCD.ClusterInventory; there is no snapshot fallback in here,
+	// because a snapshot can go stale and this service can simply look.
 	Inventory func(ctx context.Context) (*gate.Inventory, error)
 	// CheckName is the commit-status context branch protection requires --
-	// the same name the CI adapter reported under, so moving the gate
-	// in-cluster changes nothing about protection rules.
+	// the same name the gate reported under when it ran in CI, so moving it
+	// in-cluster changed nothing about protection rules.
 	CheckName string
 	RepoURL   string
 	CloneRoot string
@@ -166,9 +164,8 @@ func (g *Service) sweep(ctx context.Context) {
 		if g.known(pr.HeadSHA) {
 			continue
 		}
-		// A verdict that already stands -- from a previous life of this pod,
-		// or from a CI adapter still running during a migration -- is not
-		// re-litigated. The triage re-renders on demand if it needs the
+		// A verdict that already stands -- from a previous life of this pod --
+		// is not re-litigated. The triage re-renders on demand if it needs the
 		// report; the sweep's job is only that every head commit gets one.
 		state, err := g.Git.CheckStatus(ctx, pr.HeadSHA, g.CheckName)
 		switch {
@@ -276,9 +273,9 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 	// repository controls. That is the trust decision gate.forkPRs exists to
 	// make, and it belongs on the path that does the work.
 	if pr.FromFork && !g.ForkPRs {
-		// An unreported required check blocks the merge with no explanation,
-		// which is the CI adapter's paths-filter trap wearing a new hat.
-		// Error, with the reason, says why and how to decide otherwise.
+		// An unreported required check blocks the merge with no explanation --
+		// the same trap a CI paths filter used to spring. Error, with the
+		// reason, says why and how to decide otherwise.
 		g.status(ctx, pr, gitprovider.StateError,
 			"not gated: fork pull request (gate.forkPRs renders fork content in-cluster)")
 		return &Outcome{Err: fmt.Errorf("fork pull request")}
@@ -301,10 +298,9 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 	}
 	defer cleanup()
 
-	// The config comes from the HEAD at both revisions -- the same rule the
-	// CI adapter applies. The config describes how to render, not what to
-	// render, and the base may predate it entirely, notably on the pull
-	// request that introduces the gate.
+	// The config comes from the HEAD at both revisions. It describes how to
+	// render, not what to render, and the base may predate it entirely,
+	// notably on the pull request that introduces the gate.
 	cfgRaw, err := os.ReadFile(filepath.Join(head, ".gitops-gate.yaml"))
 	if err != nil {
 		return g.broke(ctx, pr, fmt.Errorf("no .gitops-gate.yaml at the head revision: %w", err))
@@ -432,8 +428,8 @@ func (g *Service) comment(ctx context.Context, pr *gitprovider.PullRequest, repo
 	// Two different questions, deliberately answered by two different scans.
 	//
 	// "Has this already been said?" is about the COMMIT and must consider every
-	// author: a previous life of this pod, or a CI adapter still running during
-	// a migration, both count and neither is necessarily us.
+	// author: a previous life of this pod counts, and it is not necessarily
+	// recognisable as us.
 	//
 	// "Which comment may I rewrite?" is about OWNERSHIP -- a host lets an author
 	// edit only its own comments -- so that one is filtered by author, and the
@@ -457,10 +453,10 @@ func (g *Service) comment(ctx context.Context, pr *gitprovider.PullRequest, repo
 	}
 	// Ours is the one carrying the verdict stamp, which only this code path
 	// writes. NOT the one whose author matches -- Name() is the PROVIDER's
-	// name ("github"), never the account, and a report posted by a CI adapter
-	// is not ours to rewrite anyway. Matching on the stamp is the same
-	// question asked of the artefact instead of the identity, and it is the
-	// question that has an answer here.
+	// name ("github"), never the account, and a report somebody else posted is
+	// not ours to rewrite anyway. Matching on the stamp is the same question
+	// asked of the artefact instead of the identity, and it is the question
+	// that has an answer here.
 	for i := range comments {
 		if strings.Contains(comments[i].Body, stampVerdict) {
 			existing = &comments[i]

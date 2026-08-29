@@ -332,15 +332,14 @@ func sortChanges(c []Change) {
 const maxListed = maxDroppedListed
 
 // ReportMarker leads every report, and it is load-bearing rather than
-// decorative. A triage agent finds the gate's verdict by looking for this
-// string among the pull request's comments, and an adapter that publishes the
-// report without it has published something nobody can find.
+// decorative. It is how the gate finds the report it already published on a
+// pull request and rewrites that one instead of adding another, and a report
+// published without it is one nobody can find again.
 //
-// It lives here, in the binary, for one reason: every CI adapter would
-// otherwise have to remember an undocumented magic string, and three of the
-// four did not. Emitting it means any adapter that posts the report verbatim
-// is correct by construction. It renders as nothing in every markdown surface,
-// including a CI job summary.
+// It lives here, in the binary, rather than in whatever publishes the report:
+// a magic string every publisher has to remember is one most of them will get
+// wrong. Emitting it means anything that posts the report verbatim is correct
+// by construction. It renders as nothing in every markdown surface.
 const ReportMarker = "<!-- gitops-gate -->"
 
 // NothingChanged is the report's answer when the render is identical on both

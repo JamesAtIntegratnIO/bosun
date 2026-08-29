@@ -114,76 +114,57 @@ llm:
   apiKeyKey: api-key
 
 gate:
-  # Where the gate runs.
+  # The agent IS the gate. It polls the open pull requests, renders base and
+  # head against the LIVE cluster inventory, and posts the `checkName` status
+  # and the report comment itself. Nothing to install in CI, no checked-in
+  # cluster inventory to go stale, no paths filter to hand-edit -- every pull
+  # request is rendered, and "no change to what gets deployed" is an answer
+  # rather than a guess.
   #
-  #   cluster (default) -- the agent IS the gate. It polls the open pull
-  #     requests, renders base and head against the LIVE ArgoCD cluster
-  #     inventory, and posts the `checkName` status and the report comment
-  #     itself. Nothing to install in CI, no checked-in cluster inventory to
-  #     go stale, no paths filter to hand-edit -- every pull request is
-  #     rendered, and "no change to what gets deployed" is an answer rather
-  #     than a guess. WHAT IT COSTS: get/list on Secrets in the ArgoCD
-  #     namespace (the inventory lives in the ArgoCD cluster Secrets, which
-  #     also carry cluster credentials -- rbac.create scopes the grant to
-  #     that one namespace, and `inventorySource: argocd` below replaces it
-  #     with an ArgoCD account token), and the render runs over pull-request
-  #     content in-cluster, which is why fork pull requests are refused
-  #     unless `forkPRs` says otherwise.
-  #   ci -- the original shape: the gate runs in CI (see ci/ in the bosun
-  #     repository), the agent waits on the check and reads the report from
-  #     a comment. The fallback for public repositories taking fork pull
-  #     requests, and for clusters that will not grant the Secret read.
-  mode: cluster
+  # WHAT IT COSTS: an ArgoCD account token (`argocd` below, REQUIRED), and the
+  # render runs over pull-request content in-cluster, which is why fork pull
+  # requests are refused unless `forkPRs` says otherwise.
+
   # Render pull requests whose head branch lives in another repository.
-  # OFF by default: in cluster mode the render runs helm over the pull
-  # request's content, inside the cluster, and whose content that is should
-  # be an operator's decision. Off, a fork pull request gets an `error`
-  # status naming this value rather than an unreported required check.
+  # OFF by default: the render runs helm over the pull request's content,
+  # inside the cluster, and whose content that is should be an operator's
+  # decision. Off, a fork pull request gets an `error` status naming this
+  # value rather than an unreported required check.
   forkPRs: false
-  # The single aggregate check the agent posts (cluster mode) or waits on
-  # (ci mode). Must match the name in your branch protection rule.
+  # The single aggregate check the agent posts. Must match the name in your
+  # branch protection rule.
   checkName: addons-gate
-  # How long to wait for the gate to reach a verdict. CI mode only: an
-  # in-process gate is run, not waited for. `poll` also paces the cluster
-  # mode sweep for new pull requests.
-  wait: 10m
+  # How often the sweep looks for pull requests with no verdict yet.
   poll: 30s
 
-  # Where cluster mode reads the live inventory from. Ignored in ci mode,
-  # which renders against a checked-in snapshot.
+  # Where the gate reads the live cluster inventory: ArgoCD's own API, which
+  # serves the four fields the gate wants (name, server, labels, annotations)
+  # with the credential block redacted.
   #
-  #   secrets (default) -- the ArgoCD cluster Secrets, straight from the
-  #     apiserver. One credential (the pod's own ServiceAccount), nothing in
-  #     the path that can be down by itself.
-  #   argocd -- the ArgoCD API, which serves the same four fields the gate
-  #     wants (name, server, labels, annotations) with the credential block
-  #     redacted.
+  # WHY THE API AND NOT THE SECRETS THEY LIVE IN. Reading the cluster Secrets
+  # needs get/list on Secrets in the ArgoCD namespace, and that grant cannot
+  # be made smaller. The gate reads four fields; RBAC has no predicate for
+  # "the labels but not the data" -- there are no deny rules, `resourceNames`
+  # does not apply to `list`, and the label selector in the request is a
+  # filter the apiserver applies AFTER authorising. So a token holding that
+  # Role can drop the selector and read argocd-secret and every repository
+  # credential beside it. ArgoCD's own API draws the line RBAC cannot.
   #
-  # WHY YOU MIGHT MOVE. The Secret grant cannot be made smaller. The gate
-  # reads four fields; RBAC has no predicate for "the labels but not the
-  # data" -- there are no deny rules, `resourceNames` does not apply to
-  # `list`, and the label selector in the request is a filter the apiserver
-  # applies AFTER authorising. So a token holding that Role can drop the
-  # selector and read argocd-secret and every repository credential beside
-  # it. ArgoCD's own API draws the line RBAC cannot, and `argocd` deletes
-  # the Role entirely -- rbac.create stops rendering it.
-  #
-  # WHAT IT COSTS, as plainly as the grant it replaces. A second credential
-  # to mint, store and rotate, bearer-equivalent for whatever its ArgoCD RBAC
-  # permits. A second component that can be down on its own: the Secrets are
-  # readable whenever the apiserver is; argocd-server is not. And a second
-  # TLS story, because argocd-server serves its own certificate rather than
-  # the one the kubelet mounts into every pod.
-  #
-  # A trade, not a free win -- which is why it is a value and not the default.
-  inventorySource: secrets
-
-  # `inventorySource: argocd` only. Ignored otherwise.
+  # WHAT IT COSTS, as plainly as the grant it replaces. A credential to mint,
+  # store and rotate, bearer-equivalent for whatever its ArgoCD RBAC permits.
+  # A component that can be down on its own: the apiserver is up whenever the
+  # cluster is; argocd-server is not. And its own TLS story, because
+  # argocd-server serves its own certificate rather than the one the kubelet
+  # mounts into every pod.
   argocd:
-    # The ArgoCD API server, as the agent dials it. In-cluster, so it CANNOT
-    # be reached through an ipBlock in the NetworkPolicy -- when the source is
-    # `argocd` the chart adds the namespace egress rule itself, on `podPort`.
-    baseURL: https://argocd-server.argocd.svc
+    # The ArgoCD API server, as the agent dials it. NO DEFAULT: this is a
+    # fact about your install, and a wrong-but-plausible address fails at
+    # start-up with a timeout that points nowhere near this line.
+    #
+    # In-cluster, so it CANNOT be reached through an ipBlock in the
+    # NetworkPolicy -- the chart adds the namespace egress rule itself, on
+    # `podPort`.
+    baseURL: ""             # REQUIRED
 
     # The port argocd-server's POD listens on. Nothing but the NetworkPolicy
     # rule reads this: it is not part of `baseURL`, and it is normally NOT the
@@ -222,7 +203,7 @@ gate:
     #
     # Nothing else. A token with more is a bigger credential than the Secret
     # read it replaced, which would defeat the point.
-    existingSecret: ""
+    existingSecret: ""      # REQUIRED
     tokenKey: token
     # argocd-server's default certificate is self-signed. Give this its CA
     # (a Secret holding one PEM key) or set insecureSkipTLSVerify -- which of
@@ -230,33 +211,6 @@ gate:
     caSecret: ""
     caKey: ca.crt
     insecureSkipTLSVerify: false
-
-  # The account whose gate report the agent will believe.
-  #
-  # The gate publishes its verdict as a pull-request comment carrying a marker,
-  # and until this existed the marker was the whole of the check. Anyone who can
-  # comment on the pull request can write that marker -- and the report under it
-  # is what the agent reads to decide which manifests to rewrite, which version
-  # strings it will accept as corroborated, and what it tells the model actually
-  # rendered. A forged report is not a wrong opinion; it is an instruction
-  # wearing the gate's authority.
-  #
-  # EMPTY MEANS PER-HOST DEFAULT, because the answer is a fact about the host:
-  #   github -- `github-actions[bot]`. A gate running in GitHub Actions comments
-  #             through `github.token` and therefore as that account, every time.
-  #   gitea  -- unchecked. Gitea Actions has no equivalent fixed identity; the
-  #             report arrives as whichever user minted the CI token, which this
-  #             chart cannot know. Set it to that user.
-  #
-  # Set it to "*" to read the report whoever wrote it. That is the behaviour
-  # that existed before this value, and there are deployments where it is the
-  # only expressible answer -- but it should be a decision in this file rather
-  # than an absence.
-  #
-  # If your gate comments as a bot user or a PAT's owner rather than through
-  # Actions, name that account here: the symptom of getting it wrong is the
-  # agent saying it ignored a report and naming the author it saw.
-  reportAuthor: ""
 
 triage:
   # Repair a RED gate whose only cause is a CRD that stopped serving versions:
@@ -509,9 +463,10 @@ networkPolicy:
     namespaces: []
     # e.g. [{cidr: 10.1.2.3/32, port: 8000}] for a model endpoint on your LAN
     ipBlocks: []
-    # The Kubernetes apiserver, needed when liveReads is enabled OR gate.mode
-    # is cluster -- the gate reads its inventory from the ArgoCD cluster
-    # Secrets through the same door.
+    # The Kubernetes apiserver, needed when liveReads is enabled OR the
+    # pipeline sweep is on -- both read it, and both are on by default.
+    # (The gate does not: its inventory comes from the ArgoCD API, and the
+    # chart writes that egress rule itself.)
     #
     # It has its own key because it is the destination people get wrong. The
     # apiserver is reached at `kubernetes.default.svc`, whose ClusterIP is

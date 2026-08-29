@@ -62,16 +62,11 @@ APISERVER_PORT="$(kc -n default get endpoints kubernetes \
 # cluster actually ships and leaves Secrets unreadable.
 : "${LIVE_READ_GROUPS:=external-secrets.io generators.external-secrets.io cert-manager.io acme.cert-manager.io argoproj.io kargo.akuity.io}"
 
-# The account whose gate report the agent will believe.
-#
-# There is no per-host default that can be right here: GitHub Actions always
-# comments as `github-actions[bot]`, and Gitea has no equivalent fixed identity
-# -- the report arrives as whichever user minted the CI token. In this ground
-# that is gate-run.sh, running as the admin. Naming it is what makes a forged
-# report -- anyone who can comment can write the gate's marker -- a comment the
-# agent ignores by author rather than an instruction wearing the gate's
-# authority.
-: "${GATE_REPORT_AUTHOR:=${GITEA_OWNER}}"
+# The ArgoCD account the gate reads the cluster inventory as. Its own account,
+# not admin: the credential is bearer-equivalent for whatever its ArgoCD RBAC
+# permits, so the ground should hold the one the documentation tells an
+# operator to mint -- `clusters, get` and nothing else.
+: "${ARGOCD_ACCOUNT:=bosun}"
 
 say "the agent's own account"
 # The agent authenticates as whoever owns its token. Hand it the admin's and
@@ -117,6 +112,55 @@ kc -n bosun create secret generic agent-git \
   --from-literal=token="$AGENT_TOKEN" >/dev/null
 ok "agent-git"
 
+say "the gate's ArgoCD account"
+# The inventory the gate expands generators against comes from ArgoCD's API,
+# on an account token. Two ConfigMap edits and a mint -- the same three steps
+# the chart README asks an operator for, done here so the ground exercises the
+# real path rather than a shortcut through admin.
+#
+# `accounts.<name>: apiKey` is what lets the account hold a token at all;
+# without it the mint returns 400 and the message does not say why.
+kc -n argocd patch cm argocd-cm --type merge \
+  -p "{\"data\":{\"accounts.${ARGOCD_ACCOUNT}\":\"apiKey\"}}" >/dev/null
+# And the smallest policy that answers the gate's one question. Anything more
+# is a bigger credential than the Secret read this replaced.
+kc -n argocd patch cm argocd-rbac-cm --type merge \
+  -p "{\"data\":{\"policy.csv\":\"p, ${ARGOCD_ACCOUNT}, clusters, get, *, allow\"}}" >/dev/null
+# argocd-server reads both ConfigMaps at start-up. Without this the account
+# does not exist yet and the mint below fails against a server that is
+# otherwise healthy.
+kc -n argocd rollout restart deploy/argocd-server >/dev/null
+kc -n argocd rollout status deploy/argocd-server --timeout=180s >/dev/null
+step "account ${ARGOCD_ACCOUNT} with \`clusters, get\`"
+
+ARGOCD_ADMIN_PASSWORD="$(kc -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath='{.data.password}' | base64 -d)"
+[ -n "$ARGOCD_ADMIN_PASSWORD" ] || bad "could not read argocd-initial-admin-secret"
+# A session token for admin, used once, to mint the account's token. It is
+# never handed to the agent.
+ARGOCD_ADMIN_JWT="$(curl -sk -X POST "${ARGOCD_URL}/api/v1/session" \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 -c "
+import json,sys
+print(json.dumps({'username':'admin','password':sys.argv[1]}))" "$ARGOCD_ADMIN_PASSWORD")" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token",""))')"
+[ -n "$ARGOCD_ADMIN_JWT" ] || bad "argocd refused the admin session"
+
+ARGOCD_TOKEN="$(curl -sk -X POST \
+  "${ARGOCD_URL}/api/v1/account/${ARGOCD_ACCOUNT}/token" \
+  -H "Authorization: Bearer ${ARGOCD_ADMIN_JWT}" \
+  -H 'Content-Type: application/json' -d '{"name":"proving-ground"}' \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token",""))')"
+[ -n "$ARGOCD_TOKEN" ] || bad "could not mint a token for ${ARGOCD_ACCOUNT}"
+
+kc -n bosun delete secret agent-argocd >/dev/null 2>&1 || true
+kc -n bosun create secret generic agent-argocd \
+  --from-literal=token="$ARGOCD_TOKEN" >/dev/null
+ok "agent-argocd"
+
+ARGOCD_SVC_URL="$(argocd_service_url)"
+step "the gate will read the inventory from ${ARGOCD_SVC_URL}"
+
 say "building the agent image from the working tree"
 docker build -q -t "$AGENT_IMAGE" "$ROOT/.." >/dev/null
 ok "built $AGENT_IMAGE"
@@ -145,12 +189,9 @@ while read -r ip; do
 done <<< "$APISERVER_EPS"
 
 say "bosun"
-# gate.mode=ci, NOT the chart default. The incident-replay acts (60, 85) feed
-# the agent RECORDED gate reports as comments -- replaying an incident means
-# replaying its evidence, and only ci mode reads a verdict off a comment. An
-# in-cluster gate would render the sample repo as it actually is and answer
-# about the wrong world. The cluster-mode act (45) flips this and puts it
-# back, the way the egress act treats the deny list.
+# `insecureSkipTLSVerify` on the ArgoCD read, and only here: idpbuilder's
+# argocd-server serves a certificate signed by a CA that exists nowhere a pod
+# can reach. A real install gives the chart `gate.argocd.caSecret` instead.
 helm upgrade --install bosun "$ROOT/../charts/bosun" \
   --kube-context "$CLUSTER_CONTEXT" \
   --namespace bosun \
@@ -175,13 +216,13 @@ helm upgrade --install bosun "$ROOT/../charts/bosun" \
   --set llm.provider=openai \
   --set llm.baseURL="$LLM_BASE_URL" \
   --set llm.model="$LLM_MODEL" \
-  --set gate.mode=ci \
   --set gate.checkName=gate \
-  --set gate.wait=3m \
   --set gate.poll=10s \
+  --set gate.argocd.baseURL="$ARGOCD_SVC_URL" \
+  --set gate.argocd.existingSecret=agent-argocd \
+  --set gate.argocd.insecureSkipTLSVerify=true \
   --set 'triage.allowPaths[0]=apps/**' \
   --set 'triage.allowPaths[1]=addons/**' \
-  --set gate.reportAuthor="$GATE_REPORT_AUTHOR" \
   --set liveReads.enabled=true \
   --set liveReads.scope=groups \
   --set liveReads.argocdNamespace=argocd \
