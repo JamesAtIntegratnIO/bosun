@@ -228,9 +228,8 @@
 .bo-hero__mark {
   width: clamp(56px, 8vw, 84px);
   height: auto;
-  border-radius: 14px;
   margin-bottom: 1rem;
-  box-shadow: 0 10px 30px -12px rgb(0 0 0 / 0.6);
+  filter: drop-shadow(0 8px 18px rgb(0 0 0 / 0.5));
 }
 
 .bo-report {

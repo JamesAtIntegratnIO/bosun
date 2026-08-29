@@ -9,9 +9,6 @@
     </clipPath>
   </defs>
 
-  <!-- badge background -->
-  <rect width="1024" height="1024" fill="#14293E"/>
-
   <g clip-path="url(#scene)">
     <!-- sky -->
     <rect width="1024" height="1024" fill="url(#sky)"/>
