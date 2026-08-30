@@ -35,6 +35,9 @@ set -euo pipefail
 : "${DEMO_CHART_REPO:=https://stefanprodan.github.io/podinfo}"
 : "${DEMO_CHART:=podinfo}"
 
+# Used by every script that sources this file -- 20-seed, 30-kit, 95-reset --
+# which shellcheck cannot see across the source boundary.
+# shellcheck disable=SC2034
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 say()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }

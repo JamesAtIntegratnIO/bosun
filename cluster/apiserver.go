@@ -250,7 +250,7 @@ func (a *APIServer) CRD(ctx context.Context, name string) CRD {
 			} `json:"versions"`
 		} `json:"spec"`
 	}
-	path := "/apis/apiextensions.k8s.io/v1/customresourcedefinitions/" + url.PathEscape(name)
+	path := readCRDs.object(name)
 	if err := a.get(ctx, path, &crd); err != nil {
 		switch code(err) {
 		case http.StatusForbidden, http.StatusUnauthorized:
@@ -295,8 +295,7 @@ func (a *APIServer) AppHealth(ctx context.Context, name string) Health {
 			} `json:"sync"`
 		} `json:"status"`
 	}
-	path := fmt.Sprintf("/apis/argoproj.io/v1alpha1/namespaces/%s/applications/%s",
-		url.PathEscape(ns), url.PathEscape(name))
+	path := readApplications.namespaced(ns, name)
 	if err := a.get(ctx, path, &app); err != nil {
 		switch code(err) {
 		case http.StatusForbidden, http.StatusUnauthorized:

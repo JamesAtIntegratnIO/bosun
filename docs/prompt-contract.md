@@ -19,6 +19,13 @@ return:
 The applier rejects all three, so nothing gets fixed and the run is wasted.
 Every lever below exists to prevent that.
 
+An edit is five fields, and only one of them is composed: `path` and `key`
+locate the scalar, `from` is copied out of the text the model was shown so a
+stale view is rejected rather than applied, `to` is the new value, and
+`rationale` is one sentence on why this specific change. The prompt says the
+same thing in the same words, and `llm/contract_test.go` fails if this document
+stops naming a field either of them does.
+
 ## Lever 1: an inventory of editable scalars
 
 The single biggest change. Instead of pasting file contents, the agent extracts

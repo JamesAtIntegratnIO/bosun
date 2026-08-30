@@ -19,10 +19,16 @@ import (
 // Stamps the gate leaves in its own comment so the next run can read what the
 // last one said. HTML comments: invisible in every markdown surface, and the
 // only per-pull-request memory a gate with no database has.
+//
+// Exported because they are already public in the strongest sense -- they are
+// published into pull-request comments, and the agent must be able to prove a
+// model's prose can never forge one. agent/comment_test.go used to re-declare
+// all three by hand, so changing a stamp here left that test green while it
+// protected a string nothing wrote any more.
 const (
-	stampHead    = "<!-- gitops-gate:head "
-	stampVerdict = "<!-- gitops-gate:verdict "
-	stampWas     = "<!-- gitops-gate:was "
+	StampHead    = "<!-- gitops-gate:head "
+	StampVerdict = "<!-- gitops-gate:verdict "
+	StampWas     = "<!-- gitops-gate:was "
 )
 
 // maxHistory caps the remembered verdicts. Ten is far more than any pull
@@ -47,7 +53,7 @@ func boolDigit(b bool) string {
 func parseHistory(body string) []verdictRow {
 	var out []verdictRow
 	for _, line := range strings.Split(body, "\n") {
-		if row, ok := parseStampedRow(line, stampWas, true); ok {
+		if row, ok := parseStampedRow(line, StampWas, true); ok {
 			out = append(out, row)
 		}
 	}
@@ -59,13 +65,13 @@ func parseHistory(body string) []verdictRow {
 func currentAsRow(body string) []verdictRow {
 	var sha string
 	for _, line := range strings.Split(body, "\n") {
-		if rest, ok := trimStamp(line, stampHead); ok {
+		if rest, ok := trimStamp(line, StampHead); ok {
 			sha = strings.TrimSpace(rest)
 			break
 		}
 	}
 	for _, line := range strings.Split(body, "\n") {
-		if row, ok := parseStampedRow(line, stampVerdict, false); ok {
+		if row, ok := parseStampedRow(line, StampVerdict, false); ok {
 			row.SHA = sha
 			if row.SHA == "" {
 				return nil

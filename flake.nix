@@ -119,6 +119,11 @@
               git
               curl
 
+              # local/scripts and hack/ are the two shell trees, and CI never
+              # runs local/. shellcheck is what keeps it from rotting between
+              # the demo runs a human does by hand.
+              shellcheck
+
               # The documentation site. Pinned to the major CI installs, because
               # `npm run build` is a required check and a site that only builds
               # on the runner is one nobody builds before pushing. It also owns

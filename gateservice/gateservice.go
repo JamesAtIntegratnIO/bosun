@@ -563,7 +563,7 @@ func (g *Service) comment(ctx context.Context, pr *gitprovider.PullRequest, repo
 			pr.Number, err)
 	}
 	for i := range comments {
-		if strings.Contains(comments[i].Body, stampHead+pr.HeadSHA+" -->") {
+		if strings.Contains(comments[i].Body, StampHead+pr.HeadSHA+" -->") {
 			return
 		}
 	}
@@ -574,7 +574,7 @@ func (g *Service) comment(ctx context.Context, pr *gitprovider.PullRequest, repo
 	// of the artefact instead of the identity, and it is the question that has
 	// an answer here.
 	for i := range comments {
-		if strings.Contains(comments[i].Body, stampVerdict) {
+		if strings.Contains(comments[i].Body, StampVerdict) {
 			existing = &comments[i]
 		}
 	}
@@ -586,10 +586,10 @@ func (g *Service) comment(ctx context.Context, pr *gitprovider.PullRequest, repo
 	}
 
 	var stamps strings.Builder
-	fmt.Fprintf(&stamps, "%s%s -->\n", stampHead, pr.HeadSHA)
-	fmt.Fprintf(&stamps, "%s%s %s -->\n", stampVerdict, blocking, headline)
+	fmt.Fprintf(&stamps, "%s%s -->\n", StampHead, pr.HeadSHA)
+	fmt.Fprintf(&stamps, "%s%s %s -->\n", StampVerdict, blocking, headline)
 	for _, h := range history {
-		fmt.Fprintf(&stamps, "%s%s %s %s -->\n", stampWas, h.SHA, boolDigit(h.Blocking), h.Headline)
+		fmt.Fprintf(&stamps, "%s%s %s %s -->\n", StampWas, h.SHA, boolDigit(h.Blocking), h.Headline)
 	}
 
 	body := strings.Replace(report, gate.ReportMarker+"\n",

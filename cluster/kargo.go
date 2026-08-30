@@ -25,8 +25,6 @@ import (
 // would not have been found"). Deciding that is the sweep's job, not this
 // file's, so the failure has to reach it intact.
 
-const kargoAPI = "/apis/kargo.akuity.io/v1alpha1"
-
 // KargoStage is a Stage, reduced.
 type KargoStage struct {
 	Name           string
@@ -76,7 +74,7 @@ type KargoPromotion struct {
 // supervisor can say "Kargo is not installed here" rather than "no Stages
 // found", which are different sentences with different actions.
 func (a *APIServer) KargoAvailable(ctx context.Context) bool {
-	return a.get(ctx, kargoAPI, nil) == nil
+	return a.get(ctx, readStages.groupRoot(), nil) == nil
 }
 
 // Stages lists every Stage the agent may see.
@@ -120,7 +118,7 @@ func (a *APIServer) Stages(ctx context.Context) ([]KargoStage, error) {
 			} `json:"status"`
 		} `json:"items"`
 	}
-	if err := a.listAll(ctx, "stages", &raw); err != nil {
+	if err := a.listAll(ctx, readStages, &raw); err != nil {
 		return nil, err
 	}
 	out := make([]KargoStage, 0, len(raw.Items))
@@ -189,7 +187,7 @@ func (a *APIServer) Warehouses(ctx context.Context) ([]KargoWarehouse, error) {
 			} `json:"status"`
 		} `json:"items"`
 	}
-	if err := a.listAll(ctx, "warehouses", &raw); err != nil {
+	if err := a.listAll(ctx, readWarehouses, &raw); err != nil {
 		return nil, err
 	}
 	out := make([]KargoWarehouse, 0, len(raw.Items))
@@ -248,7 +246,7 @@ func (a *APIServer) Promotions(ctx context.Context) ([]KargoPromotion, error) {
 			} `json:"status"`
 		} `json:"items"`
 	}
-	if err := a.listAll(ctx, "promotions", &raw); err != nil {
+	if err := a.listAll(ctx, readPromotions, &raw); err != nil {
 		return nil, err
 	}
 	out := make([]KargoPromotion, 0, len(raw.Items))
@@ -297,7 +295,8 @@ func findCondition(cs []condition, typ string) (condition, bool) {
 // would report a wedged Stage as healthy because its promotion was on page
 // two. The pages are appended into the caller's Items slice by re-decoding,
 // which costs an allocation and removes a class of bug.
-func (a *APIServer) listAll(ctx context.Context, plural string, out any) error {
+func (a *APIServer) listAll(ctx context.Context, read Read, out any) error {
+	plural := read.Plural
 	type page struct {
 		Items    []json.RawMessage `json:"items"`
 		Metadata struct {
@@ -307,7 +306,7 @@ func (a *APIServer) listAll(ctx context.Context, plural string, out any) error {
 	var all []json.RawMessage
 	cont := ""
 	for {
-		path := fmt.Sprintf("%s/%s?limit=%d", kargoAPI, plural, pageSize)
+		path := fmt.Sprintf("%s?limit=%d", read.collection(), pageSize)
 		if cont != "" {
 			path += "&continue=" + url.QueryEscape(cont)
 		}

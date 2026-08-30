@@ -107,6 +107,14 @@ jobs:
       # chart renders, every link resolves, every unit documents itself.
       - run: hack/portability-test.sh
 
+      # The two shell trees. local/ is thirteen scripts and about 1,500 lines
+      # that no job here runs -- it needs a kind cluster and a model endpoint --
+      # so this is the only thing standing between it and a quoting bug found
+      # by hand, mid-demo, on the day somebody needed the demo. ubuntu-latest
+      # ships shellcheck; the dev shell carries it too, at whatever nixpkgs has.
+      - name: shellcheck
+        run: shellcheck --severity=warning hack/*.sh local/scripts/*.sh
+
       # Catch the version mistake before it merges, in both directions.
       #
       # Publishing refuses to overwrite an existing version, which is correct
