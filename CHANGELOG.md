@@ -5,6 +5,39 @@ All notable changes to `bosun`. Format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The field diff earns its length, and says whose fields moved.** Read back
+  from the first live reports: a podinfo bump listed ten changed fields, nine
+  of them one inserted flag shifting a command array plus a namespace stamp
+  the new chart version started writing, and the reader's actual question --
+  does this touch anything I set? -- was answerable only by reading all ten.
+  And the gate rewrites its one comment per run, so the repair's re-render
+  printed the same wall again. Three changes, one per source of noise:
+
+  - **Scalar lists are aligned, not compared index by index.** One flag
+    inserted into a command now reads `` `command`: gained `--prefix=/` `` --
+    one line, membership rather than position. Only where it is shorter: a
+    replaced element keeps the one-arrow form, and lists of maps keep the
+    index walk, where positional comparison is what a reader expects of
+    containers.
+  - **A namespace stamp equal to the destination is not a change.** The
+    resolved namespace is normalised into the body before hashing, the same
+    rule as version stamps: ArgoCD sends the destination either way, so a
+    chart that starts writing `metadata.namespace` changes no applied byte.
+    The podinfo Service, whose only "change" was that stamp, drops out of the
+    report entirely.
+  - **Fields whose values this repository sets surface above the fold; the
+    chart's own fold away** behind a summary that says whether opening it can
+    matter: `2 fields, none of them a value this repository sets` is the
+    whole read for most bumps. Folded, not filtered, deliberately: the mark
+    is a value-match heuristic, the report is also the evidence the model's
+    prompt carries, and the one line worth reading on the bump that prompted
+    this was not values-linked -- a filter would have hidden it, a fold
+    prices it at one click. The summary claims "none of them yours" only
+    when the values were actually compared; a diff nobody checked keeps the
+    old bare count, because "we could not look" must never read as "none".
+
 ### Added
 
 - **The gate derives what to render from ArgoCD, and `.gitops-gate.yaml`

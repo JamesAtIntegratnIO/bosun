@@ -63,7 +63,7 @@ func genuineDrop(t *testing.T) (base, head []Object) {
 // asks for: the writer, the wire format and the reader, in one run.
 func TestTheRepairContractSurvivesTheReport(t *testing.T) {
 	base, head := genuineDrop(t)
-	d := &DiffResult{Objects: diffObjects(base, head)}
+	d := &DiffResult{Objects: diffObjects(base, head, nil)}
 
 	var inProcess []migrate.Dropped
 	for _, o := range d.Objects {
@@ -114,7 +114,7 @@ func TestARenderedNameCannotForgeARepair(t *testing.T) {
 				map[string]any{"name": "v1", "served": true})))
 
 			var b strings.Builder
-			(&DiffResult{Objects: diffObjects(base, head)}).Report(&b)
+			(&DiffResult{Objects: diffObjects(base, head, nil)}).Report(&b)
 
 			for _, d := range migrate.ParseReport(b.String()) {
 				if d.CRD != "widgets.example.io" {
@@ -135,7 +135,7 @@ func TestAHostileNameIsNeutralisedInTheProse(t *testing.T) {
 		map[string]any{"name": "v1", "served": true})))
 
 	var b strings.Builder
-	(&DiffResult{Objects: diffObjects(base, head)}).Report(&b)
+	(&DiffResult{Objects: diffObjects(base, head, nil)}).Report(&b)
 
 	for _, line := range strings.Split(b.String(), "\n") {
 		if strings.Contains(line, "and a new line") && !strings.Contains(line, "evil.example.io") {

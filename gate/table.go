@@ -56,6 +56,14 @@ type Table struct {
 	// reported only when there is something to report.
 	Objects  []Object `json:"objects,omitempty"`
 	Warnings []string `json:"warnings,omitempty"`
+
+	// ValuesLeaves is, per Application, the set of scalar values this
+	// repository's own values supply to it, rendered as strings. Filled by
+	// chart-diff for the rows it rendered, nil everywhere else, and consumed
+	// by the object diff to mark the changed fields a reader actually chose;
+	// nil means "not known", never "none", which is why the mark carries a
+	// checked flag beside it.
+	ValuesLeaves map[string]map[string]bool `json:"-"`
 }
 
 func (t *Table) Sort() {
