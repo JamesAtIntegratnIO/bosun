@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/JamesAtIntegratnIO/bosun/gate"
+	"github.com/JamesAtIntegratnIO/bosun/gateservice"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
 	"github.com/JamesAtIntegratnIO/bosun/pipeline"
@@ -12,14 +13,12 @@ import (
 )
 
 // The stamps gateservice writes into the gate's own comment and scans every
-// comment body for. Unexported there, so they are spelled out here; this is
-// the both-sides half of Rule 1a and the reason it is worth the duplication.
-// See gateservice/gatehistory.go and the two scans in gateservice.go.
-const (
-	stampHeadShape    = "<!-- gitops-gate:head "
-	stampVerdictShape = "<!-- gitops-gate:verdict "
-	stampWasShape     = "<!-- gitops-gate:was "
-)
+// comment body for are imported rather than re-spelled here.
+//
+// They used to be three hand-written copies, because the originals were
+// unexported: changing one in gateservice left this test green while it
+// protected a string nothing wrote any more, which is the failure the test
+// itself exists to prevent one layer down.
 
 // everyPublishedMarker is every string something in this repository searches a
 // pull request's comments for. A body that contains one is claiming to be the
@@ -30,9 +29,9 @@ func everyPublishedMarker() []string {
 		migrate.BlockersMarker,
 		pipeline.ReportMarker,
 		explanationMarker,
-		stampHeadShape,
-		stampVerdictShape,
-		stampWasShape,
+		gateservice.StampHead,
+		gateservice.StampVerdict,
+		gateservice.StampWas,
 	}
 }
 

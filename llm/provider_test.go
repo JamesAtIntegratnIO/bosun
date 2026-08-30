@@ -67,26 +67,13 @@ func TestValidateAcceptsTheThreeGoodShapes(t *testing.T) {
 	}
 }
 
-// The schemas are what constrain the model. A key missing from one is a field
-// the backend will not enforce, which is the whole point of sending them.
-func TestTheSchemasNameTheFieldsTheyConstrain(t *testing.T) {
-	vs := VerdictSchema()
-	props, ok := vs["properties"].(map[string]any)
-	if !ok {
-		t.Fatal("VerdictSchema has no properties")
-	}
-	for _, want := range []string{"classification", "summary", "reasoning", "edits"} {
-		if _, ok := props[want]; !ok {
-			t.Errorf("VerdictSchema does not constrain %q", want)
-		}
-	}
-
-	ms := MigrationSchema()
-	mp, ok := ms["properties"].(map[string]any)
-	if !ok {
-		t.Fatal("MigrationSchema has no properties")
-	}
-	if _, ok := mp["document"]; !ok {
-		t.Error("MigrationSchema does not constrain the document it exists to carry")
-	}
-}
+// The schemas are what constrain the model, and what they must agree with is
+// checked in contract_test.go rather than here.
+//
+// TestTheVerdictSchemaMatchesTheVerdictStruct and its Migration counterpart
+// derive both sides -- the schema's properties and the struct's json tags --
+// and also check `required` and additionalProperties. The hand-written list
+// that used to be here named four of the Verdict's five properties: it omitted
+// escalationReason, which is the one VerdictSchema's own comment calls out as
+// the field a model will drop if it is not required. A hand-written list
+// failing to cover a hand-written list is the whole argument for deriving both.

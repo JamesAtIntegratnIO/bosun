@@ -29,16 +29,32 @@ the gate in-cluster, and it is why the shared report vocabulary lives in `gate`
 and `migrate` rather than being spelled out twice. What follows are the
 contracts that still cross a process boundary, where no compiler is watching:
 
-| Contract | How it broke |
-|---|---|
-| The gate finds the report it already published by searching comments for `<!-- gitops-gate -->`, so a re-run edits that comment instead of adding one | The marker lived in one demo script and in nothing that published a report, so no reader could ever find one |
-| Any version the agent writes must appear verbatim in the gate's report | Still untested. Change how the report renders a version and every mechanical fix silently becomes an escalation |
-| `kargo-pipelines` POSTs a promotion body the agent's handler must parse | Untested |
+| Contract | How it broke | What sees both sides now |
+|---|---|---|
+| The gate finds the report it already published by searching comments for `<!-- gitops-gate -->`, so a re-run edits that comment instead of adding one | The marker lived in one demo script and in nothing that published a report, so no reader could ever find one | `agent/comment_test.go` (no marker can be forged) and `local_markers_test.go` (no demo script scans for one nothing publishes) |
+| Any version the agent writes must appear verbatim in the gate's report | Change how the report renders a version and every mechanical fix silently becomes an escalation | `gate/versioncontract_test.go` — a real `DiffResult` through the real `Report` through a real `edits.Apply` |
+| `kargo-pipelines` POSTs a promotion body the agent's handler must parse | Malformed from inception until 2026-08-23, and silent throughout: the step is `continueOnError` | `promotionbody_test.go` — the rendered chart's own keys against `agent.Promotion`, and through `PromotionOpened` |
+| The chart's environment is the one `config.go` reads | Not yet, but nothing was watching: no Go test had ever read `charts/` | `config_chart_test.go`, both directions, both sets derived |
+| The ClusterRole covers the API reads the code makes | Not yet. A missing grant is a 403 that `cluster/` turns into a soft, honest sentence, so nothing would ever look | `chart_rbac_test.go` against `cluster.Reads()`, which the request paths are built from |
+| The prompt, the schema and the struct state one response shape | The hand-written list meant to hold two of them together omitted `escalationReason` | `llm/contract_test.go`, all four statements, every list derived |
 
 This is why both halves live in one repository. A boundary is safe where its
 contract can be tested; across two repositories, no CI run can check both
 sides. **A change to either side of a contract needs a test that sees both**,
 and adding one is worth more than almost any feature.
+
+Two rules those tests are held to, because a contract test that goes stale is
+worse than none — it reads like coverage:
+
+- **Derive the list, never write it.** Every check above enumerates its subject
+  from the artefact itself: the switches from `values.schema.json`, the
+  environment from `config.go`'s syntax tree, the fields from a struct's tags.
+  A hand-written list of things to check is what the 0.25.0 ClusterRole was
+  *fixed with*, and five entries with nothing forcing a sixth is how it stayed
+  broken.
+- **Every derivation carries a self-check.** If the walk stops finding what it
+  reads, it fails loudly rather than comparing two empty sets and reporting
+  agreement, which is indistinguishable from a pass.
 
 ## Rule 2: the safety model lives in code
 
