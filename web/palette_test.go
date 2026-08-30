@@ -1,0 +1,75 @@
+package web
+
+import (
+	"os"
+	"regexp"
+	"strings"
+	"testing"
+)
+
+var hex = regexp.MustCompile(`#[0-9a-fA-F]{6}`)
+
+// Every colour on the page must be a colour the site declares.
+//
+// The page restates the palette rather than importing it -- it is one
+// self-contained document with no build step and no stylesheet to link, which
+// is what lets a gateway publish it without a content policy conversation. So
+// the values are copied, and a copied palette drifts the moment someone picks
+// "close enough" for a state the original had no token for. That is how a
+// second Bosun palette gets created, one plausible hex at a time.
+//
+// This is the check that stops it. It reads the page's own :root blocks and
+// asserts every value appears in site/src/styles/theme.css, which is where the
+// palette is decided and whose header says where those colours came from: the
+// badge navy, the two sea tones, the coral of the tentacles, the cream of the
+// cap.
+//
+// If this fails, the fix is to use the site's token, or to add one to the site
+// first and take it from there. It is not to add an exception here.
+func TestPaletteComesFromTheSite(t *testing.T) {
+	const themePath = "../site/src/styles/theme.css"
+
+	theme, err := os.ReadFile(themePath)
+	if err != nil {
+		t.Fatalf("reading %s: %v", themePath, err)
+	}
+	declared := map[string]bool{}
+	for _, c := range hex.FindAllString(string(theme), -1) {
+		declared[strings.ToLower(c)] = true
+	}
+
+	// The palette lives between <style> and the first real rule; everything
+	// after it is layout, which carries no colours of its own.
+	start := strings.Index(pageHTML, "<style>")
+	end := strings.Index(pageHTML, "* { box-sizing")
+	if start < 0 || end < 0 || end < start {
+		t.Fatal("could not find the palette block in pageHTML; if the template moved, move this with it")
+	}
+
+	seen := map[string]bool{}
+	for _, c := range hex.FindAllString(pageHTML[start:end], -1) {
+		c = strings.ToLower(c)
+		if seen[c] {
+			continue
+		}
+		seen[c] = true
+		if !declared[c] {
+			t.Errorf("%s is on the page but not in %s -- use the site's token, or add one there first", c, themePath)
+		}
+	}
+	if len(seen) == 0 {
+		t.Error("found no colours in the palette block, so this test proved nothing")
+	}
+}
+
+// Nothing outside the palette block may hard-code a colour, or the block stops
+// being the one place to look and the test above stops covering the page.
+func TestNoColoursOutsideThePalette(t *testing.T) {
+	end := strings.Index(pageHTML, "* { box-sizing")
+	if end < 0 {
+		t.Fatal("could not find the end of the palette block")
+	}
+	if got := hex.FindAllString(pageHTML[end:], -1); len(got) > 0 {
+		t.Errorf("colour literals outside the palette block: %v -- name them in :root and use var()", got)
+	}
+}

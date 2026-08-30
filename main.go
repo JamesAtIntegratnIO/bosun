@@ -360,6 +360,10 @@ func main() {
 	// forwards to reach /pipeline and /metrics, and a read-only page is
 	// strictly less than what this port already answers.
 	mux.HandleFunc("GET /{$}", ws.Page())
+	// The mark, beside the page on both listeners. The page names it relatively,
+	// so it resolves on whichever port the reader arrived on and there is no
+	// base URL to configure.
+	mux.HandleFunc("GET /mark.svg", ws.Mark())
 	// The same handler the web listener gets: markdown for a script, which is
 	// everything /pipeline ever served, and the page for a browser arriving
 	// through a port-forward.
@@ -395,6 +399,7 @@ func main() {
 	if cfg.Web {
 		webMux := http.NewServeMux()
 		webMux.HandleFunc("GET /{$}", ws.Page())
+		webMux.HandleFunc("GET /mark.svg", ws.Mark())
 		webMux.HandleFunc("GET /pipeline", ws.PipelineHandler())
 		webMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 		webSrv = &http.Server{

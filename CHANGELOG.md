@@ -5,6 +5,34 @@ All notable changes to `bosun`. Format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The status page wears the project's own colours.** It shipped in GitHub's
+  palette -- `#0969da` links, `#0d1117` ground -- with an anchor emoji for a
+  mark, none of which is Bosun's. That made the page a second place the brand
+  was decided, and a second place is how a brand stops being one.
+
+  The palette is now the site's, value for value: the badge navy, the two sea
+  tones, the coral of the tentacles, the cream of the cap, each mapping to a
+  token in `site/src/styles/theme.css` and named in a comment beside it. Dark
+  is the base and light the override, which is the site's structure and its
+  stated reason -- the badge is navy, and you read this next to a terminal.
+  Inter, Space Grotesk and JetBrains Mono are named in the stacks so a reader
+  who has them gets them; nothing is fetched.
+
+  The mark is the site's own favicon, embedded and served from `/mark.svg` on
+  both listeners rather than inlined -- two 6 KB copies in a page that
+  refreshes every minute is not a saving. It is same-origin and served by this
+  process, so the page still reaches nothing external and a gateway can still
+  put a content policy in front of it without an exception for anybody's
+  domain.
+
+  **Two tests keep it honest**, because a copied palette drifts the moment
+  somebody picks "close enough" for a state the original had no token for:
+  one fails if any colour on the page is absent from the site's `theme.css`
+  or is written outside the palette block, the other if `web/mark.svg` differs
+  from `site/public/favicon.svg` by a byte.
+
 ### Added
 
 - **The report renders itself.** `/pipeline` has served markdown since the

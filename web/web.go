@@ -20,6 +20,7 @@
 package web
 
 import (
+	_ "embed"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -131,6 +132,36 @@ func (s *Server) Page() http.HandlerFunc {
 			_ = err
 			return
 		}
+	}
+}
+
+// The mark, byte-for-byte the site's own favicon.
+//
+// A copy and not a reference, because go:embed cannot reach outside this
+// package and this binary must not fetch anything at runtime. mark_test.go
+// fails if it drifts from site/public/favicon.svg, which is what makes the
+// copy safe: the site stays the one place Bosun's branding is decided, and
+// this file cannot quietly become a second one.
+//
+//go:embed mark.svg
+var markSVG []byte
+
+// Mark serves that file at a URL of its own rather than inlining it.
+//
+// Inline would be two 6 KB copies in every response -- the icon and the header
+// -- on a page that refreshes itself every minute. As a separate response it is
+// fetched once and cached, and it is still same-origin and still served by this
+// process, so the page's "no external asset" guarantee is intact: nothing here
+// reaches a CDN, and a gateway can put a content policy in front of this page
+// without an exception for anybody else's domain.
+//
+// Cached for a day. The mark changes about never, and a stale one for a day is
+// not a failure anyone would notice.
+func (s *Server) Mark() http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/svg+xml")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		_, _ = w.Write(markSVG)
 	}
 }
 

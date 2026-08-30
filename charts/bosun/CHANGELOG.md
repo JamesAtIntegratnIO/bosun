@@ -11,6 +11,17 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.29.1]
+
+- **`appVersion` 0.29.1: the status page wears the project's own colours.**
+  0.29.0 shipped it in GitHub's palette with an anchor emoji for a mark, which
+  made this page a second place Bosun's branding was decided. It is not one.
+  Every colour now maps to a token in the site's `theme.css`, dark is the base
+  for the site's stated reason -- the badge is navy -- and the header and
+  favicon are the site's own mark, served from `/mark.svg`. Two tests fail if
+  either drifts from `site/`. No chart template or value changes; the version
+  moves because the image does.
+
 ## [0.29.0]
 
 ### Added
