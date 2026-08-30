@@ -62,7 +62,9 @@ type Table struct {
 	// chart-diff for the rows it rendered, nil everywhere else, and consumed
 	// by the object diff to mark the changed fields a reader actually chose;
 	// nil means "not known", never "none", which is why the mark carries a
-	// checked flag beside it.
+	// checked flag beside it. The map value is whether the leaf may match as
+	// a substring, false for the Application's own identity tokens; both
+	// kinds match on equality.
 	ValuesLeaves map[string]map[string]bool `json:"-"`
 }
 

@@ -155,7 +155,7 @@ func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Ta
 			// reason the README half of the values surface is: a values file
 			// that does not parse costs the marking, not the diff.
 			if vals, err := repoValues(repoRoot, p.after); err == nil {
-				res.leaves = leafValueSet(vals)
+				res.leaves = leafValueSet(vals, identityTokens(p.after))
 			}
 
 			// Reached whether or not either render did, because it does not
@@ -205,8 +205,9 @@ func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Ta
 }
 
 // leafValueSet renders every scalar leaf of a values document as the string
-// the field diff will compare against.
-func leafValueSet(node any) map[string]bool {
+// the field diff will compare against. The value is whether that leaf may
+// match as a substring; identity leaves are in the set but equality-only.
+func leafValueSet(node any, identity map[string]bool) map[string]bool {
 	out := map[string]bool{}
 	var rec func(any)
 	rec = func(n any) {
@@ -221,10 +222,33 @@ func leafValueSet(node any) map[string]bool {
 			}
 		case nil:
 		default:
-			out[fmt.Sprintf("%v", t)] = true
+			s := fmt.Sprintf("%v", t)
+			out[s] = !identity[s]
 		}
 	}
 	rec(node)
+	return out
+}
+
+// identityTokens is what this Application calls itself: the names every render
+// of it is stamped with, in labels, selectors, resource names and the strings
+// a chart builds out of them.
+//
+// A values leaf equal to one of these is kept for the equality form -- a
+// repository that sets `nameOverride` to the chart's own name did choose that
+// value, and arguably said something -- but demoted out of the substring form,
+// where it says nothing at all. `kyverno` is inside
+// `kyverno-admission-controller`, inside `app.kubernetes.io/instance: kyverno`,
+// and inside every aggregation label a bump churns; a mark that fires on all of
+// them tells a reader their own settings moved when what moved was the chart's
+// naming.
+func identityTokens(r Row) map[string]bool {
+	out := map[string]bool{}
+	for _, tok := range []string{r.Chart, releaseNameFor(r), r.App, r.Namespace} {
+		if tok != "" {
+			out[tok] = true
+		}
+	}
 	return out
 }
 
@@ -245,7 +269,8 @@ type ChartFindings struct {
 	Warnings []Markdown
 	// ValuesLeaves is, per rendered Application, the scalar values its own
 	// values supply -- Table.ValuesLeaves' content, computed here because
-	// this is the only place with the row and the checkout together.
+	// this is the only place with the row, its identity and the checkout
+	// together.
 	ValuesLeaves map[string]map[string]bool
 }
 

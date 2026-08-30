@@ -7,6 +7,25 @@ All notable changes to `bosun`. Format follows
 
 ### Fixed
 
+- **A value naming the addon itself no longer claims the addon's label
+  churn.** The first rich report 0.28.0 rendered on a live pull request opened
+  on a kyverno `ClusterRole` whose "Values this repository sets" section held
+  two lines, neither of them a value the repository sets: the repository's
+  kyverno values contain the string `kyverno`, and the values mark's substring
+  form matched it inside `kyverno-admission-controller` and inside every
+  aggregation label the bump churned. On a chart whose bump moves those
+  labels, the section filled with exactly the noise the partition exists to
+  fold away.
+
+  The Application's own identity tokens -- chart name, release name, App name,
+  destination namespace -- are now equality-only leaves. A value that names the
+  addon distinguishes nothing, because every render of that addon carries it
+  everywhere; a field whose *whole* value is one is rare, was still chosen, and
+  keeps its mark. Nothing was ever hidden by the old behaviour and nothing is
+  hidden by the new one -- the fold is still a fold -- but the first thing a
+  reader opens no longer shows label churn under the heading that promises them
+  their own settings.
+
 - **A document with no `kind` is no longer a schema rejection.** Two
   `values.yaml` files sitting in the directory sources of a live repository
   put a standing `schema=2` on **every** pull request, on Applications those

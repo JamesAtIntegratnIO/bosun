@@ -11,6 +11,16 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.28.2]
+
+- **`appVersion` 0.28.2: the values mark stops firing on the addon's own
+  name.** 0.28.0's first live report filed a kyverno bump's aggregation-label
+  churn under "Values this repository sets", because the repository's values
+  say `kyverno` and the mark's substring form found it inside every label the
+  chart stamps with the addon's name. An Application's identity tokens --
+  chart, release, App, namespace -- are now equality-only. No chart template
+  or value changes; the version moves because the image does.
+
 ## [0.28.1]
 
 - **`appVersion` 0.28.1: a `values.yaml` in a directory source no longer reds

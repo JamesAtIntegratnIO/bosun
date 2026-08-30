@@ -200,3 +200,43 @@ func TestTrivialLeavesDoNotClaimTheDiff(t *testing.T) {
 		t.Error("a one-character substring must not fire")
 	}
 }
+
+// A leaf naming the addon itself distinguishes nothing: every render of that
+// addon carries it in labels, selectors and the names built from them. The
+// first live rich report filed a kyverno bump's aggregation-label churn under
+// "Values this repository sets", because the repository's values say `kyverno`
+// somewhere and the substring form matched it everywhere.
+func TestTheAddonsOwnNameDoesNotClaimItsLabelChurn(t *testing.T) {
+	row := Row{App: "kyverno", Chart: "kyverno", Namespace: "kyverno"}
+	leaves := leafValueSet(map[string]any{
+		"admissionController": map[string]any{
+			"serviceMonitor": map[string]any{"enabled": true},
+			"replicas":       3,
+		},
+		"existingImagePullSecrets": []any{"kyverno"},
+	}, identityTokens(row))
+
+	churn := []FieldChange{
+		{Path: "metadata.labels.app.kubernetes.io/name", To: "kyverno-admission-controller"},
+		{Path: "aggregationRule.clusterRoleSelectors.0.matchLabels.app.kubernetes.io/instance", From: "kyverno"},
+	}
+	if setHere(churn[0], leaves) {
+		t.Error("a label the chart stamps with the addon's name is not the reader's value")
+	}
+
+	// Equality is left alone. A field whose whole value IS the identity token
+	// was still set to it, and the fold-not-filter design prices a debatable
+	// mark at one line above the fold rather than a hidden finding.
+	if !setHere(churn[1], leaves) {
+		t.Error("an exact match on an identity leaf stays a match")
+	}
+
+	// The demotion is scoped to the identity: an ordinary leaf keeps both forms.
+	if !setHere(FieldChange{From: "2", To: "3"}, leaves) {
+		t.Error("a replica count the repository sets must still mark")
+	}
+	elsewhere := leafValueSet(map[string]any{"prefix": "kyverno"}, identityTokens(Row{Chart: "other"}))
+	if !setHere(churn[0], elsewhere) {
+		t.Error("the same string is a substring match for an Application it does not name")
+	}
+}
