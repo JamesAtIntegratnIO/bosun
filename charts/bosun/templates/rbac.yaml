@@ -8,6 +8,20 @@ feature seems to need one, that is a signal to reconsider the feature.
 No Secret is readable through anything in here. The gate's cluster inventory --
 the one read that used to need it -- comes from ArgoCD's own API instead, on an
 account token, so there is no namespaced Secret Role to grant.
+
+Every resource named below is read by a path in this repository, and 0.31.0
+narrowed the list to exactly that: `projects` and `analysistemplates` arrived
+in the commit that extracted this chart and nothing ever read either one.
+
+Which direction that narrowing runs is the thing to keep in mind before adding
+to this list. Widening a published ClusterRole is a patch and narrowing one
+breaks every install that has bound to it, so "grant it now in case a feature
+wants it" is backwards: it books a breaking change for a feature that may never
+arrive. Grant a resource in the release that reads it. `freights` and
+`analysisruns` are what that looks like -- both are read one object at a time,
+by a reference the Stage itself records, so a stopped Stage's finding can name
+the metric that stopped it and the artifact it is holding instead of handing
+back a kubectl command that asks.
 */ -}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -17,10 +31,10 @@ metadata:
     {{- include "bosun.labels" . | nindent 4 }}
 rules:
   - apiGroups: [kargo.akuity.io]
-    resources: [promotions, stages, warehouses, freights, projects]
+    resources: [promotions, stages, warehouses, freights]
     verbs: [get, list, watch]
   - apiGroups: [argoproj.io]
-    resources: [applications, analysisruns, analysistemplates]
+    resources: [applications, analysisruns]
     verbs: [get, list, watch]
 {{- if .Values.liveReads.enabled }}
 {{- /*

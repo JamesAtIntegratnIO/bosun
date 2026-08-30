@@ -40,6 +40,13 @@ type KargoStage struct {
 	// remedy for a stuck verification is a paragraph instead of a command.
 	VerificationID    string
 	VerificationPhase string
+	// VerificationRunNamespace and VerificationRunName point at the
+	// AnalysisRun that verification is. Kargo writes the reference down, so
+	// the run can be read directly instead of guessed at from labels, and
+	// without it the only thing a finding can say about a stopped Stage is
+	// that it stopped.
+	VerificationRunNamespace string
+	VerificationRunName      string
 }
 
 // KargoUpdate is one `yaml-update` step's file and keys.
@@ -110,8 +117,12 @@ func (a *APIServer) Stages(ctx context.Context) ([]KargoStage, error) {
 						Name string `json:"name"`
 					} `json:"items"`
 					VerificationHistory []struct {
-						ID    string `json:"id"`
-						Phase string `json:"phase"`
+						ID          string `json:"id"`
+						Phase       string `json:"phase"`
+						AnalysisRun struct {
+							Namespace string `json:"namespace"`
+							Name      string `json:"name"`
+						} `json:"analysisRun"`
 					} `json:"verificationHistory"`
 				} `json:"freightHistory"`
 				Conditions []condition `json:"conditions"`
@@ -145,6 +156,16 @@ func (a *APIServer) Stages(ctx context.Context) ([]KargoStage, error) {
 			}
 			if vh := it.Status.FreightHistory[0].VerificationHistory; len(vh) > 0 {
 				st.VerificationID, st.VerificationPhase = vh[0].ID, vh[0].Phase
+				st.VerificationRunNamespace = vh[0].AnalysisRun.Namespace
+				st.VerificationRunName = vh[0].AnalysisRun.Name
+				// Kargo has recorded the run without its namespace in
+				// releases that create it beside the Stage. Defaulting is
+				// right where guessing a name would not be: the Stage's own
+				// namespace is where Kargo puts these, and a wrong guess
+				// 404s into a note rather than into a false sentence.
+				if st.VerificationRunNamespace == "" {
+					st.VerificationRunNamespace = it.Metadata.Namespace
+				}
 			}
 		}
 		if c, ok := findCondition(it.Status.Conditions, "Ready"); ok {
@@ -263,6 +284,112 @@ func (a *APIServer) Promotions(ctx context.Context) ([]KargoPromotion, error) {
 		})
 	}
 	return out, nil
+}
+
+// KargoFreight is a Freight, reduced to what names it to a reader.
+type KargoFreight struct {
+	Name      string
+	Namespace string
+	// Alias is Kargo's own human name for the freight -- "mellow-mongoose"
+	// rather than "f-7c3d9a1". It is what the UI shows and what somebody who
+	// has been looking at this pipeline will recognise, and it lives in a
+	// label rather than a field.
+	Alias string
+	// Artifacts are what the freight carries, each written the way its own
+	// ecosystem writes it: `repo:tag` for an image, `chart:version` for a
+	// chart, `repo@sha` for a commit. Empty for a freight that carries
+	// nothing this reads, which is a real shape and not an error.
+	Artifacts []string
+}
+
+// Freight reads one Freight by name.
+//
+// A GET of the one object, not a list. Kargo creates a Freight per discovery
+// and never deletes them by default, so a cluster that has been running for a
+// year holds thousands, and listing them all to find the two a sweep will
+// actually name would be the most expensive read in this package by an order
+// of magnitude. The names come from the Stage and the Promotion, which have
+// already been read.
+func (a *APIServer) Freight(ctx context.Context, namespace, name string) (KargoFreight, error) {
+	if namespace == "" || name == "" {
+		return KargoFreight{}, fmt.Errorf("no freight reference to read")
+	}
+	// Images, charts and commits are top-level on a Freight. There is no
+	// spec: a Freight is a record of what was found, so it has nothing a user
+	// declares and Kargo never adopted the shape.
+	var raw struct {
+		Metadata struct {
+			Labels map[string]string `json:"labels"`
+		} `json:"metadata"`
+		Images []struct {
+			RepoURL string `json:"repoURL"`
+			Tag     string `json:"tag"`
+			Digest  string `json:"digest"`
+		} `json:"images"`
+		Charts []struct {
+			RepoURL string `json:"repoURL"`
+			Name    string `json:"name"`
+			Version string `json:"version"`
+		} `json:"charts"`
+		Commits []struct {
+			RepoURL string `json:"repoURL"`
+			ID      string `json:"id"`
+			Tag     string `json:"tag"`
+		} `json:"commits"`
+	}
+	if err := a.get(ctx, readFreight.namespaced(namespace, name), &raw); err != nil {
+		switch code(err) {
+		case http.StatusForbidden, http.StatusUnauthorized:
+			return KargoFreight{}, fmt.Errorf("not permitted to read freight in %s", namespace)
+		case http.StatusNotFound:
+			return KargoFreight{}, fmt.Errorf("freight %s/%s no longer exists", namespace, name)
+		}
+		return KargoFreight{}, err
+	}
+
+	f := KargoFreight{Name: name, Namespace: namespace, Alias: raw.Metadata.Labels[aliasLabel]}
+	for _, im := range raw.Images {
+		switch {
+		case im.Tag != "":
+			f.Artifacts = append(f.Artifacts, im.RepoURL+":"+im.Tag)
+		case im.Digest != "":
+			// A digest-only image is what a Warehouse discovers when it is
+			// subscribed by digest, and truncating it here would produce a
+			// reference nobody can paste anywhere.
+			f.Artifacts = append(f.Artifacts, im.RepoURL+"@"+im.Digest)
+		}
+	}
+	for _, ch := range raw.Charts {
+		// An OCI chart has no separate name; its repoURL is the whole
+		// address, and joining an empty name to a version would print ":1.2.3".
+		who := ch.Name
+		if who == "" {
+			who = ch.RepoURL
+		}
+		if who != "" && ch.Version != "" {
+			f.Artifacts = append(f.Artifacts, who+":"+ch.Version)
+		}
+	}
+	for _, c := range raw.Commits {
+		switch {
+		case c.Tag != "":
+			f.Artifacts = append(f.Artifacts, c.RepoURL+"@"+c.Tag)
+		case c.ID != "":
+			f.Artifacts = append(f.Artifacts, c.RepoURL+"@"+shortSHA(c.ID))
+		}
+	}
+	return f, nil
+}
+
+// aliasLabel is where Kargo keeps the freight's human name.
+const aliasLabel = "kargo.akuity.io/alias"
+
+// shortSHA is the seven characters everything else in this ecosystem prints.
+func shortSHA(id string) string {
+	if len(id) > 7 {
+		return id[:7]
+	}
+	return id
 }
 
 type meta struct {

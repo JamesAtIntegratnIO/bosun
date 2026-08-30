@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -107,6 +108,136 @@ type Stage struct {
 	// of the current freight. The id is what re-runs it.
 	VerificationID    string
 	VerificationPhase string
+	// VerificationRunNamespace and VerificationRunName address the
+	// AnalysisRun that verification is, so a finding can say which metric
+	// stopped this Stage instead of handing back a kubectl command that asks.
+	VerificationRunNamespace string
+	VerificationRunName      string
+}
+
+// StoppedByVerification reports a Stage held by its verification rather than
+// by anything else.
+//
+// The reason string is Kargo's, and matching a substring of it is the only
+// join available: the condition carries `VerificationFailed`,
+// `VerificationError` and `VerificationRunning` in different releases and
+// there is no enum to compare against. One method rather than the same
+// substring in the detector and the collector, because the two drifting apart
+// would mean reading an AnalysisRun for a Stage that never reports one, or
+// reporting on a Stage whose run was never read.
+func (st Stage) StoppedByVerification() bool {
+	return !st.Ready && strings.Contains(strings.ToLower(st.ReadyReason), "verif")
+}
+
+// Freight is one freight, named rather than identified.
+//
+// A freight name is a hash: `f-7c3d9a1` is a correct answer to "which
+// freight" and no answer at all to "what is stuck". Kargo records both an
+// alias and the artifacts, and a finding that says
+// "carrying ghcr.io/org/app:v1.4.0" is one a reader can match against the
+// pull request in front of them without a second window.
+type Freight struct {
+	Name      string
+	Namespace string
+	Alias     string
+	Artifacts []string
+}
+
+// Describe names the freight the way a reader would, degrading rather than
+// failing: the artifacts if they are known, the alias if they are not, and
+// the bare name if neither is -- which is what every finding said before any
+// of this was readable.
+//
+// One of the three, never a pair. "stopped receiving mellow-mongoose
+// (ghcr.io/argoproj/argocd:v2.13.1)" fits in a summary line and spends half of
+// it on a word that identifies the freight to a reader who is already looking
+// at the finding about it. The artifact is the part that matches what is in
+// front of them; the alias is what stands in when there is no artifact.
+func (f Freight) Describe() string {
+	if len(f.Artifacts) == 0 {
+		if f.Alias != "" {
+			return f.Alias
+		}
+		return f.Name
+	}
+	// Two, then a count. A freight assembled from a monorepo carries a dozen
+	// images and naming all of them turns one line of a finding into a
+	// screen; naming none of them was the problem.
+	shown := f.Artifacts
+	extra := 0
+	if len(shown) > 2 {
+		shown, extra = shown[:2], len(shown)-2
+	}
+	out := strings.Join(shown, ", ")
+	if extra > 0 {
+		out += fmt.Sprintf(" and %s", plural(extra, "other"))
+	}
+	return out
+}
+
+// Verification is the AnalysisRun behind a Stage's verification.
+//
+// Carried on the Snapshot rather than read by a detector, so detectors stay
+// pure functions of it and every sentence they produce about a verification
+// can be reproduced in a test without a cluster.
+type Verification struct {
+	Name      string
+	Namespace string
+	Phase     string
+	Message   string
+	Metrics   []VerifyMetric
+}
+
+// VerifyMetric is one metric of a verification.
+type VerifyMetric struct {
+	Name    string
+	Phase   string
+	Message string
+	Failed  int
+	Error   int
+	// Unbounded means the metric has an interval and no count, so it measures
+	// until something stops it. That is the shape that holds a Stage's queue
+	// forever, and it is the difference between telling somebody their
+	// verification is slow and telling them it will never end.
+	Unbounded bool
+}
+
+// Failing is the metric worth naming: the first that errored or failed, and
+// otherwise the first that can never finish. False when the run explains
+// nothing, which the caller must answer by saying less.
+func (v Verification) Failing() (VerifyMetric, bool) {
+	for _, m := range v.Metrics {
+		if m.Error > 0 || m.Failed > 0 {
+			return m, true
+		}
+	}
+	for _, m := range v.Metrics {
+		if m.Unbounded {
+			return m, true
+		}
+	}
+	return VerifyMetric{}, false
+}
+
+// Because names a metric's outcome in the words its two tallies mean. An
+// errored metric never got an answer and a failed one got the wrong answer,
+// and the fix for each is in a different building.
+func (m VerifyMetric) Because() string {
+	switch {
+	case m.Error > 0 && m.Failed > 0:
+		return fmt.Sprintf("`%s` could not be measured %s and failed %s",
+			m.Name, plural(m.Error, "time"), plural(m.Failed, "time"))
+	case m.Error > 0:
+		return fmt.Sprintf("`%s` could not be measured at all (%s)", m.Name, plural(m.Error, "attempt"))
+	case m.Failed > 0:
+		return fmt.Sprintf("`%s` measured and failed %s", m.Name, plural(m.Failed, "time"))
+	case m.Unbounded:
+		return fmt.Sprintf("`%s` has an interval and no count", m.Name)
+	}
+	// Unreachable through Failing, which only ever returns a metric one of
+	// the cases above describes. Quoted like the rest so a future caller that
+	// reaches it does not get the one sentence with a bare name in it.
+	return "`" + m.Name + "`"
 }
 
 type Warehouse struct {
@@ -198,8 +329,41 @@ type Snapshot struct {
 	// FileHas answers "does this file set this key?". Injected so the
 	// detector stays pure; nil disables the pin check.
 	FileHas func(path, key string) (bool, error)
+	// Freight is what the sweep could name, keyed "<namespace>/<name>". A
+	// miss is ordinary: freight is read for the handful of names a finding
+	// will print, and anything absent degrades to the bare hash.
+	Freight map[string]Freight
+	// Verifications are the AnalysisRuns behind stopped Stages, keyed the
+	// same way. Same rule: a miss says less, never something untrue.
+	Verifications map[string]Verification
+
 	// Notes carries anything the collector could not read.
 	Notes []string
+}
+
+// FreightNamed is the freight for a reference, and whether it was readable.
+func (s *Snapshot) FreightNamed(namespace, name string) (Freight, bool) {
+	f, ok := s.Freight[namespace+"/"+name]
+	return f, ok
+}
+
+// Carrying is what a freight holds, in one phrase, or "" when the freight was
+// not readable and the sentence has to be written without it. Never the bare
+// hash: a summary that says "stopped receiving f-7c3d9a1" reads as detail
+// while telling a reader strictly less than "stopped receiving artifacts".
+func (s *Snapshot) Carrying(namespace, name string) string {
+	f, ok := s.FreightNamed(namespace, name)
+	if !ok || len(f.Artifacts) == 0 {
+		return ""
+	}
+	return f.Describe()
+}
+
+// VerificationOf is the AnalysisRun a Stage's verification is, if it was
+// readable.
+func (s *Snapshot) VerificationOf(st Stage) (Verification, bool) {
+	v, ok := s.Verifications[st.VerificationRunNamespace+"/"+st.VerificationRunName]
+	return v, ok
 }
 
 // promotionsByStage groups newest-first.

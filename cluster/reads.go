@@ -50,8 +50,24 @@ var (
 	readPromotions = Read{Group: "kargo.akuity.io", Version: "v1alpha1", Plural: "promotions",
 		Verbs: []string{"list"}, Why: "the sweep finds the promotions that never happened"}
 
+	// One object by name, not a collection. Kargo creates a Freight per
+	// discovery and prunes none of them, so a `list` would be the most
+	// expensive read this package makes, to name the one or two a finding
+	// prints. The names come from the Stage and the Promotion already read.
+	readFreight = Read{Group: "kargo.akuity.io", Version: "v1alpha1", Plural: "freights",
+		Verbs: []string{"get"},
+		Why:   "a wedged Stage's finding names the artifact that stopped arriving rather than a freight hash"}
+
 	readApplications = Read{Group: "argoproj.io", Version: "v1alpha1", Plural: "applications",
 		Verbs: []string{"get"}, Why: "the triage reports the health of the Applications a promotion verifies"}
+
+	// Also by name, and for a second reason: the Stage records which run its
+	// verification is, so there is nothing to search for. A run's name is
+	// generated and its labels are Kargo's business, so listing and matching
+	// would be a guess where the reference is an answer.
+	readAnalysisRuns = Read{Group: "argoproj.io", Version: "v1alpha1", Plural: "analysisruns",
+		Verbs: []string{"get"},
+		Why:   "a stopped Stage's finding names the metric that stopped it and what that metric measured"}
 
 	readCRDs = Read{Group: "apiextensions.k8s.io", Version: "v1", Plural: "customresourcedefinitions",
 		Verbs: []string{"get"}, LiveReadsOnly: true,
@@ -63,7 +79,8 @@ var (
 // Exported for the chart's benefit: the ClusterRole in charts/bosun has to
 // cover this, and a list nothing can enumerate is a list that drifts.
 func Reads() []Read {
-	return []Read{readStages, readWarehouses, readPromotions, readApplications, readCRDs}
+	return []Read{readStages, readWarehouses, readPromotions, readFreight,
+		readApplications, readAnalysisRuns, readCRDs}
 }
 
 // GVK names the resource the way a person reads it, for a message.

@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/JamesAtIntegratnIO/bosun/cluster"
@@ -29,6 +30,22 @@ type KargoSource interface {
 // looking for a permissions problem that is not there.
 type kargoPresence interface {
 	KargoAvailable(ctx context.Context) bool
+}
+
+// freightSource is the optional capability of saying what a freight carries.
+//
+// Type-asserted rather than added to KargoSource, matching the presence check
+// above. A source without it produces exactly the findings it always did,
+// with the freight hash in them where the artifact would have been.
+type freightSource interface {
+	Freight(ctx context.Context, namespace, name string) (cluster.KargoFreight, error)
+}
+
+// verificationSource is the optional capability of reading the AnalysisRun a
+// Stage's verification is. Same rule: absent means a quieter finding, never a
+// missing one.
+type verificationSource interface {
+	AnalysisRun(ctx context.Context, namespace, name string) (cluster.AnalysisRun, error)
 }
 
 // PRSource is the git half. Optional: without it the orphan and superseded
@@ -87,6 +104,8 @@ func (c *Collector) Collect(ctx context.Context, repoRoot string) *Snapshot {
 				Ready: st.Ready, ReadyReason: st.ReadyReason, ReadyMessage: st.ReadyMessage,
 				ReadySince:     st.ReadySince,
 				VerificationID: st.VerificationID, VerificationPhase: st.VerificationPhase,
+				VerificationRunNamespace: st.VerificationRunNamespace,
+				VerificationRunName:      st.VerificationRunName,
 			}
 			for _, u := range st.Updates {
 				p.Updates = append(p.Updates, Update{Path: u.Path, Keys: u.Keys})
@@ -126,11 +145,111 @@ func (c *Collector) Collect(ctx context.Context, repoRoot string) *Snapshot {
 		}
 	}
 
+	c.name(ctx, s)
+
 	if repoRoot != "" {
 		s.RepoRoot = repoRoot
 		s.FileHas = NewFileKeys(repoRoot).Has
 	}
 	return s
+}
+
+// name reads the objects a finding will name, and nothing else.
+//
+// Both of these are per-object GETs, and the temptation is to list instead --
+// one request rather than several. It is the wrong trade twice over. Kargo
+// creates a Freight per discovery and prunes none of them, so a cluster that
+// has been running a year holds thousands, and a sweep on a timer would read
+// all of them every time to print two. And the objects worth naming are
+// exactly the objects a finding is about, which is a set the size of the
+// number of things currently wrong: on a healthy fleet this makes no requests
+// at all.
+//
+// The gates below deliberately mirror the two detectors that print these,
+// which is why the Stage predicate is a method rather than a copied substring.
+// A miss is silent by design -- Describe falls back to the hash and the
+// verification sentence shortens -- so erring wide here costs a request and
+// erring narrow costs nothing but detail.
+func (c *Collector) name(ctx context.Context, s *Snapshot) {
+	fr, hasFreight := c.Kargo.(freightSource)
+	vr, hasVerification := c.Kargo.(verificationSource)
+	if !hasFreight && !hasVerification {
+		return
+	}
+
+	// Distinct failures, in the order they happened. A cluster that refuses
+	// one of these refuses all of them, and eleven copies of "not permitted
+	// to read AnalysisRuns" is not eleven times the information.
+	var why []string
+	seen := map[string]bool{}
+	fail := func(err error) {
+		if msg := err.Error(); !seen[msg] {
+			seen[msg] = true
+			why = append(why, msg)
+		}
+	}
+
+	byStage := s.promotionsByStage()
+	freight := func(namespace, id string) {
+		if !hasFreight || namespace == "" || id == "" {
+			return
+		}
+		key := namespace + "/" + id
+		if _, done := s.Freight[key]; done {
+			return
+		}
+		f, err := fr.Freight(ctx, namespace, id)
+		if err != nil {
+			fail(err)
+			return
+		}
+		if s.Freight == nil {
+			s.Freight = map[string]Freight{}
+		}
+		s.Freight[key] = Freight{
+			Name: f.Name, Namespace: f.Namespace, Alias: f.Alias, Artifacts: f.Artifacts,
+		}
+	}
+
+	for _, st := range s.Stages {
+		// What a wedged Stage stopped receiving: the freight of its newest
+		// promotion, which is the one detectWedged reports on.
+		if ps := byStage[st.Name]; len(ps) > 0 && Unsuccessful(ps[0].Phase) {
+			freight(ps[0].Namespace, ps[0].Freight)
+		}
+		if !st.StoppedByVerification() {
+			continue
+		}
+		// What a stopped verification is holding.
+		freight(st.Namespace, st.CurrentFreight)
+		if !hasVerification || st.VerificationRunName == "" {
+			continue
+		}
+		run, err := vr.AnalysisRun(ctx, st.VerificationRunNamespace, st.VerificationRunName)
+		if err != nil {
+			fail(err)
+			continue
+		}
+		v := Verification{
+			Name: run.Name, Namespace: run.Namespace, Phase: run.Phase, Message: run.Message,
+		}
+		for _, m := range run.Metrics {
+			v.Metrics = append(v.Metrics, VerifyMetric{
+				Name: m.Name, Phase: m.Phase, Message: m.Message,
+				Failed: m.Failed, Error: m.Error, Unbounded: m.Unbounded,
+			})
+		}
+		if s.Verifications == nil {
+			s.Verifications = map[string]Verification{}
+		}
+		s.Verifications[run.Namespace+"/"+run.Name] = v
+	}
+
+	if len(why) > 0 {
+		s.Notes = append(s.Notes, fmt.Sprintf(
+			"some findings could not be filled in (%s), so they name the object and not what is in it",
+			strings.Join(why, "; ")))
+	}
 }
 
 // Sweep collects and detects in one call.

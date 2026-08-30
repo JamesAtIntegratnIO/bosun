@@ -229,3 +229,106 @@ func TestAFailedReadIsReturnedNotSwallowed(t *testing.T) {
 		}
 	}
 }
+
+// A freight name is a hash. What a reader needs is what it carries, and the
+// three kinds each have their own way of being written down.
+func TestFreightIsNamedByWhatItCarries(t *testing.T) {
+	a := serveJSON(t, `{
+		"metadata":{"labels":{"kargo.akuity.io/alias":"mellow-mongoose"}},
+		"images":[{"repoURL":"ghcr.io/org/app","tag":"v1.4.0"},
+			{"repoURL":"ghcr.io/org/side","digest":"sha256:abc"}],
+		"charts":[{"repoURL":"oci://reg/charts/thing","version":"2.1.0"},
+			{"repoURL":"https://charts.example","name":"named","version":"3.0.0"}],
+		"commits":[{"repoURL":"https://github.com/org/repo","id":"1a2b3c4d5e6f7"}]}`)
+
+	f, err := a.Freight(context.Background(), "addons", "f-7c3d9a1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Alias != "mellow-mongoose" {
+		t.Errorf("the alias is what the UI shows and what a reader recognises, got %q", f.Alias)
+	}
+	want := []string{
+		"ghcr.io/org/app:v1.4.0",
+		// Digest-only is what a Warehouse subscribed by digest discovers, and
+		// truncating it would produce a reference nobody can paste anywhere.
+		"ghcr.io/org/side@sha256:abc",
+		// An OCI chart has no separate name; its repoURL is the whole address.
+		"oci://reg/charts/thing:2.1.0",
+		"named:3.0.0",
+		"https://github.com/org/repo@1a2b3c4",
+	}
+	if len(f.Artifacts) != len(want) {
+		t.Fatalf("got %v", f.Artifacts)
+	}
+	for i := range want {
+		if f.Artifacts[i] != want[i] {
+			t.Errorf("artifact %d: got %q, want %q", i, f.Artifacts[i], want[i])
+		}
+	}
+}
+
+// A freight carrying nothing this reads is a real shape, not a failure. The
+// caller's answer is the word it always used.
+func TestFreightWithNothingReadableIsNotAnError(t *testing.T) {
+	a := serveJSON(t, `{"metadata":{}}`)
+	f, err := a.Freight(context.Background(), "addons", "f-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Artifacts) != 0 || f.Name != "f-1" {
+		t.Errorf("got %+v", f)
+	}
+}
+
+func TestReadingFreightDistinguishesRefusedFromGone(t *testing.T) {
+	for _, tc := range []struct {
+		code int
+		want string
+	}{
+		{http.StatusForbidden, "not permitted"},
+		{http.StatusNotFound, "no longer exists"},
+	} {
+		a := serverFor(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(tc.code)
+		}))
+		if _, err := a.Freight(context.Background(), "ns", "f-1"); err == nil ||
+			!strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%d: got %v, want %q", tc.code, err, tc.want)
+		}
+	}
+}
+
+// The reference is the whole reason the run can be read at all: its name is
+// generated and its labels are Kargo's business, so guessing from a list
+// would be a guess.
+func TestAStageCarriesTheReferenceToItsAnalysisRun(t *testing.T) {
+	a := serveJSON(t, `{"items":[{
+		"metadata":{"name":"cert-manager","namespace":"addons"},
+		"status":{"freightHistory":[{"items":{"w":{"name":"f-1"}},
+			"verificationHistory":[{"id":"v-1","phase":"Failed",
+				"analysisRun":{"namespace":"other","name":"cert-manager.01"}}]}]}}]}`)
+	got, err := a.Stages(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].VerificationRunName != "cert-manager.01" || got[0].VerificationRunNamespace != "other" {
+		t.Errorf("got %q/%q", got[0].VerificationRunNamespace, got[0].VerificationRunName)
+	}
+}
+
+// Kargo has recorded the run without its namespace. The Stage's own is where
+// it puts them, and a wrong guess 404s into a note rather than a false claim.
+func TestARunReferenceWithoutANamespaceDefaultsToTheStages(t *testing.T) {
+	a := serveJSON(t, `{"items":[{
+		"metadata":{"name":"cert-manager","namespace":"addons"},
+		"status":{"freightHistory":[{"items":{},
+			"verificationHistory":[{"id":"v-1","analysisRun":{"name":"run-1"}}]}]}}]}`)
+	got, err := a.Stages(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].VerificationRunNamespace != "addons" {
+		t.Errorf("got %q", got[0].VerificationRunNamespace)
+	}
+}

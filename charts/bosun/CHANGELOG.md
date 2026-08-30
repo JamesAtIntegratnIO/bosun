@@ -11,6 +11,43 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.31.0]
+
+`appVersion` moves with it: this is the chart for the agent that reads the
+AnalysisRun behind a stopped Stage and the freight behind a wedged one.
+
+### Removed
+
+- **BREAKING: `projects` and `analysistemplates` leave the ClusterRole.**
+  Neither has ever been read by anything. Both arrived whole in the commit
+  that extracted this chart from the repository it grew up in -- `git log -L`
+  over that rule block returns exactly one commit -- so they were copied, not
+  reserved for a plan.
+
+  **Breaking because narrowing a published ClusterRole is.** An install that
+  has bound its own ServiceAccount to this role and leaned on either grant
+  loses it on upgrade. Bosun itself does not, at any values setting.
+
+  Which direction the change runs is the whole argument for doing it now
+  rather than leaving two harmless-looking lines in place. Widening this role
+  is a patch and narrowing it is a breaking change, so granting a resource
+  against a feature nobody has written yet books a breaking change for
+  something that may never arrive. `freights` and `analysisruns` are the
+  counter-example and they stay: 0.31.0 is the release that reads them.
+
+### Changed
+
+- **`freights` and `analysisruns` are now load-bearing**, having been granted
+  and unused since the chart existed. The supervisor GETs one object of each,
+  by a reference the Stage itself records, so a stopped Stage's finding names
+  the metric that stopped it and the artifact it is holding rather than
+  handing back a `kubectl` command that asks.
+
+  **Only matters to an install with `rbac.create: false`.** A hand-written
+  role without these two does not fail: every finding is produced exactly as
+  before, minus the detail, and the sweep's report carries a note saying which
+  read was refused. Adding them turns the detail back on.
+
 ## [0.30.0]
 
 ### Added

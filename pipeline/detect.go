@@ -132,13 +132,21 @@ func detectWedged(s *Snapshot) []Finding {
 		if why == "" {
 			why = "no message was recorded"
 		}
+		// What stopped arriving, named. "artifacts" is what this could say
+		// before the freight was readable, and it is still the honest word
+		// when it is not: the freight's own name is a hash, and a summary
+		// that printed it would read as detail while saying less.
+		what := "artifacts"
+		if c := s.Carrying(latest.Namespace, latest.Freight); c != "" {
+			what = c
+		}
 		out = append(out, Finding{
 			Kind:     KindWedged,
 			Severity: Blocking,
 			Subject:  st.Name,
 			Since:    age,
-			Summary: fmt.Sprintf("%s stopped receiving artifacts %s ago and will not retry on its own",
-				st.Name, human(age)),
+			Summary: fmt.Sprintf("%s stopped receiving %s %s ago and will not retry on its own",
+				st.Name, what, human(age)),
 			Detail: fmt.Sprintf(
 				"Promotion `%s` ended %s and nothing has promoted this freight since. A terminal promotion is "+
 					"final: auto-promotion does not re-run one, because the freight has been promoted as far as "+
@@ -368,7 +376,7 @@ func trimHashes(in []string) []string {
 func detectVerificationStuck(s *Snapshot) []Finding {
 	var out []Finding
 	for _, st := range s.Stages {
-		if st.Ready || !strings.Contains(strings.ToLower(st.ReadyReason), "verif") {
+		if !st.StoppedByVerification() {
 			continue
 		}
 		over := isTerminalVerification(st.VerificationPhase)
@@ -385,26 +393,97 @@ func detectVerificationStuck(s *Snapshot) []Finding {
 			Severity: Degraded,
 			Detail:   strings.TrimSpace(st.ReadyMessage),
 		}
+		// The AnalysisRun, when it was readable. Everything below degrades to
+		// the sentences it used to write if it was not: a Stage whose run has
+		// been pruned, or a cluster that does not grant the read, still gets
+		// the finding.
+		run, haveRun := s.VerificationOf(st)
+		metric, haveMetric := VerifyMetric{}, false
+		if haveRun {
+			metric, haveMetric = run.Failing()
+		}
+		held := s.Carrying(st.Namespace, st.CurrentFreight)
 		if over {
 			f.Severity = Blocking
 			f.Summary = fmt.Sprintf("%s stopped promoting %s ago: its verification ended %s and Kargo will not re-run it",
 				st.Name, human(st.ReadySince), strings.ToLower(st.VerificationPhase))
-			f.Detail += "\n\nThat freight has been verified and the answer was no, so nothing retries. " +
+			freight := "That freight"
+			if held != "" {
+				freight = "That freight (" + held + ")"
+			}
+			f.Detail += "\n\n" + freight + " has been verified and the answer was no, so nothing retries. " +
 				"The Stage declines every promotion behind it while every Application it manages stays " +
 				"Synced and Healthy on the version it already had."
+			// Which metric said no. Without it this finding says a
+			// verification failed and hands back a command that asks what
+			// failed, which is the one question the reader already had.
+			if haveMetric {
+				f.Detail += "\n\n" + verificationDetail(run, metric)
+			}
 			f.Remedy = reverifyCmd(st.Namespace, st.Name, st.VerificationID)
 		} else {
 			f.Summary = fmt.Sprintf("%s has been verifying for %s, and nothing promotes past it meanwhile",
 				st.Name, human(st.ReadySince))
-			f.Detail += "\n\nAn AnalysisRun with no timeout holds the Stage's queue indefinitely, and the " +
-				"Stage reports only that it is not Ready."
-			f.Remedy = fmt.Sprintf("kubectl -n %s get analysisruns --sort-by=.metadata.creationTimestamp | tail -5\n"+
-				"kubectl -n %s get analysisrun <name> -o jsonpath='{.status.metricResults}'",
-				orNS(st.Namespace), orNS(st.Namespace))
+			switch {
+			case haveMetric && metric.Unbounded:
+				// The general claim below used to be made in every one of
+				// these findings, whether or not it was true of the run in
+				// front of the reader. Here it is a reading of this one, and
+				// the rule follows the fact rather than standing in for it.
+				f.Detail += "\n\n" + verificationDetail(run, metric) +
+					" A metric with no count measures until something stops it, so this holds " +
+					"the Stage's queue while the Stage reports only that it is not Ready."
+			case haveMetric:
+				f.Detail += "\n\n" + verificationDetail(run, metric) +
+					" Nothing about that fails the promotion; the Stage reports only that it is not Ready."
+			case haveRun:
+				// Read, and it explains nothing: every metric bounded and
+				// none of them complaining. Saying so is worth a line,
+				// because it rules out the usual cause rather than repeating
+				// it as a guess.
+				f.Detail += "\n\nAnalysisRun `" + run.Name + "` reports no failing or unbounded metric, " +
+					"so this is a verification taking its time rather than one that cannot end. " +
+					"The Stage reports only that it is not Ready."
+			default:
+				f.Detail += "\n\nAn AnalysisRun with no timeout holds the Stage's queue indefinitely, and the " +
+					"Stage reports only that it is not Ready."
+			}
+			f.Remedy = analysisCmd(st.Namespace, run, haveRun)
 		}
 		out = append(out, f)
 	}
 	return out
+}
+
+// verificationDetail is the sentence reading the AnalysisRun buys: which
+// metric, in the words its tallies mean, and what it last said.
+func verificationDetail(v Verification, m VerifyMetric) string {
+	out := fmt.Sprintf("The verification is AnalysisRun `%s`, and %s.", v.Name, m.Because())
+	if m.Message != "" {
+		out += " It last reported: " + m.Message
+	}
+	return out
+}
+
+// analysisCmd is how to see the whole run.
+//
+// Two shapes, and the difference is whether the run has been found. With the
+// reference, this addresses one object by name. Without it, it is the search
+// this finding used to hand back in every case: list what is there, sort by
+// age, and hope the newest is the right one. That guess is what the reference
+// removes.
+func analysisCmd(stageNS string, v Verification, known bool) string {
+	if !known {
+		return fmt.Sprintf("kubectl -n %s get analysisruns --sort-by=.metadata.creationTimestamp | tail -5\n"+
+			"kubectl -n %s get analysisrun <name> -o jsonpath='{.status.metricResults}'",
+			orNS(stageNS), orNS(stageNS))
+	}
+	ns := v.Namespace
+	if ns == "" {
+		ns = stageNS
+	}
+	return fmt.Sprintf("# the finding above is this run's own answer; this is the rest of it\n"+
+		"kubectl -n %s get analysisrun %s -o jsonpath='{.status.metricResults}'", orNS(ns), v.Name)
 }
 
 func isTerminalVerification(phase string) bool {
