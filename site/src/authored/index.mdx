@@ -100,12 +100,18 @@ import LoopDiagram from '../../components/LoopDiagram.astro';
       </p>
     </article>
     <article class="bo-tile">
-      <h3>Repairs without a model</h3>
+      <h3>Repairs, two ways</h3>
       <p>
-        When the only blocking finding is dropped served versions, no judgement
-        is needed. The report names the kind, the dropped versions and the
-        survivor; the same package that wrote that line parses it back and
-        migrates every declaring manifest. The re-run gate re-counts them.
+        When the only blocking finding is dropped served versions, no model is
+        called. The report names the kind, the dropped versions and the
+        survivor; every declaring manifest is migrated and the gate re-counts
+        them.
+      </p>
+      <p>
+        Where judgement is needed the model drafts and code refuses: a reshaped
+        manifest when a swap alone would lose a field, a migrated values file
+        when a chart version stops accepting settings you still make. Neither
+        lands until it passes.
       </p>
     </article>
     <article class="bo-tile">
@@ -120,6 +126,39 @@ import LoopDiagram from '../../components/LoopDiagram.astro';
   </div>
 </section>
 
+{/* ------------------------------------------------------------ new addons */}
+
+<section class="bo-section not-content">
+  <div class="bo-section__head">
+    <p class="bo-kicker">Not only bumps</p>
+    <h2>One entry added. Four Applications, on four clusters.</h2>
+    <p>
+      A pull request that adds an addon has nothing to diff against and nothing
+      to block. The expansion is still the thing worth reading, so the report
+      prints it: a <strong>New addons</strong> table, one row for every
+      Application the change generates, listed for review.
+    </p>
+  </div>
+
+  <div class="bo-split">
+    <section class="bo-split--muted">
+      <h3>What the pull request tells you</h3>
+      <ul>
+        <li>One entry added to a values file.</li>
+        <li>A description reading “add kargo-observability”.</li>
+      </ul>
+    </section>
+    <section class="bo-split--fix">
+      <h3>What the table tells you</h3>
+      <ul>
+        <li>Every Application that entry generates, by name.</li>
+        <li>The cluster each one lands on.</li>
+        <li>The chart and pinned version, or the path it renders from.</li>
+      </ul>
+    </section>
+  </div>
+</section>
+
 {/* ----------------------------------------------------------------- safety */}
 
 <section class="bo-section not-content">
@@ -127,10 +166,12 @@ import LoopDiagram from '../../components/LoopDiagram.astro';
     <p class="bo-kicker">The safety model</p>
     <h2 style="margin-bottom:1rem">The model does not edit files</h2>
     <p style="max-width:52em;color:var(--sl-color-gray-2);line-height:1.65">
-      It returns a structured verdict and a proposal: scalar edits, or on the
-      structural path a complete migrated document. The service applies what
-      survives its own checks, behind a path allowlist and a deny-list its own
-      configuration cannot remove from. So
+      It returns a structured verdict and a proposal: scalar edits, a complete
+      migrated manifest, or a complete migrated values document. The service
+      applies what survives its own checks, behind a path allowlist and a
+      deny-list its own configuration cannot remove from. A values proposal has
+      to clear one more bar than a schema walk, because helm is asked to render
+      the chart with it before a line is written. So
       <em>“never edit the gate, never weaken a policy to go green”</em> is an
       invariant the service enforces, not an instruction the model is asked to
       respect. A model that ignores the prompt entirely still cannot touch CI
@@ -204,7 +245,7 @@ helm install bosun oci://ghcr.io/jamesatintegratnio/charts/bosun \
     </a>
     <a class="bo-tile" href="/decisions/0001-structured-edits-not-agentic-loop/" style="text-decoration:none">
       <h3>Decisions →</h3>
-      <p>Twelve ADRs on why it is built this way, and what each decision cost.</p>
+      <p>Thirteen ADRs on why it is built this way, and what each decision cost.</p>
     </a>
   </div>
 </section>

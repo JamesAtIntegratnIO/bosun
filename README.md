@@ -39,8 +39,8 @@ piece doing its one job.
 
 | Piece | What it does |
 |---|---|
-| [`gate/`](gate) | **The inspection round.** Renders your ApplicationSets at base and at head, fails on a *cluster-targeting* change, an apiVersion migration, or a CRD dropping a served version your manifests still declare; diffs the old and new chart render down to the field; schema-validates the result. A package, not a binary: the agent imports it and runs it in-cluster against the live inventory, which is the only place the gate runs. |
-| [`agent/`](agent) | **The rounds and the repair.** Acts on the verdict: migrates manifests off dropped API versions deterministically, fixes what the rendered diff *proves* is mechanical, explains what a green gate cannot show, and escalates the rest as a handoff. |
+| [`gate/`](gate) | **The inspection round.** Renders your ApplicationSets at base and at head, fails on a *cluster-targeting* change, an apiVersion migration, or a CRD dropping a served version your manifests still declare; diffs the old and new chart render down to the field; schema-validates the result; and [describes the addons a pull request introduces](gate/README.md#new-addons), each with the cluster it lands on and the source it renders from. A package, not a binary: the agent imports it and runs it in-cluster against the live inventory, which is the only place the gate runs. |
+| [`agent/`](agent) | **The rounds and the repair.** Acts on the verdict: migrates manifests off dropped API versions deterministically, reshapes the documents that swap alone would break, migrates the values a chart version has stopped accepting, fixes what the rendered diff *proves* is mechanical, explains what a green gate cannot show, and escalates the rest as a handoff. |
 | [`gateservice/`](gateservice) | Runs the gate in-process for every open pull request, on a timer, and publishes the verdict, so the agent reads it as a value instead of scraping its own comment. |
 | [`supervisor/`](supervisor) | Sweeps the Kargo pipeline for the promotions that *never happened*. Nothing about one produces an event, so a timer is the only way to see it. |
 | [`prompt/`](prompt) | What the model is told, and the constant the eval suite scores. |
@@ -78,6 +78,19 @@ document at a time. The proposal is refused whole unless it keeps the object's
 identity, fits the target schema, and invents no value; a refusal escalates
 rather than half-applying.
 
+**Migrates the values a chart has outgrown**, when the bump will not render at
+all because the new `values.schema.json` refuses keys this repository has been
+setting for years. Removing a key, renaming one and adding one are three
+operations a scalar edit cannot express, so a model is asked for the whole
+values document and the harness checks the result: every value the new chart
+still declares survives byte-identical, the document fits the schema, no value
+appears that the original or the schema did not supply, and **the chart is
+rendered with it before anything is written**. What lands is not the model's
+document but a plan of key operations applied line by line, so comments and
+formatting survive. A required key the schema names no value for escalates
+before the model is called at all. See
+[`adr/0013-a-values-migration-is-a-plan-not-a-document.md`](adr/0013-a-values-migration-is-a-plan-not-a-document.md).
+
 **Escalates** an apiVersion change in the *rendered output*, a document
 migration the harness refused, a removed CRD, a dropped subchart, an upstream
 note mentioning a schema or database migration, a version skip the chart itself
@@ -88,10 +101,11 @@ It comments, labels, and stops. **It never closes a pull request.**
 ## The safety model is code, not prompt
 
 The model never **applies**. It returns a structured verdict and a proposal:
-scalar edits for a mechanical fix, and, where swapping an apiVersion would
-leave a document the new schema silently prunes, the complete migrated
-document. The service applies what survives its own checks, behind a path
-allowlist and a deny-list its own configuration cannot remove from.
+scalar edits for a mechanical fix, the complete migrated document where
+swapping an apiVersion would leave a document the new schema silently prunes,
+and the complete values document where the new chart version refuses the values
+this repository sets. The service applies what survives its own checks, behind
+a path allowlist and a deny-list its own configuration cannot remove from.
 
 A proposed document is a real widening: the model is authoring file content
 rather than naming a value to swap. The harness bounds it instead of trusting
@@ -103,14 +117,24 @@ dictated by the schema itself. What lands is re-serialised from the structure
 the harness validated rather than written back as the model's text. The model
 supplies structure; the original document supplies data.
 
+A proposed **values** document is bounded the same way and then further, because
+the program that refused the old values can be asked about the new ones: helm
+renders the chart with the proposal, and a proposal it will not template is
+refused. What lands there is not a document at all. The harness diffs the
+proposal against the original into a plan of three operations: remove a key,
+rename a key, set a key. Each is applied on that key's own lines, so the model
+never names a file, a key or an operation, and the file keeps its comments.
+
 So *"never edit the gate, never weaken a policy to go green"* is an invariant
 the service enforces, not an instruction the model is asked to respect. A model
 that ignores the prompt entirely still cannot touch CI configuration.
 
 See [`adr/0001-structured-edits-not-agentic-loop.md`](adr/0001-structured-edits-not-agentic-loop.md)
-for the original line, and
+for the original line,
 [`adr/0007-structure-from-the-schema-data-from-the-document.md`](adr/0007-structure-from-the-schema-data-from-the-document.md)
-for where it moved.
+for where it moved, and
+[`adr/0013-a-values-migration-is-a-plan-not-a-document.md`](adr/0013-a-values-migration-is-a-plan-not-a-document.md)
+for why the values path writes a plan instead.
 
 ## Install
 

@@ -36,7 +36,7 @@ They fail at apply time, or later, or quietly forever.
 | Piece | What it does |
 |---|---|
 | **The gate** | The inspection round. Renders your ApplicationSets at base and at head, fails on a cluster-targeting change, an apiVersion migration, a CRD dropping a served version your manifests still declare, or a chart that will not render at all at the version you are moving to; diffs the old and new chart render down to the field; schema-validates the result. |
-| **The agent** | The rounds and the repair. Acts on the verdict: migrates manifests off dropped API versions deterministically, fixes what the rendered diff *proves* is mechanical, explains what a green gate cannot show, and escalates the rest as a handoff. |
+| **The agent** | The rounds and the repair. Acts on the verdict: migrates manifests off dropped API versions deterministically, reshapes the documents that swap alone would break, migrates the values a chart version has stopped accepting, fixes what the rendered diff *proves* is mechanical, explains what a green gate cannot show, and escalates the rest as a handoff. |
 
 They are one loop, inspect then repair, joined by contracts that nothing else
 checks. The agent finds the gate's verdict by searching pull-request
@@ -46,6 +46,18 @@ comments for a marker the gate emits, and any version it writes must appear
 Both of those broke, silently, while the two halves were separate packages. A
 boundary is safe where its contract can be tested; put the two sides in
 different repositories and no CI run can ever check them together.
+
+## Pull requests that add an addon
+
+Not every pull request is a bump. When one adds an addon there is nothing to
+diff it against, so the gate reports the expansion instead of a finding: the
+Applications the change generates, one row each, with the cluster each lands on
+and the chart version or repository path behind it.
+
+It does not block. Adding an addon is a deliberate act by whoever opened the
+pull request. The table earns its place another way: a values entry naming a
+chart does not tell you which clusters that chart is about to reach, and the
+rows under **New addons** do.
 
 ## What it will and will not do
 
@@ -60,6 +72,18 @@ new schema silently prunes. A model is asked for the migrated document, one
 document at a time. The proposal is refused whole unless it keeps the object's
 identity, fits the target schema, and invents no value; a refusal escalates
 rather than half-applying.
+
+**Migrates the values a chart has outgrown**, when the bump will not render at
+all because the new `values.schema.json` refuses keys this repository has been
+setting for years. Removing a key, renaming one and adding one are three
+operations a scalar edit cannot express, so a model is asked for the whole
+values document and the harness checks the result: every value the new chart
+still declares survives byte-identical, the document fits the schema, no value
+appears that the original or the schema did not supply, and the chart is
+rendered with it before anything is written. What lands is not the model's
+document but a plan of key operations applied line by line, so your comments
+and formatting survive. See
+[ADR 0013](/decisions/0013-a-values-migration-is-a-plan-not-a-document/).
 
 **Escalates** an apiVersion change in the *rendered output*, a document
 migration the harness refused, a removed CRD, a dropped subchart, an upstream
@@ -79,17 +103,22 @@ apiserver sees it, which is the failure this system exists to prevent. See
 ## The safety model is code, not prompt
 
 The model never applies. It returns a structured verdict and a proposal:
-scalar edits for a mechanical fix, and, where swapping an apiVersion would
-leave a document the new schema silently prunes, the complete migrated
-document. The service applies what survives its own checks, behind a path
-allowlist and a deny-list its own configuration cannot remove from.
+scalar edits for a mechanical fix, the complete migrated document where
+swapping an apiVersion would leave a document the new schema silently prunes,
+and the complete values document where the new chart version refuses the values
+this repository sets. The service applies what survives its own checks, behind
+a path allowlist and a deny-list its own configuration cannot remove from.
 
-A proposed document is the one place the model authors file content. It is
-refused whole unless it keeps the object's identity, fits the target schema,
-and contains no value that is not in the original or dictated by the schema
-itself, and what lands is re-serialised from the structure the harness
-validated rather than the model's text. The model supplies structure; the
-original document supplies data.
+The two document proposals are where the model authors file content rather than
+naming a value to swap, and neither is written as the model wrote it. A migrated
+manifest is refused whole unless it keeps the object's identity, fits the target
+schema, and contains no value that is not in the original or dictated by the
+schema itself; what lands is re-serialised from the structure the harness
+validated. A migrated values document clears those checks and one more: helm is
+asked to render the chart with it, and a proposal it will not template is
+refused. What lands there is not the document at all, but the difference
+between it and the original, applied key by key. The model supplies structure;
+the original supplies data.
 
 So *"never edit the gate, never weaken a policy to go green"* is an invariant
 the service enforces, not an instruction the model is asked to respect. A model
@@ -97,9 +126,11 @@ that ignores the prompt entirely still cannot touch CI configuration.
 
 The full table of guarantees and the mechanism enforcing each one is in
 [Safety model](/concepts/safety-model/). The reasoning is
-[ADR 0001](/decisions/0001-structured-edits-not-agentic-loop/), and
+[ADR 0001](/decisions/0001-structured-edits-not-agentic-loop/),
 [ADR 0007](/decisions/0007-structure-from-the-schema-data-from-the-document/)
-for the document path.
+for the document path, and
+[ADR 0013](/decisions/0013-a-values-migration-is-a-plan-not-a-document/) for
+why the values path writes a plan instead.
 
 ## Where the gate runs
 

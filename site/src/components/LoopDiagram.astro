@@ -1,28 +1,46 @@
 ---
 /**
  * The loop, as a picture: Kargo opens a pull request, the gate renders it at
- * base and head, Bosun reads the verdict, and the three things that can follow.
+ * base and head, Bosun reads the verdict, and the four things that can follow.
  *
  * This lives in an .astro file rather than inline in index.mdx because MDX
  * re-parses JSX children as markdown across blank lines, which silently ate
  * every <rect> and <text> in this diagram the first time round. Astro
  * components have no such ambiguity.
  *
- * The dashed coral arrow carries the claim the drawing exists to make: a
- * deterministic repair goes back through the same gate that demanded it, and
- * that gate re-counts the consumers itself. Nothing else in the system
- * verifies the repair.
+ * Repair is two boxes because it is two mechanisms, and drawing one box said
+ * something false. Only the apiVersion swap is computed with no model in it;
+ * a document the target schema would prune and a values file the new chart
+ * refuses are both drafted by the model and refused by code. Collapsing those
+ * into "Repair -- no model involved" undersold the system and misdescribed it
+ * in the same stroke.
+ *
+ * The straight line through the middle is the composition, not an accident:
+ * Kargo, the gate, Bosun, Explain, Merge is the path a green pull request
+ * takes, and everything that is not that hangs off it. Which is why the four
+ * branches are not centred on the trunk -- Explain is, because Explain is on
+ * the spine.
+ *
+ * The two branches above the spine leave Bosun on one stem rather than two,
+ * because two near-parallel verticals 30px apart read as a rendering fault.
+ *
+ * The dashed coral arrow carries the claim the drawing exists to make: every
+ * repair goes back through the gate that demanded it, whichever mechanism
+ * wrote it. Nothing else in the system verifies a repair.
  */
 ---
 
 <div class="bo-diagram-scroll">
-  <svg class="bo-diagram" viewBox="0 0 920 250" role="img" aria-labelledby="loop-title loop-desc">
+  <svg class="bo-diagram" viewBox="0 0 1000 300" role="img" aria-labelledby="loop-title loop-desc">
     <title id="loop-title">The bosun loop</title>
     <desc id="loop-desc">
       Kargo opens a pull request. The gate renders it at base and head and publishes a verdict.
-      Bosun reads that verdict and either repairs the change deterministically, which sends it back
-      through the same gate, explains a green one, or escalates it to a human. Only a green gate
-      reaches the merge, ArgoCD and the verification.
+      Bosun reads that verdict and does one of four things: repairs it deterministically, by
+      swapping apiVersion values the gate's own report names, with no model involved; repairs it
+      from a draft, where a model writes a whole migrated document or values file and the harness
+      refuses it unless it passes every check; explains a green gate; or escalates it to a human.
+      Either kind of repair goes back through the same gate, which re-runs and re-counts. Only a
+      green gate reaches the merge, ArgoCD and the verification.
     </desc>
     <defs>
       <marker id="bo-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -30,43 +48,48 @@
       </marker>
     </defs>
     <g class="bo-d-box">
-      <rect x="16" y="97" width="150" height="56" rx="8"></rect>
-      <rect x="206" y="97" width="150" height="56" rx="8"></rect>
-      <rect x="396" y="97" width="150" height="56" rx="8"></rect>
-      <rect x="570" y="30" width="156" height="48" rx="8"></rect>
-      <rect x="570" y="101" width="156" height="48" rx="8"></rect>
-      <rect x="570" y="172" width="156" height="48" rx="8"></rect>
-      <rect x="756" y="97" width="148" height="56" rx="8"></rect>
+      <rect x="16" y="158" width="150" height="56" rx="8"></rect>
+      <rect x="206" y="158" width="150" height="56" rx="8"></rect>
+      <rect x="396" y="158" width="150" height="56" rx="8"></rect>
+      <rect x="576" y="34" width="190" height="48" rx="8"></rect>
+      <rect x="576" y="98" width="190" height="48" rx="8"></rect>
+      <rect x="576" y="162" width="190" height="48" rx="8"></rect>
+      <rect x="576" y="226" width="190" height="48" rx="8"></rect>
+      <rect x="816" y="158" width="150" height="56" rx="8"></rect>
     </g>
     <g class="bo-d-line" stroke-width="1.5" marker-end="url(#bo-arrow)" color="#57aebb">
-      <path d="M166,125 H196"></path>
-      <path d="M356,125 H386"></path>
-      <path d="M546,125 H560"></path>
-      <path d="M500,97 V54 H560"></path>
-      <path d="M500,153 V196 H560"></path>
-      <path d="M726,125 H746"></path>
+      <path d="M166,186 H196"></path>
+      <path d="M356,186 H386"></path>
+      <path d="M546,186 H566"></path>
+      <path d="M471,158 V58 H566"></path>
+      <path d="M471,122 H566"></path>
+      <path d="M471,214 V250 H566"></path>
+      <path d="M766,186 H806"></path>
     </g>
-    <g class="bo-d-line bo-d-accent" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#bo-arrow)" color="#e0705a">
-      <path d="M648,30 V12 H281 V89"></path>
+    <g class="bo-d-line bo-d-accent" stroke-width="1.5" stroke-dasharray="5 4" color="#e0705a">
+      <path d="M766,58 H790"></path>
+      <path d="M766,122 H790 V22 H281 V148" marker-end="url(#bo-arrow)"></path>
     </g>
-    <text x="464" y="8" class="bo-d-sub bo-d-accent-text" text-anchor="middle">the gate re-counts the consumers itself</text>
+    <text x="535" y="12" class="bo-d-sub bo-d-accent-text" text-anchor="middle">either repair goes back through the same gate</text>
     <g text-anchor="middle" class="bo-d-label">
-      <text x="91" y="121">Kargo</text>
-      <text x="281" y="121">The gate</text>
-      <text x="471" y="121">Bosun</text>
-      <text x="648" y="52">Repair</text>
-      <text x="648" y="123">Explain</text>
-      <text x="648" y="194">Escalate</text>
-      <text x="830" y="121">Merge</text>
+      <text x="91" y="182">Kargo</text>
+      <text x="281" y="182">The gate</text>
+      <text x="471" y="182">Bosun</text>
+      <text x="671" y="55">Repair, computed</text>
+      <text x="671" y="119">Repair, drafted</text>
+      <text x="671" y="183">Explain</text>
+      <text x="671" y="247">Escalate</text>
+      <text x="891" y="182">Merge</text>
     </g>
     <g text-anchor="middle" class="bo-d-sub">
-      <text x="91" y="140">opens the pull request</text>
-      <text x="281" y="140">renders base and head</text>
-      <text x="471" y="140">reads the verdict</text>
-      <text x="648" y="68">no model involved</text>
-      <text x="648" y="140">what the bump changed</text>
-      <text x="648" y="211">needs-human, and it stops</text>
-      <text x="830" y="140">ArgoCD, then verification</text>
+      <text x="91" y="201">opens the pull request</text>
+      <text x="281" y="201">renders base and head</text>
+      <text x="471" y="201">reads the verdict</text>
+      <text x="671" y="72">apiVersion swaps, no model</text>
+      <text x="671" y="136">the model writes, code refuses</text>
+      <text x="671" y="200">what the bump changed</text>
+      <text x="671" y="264">needs-human, and it stops</text>
+      <text x="891" y="201">ArgoCD, then verification</text>
     </g>
   </svg>
 </div>

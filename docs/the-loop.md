@@ -64,6 +64,14 @@ versions, finds them, and blocks:
 >   - **N manifest(s) in this repository still declare a dropped version**,
 >     blocking until they move: …
 
+The example here is a bump, which is what a promotion produces. When a pull
+request *adds* an addon there is no base version to compare against, and the
+same two renders answer a different question: the report lists the expansion,
+every Application the change creates, the cluster each one lands on, and the
+chart and pinned version or repository path it renders from. Nothing blocks. A
+reviewer reading one new entry in a values file has no other way to learn any
+of it; [the gate's own README](../gate/README.md#new-addons) shows the table.
+
 Everything the gate publishes lands in two artifacts on the pull request: a
 report comment led by an invisible marker, and the `addons-gate` check. The
 report is the wire format for everything downstream. The agent has no channel
@@ -76,7 +84,7 @@ opened, so the agent is already waiting for `addons-gate` to settle. Its own
 commit status says so, `pending`, "reading addons-gate", so that a reader can
 tell *working* from *done with nothing to say*.
 
-The gate is red. Five things can happen, in strict order of preference.
+The gate is red. Six things can happen, in strict order of preference.
 
 **The deterministic repair.** If the only blocking finding is dropped served
 versions, no judgement is needed: the gate already computed the consumer kind,
@@ -95,8 +103,9 @@ verifies it.
 target schema prunes a field the old one carried, so the document parses,
 applies and quietly loses a value while the render, the gate and the repository
 all look fine. A model is asked for the migrated document itself, one document
-at a time and capped per pull request. This is the only path on which a model
-authors file content, and it still does not apply it. The proposal is refused
+at a time and capped per pull request. This is one of two paths on which a
+model authors whole file content, the values migration below being the other,
+and on neither does it apply what it wrote. The proposal is refused
 whole unless it keeps the object's identity, fits the target schema, and
 contains no value that is not either at that same path in the original,
 displaced by the schema change, or dictated by the schema itself. What lands is
@@ -104,6 +113,31 @@ re-serialised from the structure the harness validated rather than written back
 as the model's text. A refusal escalates, and values dropped along the way are
 listed in the comment even when dropping them was right. See
 [ADR 0007](../adr/0007-structure-from-the-schema-data-from-the-document.md).
+
+**The values migration.** A different red: the chart will not render at the new
+version at all, because its `values.schema.json` refuses settings this
+repository has been making since before the chart stopped declaring them.
+Nothing above can express the fix, since removing a key, renaming one and
+adding one are three operations a scalar edit has no shape for. So the model is
+shown both versions' schemas and the values, and returns the whole values
+document.
+
+The harness then does three things the model has no say in: it requires every
+value the new chart still declares to be at the same path, byte-identical; it
+walks the proposal against the new schema; and it refuses any value the
+original and the schema did not between them supply. Then it renders the chart
+with the proposal. That last one is the check the manifest path cannot have,
+because the program that refused the old values is the one asked whether the
+new ones work.
+
+What lands is not the document. The difference between the two becomes a plan
+of three operations, remove a key, rename a key, set a key, and each is applied
+on that key's own lines, so a three-key change reads as three lines and every
+comment in the file survives. The file is then read back and compared to the
+proposal the harness accepted; if it does not match, nothing is written. A key
+the new schema *requires* and names no value for escalates before the model is
+called at all, because there is nothing to derive an answer from. See
+[ADR 0013](../adr/0013-a-values-migration-is-a-plan-not-a-document.md).
 
 **The deterministic escalation.** Some reds have nothing in this repository to
 change: the *chart* renders an object whose apiVersion moved, and no manifest

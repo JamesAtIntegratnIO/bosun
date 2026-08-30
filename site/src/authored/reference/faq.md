@@ -18,9 +18,11 @@ while triage runs
 and `success` once there is a verdict; the description carries the meaning
 rather than the colour.
 
-So the model's influence is bounded to three things: proposing scalar edits a
+So the model's influence is bounded to four things: proposing scalar edits a
 deterministic applier may refuse, proposing a migrated document three
-deterministic checks may refuse, and writing prose in a comment.
+deterministic checks may refuse, proposing a migrated values document that is
+refused unless helm itself renders the chart with it, and writing prose in a
+comment.
 
 ## What can the agent write?
 
@@ -29,11 +31,22 @@ and only files that pass **both** `triage.allowPaths` (a standing grant) and
 `Scope` (the promotion's own file list for this request), and that are not on a
 deny-list configuration cannot remove from.
 
-The model itself writes nothing. On the mechanical path it proposes scalar
-edits; on the structural path it authors a complete migrated document, which
-the harness parses, checks for identity, schema validity and value provenance,
-and re-serialises from the validated structure. Neither reaches a branch except
-through the applier.
+The model itself writes nothing on any of the three paths where it has a say
+about a file.
+
+On the **mechanical** path it proposes scalar edits, and the applier refuses
+any whose `from` does not match the file. On the **structural** path it authors
+a complete migrated manifest, which the harness parses, checks for identity,
+schema validity and value provenance, and re-serialises from the validated
+structure. On the **values** path, for a bump whose new chart schema refuses
+keys this repository sets, it authors a complete values document; the harness
+requires every value the new chart still declares to survive byte-identical,
+renders the chart with the proposal before writing anything, and then applies
+not the document but a plan of key operations, one key's lines at a time, so
+your comments and formatting are untouched.
+
+None of the three reaches a branch except through code that can refuse it, and
+each refusal escalates rather than half-applying.
 
 Everything it pushes still has to pass the gate and the merge policy to reach
 anywhere. See [Safety model](/concepts/safety-model/) for the full table of
@@ -55,6 +68,20 @@ mechanisms, one of which is enforced by someone else's server.
 
 Never. The `gitprovider.Provider` interface deliberately has neither a merge nor
 a close method. It comments, labels, pushes to a bot branch, and stops.
+
+## Does it only report on version bumps?
+
+No. A pull request that adds an addon gets a **New addons** table rather than a
+finding. It has three columns and a row for every Application the change
+generates: the Application's name, the cluster it lands on, and its source,
+which is a chart and pinned version or a path in the repository. The row count
+is how many Applications the change creates, one per cluster it reaches.
+
+It does not block. Nobody adds an addon by accident, and a gate that goes red
+on every new one teaches people to ignore red. What it does is hand the
+reviewer the part they cannot derive: one entry in a values file expands into
+Applications on clusters, and the entry says nothing about how many of either.
+See [what the gate checks](/gate/#new-addons).
 
 ## What does it cost to run?
 

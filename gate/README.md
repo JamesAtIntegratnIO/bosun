@@ -52,6 +52,38 @@ in the agent's image, pinned.
 | A setting this repository makes that the new chart version no longer declares | yes | helm ignores an unknown value rather than failing on it, so the setting stops applying while the render, the values file and the text diff all stay identical. Measured at 48 of 77 settings on one kyverno bump |
 | A CRD stops serving a version **that manifests in the repository still declare** | yes, while any remain | those manifests break at apply. The report names the consumer kind, the surviving version and the declaring files, which is the contract [the agent's deterministic repair](../docs/safety-model.md) executes, and the recount on the re-run is what verifies it. Counted at zero, the finding is reported and does not block |
 | Resources added, removed, changed; versions moved | no, reported | that is what a version bump legitimately does, reported with per-field diffs so the reviewer judges evidence rather than a count |
+| An addon that did not exist at the base revision | no, reported | the author meant to add it, so there is nothing to warn anyone about. The row is printed for the [expansion](#new-addons) it carries, which the text diff does not contain |
+
+## New addons
+
+Not every pull request is a bump. When one adds an addon there is no base
+version to compare against, so the report carries a **New addons** table rather
+than a finding:
+
+| Application | Cluster | Source |
+|---|---|---|
+| `kargo-observability-hub` | hub | `charts/kargo-observability (path)` |
+
+One row per generated Application. An addon that reaches four clusters prints
+four rows, which is how you see that it reaches four. `Source` is the chart
+repository, chart and pinned version for a Helm source, and the directory for a
+path source.
+
+The expansion is what a reviewer cannot get anywhere else. A new addon arrives
+as one entry in a values file or one new directory, and what that entry
+becomes -- how many Applications, on which clusters, from which chart at which
+version -- is the ApplicationSet's business rather than the diff's. A
+pull-request description reading "add kargo-observability" is true and tells
+you none of it.
+
+The report lists no resource changes underneath. Chart-diff renders an
+Application's chart at both of its versions, and a first appearance has only
+one, which is what the section means by "nothing changed underneath them".
+
+An addon that *already existed* and gains a cluster is a different finding, and
+it blocks. The gate tells the two apart by whether the ApplicationSet was there
+at the base revision; [`docs/render-diff-schema.md`](docs/render-diff-schema.md)
+has both.
 
 ## Reference
 
