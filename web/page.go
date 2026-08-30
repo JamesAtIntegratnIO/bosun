@@ -21,16 +21,25 @@ package web
 //
 // Dark is the base and light is the override, which is the site's structure
 // and for the site's stated reason -- the badge is navy, and you read this
-// next to a terminal. The page still follows the system preference because it
-// has no storage to remember a choice of its own, so a reader who sets light
-// gets the site's paper-and-cream treatment rather than an inversion.
+// next to a terminal.
+//
+// WHICH TREATMENT IS THREE-STATE, and the shape below is what makes all three
+// reachable. Left alone the page follows the reader's system preference. The
+// chart's `web.theme` stamps `data-theme` on <html> -- the same attribute the
+// site's own toggle writes -- and an explicit value has to beat the media
+// query in BOTH directions: `dark` on a reader whose system asks for light,
+// and `light` on one whose system asks for dark. So the media query is
+// guarded with :not([data-theme='dark']) and the explicit light block is
+// repeated after it. Defining a colour only inside the media query would
+// leave `data-theme="light"` half-applied on a dark system, which renders as
+// dark text on dark ground rather than as an error.
 //
 // The fonts are named and not fetched. Inter, Space Grotesk and JetBrains Mono
 // are what the site loads; a reader who has them gets them, and everyone else
 // gets the system stack behind them. Loading them would mean an external asset
 // on a page whose whole publishing story is that it has none.
 const pageHTML = `<!doctype html>
-<html lang="en">
+<html lang="en"{{with .Theme}} data-theme="{{.}}"{{end}}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -65,7 +74,7 @@ const pageHTML = `<!doctype html>
 }
 /* Light: the site's paper-and-cream treatment, not an inversion of the above. */
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme='dark']) {
     --bg: #fbf7ee;          /* --bo-paper */
     --card: #ffffff;        /* --bo-surface-solid */
     --fg: #2c4258;          /* --sl-color-text */
@@ -83,6 +92,27 @@ const pageHTML = `<!doctype html>
     --neutral-bg: #efeade;  /* --sl-color-gray-7 */
     --code-bg: #f3eee0;     /* --bo-code-bg */
   }
+}
+/* And again for an explicit light, which must beat a dark system preference.
+   Byte-identical to the block above by construction; TestLightBlocksAgree fails
+   if they ever stop agreeing. */
+:root[data-theme='light'] {
+  --bg: #fbf7ee;          /* --bo-paper */
+  --card: #ffffff;        /* --bo-surface-solid */
+  --fg: #2c4258;          /* --sl-color-text */
+  --strong: #14293e;      /* --bo-navy-700 */
+  --muted: #5b7690;       /* --sl-color-gray-3 */
+  --line: #e3e0d4;        /* --sl-color-gray-6 */
+  --link: #1b5c6d;        /* --bo-teal-700, the site's text-accent */
+  --ok: #1c5840;          /* --sl-color-green-high */
+  --ok-bg: #d6eee1;       /* --sl-color-green-low */
+  --blocking: #7a2a20;    /* --bo-coral-700 */
+  --blocking-bg: #f8dfd8; /* --sl-color-red-low */
+  --degraded: #7a5219;    /* --sl-color-orange-high */
+  --degraded-bg: #f6e9d1; /* --sl-color-orange-low */
+  --neutral: #5b7690;
+  --neutral-bg: #efeade;  /* --sl-color-gray-7 */
+  --code-bg: #f3eee0;     /* --bo-code-bg */
 }
 * { box-sizing: border-box; }
 body {

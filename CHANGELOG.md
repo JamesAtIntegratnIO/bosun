@@ -5,6 +5,34 @@ All notable changes to `bosun`. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **`web.theme`, so the page's treatment is a deployment decision.** `auto`
+  (the default) follows the reader's system preference, which is what the page
+  did before; `dark` and `light` stamp `data-theme` on the document -- the same
+  attribute the site's own toggle writes -- and beat that preference in both
+  directions.
+
+  **There is no toggle on the page, and this is what replaces one.** A toggle
+  needs somewhere to remember the answer and this page has nowhere: it carries
+  no script, which is what lets a gateway put a strict content policy in front
+  of it, and it refreshes itself every minute, so the CSS-only toggle that
+  works without script would be wiped on every refresh. A cookie would work
+  and costs a route, a redirect and a `Set-Cookie` on a page that today sets
+  nothing. So the choice moves to where this install's other decisions live.
+
+  Refused rather than defaulted, in both places it can be set: the chart's
+  schema rejects anything but the three at render time, so a typo fails
+  `helm template` instead of reaching a pod, and `WEB_THEME` set directly is
+  refused at start-up. A page rendered in a theme nobody chose, saying nothing
+  about it, is the quiet kind of wrong this agent exists to notice elsewhere.
+
+  Light is now written twice in the stylesheet -- once under the media query,
+  guarded so an explicit `dark` beats a light system, and once under
+  `[data-theme='light']` so an explicit light beats a dark one. Plain CSS
+  cannot express that in one rule; a test fails if the two blocks stop
+  agreeing.
+
 ### Changed
 
 - **The status page wears the project's own colours.** It shipped in GitHub's

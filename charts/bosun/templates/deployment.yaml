@@ -67,6 +67,11 @@ spec:
             {{- if .Values.web.enabled }}
             - name: WEB_ADDR
               value: ":{{ .Values.service.webPort }}"
+            # Which of the two treatments the page renders in. Sent always,
+            # including `auto`, so the value the operator chose is visible in
+            # `kubectl get deploy -o yaml` rather than inferred from absence.
+            - name: WEB_THEME
+              value: {{ .Values.web.theme | quote }}
             {{- end }}
             # What the operator deployed, shown on the status page. The image
             # is built without its .git directory, so the binary cannot prove

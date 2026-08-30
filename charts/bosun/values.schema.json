@@ -95,6 +95,11 @@
         "enabled": {
           "type": "boolean"
         },
+        "theme": {
+          "type": "string",
+          "enum": ["auto", "dark", "light"],
+          "description": "Which of the site's two treatments the page renders in. auto follows the reader's system preference; dark and light stamp data-theme and beat it in both directions. An operator's setting because the page carries no script and refreshes itself every minute, so it has nowhere to remember a reader's toggle."
+        },
         "httpRoute": {
           "type": "object",
           "additionalProperties": false,

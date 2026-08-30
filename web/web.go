@@ -41,6 +41,14 @@ type Server struct {
 	Brand   string
 	Version string
 
+	// Theme is "dark" or "light" to stamp `data-theme` on the document, or
+	// empty to leave the reader's system preference in charge. main.go maps
+	// the chart's `auto` to empty here: the page has no third palette, so
+	// "follow the system" is the absence of the attribute rather than a value
+	// of it, and keeping that distinction at the boundary means the template
+	// never has to know the word.
+	Theme string
+
 	// What it watches. RepoLink may be empty (an ssh-only clone URL has no
 	// browsable address) and the page then names the repository without
 	// linking it.
@@ -219,6 +227,7 @@ func prefersHTML(r *http.Request) bool {
 
 type view struct {
 	Brand     string
+	Theme     string
 	Version   string
 	Repo      string
 	RepoLink  string
@@ -287,6 +296,7 @@ func (s *Server) view() *view {
 	now := time.Now()
 	v := &view{
 		Brand:     s.Brand,
+		Theme:     s.Theme,
 		Version:   s.version(),
 		Repo:      s.Repo,
 		RepoLink:  s.RepoLink,

@@ -73,3 +73,57 @@ func TestNoColoursOutsideThePalette(t *testing.T) {
 		t.Errorf("colour literals outside the palette block: %v -- name them in :root and use var()", got)
 	}
 }
+
+// The two light blocks must declare exactly the same thing.
+//
+// Light is written twice on purpose. An explicit `light` has to beat a dark
+// system preference, and a system light preference has to lose to an explicit
+// `dark`, and plain CSS cannot express "either of these selectors" across a
+// media-query boundary in one rule. So there are two rules, and the risk is
+// the ordinary one with duplication: somebody tunes one and not the other, and
+// the page renders differently depending on a preference the operator already
+// overrode.
+//
+// The fix when this fails is to make them agree, not to relax this.
+func TestLightBlocksAgree(t *testing.T) {
+	media := declarations(t, ":root:not([data-theme='dark']) {")
+	explicit := declarations(t, ":root[data-theme='light'] {")
+
+	if len(media) == 0 {
+		t.Fatal("found no declarations in the media-query light block")
+	}
+	if len(media) != len(explicit) {
+		t.Fatalf("the light blocks declare different numbers of properties: media %d, explicit %d", len(media), len(explicit))
+	}
+	for prop, want := range media {
+		if got := explicit[prop]; got != want {
+			t.Errorf("%s is %q under the media query but %q under [data-theme='light']", prop, want, got)
+		}
+	}
+}
+
+// declarations pulls `--name: value` pairs out of the rule opened by sel.
+func declarations(t *testing.T, sel string) map[string]string {
+	t.Helper()
+	i := strings.Index(pageHTML, sel)
+	if i < 0 {
+		t.Fatalf("no rule opens with %q; if the template moved, move this with it", sel)
+	}
+	rest := pageHTML[i+len(sel):]
+	end := strings.Index(rest, "}")
+	if end < 0 {
+		t.Fatalf("rule %q is never closed", sel)
+	}
+	out := map[string]string{}
+	for _, line := range strings.Split(rest[:end], "\n") {
+		if c := strings.Index(line, "/*"); c >= 0 {
+			line = line[:c]
+		}
+		name, value, ok := strings.Cut(strings.TrimSpace(line), ":")
+		if !ok || !strings.HasPrefix(name, "--") {
+			continue
+		}
+		out[name] = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(value), ";"))
+	}
+	return out
+}

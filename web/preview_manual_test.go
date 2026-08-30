@@ -48,7 +48,11 @@ func TestWritePreview(t *testing.T) {
 
 	s := &Server{
 		Brand: "Bosun", Version: "0.29.0",
-		Repo: "example/platform", RepoLink: "https://github.com/example/platform",
+		// WEB_PREVIEW_THEME=dark|light to see what web.theme renders, which is
+		// the only way to look at the branch the system preference is not
+		// currently taking.
+		Theme: os.Getenv("WEB_PREVIEW_THEME"),
+		Repo:  "example/platform", RepoLink: "https://github.com/example/platform",
 		CheckName: "addons-gate", Model: "anthropic/claude-sonnet-5",
 		GatePoll: 30 * time.Second, SweepEvery: 10 * time.Minute, Clusters: 6,
 		Features: []Feature{
