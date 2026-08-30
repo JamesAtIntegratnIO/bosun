@@ -7,7 +7,7 @@ import (
 )
 
 // expandAppSet turns one ApplicationSet into the Applications it generates.
-func expandAppSet(as map[string]any, inv *Inventory) ([]Row, []string, error) {
+func expandAppSet(as map[string]any, inv *Inventory) ([]Row, []Markdown, error) {
 	meta, _ := as["metadata"].(map[string]any)
 	asName, _ := meta["name"].(string)
 
@@ -27,7 +27,7 @@ func expandAppSet(as map[string]any, inv *Inventory) ([]Row, []string, error) {
 		return nil, nil, fmt.Errorf("ApplicationSet %s: %w", asName, err)
 	}
 	for i, w := range warnings {
-		warnings[i] = asName + ": " + w
+		warnings[i] = Markdown(Inline(asName)) + ": " + w
 	}
 
 	// An ApplicationSet that matches no cluster generates nothing. Usually
@@ -41,8 +41,8 @@ func expandAppSet(as map[string]any, inv *Inventory) ([]Row, []string, error) {
 	// 7. This warning is the in-band signal, and a page of them means look
 	// at the inventory before believing the verdict.
 	if len(params) == 0 {
-		warnings = append(warnings, fmt.Sprintf(
-			"%s: matched no cluster, so it generates nothing", asName))
+		warnings = append(warnings, Markdown(Inline(fmt.Sprintf(
+			"%s: matched no cluster, so it generates nothing", asName))))
 	}
 
 	tmpl, _ := spec["template"].(map[string]any)
@@ -61,7 +61,7 @@ func expandAppSet(as map[string]any, inv *Inventory) ([]Row, []string, error) {
 				// A template that will not render is a real finding, not a
 				// reason to abandon the whole run, report it and continue so
 				// the reviewer sees every problem at once.
-				warnings = append(warnings, fmt.Sprintf("%s (cluster %s): template did not render: %v", asName, p.Cluster.Name, err))
+				warnings = append(warnings, Markdown(Inline(fmt.Sprintf("%s (cluster %s): template did not render: %v", asName, p.Cluster.Name, err))))
 				continue
 			}
 		} else {
@@ -71,7 +71,7 @@ func expandAppSet(as map[string]any, inv *Inventory) ([]Row, []string, error) {
 			}
 			s, err := renderFastTemplate(string(raw), data)
 			if err != nil {
-				warnings = append(warnings, fmt.Sprintf("%s (cluster %s): template did not render: %v", asName, p.Cluster.Name, err))
+				warnings = append(warnings, Markdown(Inline(fmt.Sprintf("%s (cluster %s): template did not render: %v", asName, p.Cluster.Name, err))))
 				continue
 			}
 			if err := yaml.Unmarshal([]byte(s), &rendered); err != nil {
@@ -81,7 +81,7 @@ func expandAppSet(as map[string]any, inv *Inventory) ([]Row, []string, error) {
 
 		row, err := rowFromApp(asName, p.Cluster.Name, rendered)
 		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("%s (cluster %s): %v", asName, p.Cluster.Name, err))
+			warnings = append(warnings, Markdown(Inline(fmt.Sprintf("%s (cluster %s): %v", asName, p.Cluster.Name, err))))
 			continue
 		}
 		rows = append(rows, row)

@@ -65,7 +65,7 @@ type plan struct {
 	// name is the config file in force, empty when there is none.
 	name string
 	// scope is what the report says about how this was arrived at.
-	scope []string
+	scope []gate.Markdown
 }
 
 // buildPlan merges a derivation with a config file.
@@ -228,22 +228,32 @@ func identitiesIn(head, path string) ([]string, error) {
 }
 
 // scopeLines is what the report says about how the scope was arrived at.
-func scopeLines(d *gate.Derivation, cfg *gate.Config, name string, fromLive []string) []string {
-	out := []string{fmt.Sprintf(
+//
+// These are gate.Markdown: the backticks in them are deliberate and the report
+// prints them as written, so every value the gate did not choose — the config
+// file's name, the root names ArgoCD served — goes through gate.Inline here,
+// where the line still knows which of its parts are values.
+func scopeLines(d *gate.Derivation, cfg *gate.Config, name string, fromLive []string) []gate.Markdown {
+	out := []gate.Markdown{gate.Markdown(fmt.Sprintf(
 		"Derived %s from %s and %s that ArgoCD serves, and rendered %s in total.",
 		plural(len(d.Sources), "source"), plural(d.Applications, "Application"),
-		plural(d.ApplicationSets, "ApplicationSet"), plural(len(cfg.Sources), "source"))}
+		plural(d.ApplicationSets, "ApplicationSet"), plural(len(cfg.Sources), "source")))}
 
 	if name != "" {
-		out = append(out, fmt.Sprintf("`%s` is present, and its sources take precedence over derived ones.", name))
+		out = append(out, gate.Markdown(fmt.Sprintf(
+			"`%s` is present, and its sources take precedence over derived ones.", gate.Inline(name))))
 	}
 	if len(fromLive) > 0 {
 		sort.Strings(fromLive)
-		out = append(out, fmt.Sprintf(
+		escaped := make([]string, len(fromLive))
+		for i, r := range fromLive {
+			escaped[i] = gate.Inline(r)
+		}
+		out = append(out, gate.Markdown(fmt.Sprintf(
 			"%s rendered from the spec ArgoCD has applied, not from this repository, "+
 				"because no manifest here declares them: `%s`. An edit to one of these is invisible to "+
 				"this gate until it applies; naming its file under `roots:` in `%s` fixes that.",
-			plural(len(fromLive), "root"), strings.Join(fromLive, "`, `"), configNames[0]))
+			plural(len(fromLive), "root"), strings.Join(escaped, "`, `"), configNames[0])))
 	}
 	out = append(out, d.Warnings...)
 	return out

@@ -76,7 +76,7 @@ func DeriveFrom(apps []Application, sets []ApplicationSet, repoURL string) *gate
 
 	sort.Slice(d.Sources, func(i, j int) bool { return d.Sources[i].Name < d.Sources[j].Name })
 	sort.Slice(d.Roots, func(i, j int) bool { return d.Roots[i].Identity() < d.Roots[j].Identity() })
-	sort.Strings(d.Warnings)
+	sort.Slice(d.Warnings, func(i, j int) bool { return d.Warnings[i] < d.Warnings[j] })
 	return d
 }
 
@@ -87,9 +87,9 @@ func DeriveFrom(apps []Application, sets []ApplicationSet, repoURL string) *gate
 // another way: the chart diff renders both sides of a chart move and reports
 // the fields that changed, and re-rendering it here would produce the same
 // objects under a second name.
-func sourcesFor(app Application, repoURL string) ([]gate.Source, []string) {
+func sourcesFor(app Application, repoURL string) ([]gate.Source, []gate.Markdown) {
 	var out []gate.Source
-	var warns []string
+	var warns []gate.Markdown
 
 	// The dry source is where a hydrated Application's manifests are written
 	// by hand, so it is the one a pull request changes.
@@ -106,16 +106,16 @@ func sourcesFor(app Application, repoURL string) ([]gate.Source, []string) {
 		case s.Chart != "":
 			// A chart pulled by name is an artifact, not a path in this
 			// checkout, even when the repository URL happens to match.
-			warns = append(warns, fmt.Sprintf(
+			warns = append(warns, gate.Markdown(gate.Inline(fmt.Sprintf(
 				"Application %s source %d names chart %q rather than a path, so it is not rendered from this repository.",
-				app.Name, i, s.Chart))
+				app.Name, i, s.Chart))))
 
 		case s.Path == "":
 			// A values-only source: it exists to be addressed by `ref` from a
 			// sibling, and has nothing of its own to render.
 			if s.Ref == "" {
-				warns = append(warns, fmt.Sprintf(
-					"Application %s source %d has neither a path nor a chart, and is not rendered.", app.Name, i))
+				warns = append(warns, gate.Markdown(gate.Inline(fmt.Sprintf(
+					"Application %s source %d has neither a path nor a chart, and is not rendered.", app.Name, i))))
 			}
 
 		case s.Helm != nil:
@@ -159,8 +159,9 @@ func sourcesFor(app Application, repoURL string) ([]gate.Source, []string) {
 // checkout does not have. It is dropped with a warning rather than silently,
 // because the render then happens with one values layer missing and the diff
 // would attribute the difference to the pull request.
-func resolveValueFiles(app Application, s AppSource, repoURL string) ([]string, []string) {
-	var files, warns []string
+func resolveValueFiles(app Application, s AppSource, repoURL string) ([]string, []gate.Markdown) {
+	var files []string
+	var warns []gate.Markdown
 	for _, vf := range s.Helm.ValueFiles {
 		if !strings.HasPrefix(vf, "$") {
 			files = append(files, vf)
@@ -168,19 +169,20 @@ func resolveValueFiles(app Application, s AppSource, repoURL string) ([]string, 
 		}
 		name, rest, ok := strings.Cut(strings.TrimPrefix(vf, "$"), "/")
 		if !ok {
-			warns = append(warns, fmt.Sprintf("Application %s: value file %q names no path after its ref.", app.Name, vf))
+			warns = append(warns, gate.Markdown(gate.Inline(fmt.Sprintf(
+				"Application %s: value file %q names no path after its ref.", app.Name, vf))))
 			continue
 		}
 		ref := refSource(app, name)
 		switch {
 		case ref == nil:
-			warns = append(warns, fmt.Sprintf(
+			warns = append(warns, gate.Markdown(gate.Inline(fmt.Sprintf(
 				"Application %s: value file %q refers to $%s, and no source of that Application is named %s.",
-				app.Name, vf, name, name))
+				app.Name, vf, name, name))))
 		case normaliseRepoURL(ref.RepoURL) != normaliseRepoURL(repoURL):
-			warns = append(warns, fmt.Sprintf(
+			warns = append(warns, gate.Markdown(gate.Inline(fmt.Sprintf(
 				"Application %s: value file %q resolves into %s, which is not the repository being gated, so it is rendered without that layer.",
-				app.Name, vf, ref.RepoURL))
+				app.Name, vf, ref.RepoURL))))
 		default:
 			files = append(files, rest)
 		}

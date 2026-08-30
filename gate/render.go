@@ -95,7 +95,7 @@ func Render(ctx context.Context, repoRoot string, cfg *Config, inv *Inventory) (
 					row, err := rowFromPlainApplication(d.source, obj, inv)
 					if err != nil {
 						table.Warnings = append(table.Warnings,
-							fmt.Sprintf("%s: %v", d.source, err))
+							Markdown(Inline(fmt.Sprintf("%s: %v", d.source, err))))
 						continue
 					}
 					table.Rows = append(table.Rows, row)
@@ -341,9 +341,9 @@ func dedupeRows(rows []Row) []Row {
 // dedupeOrdered keeps first-seen order and does not trim or drop blanks. Named
 // for both, because package main has a dedupeSorted that does the opposite on
 // each count.
-func dedupeOrdered(in []string) []string {
-	seen := map[string]bool{}
-	var out []string
+func dedupeOrdered(in []Markdown) []Markdown {
+	seen := map[Markdown]bool{}
+	var out []Markdown
 	for _, s := range in {
 		if seen[s] {
 			continue

@@ -54,8 +54,8 @@ type Table struct {
 	// not itself an Application. Empty when nothing in the repository is
 	// rendered, which is the common case and is why the object diff is
 	// reported only when there is something to report.
-	Objects  []Object `json:"objects,omitempty"`
-	Warnings []string `json:"warnings,omitempty"`
+	Objects  []Object   `json:"objects,omitempty"`
+	Warnings []Markdown `json:"warnings,omitempty"`
 }
 
 func (t *Table) Sort() {

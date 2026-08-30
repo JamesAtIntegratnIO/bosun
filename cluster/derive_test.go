@@ -10,6 +10,15 @@ import (
 
 const gatedRepo = "https://github.com/example-org/homelab.git"
 
+// joinLines flattens Markdown lines for a substring assertion.
+func joinLines(ms []gate.Markdown) string {
+	out := make([]string, len(ms))
+	for i, m := range ms {
+		out[i] = string(m)
+	}
+	return strings.Join(out, "\n")
+}
+
 func deriveFixture(t *testing.T, fixture, repoURL string) *gate.Derivation {
 	t.Helper()
 	a := argoServing(t, fixture)
@@ -107,7 +116,7 @@ func TestAChartNamedOnTheGatedRepositoryIsNotAPath(t *testing.T) {
 	if len(d.Sources) != 0 {
 		t.Fatalf("nothing here is a path to render: %+v", d.Sources)
 	}
-	if !strings.Contains(strings.Join(d.Warnings, "\n"), "rather than a path") {
+	if !strings.Contains(joinLines(d.Warnings), "rather than a path") {
 		t.Errorf("the skip must announce itself: %v", d.Warnings)
 	}
 }
@@ -143,7 +152,7 @@ func TestValuesRefsResolveThroughTheApplicationsOwnSibling(t *testing.T) {
 			t.Errorf("value file %d = %q, want %q", i, got.ValueFiles[i], want[i])
 		}
 	}
-	if !strings.Contains(strings.Join(d.Warnings, "\n"), "$missing") {
+	if !strings.Contains(joinLines(d.Warnings), "$missing") {
 		t.Errorf("a ref the Application does not declare must be reported, not dropped: %v", d.Warnings)
 	}
 }
@@ -166,7 +175,7 @@ func TestAValuesRefIntoAnotherRepositoryIsReportedRatherThanRendered(t *testing.
 	if got := sourceNamed(t, d, "app/addon"); len(got.ValueFiles) != 0 {
 		t.Errorf("a file in another repository is not in this checkout: %v", got.ValueFiles)
 	}
-	if !strings.Contains(strings.Join(d.Warnings, "\n"), "not the repository being gated") {
+	if !strings.Contains(joinLines(d.Warnings), "not the repository being gated") {
 		t.Errorf("the missing layer must be reported: %v", d.Warnings)
 	}
 }
@@ -247,5 +256,24 @@ func TestDeriveRefusesWhenArgoCDDoes(t *testing.T) {
 	a := argoFor(t, forbidden())
 	if _, err := a.Derive(context.Background(), gatedRepo); err == nil {
 		t.Fatal("a refused read must not produce an empty derivation")
+	}
+}
+
+// A warning is half prose the derivation writes and half names ArgoCD serves.
+// The report renders warnings as the composed lines they are, so the names
+// are neutralised here — an Application called evil` must not be able to
+// close a code span in a report it never earned a line of.
+func TestAHostileApplicationNameIsNeutralisedInWarnings(t *testing.T) {
+	d := DeriveFrom([]Application{{
+		Name:    "evil`name",
+		Sources: []AppSource{{RepoURL: gatedRepo, Chart: "thing", TargetRevision: "1.0.0"}},
+	}}, nil, gatedRepo)
+
+	joined := joinLines(d.Warnings)
+	if !strings.Contains(joined, `evil\x60name`) {
+		t.Errorf("the backtick must be spelt out, visibly: %v", d.Warnings)
+	}
+	if strings.Contains(joined, "evil`name") {
+		t.Errorf("a raw backtick survived into a composed line: %v", d.Warnings)
 	}
 }

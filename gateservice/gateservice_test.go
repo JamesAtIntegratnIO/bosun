@@ -523,7 +523,7 @@ func TestTheReportNamesChecksThisPullRequestTurnedOff(t *testing.T) {
 			t.Fatal(err)
 		}
 		got := suppressedChecks(write(t, cfgOff), head, cfg, ".gitops-gate.yaml")
-		if len(got) != 1 || !strings.Contains(got[0], "Schema validation") {
+		if len(got) != 1 || !strings.Contains(string(got[0]), "Schema validation") {
 			t.Fatalf("want the disabled check named, got %v", got)
 		}
 	})
@@ -534,7 +534,7 @@ func TestTheReportNamesChecksThisPullRequestTurnedOff(t *testing.T) {
 			t.Fatal(err)
 		}
 		got := suppressedChecks(write(t, cfgOff), write(t, cfgOn), cfg, ".gitops-gate.yaml")
-		if len(got) != 1 || !strings.Contains(got[0], "changed in this pull request") {
+		if len(got) != 1 || !strings.Contains(string(got[0]), "changed in this pull request") {
 			t.Fatalf("want the config change named, got %v", got)
 		}
 	})
@@ -587,5 +587,39 @@ func TestForkPRsLetsItThrough(t *testing.T) {
 		&gitprovider.PullRequest{Number: 7, HeadSHA: "c0ffee", FromFork: true})
 	if out.Err == nil || strings.Contains(out.Err.Error(), "fork") {
 		t.Fatalf("forkPRs must permit the run: %+v", out)
+	}
+}
+
+// The suppressed lines carry the same mix the scope lines do: the gate's own
+// markdown — `validate.skipKinds` in a code span, the bold lead — around
+// values the config file chose. The report renders them as written, so a kind
+// with a backtick in it is neutralised here, and the gate's own spans are not.
+func TestASuppressedKindCannotWriteReportStructure(t *testing.T) {
+	cfgYAML := "sources:\n  - type: manifests\n    paths: [apps]\n" +
+		"validate:\n  enabled: true\n  skipKinds: [\"Weird`Kind\"]\n"
+	cfg, err := gate.ParseConfig([]byte(cfgYAML), ".gitops-gate.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := suppressedChecks(t.TempDir(), t.TempDir(), cfg, ".gitops-gate.yaml")
+	if len(got) != 1 {
+		t.Fatalf("want the one skipKinds line, got %v", got)
+	}
+
+	res := &gate.DiffResult{Suppressed: got}
+	var b strings.Builder
+	res.Report(&b)
+
+	if !strings.Contains(b.String(), "(`validate.skipKinds`)") {
+		t.Errorf("the gate's own code span must survive the report:\n%s", b.String())
+	}
+	if !strings.Contains(b.String(), `Weird\x60Kind`) {
+		t.Errorf("the kind's backtick must be spelt out, visibly:\n%s", b.String())
+	}
+	for _, line := range strings.Split(b.String(), "\n") {
+		if n := strings.Count(line, "`"); n%2 != 0 {
+			t.Fatalf("a configured kind left an unbalanced code span: %q", line)
+		}
 	}
 }
