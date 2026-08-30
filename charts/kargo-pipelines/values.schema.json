@@ -2,8 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "kargo-pipelines values",
   "type": "object",
-  "description": "Strict at the top level as well as inside every object. A key this chart does not know is a typo, and a typo that validates cleanly is a setting that silently did nothing.",
+  "description": "Strict at the top level as well as inside every object. A key this chart does not know is a typo, and a typo that validates cleanly is a setting that silently did nothing. Keys starting with `x-` are the one exception; see patternProperties.",
   "additionalProperties": false,
+  "patternProperties": {
+    "^x-": {
+      "description": "Extension keys, for YAML anchors a values file shares between targets. The parser resolves the anchor before Helm sees anything, but the key that carried it stays in the map, so a strict schema has to admit it by name."
+    }
+  },
   "required": [
     "git"
   ],

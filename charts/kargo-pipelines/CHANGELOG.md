@@ -3,6 +3,20 @@
 All notable changes to `kargo-pipelines`. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is semver.
 
+## [0.2.4]
+
+### Fixed
+
+- **The strict top level admits `x-` extension keys again.** 0.2.3 rejected
+  any values file with a top-level key the schema does not name, which
+  included the `x-` keys that exist only to carry YAML anchors shared between
+  targets -- the parser resolves the anchor before Helm sees anything, but the
+  key that carried it stays in the map. That broke a real consumer at
+  validation, before templating. `patternProperties` now admits `^x-` at the
+  top level; every other unknown key is still a typo, and still refused. The
+  lint fixture consumes an anchor through an `x-` key so this cannot regress
+  silently.
+
 ## [0.2.3]
 
 ### Changed

@@ -9,6 +9,12 @@ git:
   branch: main
   provider: github
 
+# Extension key carrying a shared anchor. The schema's strict top level must
+# still admit `x-` keys: 0.2.3 did not, and rejected every values file that
+# shares image shapes this way.
+x-release-image: &releaseImage
+  allowTags: ['^v\d+\.\d+\.\d+$']
+
 projects:
   example:
     targets:
@@ -46,11 +52,12 @@ projects:
             verify:
               apps: [other-hub]
 
-      # An image target, to cover the non-chart code path.
+      # An image target, to cover the non-chart code path. Its allowTags come
+      # through the x-release-image anchor above.
       simple-image:
         image:
           repoURL: registry.example.com/app
-          allowTags: ['^v\d+\.\d+\.\d+$']
+          <<: *releaseImage
         updates:
           - file: clusters/hub/app.yaml
             keys: [spec.template.spec.containers.0.image]
