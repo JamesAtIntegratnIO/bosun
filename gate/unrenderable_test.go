@@ -33,7 +33,7 @@ func TestASchemaThatRejectsThisRepositorysValuesBlocks(t *testing.T) {
 	base := &Table{Rows: []Row{row("1.0.0")}}
 	head := &Table{Rows: []Row{row("2.0.0")}}
 
-	res := Assemble(context.Background(), root, &Config{Concurrency: 1}, base, head)
+	res := Assemble(context.Background(), Worktrees{Base: root, Head: root}, &Config{Concurrency: 1}, base, head)
 
 	if !res.Blocking() {
 		t.Fatal("a head revision that will not render must block")
@@ -105,7 +105,7 @@ func TestOnlyTheHeadRevisionsRenderFailureBlocks(t *testing.T) {
 	base := &Table{Rows: []Row{row("0.9.0")}}
 	head := &Table{Rows: []Row{row("2.0.0")}}
 
-	res := Assemble(context.Background(), root, &Config{Concurrency: 1}, base, head)
+	res := Assemble(context.Background(), Worktrees{Base: root, Head: root}, &Config{Concurrency: 1}, base, head)
 
 	if b := res.Blockers(); b.Unrenderable != 0 {
 		t.Errorf("a base-revision failure must not block, got %+v", b)

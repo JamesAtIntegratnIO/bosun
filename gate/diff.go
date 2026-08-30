@@ -102,6 +102,19 @@ type DiffResult struct {
 	// markdown, so nothing here can be spelled by a chart.
 	Unrenderable []Unrenderable `json:"unrenderable,omitempty"`
 
+	// BaseRev and HeadRev are the two revisions this comparison was computed
+	// from, set by whichever surface produced the checkouts.
+	//
+	// On the report because their absence cost a git archaeology session. A
+	// report that named only the head SHA could not be told apart from a
+	// report whose base was the wrong commit, and the symptom of the wrong
+	// commit -- resources this pull request never touched, listed as removed
+	// -- looks exactly like a pull request tearing out infrastructure. The
+	// reader could not check the one fact that would have settled it in
+	// seconds, so nobody did.
+	BaseRev string `json:"baseRev,omitempty"`
+	HeadRev string `json:"headRev,omitempty"`
+
 	// SchemaFailures is manifests the target cluster's schemas reject, set by
 	// the caller that ran validation.
 	//
@@ -700,6 +713,15 @@ func (d *DiffResult) Report(w io.Writer) {
 		mark = "🔴"
 	}
 	fmt.Fprintf(w, "## %s %s\n\n", mark, headline)
+	// Directly under the headline rather than down in "What was rendered",
+	// because it is what the sections between here and there have to be read
+	// against. A reader who reaches "Removed (5)" without knowing which two
+	// revisions produced it has already formed a conclusion.
+	if d.BaseRev != "" && d.HeadRev != "" {
+		fmt.Fprintf(w, "Comparing `%s` with `%s`, the revision this branch last shared with its base. "+
+			"Everything below is the difference between those two.\n\n",
+			Inline(d.HeadRev), Inline(d.BaseRev))
+	}
 	if len(d.Targeting) > 0 {
 		// The section headings the agent keys on come from the migrate
 		// package, so both sides of that contract read the same bytes by

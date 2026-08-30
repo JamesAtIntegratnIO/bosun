@@ -40,12 +40,16 @@ from ArgoCD's API ([ADR
 a container with an exit code, for a run from a workstation before pushing:
 same renders, same report, same check name.
 
-The gate runs twice, once at the base revision and once at the head, and each
-run expands every bootstrap ApplicationSet for every cluster in the inventory
-into the full set of Applications the repository generates. The diff of those
-two renders is what the pull request does, which a one-line text diff cannot
-show. Because the version moved, the gate also pulls the chart at both versions
-and diffs the rendered resources, down to the fields that changed.
+The gate runs twice, once at the merge base -- the last commit this branch and
+`main` share, not `main`'s current tip, which moves whenever anything else
+merges -- and once at the head. Each run expands every bootstrap ApplicationSet
+for every cluster in the inventory into the full set of Applications the
+repository generates. The diff of those two renders is what the pull request
+does, which a one-line text diff cannot show. Because the version moved, the
+gate also pulls the chart at both versions and diffs the rendered resources,
+down to the fields that changed; it does the same when the version held still
+and a values file the Application layers was edited, which is the only way an
+addon whose chart lives in a registry is covered at all.
 
 For our example the render says: eleven CRDs added, twenty-five resources
 changed, and four CustomResourceDefinitions **stop serving** `v1alpha1` and

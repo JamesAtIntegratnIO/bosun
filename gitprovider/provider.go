@@ -266,6 +266,12 @@ func pushAuthEnv(remote, user, token string) []string {
 // than a revision, and these arrive from a host's JSON.
 var hexSHA = regexp.MustCompile(`^[0-9a-fA-F]{7,64}$`)
 
+// gitRefName is the same guard for a value that may be a branch name as well
+// as a SHA. Wider than hexSHA and narrower than anything git would accept: the
+// point is only that it cannot begin with "-", and a ref name is the shape a
+// host's JSON is entitled to hold.
+var gitRefName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)
+
 // EnsureHead pins a fresh checkout to the commit the caller believes it is
 // looking at.
 //

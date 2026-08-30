@@ -13,7 +13,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -99,10 +98,11 @@ type Service struct {
 	// covers every outbound request.
 	Egress gate.EgressPolicy
 
-	// Checkout produces working copies at the base and head revisions and a
-	// function that discards both. Defaults to a shallow clone plus a
-	// worktree; tests substitute directories on disk.
-	Checkout func(ctx context.Context, pr *gitprovider.PullRequest) (base, head string, cleanup func(), err error)
+	// Checkout produces the two working copies one run compares, the commits
+	// they hold, and a function that discards both. Defaults to a shallow
+	// clone plus a worktree at the merge base; tests substitute directories
+	// on disk.
+	Checkout func(ctx context.Context, pr *gitprovider.PullRequest) (*Compared, error)
 
 	mu       sync.Mutex
 	results  map[string]*Outcome
@@ -384,11 +384,12 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 	if checkout == nil {
 		checkout = g.checkout
 	}
-	base, head, cleanup, err := checkout(ctx, pr)
+	cmp, err := checkout(ctx, pr)
 	if err != nil {
 		return g.broke(ctx, pr, fmt.Errorf("checking out %s and %s: %w", refName(pr.BaseBranch), refName(pr.Branch), err))
 	}
-	defer cleanup()
+	defer cmp.Cleanup()
+	base, head := cmp.Base, cmp.Head
 
 	// The config comes from the HEAD at both revisions. It describes how to
 	// render, not what to render, and the base may predate it entirely,
@@ -435,13 +436,20 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 		return g.broke(ctx, pr, fmt.Errorf("rendering %s: %w", refName(pr.Branch), err))
 	}
 
-	// Chart-diff and consumer annotation both want a worktree; the head is
-	// the one under judgement. gate.Assemble owns the order of the four steps
+	// Both worktrees: consumer annotation asks the head which manifests still
+	// declare a dropped version, and chart-diff renders each side from its
+	// own, which is what makes a values edit visible at all.
+	// gate.Assemble owns the order of the four steps
 	// so this surface and the CLI cannot reach different verdicts on one
 	// commit, which they had already started to do.
-	res := gate.Assemble(ctx, head, cfg, baseTable, headTable)
+	res := gate.Assemble(ctx, cmp.Worktrees, cfg, baseTable, headTable)
 	res.Suppressed = suppressedChecks(base, head, cfg, cfgName)
 	res.Scope = p.scope
+	// Which two revisions this is the difference between, on the report and
+	// not only in this process. The head SHA was already stamped; the base
+	// was not recorded anywhere at all, and it is the one a wrong answer
+	// hides in.
+	res.BaseRev, res.HeadRev = shortSHA8(cmp.BaseRev), shortSHA8(cmp.HeadRev)
 
 	// Validation runs before the report is written, and its count goes onto
 	// the result rather than beside it. Written after, the headline and the
@@ -618,63 +626,6 @@ func (g *Service) lastVerdict(report string) (bool, string) {
 		}
 	}
 	return false, ""
-}
-
-// checkout clones the head branch shallowly and adds a worktree at the base
-// branch's current tip, which is what a merge would land on. The
-// base is fetched by name, not by SHA: hosts reliably serve their advertised
-// refs, and `github.event.pull_request.base.sha` was only ever CI's
-// approximation of the same thing.
-func (g *Service) checkout(ctx context.Context, pr *gitprovider.PullRequest) (string, string, func(), error) {
-	dir, err := os.MkdirTemp(g.CloneRoot, "gate")
-	if err != nil {
-		return "", "", func() {}, err
-	}
-	cleanup := func() { _ = os.RemoveAll(dir) }
-	head := filepath.Join(dir, "head")
-	base := filepath.Join(dir, "base")
-
-	baseRef := pr.BaseBranch
-	if baseRef == "" {
-		baseRef = pr.BaseSHA
-	}
-
-	for _, cmd := range [][]string{
-		{"git", "clone", "--quiet", "--depth", "1", "--branch", pr.Branch, g.RepoURL, head},
-	} {
-		c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
-		var out strings.Builder
-		c.Stderr = &out
-		if err := c.Run(); err != nil {
-			cleanup()
-			return "", "", func() {}, fmt.Errorf("%s: %w: %s", strings.Join(cmd[:2], " "), err, out.String())
-		}
-	}
-
-	// Before the base is fetched, because the head is what the verdict is
-	// About. A branch clone is an approximation of a commit and the whole
-	// service treats it as the commit: the outcome is cached under
-	// pr.HeadSHA, the status is written to pr.HeadSHA, and a push landing in
-	// this window would cache commit B's render as commit A's verdict,
-	// green, published, and about something nobody rendered.
-	if err := gitprovider.EnsureHead(ctx, head, pr.HeadSHA); err != nil {
-		cleanup()
-		return "", "", func() {}, err
-	}
-
-	for _, cmd := range [][]string{
-		{"git", "-C", head, "fetch", "--quiet", "--depth", "1", "origin", baseRef},
-		{"git", "-C", head, "worktree", "add", "--quiet", "--detach", base, "FETCH_HEAD"},
-	} {
-		c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
-		var out strings.Builder
-		c.Stderr = &out
-		if err := c.Run(); err != nil {
-			cleanup()
-			return "", "", func() {}, fmt.Errorf("%s: %w: %s", strings.Join(cmd[:2], " "), err, out.String())
-		}
-	}
-	return base, head, cleanup, nil
 }
 
 func refName(s string) string {

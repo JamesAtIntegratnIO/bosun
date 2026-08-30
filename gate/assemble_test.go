@@ -19,7 +19,7 @@ func TestAssembleWithoutAWorktreeStillDiffsTheTables(t *testing.T) {
 			ChartRepo: "https://example.test", Version: "2.0.0", SourceType: "helm"},
 	}}
 
-	res := Assemble(context.Background(), "", nil, base, head)
+	res := Assemble(context.Background(), Worktrees{}, nil, base, head)
 	if len(res.Versions) != 1 {
 		t.Fatalf("want the version change, got %+v", res.Versions)
 	}
