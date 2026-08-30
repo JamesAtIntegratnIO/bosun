@@ -5,14 +5,28 @@ instructions to a model.
 
 ## The model proposes; the harness applies
 
-The model is called once per pull request. It returns one structured answer: a
-classification, an explanation, and, on the mechanical path only, a proposal.
-It has no file-edit tools and no path to the repository. The harness writes
-every byte that reaches a branch, and only after the proposal has passed the
-checks below.
+The model returns structured answers: a classification, an explanation, and on
+each of the three paths that write, a proposal. It has no file-edit tools, no
+shell and no path to the repository. The harness writes every byte that reaches
+a branch, and only after the proposal has passed the checks below.
+
+**The model does author file content**, and that boundary is narrower than it
+sounds. The new value of a scalar edit is written to the line as the model
+spelled it. A reshaped manifest and a migrated values file are whole documents
+it wrote. What it never does is *apply* any of them, decide which files are
+writable, or reach a path the deny-list covers. "The model does not edit files"
+is a claim this page does not make, and no other page should either:
+[ADR 0001](../adr/0001-structured-edits-not-agentic-loop.md)'s title was written
+in a scope two later decisions widened.
+
+Nor is it one call. One classifies the pull request. The reshape calls the
+model again per document, up to `triage.migrateMaxDocs`, and the values
+migration once per Application whose chart will not render.
 
 A model holding file-edit tools can make a red gate green by deleting the
-check, and from outside that looks the same as a repair.
+check, and from outside that looks the same as a repair. Handing it a whole
+document to write is a smaller grant than that, and the difference is that a
+document is checked against a schema the model does not control.
 
 ## A proposal is either scalar edits or one migrated document
 
@@ -81,7 +95,7 @@ holds; that escalates with the key named.
 [ADR 0013](../adr/0013-a-values-migration-is-a-plan-not-a-document.md) records
 the boundary and what it costs.
 
-## The deterministic repair involves no model at all
+## Migrating off a dropped version involves no model at all
 
 Migrating manifests off a CRD version a bump stopped serving takes no
 judgement: the consumer kind, the dropped versions and the surviving

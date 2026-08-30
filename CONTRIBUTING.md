@@ -42,15 +42,44 @@ and adding one is worth more than almost any feature.
 
 ## Rule 2: the safety model lives in code
 
-The model returns a verdict and a proposal: scalar edits, or a complete
-migrated document on the structural path. It applies neither, and it does not
-choose what it is allowed to touch.
+The model returns a verdict and a proposal: scalar edits, a complete migrated
+manifest, or a complete values document. It applies none of them, and it does
+not choose what it is allowed to touch.
 
 Any change that moves an invariant from `edits/` or `agent/` into the prompt is
 a regression, however well the prompt performs. A prompt is a request; the
 allowlist is a guarantee. See
 [`adr/0001-structured-edits-not-agentic-loop.md`](adr/0001-structured-edits-not-agentic-loop.md)
 and [`docs/safety-model.md`](docs/safety-model.md).
+
+### How to describe that boundary, and how not to
+
+**Never write that the model does not edit, write, or touch files.** It authors
+the content of three of the four write paths, and on the scalar path the value
+it names is written to the line exactly as it spelled it. Every short version
+of the claim has shipped somewhere and every one of them was wrong; the first
+reached the landing page, the second the composition root, the third this
+repository's own FAQ:
+
+| Do not write | Because |
+|---|---|
+| "the model does not edit files" | it authors whole manifests and whole values documents |
+| "the model never writes" | the `to` of a scalar edit lands verbatim |
+| "the model itself writes nothing" | same, and it writes the prose in every comment |
+| "**the** deterministic repair", where the article implies the only one | only `migrate` is model-free; `structural` and `valuesmigrate` are not |
+| "the model is called once per pull request" | the reshape calls it per document, values per Application |
+
+Write the narrow claims instead, all of which hold: **the model applies
+nothing**, it **has no file-edit tool, no shell and no path to the repository**,
+it **does not decide which files are writable**, and **the harness writes every
+byte that reaches a branch**. Then name what checked the proposal, because that
+is the part that differs per path and the part a reader is actually asking
+about.
+
+When a new write path lands, grep for the phrases above before opening the pull
+request. The four that describe the boundary are `README.md`,
+`docs/safety-model.md`, `site/src/authored/index.mdx` and
+`site/src/authored/reference/faq.md`, and they drift together.
 
 ## Everything documents itself
 
