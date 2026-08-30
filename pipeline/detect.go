@@ -331,12 +331,10 @@ func detectSupersededPRs(s *Snapshot) []Finding {
 				newest = pr
 			}
 		}
-		var older []string
-		var olderNumbers []int
+		var older []int
 		for _, pr := range prs {
 			if pr.Number != newest.Number {
-				older = append(older, fmt.Sprintf("#%d", pr.Number))
-				olderNumbers = append(olderNumbers, pr.Number)
+				older = append(older, pr.Number)
 			}
 		}
 		out = append(out, Finding{
@@ -347,8 +345,8 @@ func detectSupersededPRs(s *Snapshot) []Finding {
 				stage, plural(len(prs), "promotion pull request")),
 			Detail: fmt.Sprintf("#%d is current; %s promote freight this Stage has already moved past. "+
 				"They cannot merge, but they still collect gate runs and triage comments, and they crowd "+
-				"the list a human reads.", newest.Number, joinAnd(older)),
-			Remedy: closeCmd(olderNumbers, newest.Number),
+				"the list a human reads.", newest.Number, joinAnd(hashed(older))),
+			Remedy: closeCmd(older, newest.Number),
 		})
 	}
 	return out
@@ -362,6 +360,21 @@ func detectSupersededPRs(s *Snapshot) []Finding {
 // remedy composed inline is one nobody checked. Here the pieces are pull
 // request numbers, so the grammar is "a positive integer" -- `gh pr close -1`
 // is a flag, not a pull request.
+// hashed spells pull request numbers the way a person writes them, for the
+// sentence a person reads.
+//
+// Derived from the numbers rather than built beside them: the prose and the
+// command used to be filled in one loop from two slices that had to stay in
+// lockstep, which is a pair of lists one edit away from disagreeing about which
+// pull requests a finding is even about.
+func hashed(numbers []int) []string {
+	out := make([]string, 0, len(numbers))
+	for _, n := range numbers {
+		out = append(out, "#"+strconv.Itoa(n))
+	}
+	return out
+}
+
 func closeCmd(older []int, newest int) string {
 	if newest <= 0 || len(older) == 0 {
 		return ""

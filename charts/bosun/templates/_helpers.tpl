@@ -76,11 +76,17 @@ app.kubernetes.io/instance: {{ .Release.Name }}
      `dangerouslyServeWithoutAuthentication` is the way past it, and it is
      spelled to be uncomfortable to type on purpose. */}}
 {{- if and .Values.mcp.enabled (not .Values.mcp.existingSecret) (not .Values.mcp.dangerouslyServeWithoutAuthentication) }}{{ fail "bosun: mcp.existingSecret is required when mcp.enabled is true; without a token the MCP listener does not start at all. This chart never creates a Secret -- mint a token and name the Secret holding it. If you genuinely want an unauthenticated read API on that port, say so with mcp.dangerouslyServeWithoutAuthentication" }}{{ end -}}
-{{/* The MCP surface published to nobody. Same shape as web.allowFrom above,
-     and it matters more here: this is the listener built to be reached from
-     outside the cluster, so a policy that admits nothing is a surface that
-     answers nothing, from a port that looks published. */}}
-{{- if and .Values.mcp.enabled .Values.networkPolicy.enabled (not .Values.mcp.allowFrom) }}{{ fail "bosun: mcp.allowFrom is empty while the MCP surface is enabled and the NetworkPolicy is on, so nothing may reach its port; name the namespace your client or gateway runs in, e.g. [{namespace: gateway-system}]" }}{{ end -}}
+{{/* mcp.allowFrom deliberately has NO guard beside the one above, unlike
+     web.allowFrom.
+
+     The web rule fires only when a route publishes the page, and there is no
+     MCP route in this chart -- so the analogous trigger does not exist, and a
+     rule that fired on `mcp.enabled` alone would refuse the configuration this
+     chart's own README recommends. Looking at the surface over a port-forward
+     before deciding whether to publish it needs no peer at all: kubectl
+     port-forward reaches the pod through the kubelet, which NetworkPolicy does
+     not govern. Refusing that would be a guard contradicting the documentation
+     it sits behind. Empty admits nobody, and values.yaml says so. */}}
 {{/* A route with the page switched off publishes a port the pod does not
      listen on, and neither the Service nor the route says so. */}}
 {{- if and (not .Values.web.enabled) (or .Values.web.httpRoute.enabled .Values.web.ingress.enabled) }}{{ fail "bosun: web.httpRoute or web.ingress is enabled while web.enabled is false; there would be nothing listening behind the route" }}{{ end -}}

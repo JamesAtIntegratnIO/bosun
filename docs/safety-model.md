@@ -320,7 +320,7 @@ descriptions are constants, so nothing from a cluster reaches the field a client
 hands its model as instructions.
 
 **What it does not offer is sanitised text.** Bosun cannot make a careless
-client safe, and text sanitized to harmlessness does not exist. What it
+client safe, and text sanitised to harmlessness does not exist. What it
 guarantees is provenance labelling and bosun-authored instructions only; a
 client that treats an origin-tagged quotation as an instruction has made a
 decision bosun cannot take back. The residual risk is real and it is stated

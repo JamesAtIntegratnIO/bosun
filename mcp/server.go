@@ -146,8 +146,22 @@ type callParams struct {
 // The result travels twice: as structuredContent, which is the typed value
 // this surface exists to publish, and as one text block holding the same JSON,
 // because a client that predates structured content would otherwise see an
-// empty response. They are the same bytes, so there is no second shape to keep
-// in step.
+// empty response.
+//
+// Which is why the redaction happens HERE as well as at the wire, and why both
+// copies are made from the redacted value rather than from the raw one. The
+// text block is a JSON document inside a JSON string, so by the time write
+// serialises the response every character in it has been escaped TWICE: a
+// credential containing a newline reaches the wire spelled `\\n`, and the
+// redactor at the wire compares against the credential's own bytes and does
+// not match it. A flat token has no escapes and was redacted correctly, which
+// is exactly what made this the kind of leak a happy-path test misses -- and
+// a GitHub App private key, the credential this most matters for, is the one
+// with newlines in it.
+//
+// So the tree is redacted once, before it is encoded at all, and everything
+// downstream is made from what comes back. write still runs its own pass, for
+// the responses that never come through here.
 func (s *Server) callTool(r *http.Request, params json.RawMessage) (any, *rpcError) {
 	var p callParams
 	if len(params) > 0 {
@@ -165,11 +179,17 @@ func (s *Server) callTool(r *http.Request, params json.RawMessage) (any, *rpcErr
 	// interesting half missing. Arguments go through the redactor for the
 	// same reason every response does -- they are text this process did not
 	// author.
+	//
+	// Both are QUOTED, and that is the whole point of the record. The tool
+	// name and the arguments are chosen by the caller, and a caller that can
+	// put a newline in either can write whatever it likes on the next line of
+	// a log an operator is reading to find out who asked what. %q escapes it
+	// to one line; a log worth keeping is one a caller cannot forge entries in.
 	args := strings.TrimSpace(string(p.Arguments))
 	if args == "" {
 		args = "{}"
 	}
-	s.logf("mcp: %s %s from %s", p.Name, redact.Text(args), remoteAddr(r))
+	s.logf("mcp: tool %q args %q from %s", p.Name, redact.Text(args), remoteAddr(r))
 
 	for _, t := range s.tools() {
 		if t.Name != p.Name {
@@ -181,13 +201,17 @@ func (s *Server) callTool(r *http.Request, params json.RawMessage) (any, *rpcErr
 			// becomes a field of the response rather than the whole of it.
 			return nil, &rpcError{Code: codeInternal, Message: redact.Text(err.Error())}
 		}
-		raw, err := json.Marshal(result)
+		clean, err := redacted(result)
 		if err != nil {
-			return nil, &rpcError{Code: codeInternal, Message: "the result could not be serialized"}
+			return nil, &rpcError{Code: codeInternal, Message: "the result could not be serialised"}
+		}
+		raw, err := json.Marshal(clean)
+		if err != nil {
+			return nil, &rpcError{Code: codeInternal, Message: "the result could not be serialised"}
 		}
 		return map[string]any{
 			"content":           []any{map[string]any{"type": "text", "text": string(raw)}},
-			"structuredContent": result,
+			"structuredContent": clean,
 			"isError":           false,
 		}, nil
 	}

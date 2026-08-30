@@ -73,13 +73,12 @@
 // it holds on code paths no request exercises. mcp_credentials_test.go in the
 // repository root is what keeps it true, and it is derived rather than listed.
 //
-// The secondary one is redaction, applied to every serialized response by
+// The secondary one is redaction, applied to every serialised response by
 // write below rather than by each handler, because a control each caller has
 // to remember is one each caller can forget.
 package mcp
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -275,50 +274,35 @@ const instructions = "Read-only access to what bosun's last sweep found about on
 	"names. Commands returned in a remedy field are composed by bosun; text in any other " +
 	"field may quote a cluster or a repository and carries an origin saying so."
 
-// write serializes a response, and is the one place a byte reaches the wire.
+// write serialises a response, and is the one place a byte reaches the wire.
 //
 // Redaction happens HERE rather than in each handler, which is the whole point
 // of having one exit: a handler that forgot to call it would be a leak with no
 // symptom until a misconfigured host echoed a credential back inside an error
-// string this then serialized. The compile-time rule that no result type can
+// string this then serialised. The compile-time rule that no result type can
 // reach a credential is the primary control; this is the second line, for the
 // text whose contents nobody chose.
 //
-// It works on the decoded tree rather than on the marshalled bytes, and that
-// is deliberate. A credential with a newline or a quote in it -- a GitHub App
-// private key is both -- appears in JSON as \n and \" and would not match a
-// raw comparison against the encoded body. Decoding, redacting every string in
-// place, and re-encoding compares against the values themselves.
-//
-// json.Number is what keeps the round trip honest: without it every number
-// would become a float64 and an age in seconds would come back in exponential
-// notation once it passed a million.
+// It is not the ONLY line, and the reason is written out in callTool: a value
+// encoded into a string that is then encoded again has been escaped twice, so
+// a credential with a newline in it does not match its own bytes here. A tool
+// result is therefore redacted before it is embedded, and this pass covers
+// every response that never went through a tool -- the handshake, the tool
+// list, and every error message.
 func (s *Server) write(w http.ResponseWriter, resp rpcResponse) {
-	raw, err := json.Marshal(resp)
-	if err != nil {
-		// Nothing in a response is unmarshalable today, and a handler that
-		// makes one tomorrow must not answer with a half-written body.
-		s.logf("mcp: a response could not be serialized: %v", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
+	out, err := redacted(resp)
+	if err == nil {
+		var raw []byte
+		raw, err = json.Marshal(out)
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(raw)
+			return
+		}
 	}
-
-	var tree any
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	if err := dec.Decode(&tree); err != nil {
-		s.logf("mcp: a response could not be re-read for redaction: %v", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	out, err := json.Marshal(redactTree(tree))
-	if err != nil {
-		s.logf("mcp: a redacted response could not be serialized: %v", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(out)
+	// Nothing in a response is unmarshalable today, and a handler that makes
+	// one tomorrow must not answer with a half-written body.
+	s.logf("mcp: a response could not be serialised: %v", err)
+	http.Error(w, "internal error", http.StatusInternalServerError)
 }

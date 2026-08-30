@@ -163,7 +163,7 @@ func TestTheMCPTokenIsTrimmedTheWayEveryCredentialIs(t *testing.T) {
 //
 // redaction_test.go derives its list from config.go, so this is covered there
 // the moment envSecret reads MCP_TOKEN. Named here anyway because the
-// consequence is specific to this surface: the MCP listener serializes a great
+// consequence is specific to this surface: the MCP listener serialises a great
 // deal of text it did not author to callers outside the cluster, so its own
 // token turning up in one of those responses is the exact shape of the leak
 // the redactor exists to stop.
@@ -175,5 +175,5 @@ func TestTheMCPTokenIsOneOfTheSecrets(t *testing.T) {
 		}
 	}
 	t.Fatal("Config.Secrets does not name MCPToken, so the listener's own token is not " +
-		"redacted from anything it serializes")
+		"redacted from anything it serialises")
 }

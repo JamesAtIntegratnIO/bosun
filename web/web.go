@@ -485,22 +485,14 @@ func ago(t, now time.Time) string {
 	return human(d) + " ago"
 }
 
-// human and plural mirror the pipeline package's own renderers: the largest
-// unit that still carries information, and no "1 Stages".
-func human(d time.Duration) string {
-	switch {
-	case d <= 0:
-		return ""
-	case d < time.Minute:
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	case d < time.Hour:
-		return fmt.Sprintf("%dm", int(d.Minutes()))
-	case d < 48*time.Hour:
-		return fmt.Sprintf("%dh", int(d.Hours()))
-	default:
-		return fmt.Sprintf("%dd", int(d.Hours()/24))
-	}
-}
+// human is the pipeline package's own renderer: the largest unit that still
+// carries information.
+//
+// Its own copy until the MCP surface needed a third one, at which point two
+// byte-identical implementations of one format became three. It is a call now,
+// not a copy: a finding that reads "3d" here and "72h" over MCP is one finding
+// wearing two ages, and nothing but a shared function stops that.
+func human(d time.Duration) string { return pipeline.Human(d) }
 
 func plural(n int, noun string) string {
 	if n == 1 {

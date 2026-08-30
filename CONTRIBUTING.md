@@ -124,6 +124,7 @@ it deliberately does not:
 | `gate/` | rendering the repository and diffing it, with no git host and no model |
 | `gateservice/` | running the gate in-process, per open pull request, on a timer |
 | `supervisor/` | the pipeline sweep: the promotions that never happened |
+| `mcp/` | the read-only tool surface, and the shape of what it hands back. The one listener built to be reached from outside the cluster, which is why it imports the result types and the redactor and nothing else |
 | `prompt/` | what the model is told, and what the eval suite scores |
 | `edits/`, `migrate/`, `structural/`, `valuesmigrate/` | the four ways a file gets written, each behind its own refusals |
 | `internal/` | fixtures two packages need and nobody outside this module should have. Today: a chart repository on loopback, because a chart directory cannot express two versions of one chart |

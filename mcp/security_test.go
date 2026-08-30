@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -104,7 +105,7 @@ func TestAnUnauthenticatedCallerLearnsNothing(t *testing.T) {
 // is not where a credential appears. It appears in an error string: a
 // misconfigured host echoes back a token it was sent, a client wraps the
 // response into an error, the sweep records that error as a note, and the note
-// is serialized to a caller outside the cluster. The primary control is that
+// is serialised to a caller outside the cluster. The primary control is that
 // no result type can reach a credential by field path; this is the second
 // line, for the text whose contents nobody chose.
 func TestNoResponseCarriesAPrimedSecret(t *testing.T) {
@@ -138,13 +139,11 @@ func TestNoResponseCarriesAPrimedSecret(t *testing.T) {
 	} {
 		_, out := f.post(t, body)
 		for _, secret := range []string{flatSecret, pemSecret} {
-			if bytes.Contains(out, []byte(secret)) {
-				t.Errorf("a credential reached the wire for %s:\n%s", body, out)
-			}
-			// And the escaped spelling, which is how a multi-line secret
-			// actually appears in a JSON body.
-			if escaped := strings.ReplaceAll(secret, "\n", `\n`); bytes.Contains(out, []byte(escaped)) {
-				t.Errorf("a credential reached the wire JSON-escaped for %s:\n%s", body, out)
+			for depth, spelling := range spellings(t, secret) {
+				if bytes.Contains(out, []byte(spelling)) {
+					t.Errorf("a credential reached the wire for %s, escaped %d time(s):\n%s",
+						body, depth, out)
+				}
 			}
 		}
 	}
@@ -165,8 +164,37 @@ func TestNoResponseCarriesAPrimedSecret(t *testing.T) {
 	}
 	if !marked {
 		t.Fatalf("no note shows the redaction marker, so the secrets never reached the "+
-			"serializer at all: %v", got.Examined.Notes)
+			"serialiser at all: %v", got.Examined.Notes)
 	}
+}
+
+// spellings is every way a secret can appear in a JSON body.
+//
+// Itself, then escaped once for each JSON encoding it passes through. A tool
+// result travels twice -- once as structured content and once as a string
+// holding the same JSON -- so the text block's copy is escaped ONE LEVEL
+// DEEPER than the structured one, and a credential with a newline in it
+// reaches the wire spelled `\\n`.
+//
+// That level is not a hypothetical. A check that knew only the first two
+// spellings passed over a live leak: the flat token had no escapes and was
+// redacted correctly, the multi-line one was compared against the wrong
+// spelling, and the happy path looked clean. Three levels here rather than
+// two, so a result that grows a third encoding fails rather than passing.
+func spellings(t *testing.T, secret string) []string {
+	t.Helper()
+	out := []string{secret}
+	for cur := secret; len(out) < 4; {
+		encoded, err := json.Marshal(cur)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Drop the quotes json.Marshal wraps it in; what travels inside a body
+		// is the escaped content, not a quoted string of its own.
+		cur = string(encoded[1 : len(encoded)-1])
+		out = append(out, cur)
+	}
+	return out
 }
 
 // A credential quoted by the cluster into a finding's own text is redacted too.
@@ -190,8 +218,11 @@ func TestACredentialInAConditionMessageIsRedacted(t *testing.T) {
 	f := newFixture(t, sweep(t, w))
 	_, out := f.post(t, `{"jsonrpc":"2.0","id":1,"method":"tools/call",`+
 		`"params":{"name":"pipeline_report","arguments":{}}}`)
-	if bytes.Contains(out, []byte(secret)) {
-		t.Fatalf("a credential a Warehouse quoted back reached the wire:\n%s", out)
+	for depth, spelling := range spellings(t, secret) {
+		if bytes.Contains(out, []byte(spelling)) {
+			t.Fatalf("a credential a Warehouse quoted back reached the wire, escaped %d time(s):\n%s",
+				depth, out)
+		}
 	}
 	if !bytes.Contains(out, []byte(redact.Marker)) {
 		t.Fatalf("the message never reached the response, so nothing here was redacted:\n%s", out)

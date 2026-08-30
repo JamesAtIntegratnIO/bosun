@@ -62,6 +62,12 @@ func envShapes() []struct {
 			"credentials.mountAsFiles=true",
 			"mcp.enabled=true", "mcp.existingSecret=bosun-mcp"),
 			helmtest.SetJSON("mcp.allowFrom", `[{"namespace":"gateway-system"}]`)}},
+		// Enabled with no peer named, which is a working configuration rather
+		// than a mistake: a port-forward reaches the pod through the kubelet,
+		// which NetworkPolicy does not govern. It renders, and nothing may
+		// reach the port from inside the cluster.
+		{"the MCP surface admitting nobody", []helmtest.Option{base, helmtest.Set(
+			"mcp.enabled=true", "mcp.existingSecret=bosun-mcp")}},
 		{"a GitHub App", []helmtest.Option{base, helmtest.SetString(
 			"git.app.appId=1234",
 			"git.app.installationId=5678",
@@ -263,12 +269,6 @@ func TestTheChartRefusesValuesThatCouldNotStart(t *testing.T) {
 			text: "mcp.existingSecret is required",
 			opts: []helmtest.Option{helmtest.Values("ci/lint-values.yaml"),
 				helmtest.Set("mcp.enabled=true")},
-		},
-		{
-			name: "the MCP surface published to nobody",
-			text: "mcp.allowFrom is empty",
-			opts: []helmtest.Option{helmtest.Values("ci/lint-values.yaml"),
-				helmtest.Set("mcp.enabled=true", "mcp.existingSecret=bosun-mcp")},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

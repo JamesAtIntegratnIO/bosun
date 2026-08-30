@@ -238,12 +238,11 @@ func finding(f pipeline.Finding) Finding {
 		out.Age = pipeline.Human(f.Since)
 	}
 	if cmd := strings.TrimSpace(f.Remedy); cmd != "" {
-		// Not a Text: see the Remedy type. The cap is applied the same way,
-		// and truncating a command would produce a half-command somebody
-		// could run, so it is refused rather than cut.
-		if len([]rune(cmd)) <= maxCommand {
-			out.Remedy = &Remedy{Command: cmd, Origin: OriginBosun}
-		}
+		// Verbatim, and uncapped: see the caps in text.go for why a remedy is
+		// the one free-text field that gets neither truncation nor a length
+		// limit. Absent here means "no remedy exists", and nothing else may
+		// make that sentence untrue.
+		out.Remedy = &Remedy{Command: cmd, Origin: OriginBosun}
 	}
 	return out
 }

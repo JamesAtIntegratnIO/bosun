@@ -73,20 +73,44 @@ func safeName(s string) bool {
 // safeLabel is the RFC1123 DNS label grammar itself: 1-63 characters of
 // [a-z0-9-], first and last alphanumeric.
 func safeLabel(s string) bool {
-	if s == "" || len(s) > 63 {
+	if s == "" || len(s) > 63 || !within(s, "-", lowercase) {
 		return false
 	}
+	return alnum(s[0], lowercase) && alnum(s[len(s)-1], lowercase)
+}
+
+// The two alphabets the grammars below draw from. A DNS label is lowercase by
+// the RFC; a path and a key are not, because the things they name are not
+// hostnames and a values file is full of camelCase.
+const (
+	lowercase = false
+	anyCase   = true
+)
+
+// within reports whether every byte of s is alphanumeric or one of the
+// punctuation characters in extra.
+//
+// One loop, three callers. It was three loops differing only in that string,
+// which is how two of them would have drifted the first time somebody widened
+// one -- and widening one of these is exactly the change that has to be made
+// on purpose, in one place, with the reason written down.
+func within(s, extra string, upper bool) bool {
 	for i := 0; i < len(s); i++ {
-		c := s[i]
-		alnum := (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
-		if !alnum && c != '-' {
-			return false
-		}
-		if (i == 0 || i == len(s)-1) && !alnum {
+		if !alnum(s[i], upper) && !strings.ContainsRune(extra, rune(s[i])) {
 			return false
 		}
 	}
 	return true
+}
+
+func alnum(c byte, upper bool) bool {
+	switch {
+	case c >= 'a' && c <= 'z', c >= '0' && c <= '9':
+		return true
+	case upper && c >= 'A' && c <= 'Z':
+		return true
+	}
+	return false
 }
 
 // safeNames is safeName over every argument, which is how a builder asks the
@@ -117,20 +141,7 @@ func safePath(s string) bool {
 		return false
 	}
 	for _, seg := range strings.Split(s, "/") {
-		if seg == "" || seg == "." || seg == ".." || !safeFilename(seg) {
-			return false
-		}
-	}
-	return true
-}
-
-func safeFilename(s string) bool {
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
-		case c == '.', c == '-', c == '_':
-		default:
+		if seg == "" || seg == "." || seg == ".." || !within(seg, ".-_", anyCase) {
 			return false
 		}
 	}
@@ -145,19 +156,7 @@ func safeFilename(s string) bool {
 // as safePath: written by whoever wrote the values file, so the grammar admits
 // what a key looks like and nothing that ends the quoted argument it sits in.
 func safeKey(s string) bool {
-	if s == "" || len(s) > maxSegment {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
-		case c == '.', c == '-', c == '_', c == '[', c == ']':
-		default:
-			return false
-		}
-	}
-	return true
+	return s != "" && len(s) <= maxSegment && within(s, ".-_[]", anyCase)
 }
 
 // safeKeys is safeKey over every key a finding would interpolate.

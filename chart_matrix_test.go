@@ -121,7 +121,7 @@ var matrix = map[string]switchRow{
 		{Set: "mcp.dangerouslyServeWithoutAuthentication=true",
 			// Deliberately no existingSecret: rendering the surface with no
 			// credential at all is the whole of what this hatch does.
-			With: []string{"mcp.enabled=true", "mcp.allowFrom[0].namespace=gateway-system"},
+			With: []string{"mcp.enabled=true"},
 			Why: "the escape hatch is the one way to render the surface with no credential, " +
 				"and a hatch nothing renders is a hatch nobody has checked still opens"},
 	}},

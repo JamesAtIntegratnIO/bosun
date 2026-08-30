@@ -98,7 +98,7 @@ func TestNoToolResultCanReachACredential(t *testing.T) {
 				"cannot see what a caller put in an interface, so the guarantee would end "+
 				"exactly where the field begins.", path)
 		case reflect.Chan, reflect.Func, reflect.UnsafePointer:
-			t.Errorf("%s is a %s, which cannot be serialized and has no business on a "+
+			t.Errorf("%s is a %s, which cannot be serialised and has no business on a "+
 				"published result type.", path, typ.Kind())
 		case reflect.Struct:
 			for i := 0; i < typ.NumField(); i++ {

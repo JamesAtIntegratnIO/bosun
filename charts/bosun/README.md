@@ -481,12 +481,16 @@ answers land in somebody's coding agent, which usually has a shell and a
 checkout -- so treat the token as read access to your pipeline's status handed
 to a program.
 
-Two values are refused rather than rendered:
+One value is refused rather than rendered:
 
 | Refused | Because |
 |---|---|
 | `mcp.enabled` with no `existingSecret` and no explicit hatch | the listener would not start; the pod runs, the Service publishes a port, and the only symptom is one WARNING in a log nobody is reading |
-| `mcp.enabled`, `networkPolicy.enabled`, `allowFrom` empty | nothing may reach the port, so the surface answers nothing from a port that looks published |
+
+`allowFrom` is deliberately not a second row. Empty admits nobody, and that is
+a working configuration rather than a mistake: a port-forward reaches the pod
+through the kubelet, which NetworkPolicy does not govern, so the paragraph
+below is exactly how to look at this surface before naming anyone.
 
 Point a client at `http://<host>:8082/mcp` over streamable HTTP, with the token
 as a bearer credential. Before deciding whether to publish it, look at it over
