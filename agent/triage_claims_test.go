@@ -2,6 +2,9 @@ package agent
 
 import (
 	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -219,5 +222,52 @@ func TestChangedFilesReadsTheBranchAgainstItsBase(t *testing.T) {
 	pr.BaseBranch = "--upload-pack=touch /tmp/pwned"
 	if _, err := changedFiles(context.Background(), root, pr); err == nil {
 		t.Error("a base that is not a ref name must be refused before git sees it")
+	}
+}
+
+// The scope is what this pull request changes, not what has happened on main
+// since it was cut. Diffed against the base branch's tip, every file any other
+// pull request merged in the meantime joined `Policy.Scope` -- the guarantee
+// that a fix cannot edit a file this change did not touch -- so the guarantee
+// held exactly as long as nothing else merged. The gate had the same defect on
+// its own side of the same question.
+func TestTheScopeIsWhatThisPullRequestChangedNotWhatMainGained(t *testing.T) {
+	root := checkoutOfAPullRequest(t)
+	origin := originOf(t, root)
+
+	// Somebody else merges while this pull request is open, touching a file
+	// this branch has never seen.
+	runGit(t, origin, "checkout", "--quiet", "main")
+	if err := os.WriteFile(filepath.Join(origin, "landed.yaml"), []byte("landed: true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, origin, "add", "-A")
+	runGit(t, origin, "commit", "--quiet", "-m", "another pull request")
+
+	got, err := changedFiles(context.Background(),
+		root, &gitprovider.PullRequest{Branch: "kargo/metallb", BaseBranch: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != valuesPath {
+		t.Fatalf("the scope is %v, want just %s -- a fix may now write a file this pull request never touched", got, valuesPath)
+	}
+}
+
+// originOf is the repository a checkout was cloned from.
+func originOf(t *testing.T, root string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	full := append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@t"}, args...)
+	if out, err := exec.Command("git", full...).CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, out)
 	}
 }

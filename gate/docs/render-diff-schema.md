@@ -44,7 +44,9 @@ out of them.
     }
   ],
   "other": [],
-  "warnings": ["addons: generators[1]: git generator is not expanded ..."]
+  "warnings": ["addons: generators[1]: git generator is not expanded ..."],
+  "baseRev": "cd73e89d",
+  "headRev": "cdf0ea53"
 }
 ```
 
@@ -79,6 +81,26 @@ such as the chart itself, the source type, the ArgoCD project or the
 destination namespace. **Blocking.** A chart swapped underneath an unchanged
 Application name is a different addon, and the version column will not say
 so.
+
+## `baseRev` and `headRev`
+
+The two revisions the comparison was computed from, short-form, and they are
+on the report as prose as well as here.
+
+`headRev` is the commit under judgement. `baseRev` is the **merge base**: the
+last commit this branch and its base branch share, which is the only revision
+at which the two sides differ by exactly this pull request. It is not the base
+branch's tip. The tip is what a merge lands on, which is why it was the base
+side for a while, and it moves whenever anything else merges: every commit it
+gained since the branch was cut then appeared in these buckets, backwards, as
+this pull request's doing. A documentation-only change was reported as removing
+two HTTPRoutes and downgrading an addon on exactly that mechanism.
+
+Both are here because their absence is what made that expensive to diagnose. A
+result naming only the head cannot be told apart from one whose base was the
+wrong commit, and the wrong commit's symptom -- resources this pull request
+never touched, in `objects` under `removed` -- reads as a pull request tearing
+out infrastructure.
 
 ## `warnings`
 

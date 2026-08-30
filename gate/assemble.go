@@ -5,6 +5,23 @@ import (
 	"sort"
 )
 
+// Worktrees is the pair of checkouts one comparison is computed from.
+//
+// A struct rather than two string arguments, for the reason ChartDiff names
+// its own returns: `base, head string` is two adjacent same-typed positions,
+// and a call site that swaps them compiles, renders each revision with the
+// other one's files, and inverts every finding in the report. The gate had
+// exactly one worktree until it needed two, and the moment it needed two was
+// the moment that mistake became possible.
+type Worktrees struct {
+	// Base is the checkout at the revision this change starts from -- the
+	// merge base, not the base branch's tip, which is a different commit the
+	// moment anything else merges.
+	Base string
+	// Head is the checkout under judgement.
+	Head string
+}
+
 // Assemble is the gate's verdict, start to finish: render the charts on both
 // sides, diff the tables, fold in the settings a bump stops reading, and trace
 // dropped API versions to the manifests that still declare them.
@@ -17,19 +34,21 @@ import (
 // never do. `gate` exported only the primitives, so there was nowhere for the
 // sequence to live except in each caller.
 //
-// repoRoot is the head worktree. Empty means "no worktree available": the two
-// steps that need one, chart rendering and consumer annotation, are skipped and
-// the result says so by having no chart-derived findings, rather than claiming
-// a clean scan of something it never read. cfg may be nil only when repoRoot is
-// empty.
+// trees are the two checkouts. An empty Head means "no worktree available":
+// the two steps that need one, chart rendering and consumer annotation, are
+// skipped and the result says so by having no chart-derived findings, rather
+// than claiming a clean scan of something it never read. cfg may be nil only
+// when Head is empty. An empty Base narrows chart rendering to the version
+// moves, because a values change cannot be seen without the revision it
+// changed from.
 //
 // base and head are mutated: the rendered objects and the render warnings are
 // spliced into them, which is what makes them visible to Diff.
-func Assemble(ctx context.Context, repoRoot string, cfg *Config, base, head *Table) *DiffResult {
+func Assemble(ctx context.Context, trees Worktrees, cfg *Config, base, head *Table) *DiffResult {
 	var found ChartFindings
-	if repoRoot != "" {
+	if trees.Head != "" {
 		var beforeOb, afterOb []Object
-		beforeOb, afterOb, found = ChartDiff(ctx, repoRoot, cfg, base, head)
+		beforeOb, afterOb, found = ChartDiff(ctx, trees, cfg, base, head)
 		base.Objects = append(base.Objects, beforeOb...)
 		head.Objects = append(head.Objects, afterOb...)
 		// On base, not head: Diff dedupes the union of both sides' warnings,
@@ -58,9 +77,10 @@ func Assemble(ctx context.Context, repoRoot string, cfg *Config, base, head *Tab
 
 	// With a worktree, a dropped served version can be traced to the manifests
 	// that still declare it, which is what decides whether it blocks, and what
-	// a repair needs to know it moved.
-	if repoRoot != "" {
-		AnnotateConsumers(repoRoot, res)
+	// a repair needs to know it moved. The head one: the question is which
+	// manifests still declare it after this change, not before.
+	if trees.Head != "" {
+		AnnotateConsumers(trees.Head, res)
 	}
 	return res
 }

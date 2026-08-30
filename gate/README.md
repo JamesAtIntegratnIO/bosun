@@ -21,11 +21,20 @@ expanding the generators, and emits a normalized target table. Those sources
 are derived from the Applications and ApplicationSets ArgoCD serves
 ([ADR 0012](../adr/0012-the-repo-stops-repeating-the-ship.md)), merged with
 whatever the gated repository's own `.bosun.yaml` adds; live supplies the
-pointers, and the pull request's checkout supplies every byte that renders. `Assemble` compares two target tables; when a repository root is
-available, it also renders every chart whose version moved, at both versions,
-and diffs the resources down to the fields that changed. `ValidateManifests`
-schema-validates every rendered stream with kubeconform. The rendered report
-and the `DiffResult` it comes from are the contract the agent consumes.
+pointers, and the pull request's checkout supplies every byte that renders.
+`Assemble` compares two target tables; given both checkouts it also renders
+every Application this change moves -- the chart version bumped, or a values
+file it layers edited -- on both sides, and diffs the resources down to the
+fields that changed. `ValidateManifests` schema-validates every rendered stream
+with kubeconform. The rendered report and the `DiffResult` it comes from are
+the contract the agent consumes.
+
+The two sides are the **merge base** and the head, not the base branch's tip
+and the head. The tip is what a merge lands on and it is the wrong revision to
+diff against: it moves whenever anything else merges, and each commit it gained
+since the branch was cut then appears in the report, backwards, as this pull
+request's doing. The merge base is the only revision at which the two sides
+differ by exactly this pull request, and the report names both of them.
 
 It shells out to `helm` and `kubeconform` rather than vendoring their
 libraries: chart rendering has to match what the cluster's own Helm does, and
@@ -39,7 +48,7 @@ in the agent's image, pinned.
 | Cluster targeting changed | yes | a values-layer edit can add or remove a whole cluster from an addon's scope without the text diff showing it. The selector did not change; the labels it matches did. Rendering both sides and diffing the *expanded* result is the only way to see it |
 | Source, project or namespace changed | yes | no version bump can cause these, so nobody has explained them |
 | An object's apiVersion moved | yes | a migration wearing a version number, which passes the render and fails when the apiserver sees it |
-| The chart will not render at the **new** version | yes | the Application cannot sync once this merges. Failing at the *base* version is a different fact -- the repository was already in that state, and there is no diff to compute either way -- so that one stays a coverage warning under **Not covered** |
+| The chart will not render at the **head** revision | yes | the Application cannot sync once this merges. Failing at the *base* revision too is a different fact -- the repository was already in that state, and there is no diff to compute either way -- so that one stays a coverage warning under **Not covered**. On a values-only change the base is asked first, because a chart that renders nowhere outside a cluster fails on both sides and is nobody's fault |
 | A setting this repository makes that the new chart version no longer declares | yes | helm ignores an unknown value rather than failing on it, so the setting stops applying while the render, the values file and the text diff all stay identical. Measured at 48 of 77 settings on one kyverno bump |
 | A CRD stops serving a version **that manifests in the repository still declare** | yes, while any remain | those manifests break at apply. The report names the consumer kind, the surviving version and the declaring files, which is the contract [the agent's deterministic repair](../docs/safety-model.md) executes, and the recount on the re-run is what verifies it. Counted at zero, the finding is reported and does not block |
 | Resources added, removed, changed; versions moved | no, reported | that is what a version bump legitimately does, reported with per-field diffs so the reviewer judges evidence rather than a count |

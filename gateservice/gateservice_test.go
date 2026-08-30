@@ -90,9 +90,13 @@ func newGateHarness(t *testing.T, baseFiles, headFiles map[string]string) *gateH
 		CheckName: "addons-gate",
 		Poll:      time.Millisecond,
 		Log:       t.Logf,
-		Checkout: func(context.Context, *gitprovider.PullRequest) (string, string, func(), error) {
+		Checkout: func(context.Context, *gitprovider.PullRequest) (*Compared, error) {
 			h.checkouts++
-			return base, head, func() {}, nil
+			return &Compared{
+				Worktrees: gate.Worktrees{Base: base, Head: head},
+				BaseRev:   "basecafe", HeadRev: "headcafe",
+				Cleanup: func() {},
+			}, nil
 		},
 	}
 	return h
@@ -167,6 +171,16 @@ func TestAVersionBumpIsGreenAndReported(t *testing.T) {
 	}
 	if !strings.Contains(out.Report, "6.7.1") {
 		t.Fatal("the in-process report must carry the same evidence the comment does")
+	}
+	// The fact whose absence cost a git archaeology session. A report that
+	// names only the head cannot be told apart from one whose base was the
+	// wrong commit, and the wrong commit's symptom -- resources this pull
+	// request never touched, listed as removed -- reads as a pull request
+	// tearing out infrastructure.
+	for _, want := range []string{"basecafe", "headcafe"} {
+		if !strings.Contains(out.Report, want) {
+			t.Errorf("the report must name both revisions it compared; %q is missing:\n%s", want, out.Report)
+		}
 	}
 }
 
@@ -404,53 +418,6 @@ func TestAForkPullRequestIsRefusedNotIgnored(t *testing.T) {
 	h.gs.sweep(context.Background())
 	if len(h.git.Statuses) != before {
 		t.Fatal("a policy refusal must be stated once, not on every poll")
-	}
-}
-
-// The default checkout, against a real repository on disk: the head arrives
-// as a clone of the pull request's branch, the base as a worktree at the base
-// branch's current tip, fetched by name, which any host serves, rather than
-// by SHA, which some refuse.
-func TestTwoRevisionCheckout(t *testing.T) {
-	origin := t.TempDir()
-	run := func(args ...string) {
-		t.Helper()
-		cmd := append([]string{"-C", origin, "-c", "user.name=test", "-c", "user.email=test@test"}, args...)
-		if out, err := execGit(cmd...); err != nil {
-			t.Fatalf("git %v: %v: %s", args, err, out)
-		}
-	}
-	run("init", "--quiet", "-b", "main")
-	if err := os.WriteFile(filepath.Join(origin, "pin.yaml"), []byte("version: 1\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	run("add", ".")
-	run("commit", "--quiet", "-m", "base")
-	run("checkout", "--quiet", "-b", "kargo/bump")
-	if err := os.WriteFile(filepath.Join(origin, "pin.yaml"), []byte("version: 2\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	run("commit", "--quiet", "-am", "bump")
-
-	gs := &Service{RepoURL: origin, Log: t.Logf}
-	base, head, cleanup, err := gs.checkout(context.Background(),
-		&gitprovider.PullRequest{Branch: "kargo/bump", BaseBranch: "main"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer cleanup()
-
-	for path, want := range map[string]string{
-		filepath.Join(head, "pin.yaml"): "version: 2\n",
-		filepath.Join(base, "pin.yaml"): "version: 1\n",
-	} {
-		got, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if string(got) != want {
-			t.Fatalf("%s holds %q, want %q", path, got, want)
-		}
 	}
 }
 

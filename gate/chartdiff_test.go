@@ -10,6 +10,15 @@ import (
 // Only rows whose version moved are rendered. A chart pull and two
 // renders per Application is real cost, and on a typical bump pull request
 // exactly one row qualifies.
+// oneTree is both sides of a comparison in one directory: these tests are
+// about which pairs get selected by version, and an identical Base and Head
+// is what says "no values moved" without a fixture per row.
+func oneTree(t *testing.T) Worktrees {
+	t.Helper()
+	dir := t.TempDir()
+	return Worktrees{Base: dir, Head: dir}
+}
+
 func TestChartDiffOnlyConsidersVersionChanges(t *testing.T) {
 	mk := func(app, chart, version string, sourceType RowSource) Row {
 		return Row{
@@ -32,7 +41,7 @@ func TestChartDiffOnlyConsidersVersionChanges(t *testing.T) {
 	// rows either; what matters is which pairs it selects, which is
 	// observable through what it says about the renders that failed.
 	cfg := &Config{Concurrency: 2}
-	_, _, found := ChartDiff(context.Background(), t.TempDir(), cfg, base, head)
+	_, _, found := ChartDiff(context.Background(), oneTree(t), cfg, base, head)
 
 	said := joinLines(found.Warnings)
 	for _, f := range found.Changes {
@@ -66,7 +75,7 @@ func TestChartDiffReportsWhatItCouldNotRender(t *testing.T) {
 	base := &Table{Rows: []Row{row("1.0.0")}}
 	head := &Table{Rows: []Row{row("2.0.0")}}
 
-	before, after, found := ChartDiff(context.Background(), t.TempDir(), &Config{Concurrency: 1}, base, head)
+	before, after, found := ChartDiff(context.Background(), oneTree(t), &Config{Concurrency: 1}, base, head)
 	if len(before) != 0 || len(after) != 0 {
 		t.Fatal("a failed render must contribute no objects")
 	}

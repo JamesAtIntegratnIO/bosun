@@ -21,7 +21,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -1046,20 +1045,20 @@ func artifactHost(artifact string) string {
 // declares nothing.
 const maxSearchedBytes = 1 << 20
 
-// gitRef is a branch name and nothing else, checked before it reaches git's
-// argv. The same guard EnsureHead makes on a SHA, for the same reason: a value
-// beginning with "-" is read as an option, and this one arrives in a git
-// host's JSON.
-var gitRef = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)
-
 // changedFiles is the diff between what this pull request merges into and what
 // it contains.
 //
-// The base is fetched by name and compared as a tree, which is how the gate
-// renders the same pair: both sides shallow, no shared history required, and
-// no dependence on the host serving arbitrary commits by SHA. `-z` because git
-// quotes a path with a space in it, and a quoted path is one that silently
-// matches nothing when the applier compares it.
+// The base is the *merge base*, and that is a correction with a safety
+// consequence rather than a tidying. It used to be the base branch's tip,
+// which is a moving revision: every file any other pull request merged after
+// this branch was cut showed up in this diff, and this diff is `Policy.Scope`,
+// the guarantee that a fix cannot edit a file this change did not touch. The
+// guarantee held exactly as long as nothing else merged. The gate had the same
+// defect in its own half, where it reported those files as this pull request
+// removing them, and both are gone the same way.
+//
+// `-z` because git quotes a path with a space in it, and a quoted path is one
+// that silently matches nothing when the applier compares it.
 func changedFiles(ctx context.Context, root string, pr *gitprovider.PullRequest) ([]string, error) {
 	base := pr.BaseBranch
 	if base == "" {
@@ -1068,20 +1067,18 @@ func changedFiles(ctx context.Context, root string, pr *gitprovider.PullRequest)
 	if base == "" {
 		return nil, fmt.Errorf("the pull request names no base branch or base commit to diff against")
 	}
-	if !gitRef.MatchString(base) {
-		return nil, fmt.Errorf("base %q is not a git ref name", base)
+	head := pr.HeadSHA
+	if head == "" {
+		head = pr.Branch
 	}
 
-	fetch := exec.CommandContext(ctx, "git", "-C", root, "fetch", "--quiet", "--depth", "1", "origin", base)
+	mergeBase, err := gitprovider.MergeBase(ctx, root, head, base)
+	if err != nil {
+		return nil, fmt.Errorf("finding what %s and this branch last shared, to see what this pull request changes: %w", base, err)
+	}
+
+	diff := exec.CommandContext(ctx, "git", "-C", root, "diff", "--name-only", "-z", mergeBase, "HEAD")
 	var stderr strings.Builder
-	fetch.Stderr = &stderr
-	if err := fetch.Run(); err != nil {
-		return nil, fmt.Errorf("fetching %s to see what this pull request changes: %w: %s",
-			base, err, strings.TrimSpace(stderr.String()))
-	}
-
-	diff := exec.CommandContext(ctx, "git", "-C", root, "diff", "--name-only", "-z", "FETCH_HEAD", "HEAD")
-	stderr.Reset()
 	diff.Stderr = &stderr
 	out, err := diff.Output()
 	if err != nil {

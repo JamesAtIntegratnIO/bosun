@@ -37,6 +37,71 @@ All notable changes to `bosun`. Format follows
 
 ### Fixed
 
+- **The gate's "before" side is the merge base, not the base branch's tip.**
+  A pull request that touched two files and deleted nothing was reported as
+  removing two HTTPRoutes, a SnippetsFilter and two Authentik blueprints, and
+  as *downgrading* an addon from 0.29.0 to 0.28.2. Another pull request had
+  merged an hour earlier and added all of it, and the base
+  side was rendered from `main` as it stood at that moment while the head side
+  was a branch cut before it, so the whole intervening delta arrived in the
+  report backwards, attributed to the pull request that was not responsible for
+  any of it. A reviewer reading that would reasonably conclude the change tears
+  out infrastructure.
+
+  The tip is what a merge lands *on*, which is why it was there, and it is the
+  wrong revision to diff *against*: it moves whenever anything else merges. The
+  merge base is the only revision at which the two sides differ by exactly this
+  pull request. It is also stable while the head is, which the outcome cache
+  had been assuming all along -- keyed on the head SHA, it went on serving a
+  verdict that the next unrelated merge had already invalidated.
+
+  **The same wrong base was narrowing the agent's edit scope**, and there it is
+  a safety property rather than a report. `Policy.Scope` -- "cannot edit a file
+  this change did not touch" -- is the `git diff` between the base and this
+  head, so every file any other pull request merged after this branch was cut
+  was inside the scope. The guarantee held exactly as long as nothing else
+  merged. Both halves now ask `gitprovider.MergeBase`, which deepens a shallow
+  clone until there is an answer rather than guessing at
+  `pull_request.base.sha`, which is the base branch's tip wearing a
+  commit-shaped name.
+
+  **The report now names both revisions it compared**, under the headline and
+  in `DiffResult` as `baseRev`/`headRev`. Only the head was ever recorded, and
+  a report naming one revision cannot be told apart from a report whose other
+  one was wrong -- which is why diagnosing this took a git archaeology session
+  from the outside rather than a glance.
+
+- **A values-only change to a registry chart is rendered, instead of passing
+  in silence.** A pull request whose entire content was one `interval` key in
+  one `values.yaml` moved 39 rendered `Warehouse.spec.interval` fields, and the
+  gate's report on it contained no occurrence of `Warehouse`, `interval` or the
+  addon's name. It counted zero unrenderable and zero unscanned, and named
+  something else entirely under "Not covered". The change was invisible, and
+  nothing said so.
+
+  Chart rendering paired only the Applications whose chart *version* moved, and
+  rendered both sides of each pair from the head checkout. An Application whose
+  version held still therefore produced two identical renders and an empty
+  diff -- but its row is identical on both sides by construction, because a row
+  records *which* values files an Application layers and not what is in them.
+  So the pairing selected nothing and the blind spot was total.
+
+  It is total in a way that matters, because an addon whose chart lives in a
+  registry is reached *only* this way: derivation cannot turn somebody else's
+  artifact into a path in this checkout, so no source renders it. On the
+  repository this was found on, 31 of 66 Applications were in that class, and
+  most addon tuning in it is a values edit with no version change.
+
+  An Application is now paired when its version moved **or** when the bytes of
+  the value files it layers differ between the two checkouts, and each side
+  renders from its own checkout. The values comparison reads files rather than
+  rendering, so the answer "nothing moved" -- which is nearly every Application
+  on nearly every pull request -- still costs no chart pull. A values edit that
+  breaks the render blocks, with the same repair contract a bad bump gets; a
+  chart that renders on *neither* side is coverage lost and says so, because a
+  chart that needs a cluster to render is nobody's fault and must not turn
+  every pull request touching it red.
+
 - **A value naming the addon itself no longer claims the addon's label
   churn.** The first rich report 0.28.0 rendered on a live pull request opened
   on a kyverno `ClusterRole` whose "Values this repository sets" section held
