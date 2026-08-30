@@ -5,6 +5,32 @@ All notable changes to `bosun`. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **A document with no `kind` is no longer a schema rejection.** Two
+  `values.yaml` files sitting in the directory sources of a live repository
+  put a standing `schema=2` on **every** pull request, on Applications those
+  pull requests did not touch, while ArgoCD reported both Applications Synced
+  and Healthy. `Blockers.Schema` has no repository-side remedy and blocks, so
+  the cost was a gate that is red on every change -- which is a gate people
+  learn to override, the one failure its own documentation warns about.
+
+  This is the gate agreeing with itself rather than a new tolerance.
+  `objectFrom` already refuses a kindless document for the resource diff, so
+  the same file was invisible to every finding except this one, where it
+  arrived as kubeconform's `missing 'kind' key`. Only the kindless case is
+  filtered, and deliberately not every parse failure: kubeconform refusing a
+  document that *has* a kind is a finding, and folding the two together is how
+  this started.
+
+  Skipped documents are named and counted in the validation report -- "Not
+  validated, because they declare no `kind` and nothing would apply them" --
+  because a reader has to be able to tell "skipped a values file" from
+  "skipped your manifest". The report's sections are also sorted now: the map
+  they came from was ranged, and this comment is rewritten on every run, so an
+  unordered list was a difference between two runs that was not a difference
+  in the manifests.
+
 ### Changed
 
 - **The field diff earns its length, and says whose fields moved.** Read back

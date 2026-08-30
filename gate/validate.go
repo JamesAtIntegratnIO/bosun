@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"sort"
+	"strings"
 
 	"sigs.k8s.io/yaml"
 )
@@ -30,8 +32,17 @@ func ValidateManifests(ctx context.Context, repoRoot string, cfg *Config, inv *I
 	}
 
 	var failures int
-	for name, doc := range streams {
-		out, err := runKubeconform(ctx, cfg, doc)
+	// Sorted, because the map above is ranged and this report goes into a
+	// comment that is rewritten on every run: an unordered section list is a
+	// diff between two runs that is not a difference in the manifests.
+	names := make([]string, 0, len(streams))
+	for name := range streams {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		out, err := runKubeconform(ctx, cfg, streams[name].manifests)
 		if err != nil {
 			return 0, fmt.Errorf("running kubeconform on %s: %w", name, err)
 		}
@@ -43,6 +54,20 @@ func ValidateManifests(ctx context.Context, repoRoot string, cfg *Config, inv *I
 			}
 			fmt.Fprintln(w)
 		}
+	}
+
+	// Never silent. A document this declined to validate is one a reader
+	// might expect to have been checked, and the count is the only thing
+	// standing between "skipped a values file" and "skipped your manifest".
+	var skipped []string
+	for _, name := range names {
+		if n := streams[name].notManifests; n > 0 {
+			skipped = append(skipped, fmt.Sprintf("%s (%d)", name, n))
+		}
+	}
+	if len(skipped) > 0 {
+		fmt.Fprintf(w, "Not validated, because they declare no `kind` and nothing would apply them: %s.\n\n",
+			strings.Join(skipped, ", "))
 	}
 
 	if failures == 0 {
@@ -113,10 +138,34 @@ func runKubeconform(ctx context.Context, cfg *Config, doc []byte) ([]kubeconform
 	return bad, nil
 }
 
+// stream is one source's manifests, plus what was left out of them.
+type stream struct {
+	manifests []byte
+	// notManifests counts documents dropped for declaring no `kind`.
+	notManifests int
+}
+
 // renderStreams re-collects every source and returns the raw manifests for
 // each, keyed by a human-readable name.
-func renderStreams(ctx context.Context, repoRoot string, cfg *Config, inv *Inventory) (map[string][]byte, error) {
-	out := map[string][]byte{}
+//
+// A document with no `kind` is not a manifest and is not offered to
+// kubeconform. This is the gate agreeing with itself rather than a new
+// tolerance: `objectFrom` already refuses one for the resource diff, so the
+// same `values.yaml` sitting in a directory source was invisible to every
+// finding except this one, where it arrived as `missing 'kind' key` and
+// counted toward `Blockers.Schema` -- a bucket documented as "manifests the
+// target cluster's schemas reject", with no repository-side remedy, blocking.
+//
+// Measured: two such files in the directory sources of a live repository put
+// a standing `schema=2` on every pull request, on apps those pull requests
+// did not touch, while ArgoCD reported both Applications Synced and Healthy.
+// A check that is red on every change is a check people learn to override.
+//
+// Only the kindless case, and deliberately not every parse failure:
+// kubeconform refusing a document that *has* a kind is a finding, and folding
+// the two together is how this started.
+func renderStreams(ctx context.Context, repoRoot string, cfg *Config, inv *Inventory) (map[string]stream, error) {
+	out := map[string]stream{}
 	for _, src := range cfg.Sources {
 		batch, err := collect(ctx, repoRoot, cfg, inv, src)
 		if err != nil {
@@ -128,7 +177,12 @@ func renderStreams(ctx context.Context, repoRoot string, cfg *Config, inv *Inven
 				key = fmt.Sprintf("%s on %s", d.source, d.cluster.Name)
 			}
 			var buf bytes.Buffer
+			st := out[key]
 			for _, obj := range d.objects {
+				if kind, _ := obj["kind"].(string); kind == "" {
+					st.notManifests++
+					continue
+				}
 				raw, err := yaml.Marshal(obj)
 				if err != nil {
 					return nil, err
@@ -136,7 +190,8 @@ func renderStreams(ctx context.Context, repoRoot string, cfg *Config, inv *Inven
 				buf.WriteString("---\n")
 				buf.Write(raw)
 			}
-			out[key] = buf.Bytes()
+			st.manifests = append(st.manifests, buf.Bytes()...)
+			out[key] = st
 		}
 	}
 	return out, nil
