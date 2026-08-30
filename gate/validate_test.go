@@ -150,3 +150,73 @@ func TestValidateManifestsSurfacesAnUnreadableSource(t *testing.T) {
 		t.Fatal("an unparseable manifest must not read as zero failures")
 	}
 }
+
+// A document with no `kind` is not a manifest, and offering one to kubeconform
+// is how a values file sitting in a directory source put a standing `schema=2`
+// on every pull request of a live repository -- on Applications those pull
+// requests did not touch, while ArgoCD reported both Synced and Healthy.
+//
+// The gate already refuses one everywhere else: objectFrom drops it from the
+// resource diff, so this was the single finding that saw it. Blockers.Schema
+// has no repository-side remedy and blocks, so the cost was a check that is
+// red on every change, which is a check people learn to override.
+func TestAKindlessDocumentIsNotASchemaFailure(t *testing.T) {
+	requireTool(t, "kubeconform")
+
+	// The shape that caused it: a directory source holding a real manifest
+	// and the values.yaml a sibling chart source consumes through `$values/`.
+	root := repoWith(t, map[string]string{
+		"addons/thing/configmap.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: thing\ndata:\n  a: b\n",
+		"addons/thing/values.yaml":    "replicaCount: 2\nimage:\n  tag: v1.2.3\n",
+	})
+	cfg := &Config{
+		Sources: []Source{{Name: "app/thing", Type: SourceDirectory, Path: "addons/thing", Recurse: true}},
+		Validate: ValidateConfig{Enabled: true, IgnoreMissingSchemas: true,
+			SchemaLocations: []string{"default"}},
+	}
+
+	var report strings.Builder
+	failures, err := ValidateManifests(context.Background(), root, cfg, testInventory(), &report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failures != 0 {
+		t.Fatalf("a values file is not a manifest the schemas reject, got %d failure(s):\n%s",
+			failures, report.String())
+	}
+	// Never silent: a reader must be able to tell "skipped a values file" from
+	// "skipped your manifest".
+	if got := report.String(); !strings.Contains(got, "declare no `kind`") || !strings.Contains(got, "app/thing (1)") {
+		t.Errorf("the skip must be named and counted:\n%s", got)
+	}
+}
+
+// And the other half of the same line: a document that HAS a kind and does not
+// fit is still a failure. Folding the two together is how this started.
+func TestADocumentWithAKindIsStillValidated(t *testing.T) {
+	requireTool(t, "kubeconform")
+
+	root := repoWith(t, map[string]string{
+		"addons/thing/values.yaml": "replicaCount: 2\n",
+		"addons/thing/bad.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: bad\n" +
+			"data:\n  nested:\n    notAString: true\n",
+	})
+	cfg := &Config{
+		Sources: []Source{{Name: "app/thing", Type: SourceDirectory, Path: "addons/thing", Recurse: true}},
+		Validate: ValidateConfig{Enabled: true, IgnoreMissingSchemas: true,
+			SchemaLocations: []string{"default"}},
+	}
+
+	var report strings.Builder
+	failures, err := ValidateManifests(context.Background(), root, cfg, testInventory(), &report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failures != 1 {
+		t.Fatalf("a ConfigMap whose data is not string-valued must still fail, got %d:\n%s",
+			failures, report.String())
+	}
+	if !strings.Contains(report.String(), "app/thing (1)") {
+		t.Errorf("the skipped values file must still be counted beside the real failure:\n%s", report.String())
+	}
+}

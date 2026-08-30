@@ -11,6 +11,14 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.28.1]
+
+- **`appVersion` 0.28.1: a `values.yaml` in a directory source no longer reds
+  every pull request.** A document declaring no `kind` is not offered to
+  kubeconform, so it cannot count toward the schema blocker; skipped
+  documents are named and counted in the report instead. No chart template or
+  value changes; the version moves because the image does.
+
 ## [0.28.0]
 
 - **`appVersion` 0.28.0: the gate report stops burying its signal.** Field
