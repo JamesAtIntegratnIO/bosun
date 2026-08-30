@@ -428,15 +428,23 @@ func diffFields(before, after map[string]any) ([]FieldChange, int) {
 
 // setHere reports whether a changed field carries a value this repository
 // sets: its old or new rendering equals one of the Application's own value
-// leaves, or contains one long enough not to match by accident.
+// leaves, or contains one long enough not to match by accident. The map value
+// is whether the leaf may take the substring form at all; equality matches
+// either way.
 //
 // The exclusions are what keep the mark meaning something. Booleans and the
 // empty string appear in every chart, so a repository that sets one flag
 // would otherwise claim half the diff; the five-character floor on the
 // substring form exists because "1" is a replica count, a port digit and a
-// version fragment all at once, and equality already covers it.
+// version fragment all at once, and equality already covers it. The demoted
+// leaves are the Application's own identity tokens, because a value that
+// names the addon itself distinguishes nothing: kyverno's values saying
+// `kyverno` anywhere matched inside `kyverno-admission-controller` and every
+// label stamped with the addon's name, so the first live report filed a
+// bump's aggregation-label churn under the heading that promises the reader
+// their own settings.
 func setHere(f FieldChange, leaves map[string]bool) bool {
-	for leaf := range leaves {
+	for leaf, substringForm := range leaves {
 		switch leaf {
 		case "", "true", "false", "null":
 			continue
@@ -444,7 +452,7 @@ func setHere(f FieldChange, leaves map[string]bool) bool {
 		if f.From == leaf || f.To == leaf {
 			return true
 		}
-		if len(leaf) >= 5 && (strings.Contains(f.From, leaf) || strings.Contains(f.To, leaf)) {
+		if substringForm && len(leaf) >= 5 && (strings.Contains(f.From, leaf) || strings.Contains(f.To, leaf)) {
 			return true
 		}
 	}
