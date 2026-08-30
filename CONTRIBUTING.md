@@ -27,7 +27,9 @@ read. Nothing points back, so the gate cannot import the agent, and neither
 touches the charts. That single direction is what ADR 0008 bought when it moved
 the gate in-cluster, and it is why the shared report vocabulary lives in `gate`
 and `migrate` rather than being spelled out twice. What follows are the
-contracts that still cross a process boundary, where no compiler is watching:
+contracts no compiler is watching -- most because they cross a process
+boundary, one because it is a list inside this one that has to stay complete
+on its own:
 
 | Contract | How it broke | What sees both sides now |
 |---|---|---|
@@ -37,6 +39,7 @@ contracts that still cross a process boundary, where no compiler is watching:
 | The chart's environment is the one `config.go` reads | Not yet, but nothing was watching: no Go test had ever read `charts/` | `config_chart_test.go`, both directions, both sets derived |
 | The ClusterRole covers the API reads the code makes | Not yet. A missing grant is a 403 that `cluster/` turns into a soft, honest sentence, so nothing would ever look | `chart_rbac_test.go` against `cluster.Reads()`, which the request paths are built from |
 | The prompt, the schema and the struct state one response shape | The hand-written list meant to hold two of them together omitted `escalationReason` | `llm/contract_test.go`, all four statements, every list derived |
+| Every credential `config.go` reads primes the process redactor | Not yet. A credential added to `Config` and wired to its one client compiles, passes, and has no symptom until a host echoes it back inside an error string | `redaction_test.go`, both sets derived: the credentials from `config.go`'s syntax tree, the coverage from a real `Config` of sentinels through `redact.Text`, and `main`'s own call from its syntax tree, so deleting the priming fails rather than passing |
 
 This is why both halves live in one repository. A boundary is safe where its
 contract can be tested; across two repositories, no CI run can check both
@@ -124,6 +127,7 @@ it deliberately does not:
 | `edits/`, `migrate/`, `structural/`, `valuesmigrate/` | the four ways a file gets written, each behind its own refusals |
 | `internal/` | fixtures two packages need and nobody outside this module should have. Today: a chart repository on loopback, because a chart directory cannot express two versions of one chart |
 | `cluster/`, `gitprovider/`, `llm/`, `upstream/`, `egress/` | the outside world, one seam each, every one with a fake |
+| `redact/` | taking this process's own credentials out of text before it leaves. One redactor, primed at start-up, read by any surface |
 | root | the composition root: read the environment, build one of each, wire, serve |
 
 There are two `main` packages, in two shapes, and the shapes mean different

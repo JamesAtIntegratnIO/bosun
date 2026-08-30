@@ -13,6 +13,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/JamesAtIntegratnIO/bosun/redact"
 )
 
 // Gitea implements Provider against Gitea's rest API.
@@ -460,8 +462,17 @@ func (g *Gitea) PushFix(ctx context.Context, pr *PullRequest, root, message stri
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
+			// Through the process redactor before it reaches a log or a
+			// pull-request comment; the redact package says why git's own
+			// output is the text this exists for. Redaction runs before
+			// snippet's truncation, so a secret cannot survive by being cut
+			// in half.
+			//
+			// The token is named as well as primed, because a Gitea built
+			// anywhere but the composition root must still remove its own
+			// credential whether or not anything primed the process.
 			return fmt.Errorf("%s: %w: %s", s.args[1], err,
-				snippet([]byte(redactErr(stderr.String(), g.Token))))
+				snippet([]byte(redact.Text(stderr.String(), g.Token))))
 		}
 	}
 	// The branch head moved; tell the caller so its statuses land on it.
