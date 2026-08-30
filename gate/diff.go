@@ -66,7 +66,7 @@ type DiffResult struct {
 	// chart moved, whereas "removed two containers, added a DaemonSet and
 	// four CRDs" says what will happen.
 	Objects  []ObjectChange `json:"objects,omitempty"`
-	Warnings []string       `json:"warnings,omitempty"`
+	Warnings []Markdown     `json:"warnings,omitempty"`
 
 	// Suppressed is checks that did not run because the configuration told
 	// them not to, each with the reason.
@@ -76,7 +76,7 @@ type DiffResult struct {
 	// request's own head, so a change can switch a check off, and the report
 	// that results has to say which one, or the project's own "cannot act
 	// without saying so" rule holds everywhere except where it matters most.
-	Suppressed []string `json:"suppressed,omitempty"`
+	Suppressed []Markdown `json:"suppressed,omitempty"`
 
 	// Scope is how the set of things rendered was arrived at: how many
 	// sources were derived from how many live Applications, and any root
@@ -89,7 +89,7 @@ type DiffResult struct {
 	// yesterday produces a smaller scope, a correct "no change" within it, and
 	// no other symptom. A reader who can see the scope can notice that; a
 	// reader who cannot, cannot.
-	Scope []string `json:"scope,omitempty"`
+	Scope []Markdown `json:"scope,omitempty"`
 
 	// Unrenderable is the repair contract behind the renderFailed findings in
 	// Objects: the Applications whose chart will not render at the new
@@ -293,8 +293,8 @@ func Diff(base, head *Table) *DiffResult {
 	sortChanges(res.Versions)
 	sortChanges(res.Other)
 
-	seen := map[string]bool{}
-	for _, w := range append(append([]string{}, base.Warnings...), head.Warnings...) {
+	seen := map[Markdown]bool{}
+	for _, w := range append(append([]Markdown{}, base.Warnings...), head.Warnings...) {
 		if !seen[w] {
 			seen[w] = true
 			res.Warnings = append(res.Warnings, w)
@@ -386,15 +386,15 @@ func writeFields(w io.Writer, o ObjectChange) {
 func fieldLine(w io.Writer, f FieldChange) {
 	switch {
 	case strings.HasSuffix(f.Path, "[+]"):
-		fmt.Fprintf(w, "  - `%s`: gained `%s`\n", inline(strings.TrimSuffix(f.Path, "[+]")), inline(f.To))
+		fmt.Fprintf(w, "  - `%s`: gained `%s`\n", Inline(strings.TrimSuffix(f.Path, "[+]")), Inline(f.To))
 	case strings.HasSuffix(f.Path, "[-]"):
-		fmt.Fprintf(w, "  - `%s`: lost `%s`\n", inline(strings.TrimSuffix(f.Path, "[-]")), inline(f.From))
+		fmt.Fprintf(w, "  - `%s`: lost `%s`\n", Inline(strings.TrimSuffix(f.Path, "[-]")), Inline(f.From))
 	case f.From == "":
-		fmt.Fprintf(w, "  - `%s`: set to `%s`\n", inline(f.Path), inline(f.To))
+		fmt.Fprintf(w, "  - `%s`: set to `%s`\n", Inline(f.Path), Inline(f.To))
 	case f.To == "":
-		fmt.Fprintf(w, "  - `%s`: removed (was `%s`)\n", inline(f.Path), inline(f.From))
+		fmt.Fprintf(w, "  - `%s`: removed (was `%s`)\n", Inline(f.Path), Inline(f.From))
 	default:
-		fmt.Fprintf(w, "  - `%s`: `%s` → `%s`\n", inline(f.Path), inline(f.From), inline(f.To))
+		fmt.Fprintf(w, "  - `%s`: `%s` → `%s`\n", Inline(f.Path), Inline(f.From), Inline(f.To))
 	}
 }
 
@@ -570,7 +570,21 @@ func plural(n int, noun string) string {
 	return fmt.Sprintf("%d %ss", n, noun)
 }
 
-// inline neutralises a value the gate did not write before it goes into the
+// Markdown is one finished line of the report: prose the gate wrote, in which
+// every value the gate did not write has already been through Inline. The
+// report renders it verbatim, so its backticks and bold survive.
+//
+// The type exists to keep two kinds of string from trading places. A raw
+// value must be escaped or it writes report structure; a composed line must
+// not be escaped or the gate's own markdown renders as `\x60`. Both mistakes
+// were made by the same loop before this type told it which one it was
+// holding. Whoever converts to Markdown is asserting the Inline half is done:
+// compose with Inline around every untrusted value, or, for a line with no
+// markdown of its own, around the whole thing — Inline's output contains
+// nothing it escapes, so escaping an already-escaped value changes nothing.
+type Markdown string
+
+// Inline neutralises a value the gate did not write before it goes into the
 // report. Object names, field paths, field values and cluster names are all
 // chosen by whatever chart or repository produced them, and the report is
 // markdown: a backtick closes the code span the value sits in, and a newline
@@ -581,7 +595,11 @@ func plural(n int, noun string) string {
 // Escaped rather than dropped, and visibly. `\x60` is a name doing something
 // strange, which is worth a reader's eyes; a silently trimmed name is one
 // nobody can look up in the chart that produced it.
-func inline(s string) string {
+//
+// Exported for the packages that compose Markdown lines: the escape happens
+// where the line is written, which is the only place that still knows which
+// parts of it are values.
+func Inline(s string) string {
 	if strings.IndexFunc(s, unwritable) < 0 {
 		return s
 	}
@@ -609,7 +627,7 @@ const maxFencedLines = 20
 // fenced neutralises a multi-line value the gate did not write, for a fenced
 // code block.
 //
-// Same argument as inline, with one difference that is the whole reason it is
+// Same argument as Inline, with one difference that is the whole reason it is
 // a second function: inside a fence the newline is the block's own structure
 // rather than something a value can forge with, so it survives, and helm's
 // error stays the shape helm printed it in. The backtick does not, and that is
@@ -622,7 +640,7 @@ func fenced(s string) string {
 		over, lines = len(lines)-maxFencedLines, lines[:maxFencedLines]
 	}
 	for i, line := range lines {
-		lines[i] = inline(line)
+		lines[i] = Inline(line)
 	}
 	if over > 0 {
 		lines = append(lines, fmt.Sprintf("…and %d more line(s)", over))
@@ -692,14 +710,14 @@ func (d *DiffResult) Report(w io.Writer) {
 		fmt.Fprintf(w, "A values-layer edit can do this without the text diff showing it.\n\n")
 		fmt.Fprintf(w, "| Application | Change |\n|---|---|\n")
 		for _, c := range d.Targeting {
-			fmt.Fprintf(w, "| `%s` | %s |\n", inline(c.App), inline(c.Detail))
+			fmt.Fprintf(w, "| `%s` | %s |\n", Inline(c.App), Inline(c.Detail))
 		}
 		fmt.Fprintln(w)
 	}
 	if len(d.Other) > 0 {
 		fmt.Fprintf(w, "%s\n\n| Application | Cluster | From | To |\n|---|---|---|---|\n", migrate.HeadingSource)
 		for _, c := range d.Other {
-			fmt.Fprintf(w, "| `%s` | %s | `%s` | `%s` |\n", inline(c.App), inline(c.Cluster), inline(c.From), inline(c.To))
+			fmt.Fprintf(w, "| `%s` | %s | `%s` | `%s` |\n", Inline(c.App), Inline(c.Cluster), Inline(c.From), Inline(c.To))
 		}
 		fmt.Fprintln(w)
 	}
@@ -708,7 +726,7 @@ func (d *DiffResult) Report(w io.Writer) {
 		fmt.Fprintf(w, "First appearance, so nothing changed underneath them. Listed for review, not blocking.\n\n")
 		fmt.Fprintf(w, "| Application | Cluster | Source |\n|---|---|---|\n")
 		for _, c := range d.Introduced {
-			fmt.Fprintf(w, "| `%s` | %s | `%s` |\n", inline(c.App), inline(c.Cluster), inline(c.To))
+			fmt.Fprintf(w, "| `%s` | %s | `%s` |\n", Inline(c.App), Inline(c.Cluster), Inline(c.To))
 		}
 		fmt.Fprintln(w)
 	}
@@ -746,11 +764,11 @@ func (d *DiffResult) Report(w io.Writer) {
 				"with the values this repository sets. There are no resource changes listed for them "+
 				"below, because nothing rendered to compare: the gate looked, and it does not work.\n\n")
 			for _, o := range unrendered {
-				fmt.Fprintf(w, "**`%s`", inline(o.Object))
+				fmt.Fprintf(w, "**`%s`", Inline(o.Object))
 				if o.Cluster != "" {
-					fmt.Fprintf(w, " on %s", inline(o.Cluster))
+					fmt.Fprintf(w, " on %s", Inline(o.Cluster))
 				}
-				fmt.Fprintf(w, " — `%s` → `%s`**\n\n", inline(o.From), inline(o.To))
+				fmt.Fprintf(w, " — `%s` → `%s`**\n\n", Inline(o.From), Inline(o.To))
 				fmt.Fprintf(w, "```text\n%s\n```\n\n", fenced(o.Reason))
 			}
 		}
@@ -777,17 +795,17 @@ func (d *DiffResult) Report(w io.Writer) {
 					"from two sides.\n\n")
 			}
 			for _, o := range vdrop {
-				fmt.Fprintf(w, "- `%s`", inline(o.Object))
+				fmt.Fprintf(w, "- `%s`", Inline(o.Object))
 				if o.Cluster != "" {
-					fmt.Fprintf(w, " on %s", inline(o.Cluster))
+					fmt.Fprintf(w, " on %s", Inline(o.Cluster))
 				}
-				fmt.Fprintf(w, " — `%s` → `%s`, %s no longer read:\n", inline(o.From), inline(o.To), plural(len(o.Keys), "setting"))
+				fmt.Fprintf(w, " — `%s` → `%s`, %s no longer read:\n", Inline(o.From), Inline(o.To), plural(len(o.Keys), "setting"))
 				shown := o.Keys
 				if len(shown) > maxDroppedListed {
 					shown = shown[:maxDroppedListed]
 				}
 				for _, k := range shown {
-					fmt.Fprintf(w, "  - `%s`\n", inline(k))
+					fmt.Fprintf(w, "  - `%s`\n", Inline(k))
 				}
 				if n := len(o.Keys) - len(shown); n > 0 {
 					fmt.Fprintf(w, "  - …and %d more\n", n)
@@ -806,10 +824,10 @@ func (d *DiffResult) Report(w io.Writer) {
 			for _, o := range api {
 				if o.PartOfMigration {
 					fmt.Fprintf(w, "- `%s`: `%s` → `%s` — the move the finding below requires; the repair, not a new migration, so not blocking\n",
-						inline(o.Object), inline(o.From), inline(o.To))
+						Inline(o.Object), Inline(o.From), Inline(o.To))
 					continue
 				}
-				fmt.Fprintf(w, "- `%s`: `%s` → `%s`\n", inline(o.Object), inline(o.From), inline(o.To))
+				fmt.Fprintf(w, "- `%s`: `%s` → `%s`\n", Inline(o.Object), Inline(o.From), Inline(o.To))
 			}
 			fmt.Fprintln(w)
 		}
@@ -821,7 +839,7 @@ func (d *DiffResult) Report(w io.Writer) {
 				// shared package rather than by one more format string that
 				// could drift: the agent falls back to reading this shape
 				// from a gate too old to have written a block.
-				fmt.Fprintf(w, "%s\n", migrate.Line(inline(o.Object), inline(o.From), inline(o.Resource), inline(o.To)))
+				fmt.Fprintf(w, "%s\n", migrate.Line(Inline(o.Object), Inline(o.From), Inline(o.Resource), Inline(o.To)))
 				blocking, clear := "blocking until they move", "no manifest in this repository declares a dropped version, so this alone does not block"
 				if o.To == "" {
 					blocking = "blocking until they are removed or replaced"
@@ -835,7 +853,7 @@ func (d *DiffResult) Report(w io.Writer) {
 							fmt.Fprintf(w, "    - …and %d more\n", len(o.ConsumerFiles)-maxListed)
 							break
 						}
-						fmt.Fprintf(w, "    - `%s`\n", inline(f))
+						fmt.Fprintf(w, "    - `%s`\n", Inline(f))
 					}
 				case o.ConsumersKnown:
 					fmt.Fprintf(w, "  - %s\n", clear)
@@ -860,9 +878,9 @@ func (d *DiffResult) Report(w io.Writer) {
 					fmt.Fprintf(w, "- …and %d more\n", len(g.items)-maxListed)
 					break
 				}
-				fmt.Fprintf(w, "- `%s`\n", inline(o.Object))
+				fmt.Fprintf(w, "- `%s`\n", Inline(o.Object))
 				if o.Note != "" {
-					fmt.Fprintf(w, "  - %s\n", inline(o.Note))
+					fmt.Fprintf(w, "  - %s\n", Inline(o.Note))
 				}
 				// The whole point of rendering both versions is knowing which
 				// fields moved. Reporting only that an object "changed" hands
@@ -877,7 +895,7 @@ func (d *DiffResult) Report(w io.Writer) {
 	if len(d.Versions) > 0 {
 		fmt.Fprintf(w, "### Versions\n\n| Application | Cluster | From | To |\n|---|---|---|---|\n")
 		for _, c := range d.Versions {
-			fmt.Fprintf(w, "| `%s` | %s | `%s` | `%s` |\n", inline(c.App), inline(c.Cluster), inline(c.From), inline(c.To))
+			fmt.Fprintf(w, "| `%s` | %s | `%s` | `%s` |\n", Inline(c.App), Inline(c.Cluster), Inline(c.From), Inline(c.To))
 		}
 		fmt.Fprintln(w)
 	}
@@ -889,15 +907,19 @@ func (d *DiffResult) Report(w io.Writer) {
 		fmt.Fprintf(w, "### Turned off by this pull request's configuration\n\n")
 		fmt.Fprintf(w, "The gate reads its configuration from the head revision, so a change can "+
 			"switch a check off. These did not run:\n\n")
+		// Rendered verbatim, not through Inline: these are Markdown, composed
+		// lines whose backticks are the gate's own. Escaping them here is the
+		// bug that published `\x60` where the config file's name should be —
+		// the values inside were neutralised where the lines were written.
 		for _, sup := range d.Suppressed {
-			fmt.Fprintf(w, "- %s\n", inline(strings.TrimSpace(sup)))
+			fmt.Fprintf(w, "- %s\n", strings.TrimSpace(string(sup)))
 		}
 		fmt.Fprintln(w)
 	}
 	if len(d.Scope) > 0 {
 		fmt.Fprintf(w, "### What was rendered\n\n")
 		for _, s := range d.Scope {
-			fmt.Fprintf(w, "- %s\n", inline(strings.TrimSpace(s)))
+			fmt.Fprintf(w, "- %s\n", strings.TrimSpace(string(s)))
 		}
 		fmt.Fprintln(w)
 	}
@@ -905,7 +927,7 @@ func (d *DiffResult) Report(w io.Writer) {
 		fmt.Fprintf(w, "### Not covered\n\n")
 		fmt.Fprintf(w, "The gate could not expand the following, so the Applications they generate are **not** checked:\n\n")
 		for _, warn := range d.Warnings {
-			fmt.Fprintf(w, "- %s\n", inline(strings.TrimSpace(warn)))
+			fmt.Fprintf(w, "- %s\n", strings.TrimSpace(string(warn)))
 		}
 		fmt.Fprintln(w)
 	}

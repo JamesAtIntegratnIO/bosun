@@ -30,7 +30,7 @@ func AnnotateConsumers(repoRoot string, res *DiffResult) {
 		hits, err := migrate.Scan(repoRoot, d)
 		if err != nil {
 			res.Warnings = append(res.Warnings,
-				fmt.Sprintf("could not scan the repository for %s consumers: %v", d.CRD, err))
+				Markdown(Inline(fmt.Sprintf("could not scan the repository for %s consumers: %v", d.CRD, err))))
 			continue
 		}
 		o.ConsumersKnown = true

@@ -66,7 +66,7 @@ func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Ta
 		changes       []ObjectChange
 		unrenderable  []Unrenderable
 		leaves        map[string]bool
-		warnings      []string
+		warnings      []Markdown
 	}
 	results := make([]result, len(pairs))
 
@@ -87,16 +87,16 @@ func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Ta
 			// Both versions are pulled, and they can differ in repository.
 			for _, r := range []Row{p.before, p.after} {
 				if reason := cfg.egressCheck(chartRef(r), releaseNameFor(r), r.Version); reason != "" {
-					res.warnings = append(res.warnings, fmt.Sprintf(
+					res.warnings = append(res.warnings, Markdown(Inline(fmt.Sprintf(
 						"%s: %s, so %s's resource changes are NOT covered",
-						p.after.App, reason, p.after.Chart))
+						p.after.App, reason, p.after.Chart))))
 					return
 				}
 				if r.ChartRepo != "" && !strings.HasPrefix(r.ChartRepo, "oci://") {
 					if reason := cfg.egressCheck(r.ChartRepo, releaseNameFor(r), r.Version); reason != "" {
-						res.warnings = append(res.warnings, fmt.Sprintf(
+						res.warnings = append(res.warnings, Markdown(Inline(fmt.Sprintf(
 							"%s: %s, so %s's resource changes are NOT covered",
-							p.after.App, reason, p.after.Chart))
+							p.after.App, reason, p.after.Chart))))
 						return
 					}
 				}
@@ -142,9 +142,9 @@ func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Ta
 					Head: p.after, From: p.before.Version, Reason: errA.Error(),
 				})
 			case errB != nil:
-				res.warnings = append(res.warnings, fmt.Sprintf(
+				res.warnings = append(res.warnings, Markdown(Inline(fmt.Sprintf(
 					"%s: %s renders at %s but not at %s, so its resource changes are NOT covered: %v",
-					p.after.App, p.after.Chart, p.after.Version, p.before.Version, errB))
+					p.after.App, p.after.Chart, p.after.Version, p.before.Version, errB))))
 			default:
 				res.before, res.after = b, a
 			}
@@ -171,9 +171,9 @@ func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Ta
 			gone, err := droppedValues(ctx, repoRoot, p.before, p.after)
 			switch {
 			case err != nil:
-				res.warnings = append(res.warnings, fmt.Sprintf(
+				res.warnings = append(res.warnings, Markdown(Inline(fmt.Sprintf(
 					"%s: could not compare %s's values surface across versions, so settings it stops reading are NOT covered: %v",
-					p.after.App, p.after.Chart, err))
+					p.after.App, p.after.Chart, err))))
 			case len(gone) > 0:
 				res.changes = append(res.changes, ObjectChange{
 					Kind:    ObjectValuesKeyDropped,
@@ -242,7 +242,7 @@ type ChartFindings struct {
 	// is prose, and nothing in it was chosen by a chart.
 	Unrenderable []Unrenderable
 	// Warnings are coverage this pass lost, and blame nobody for.
-	Warnings []string
+	Warnings []Markdown
 	// ValuesLeaves is, per rendered Application, the scalar values its own
 	// values supply -- Table.ValuesLeaves' content, computed here because
 	// this is the only place with the row and the checkout together.

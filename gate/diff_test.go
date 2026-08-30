@@ -5,6 +5,15 @@ import (
 	"testing"
 )
 
+// joinLines flattens Markdown lines for a substring assertion.
+func joinLines(ms []Markdown) string {
+	out := make([]string, len(ms))
+	for i, m := range ms {
+		out[i] = string(m)
+	}
+	return strings.Join(out, "\n")
+}
+
 func row(cluster, app, version string) Row {
 	return Row{
 		AppSet: "addons", Cluster: cluster, App: app,
@@ -243,5 +252,56 @@ func TestReportLeadsWithTheMarker(t *testing.T) {
 				t.Fatalf("marker must appear exactly once, got %d", strings.Count(got, ReportMarker))
 			}
 		})
+	}
+}
+
+// Scope, Suppressed and Warnings are Markdown: lines the gate composed, whose
+// backticks are its own. The report used to pass them through Inline anyway,
+// and a reader of the published comment met `\x60.gitops-gate.yaml\x60` where
+// the config file's name should have been. Composed lines render as written;
+// the values inside them were neutralised when the lines were written.
+func TestComposedLinesKeepTheirOwnMarkdown(t *testing.T) {
+	d := &DiffResult{
+		Scope:      []Markdown{"`.gitops-gate.yaml` is present, and its sources take precedence over derived ones."},
+		Suppressed: []Markdown{"**Schema validation** — `validate.enabled` is false."},
+		Warnings:   []Markdown{"generators[0]: git generator is not expanded"},
+	}
+
+	var b strings.Builder
+	d.Report(&b)
+	got := b.String()
+
+	if strings.Contains(got, `\x60`) {
+		t.Errorf("the gate's own backticks were escaped:\n%s", got)
+	}
+	if !strings.Contains(got, "`.gitops-gate.yaml` is present") {
+		t.Errorf("the scope line must render as composed:\n%s", got)
+	}
+	if !strings.Contains(got, "`validate.enabled`") {
+		t.Errorf("the suppressed line must render as composed:\n%s", got)
+	}
+}
+
+// The other half of the same property: a value the gate did not write still
+// cannot write report structure. A hostile name goes through Inline where the
+// warning is composed, so by the time the line is Markdown the backtick is
+// spelt out and every code span in the report still closes.
+func TestAHostileNameInAWarningIsNeutralisedAtComposition(t *testing.T) {
+	base := &Table{Rows: []Row{row("hub", "thing-hub", "1.0.0")}}
+	head := &Table{
+		Rows:     []Row{row("hub", "thing-hub", "1.0.0")},
+		Warnings: []Markdown{Markdown(Inline("evil`name: template did not render"))},
+	}
+
+	var b strings.Builder
+	Diff(base, head).Report(&b)
+
+	for _, line := range strings.Split(b.String(), "\n") {
+		if n := strings.Count(line, "`"); n%2 != 0 {
+			t.Fatalf("a warning left an unbalanced code span: %q", line)
+		}
+	}
+	if !strings.Contains(b.String(), `evil\x60name`) {
+		t.Errorf("the backtick must be escaped, visibly:\n%s", b.String())
 	}
 }

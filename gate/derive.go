@@ -35,7 +35,11 @@ type Derivation struct {
 	// Warnings are the things skipped and why. A source the derivation could
 	// not turn into a render is a blind spot, and a blind spot that announces
 	// itself is survivable.
-	Warnings []string
+	//
+	// Markdown, not string: these go into the report as composed lines, so
+	// the composer escapes the Application names and chart names inside them
+	// with Inline, and the renderer prints them as written.
+	Warnings []Markdown
 }
 
 // LiveRoot is one ApplicationSet ArgoCD serves that nothing in ArgoCD created.

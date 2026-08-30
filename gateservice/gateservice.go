@@ -686,15 +686,21 @@ func shortSHA8(s string) string {
 //
 // So the rule stays and the suppression becomes visible, which is what the
 // project's own "cannot act without saying so" line requires.
-func suppressedChecks(base, head string, cfg *gate.Config, name string) []string {
-	var out []string
+func suppressedChecks(base, head string, cfg *gate.Config, name string) []gate.Markdown {
+	var out []gate.Markdown
 	if !cfg.Validate.Enabled {
 		out = append(out, "**Schema validation** — `validate.enabled` is false, so no rendered manifest "+
 			"was checked against the target cluster's schemas.")
 	}
 	if n := len(cfg.Validate.SkipKinds); n > 0 {
-		out = append(out, fmt.Sprintf("**Schema validation** skipped %s entirely (`validate.skipKinds`): `%s`.",
-			plural(n, "kind"), strings.Join(cfg.Validate.SkipKinds, "`, `")))
+		// The kinds are the config file's words, not the gate's, so each one
+		// is neutralised before it sits inside the gate's own backticks.
+		escaped := make([]string, n)
+		for i, k := range cfg.Validate.SkipKinds {
+			escaped[i] = gate.Inline(k)
+		}
+		out = append(out, gate.Markdown(fmt.Sprintf("**Schema validation** skipped %s entirely (`validate.skipKinds`): `%s`.",
+			plural(n, "kind"), strings.Join(escaped, "`, `"))))
 	}
 
 	// Whether the config itself moved in this pull request. Read as bytes
@@ -716,11 +722,11 @@ func suppressedChecks(base, head string, cfg *gate.Config, name string) []string
 		// No file at head. The scope was derived, and there is nothing this
 		// pull request could have turned off in a file it does not have.
 	case baseErr != nil:
-		out = append(out, fmt.Sprintf("**This pull request introduces `%s`.** Everything above was "+
-			"checked under a configuration that did not exist on the base branch.", shown))
+		out = append(out, gate.Markdown(fmt.Sprintf("**This pull request introduces `%s`.** Everything above was "+
+			"checked under a configuration that did not exist on the base branch.", gate.Inline(shown))))
 	case !bytes.Equal(headRaw, baseRaw):
-		out = append(out, fmt.Sprintf("**`%s` changed in this pull request**, and the gate read the "+
-			"head revision's copy. Everything above was checked under the new configuration.", shown))
+		out = append(out, gate.Markdown(fmt.Sprintf("**`%s` changed in this pull request**, and the gate read the "+
+			"head revision's copy. Everything above was checked under the new configuration.", gate.Inline(shown))))
 	}
 	return out
 }

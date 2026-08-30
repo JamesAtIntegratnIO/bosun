@@ -18,6 +18,15 @@ import (
 // the same render, row for row. A measurement taken once is a fact about that
 // afternoon, so the probe is a test here.
 
+// joinLines flattens Markdown lines for a substring assertion.
+func joinLines(ms []gate.Markdown) string {
+	out := make([]string, len(ms))
+	for i, m := range ms {
+		out[i] = string(m)
+	}
+	return strings.Join(out, "\n")
+}
+
 // appSet is one ApplicationSet targeting clusters by label.
 func appSet(name, label, path string) string {
 	return `apiVersion: argoproj.io/v1alpha1
@@ -230,7 +239,7 @@ func TestARootWithNoManifestHereIsRenderedFromLiveAndSaidSo(t *testing.T) {
 	if live != 1 {
 		t.Fatalf("the root has no manifest here, so it must come from the applied spec: %+v", p.cfg.Sources)
 	}
-	if !strings.Contains(strings.Join(p.scope, "\n"), "elsewhere") {
+	if !strings.Contains(joinLines(p.scope), "elsewhere") {
 		t.Fatalf("a row resting on the applied spec has to be named in the report: %v", p.scope)
 	}
 }
@@ -478,7 +487,7 @@ func TestFileSourcesTakePrecedenceOverDerivedOnes(t *testing.T) {
 	if p.cfg.Sources[0].Name != "apps" {
 		t.Errorf("the file's own source must come first: %+v", p.cfg.Sources[0])
 	}
-	if !strings.Contains(strings.Join(p.scope, "\n"), "take precedence") {
+	if !strings.Contains(joinLines(p.scope), "take precedence") {
 		t.Errorf("the report should say a file is in force: %v", p.scope)
 	}
 }
@@ -492,4 +501,52 @@ func parseYAML(t *testing.T, body string) map[string]any {
 		t.Fatalf("parsing the fixture: %v", err)
 	}
 	return m
+}
+
+// The pull-request comment met this the hard way: scope lines are composed
+// here with deliberate backticks around the config file's name, and the
+// report used to escape them along with everything else, publishing
+// `\x60.gitops-gate.yaml\x60` where a code span should have been. The lines
+// are gate.Markdown now — rendered as written — so the values inside them are
+// neutralised here, at composition, or nowhere.
+func TestScopeLinesSurviveTheReportAsWritten(t *testing.T) {
+	derived := &gate.Derivation{Applications: 1, ApplicationSets: 1}
+	cfg, err := gate.ParseConfig([]byte("sources:\n  - type: manifests\n    paths: [apps]\n"), ".gitops-gate.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res := &gate.DiffResult{Scope: scopeLines(derived, cfg, ".gitops-gate.yaml", nil)}
+	var b strings.Builder
+	res.Report(&b)
+
+	if !strings.Contains(b.String(), "- `.gitops-gate.yaml` is present") {
+		t.Errorf("the config file's name must render as a code span:\n%s", b.String())
+	}
+	if strings.Contains(b.String(), `\x60`) {
+		t.Errorf("nothing in this scope needed escaping:\n%s", b.String())
+	}
+}
+
+// The property that made the whole-line escape look right in the first place,
+// kept without it: a root name is ArgoCD's to spell, and one carrying a
+// backtick must not close the code span the gate put it in.
+func TestAHostileRootNameCannotWriteScopeStructure(t *testing.T) {
+	derived := &gate.Derivation{Applications: 1, ApplicationSets: 1}
+	cfg, err := gate.ParseConfig([]byte("{}"), ".gitops-gate.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lines := scopeLines(derived, cfg, "", []string{"evil` breaks `out"})
+	joined := joinLines(lines)
+
+	if !strings.Contains(joined, `evil\x60 breaks \x60out`) {
+		t.Errorf("the root's backticks must be spelt out, visibly: %s", joined)
+	}
+	for _, line := range lines {
+		if n := strings.Count(string(line), "`"); n%2 != 0 {
+			t.Fatalf("a root name left an unbalanced code span: %q", line)
+		}
+	}
 }

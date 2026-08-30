@@ -119,7 +119,7 @@ func TestOnlyTheHeadRevisionsRenderFailureBlocks(t *testing.T) {
 	// Named in the direction that happened. Both failures used to be reported
 	// through one sentence that said "at both versions", which is the one
 	// thing that was not true in either case.
-	joined := strings.Join(res.Warnings, "\n")
+	joined := joinLines(res.Warnings)
 	if !strings.Contains(joined, "renders at 2.0.0 but not at 0.9.0") {
 		t.Errorf("the warning must say which revision failed:\n%s", joined)
 	}

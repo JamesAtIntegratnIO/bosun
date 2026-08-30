@@ -34,7 +34,7 @@ func TestChartDiffOnlyConsidersVersionChanges(t *testing.T) {
 	cfg := &Config{Concurrency: 2}
 	_, _, found := ChartDiff(context.Background(), t.TempDir(), cfg, base, head)
 
-	said := strings.Join(found.Warnings, "\n")
+	said := joinLines(found.Warnings)
 	for _, f := range found.Changes {
 		said += "\n" + f.Object
 	}

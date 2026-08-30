@@ -49,9 +49,9 @@ type listGenerator struct {
 // definition changing at all, someone relabels a cluster, or adds one, and an
 // addon silently starts or stops targeting it. Reading the addon definition
 // tells you nothing; only expanding the generator does.
-func expandGenerators(gens []generatorSpec, inv *Inventory) ([]Param, []string, error) {
+func expandGenerators(gens []generatorSpec, inv *Inventory) ([]Param, []Markdown, error) {
 	var out []Param
-	var warnings []string
+	var warnings []Markdown
 
 	for i, g := range gens {
 		switch {
@@ -71,16 +71,16 @@ func expandGenerators(gens []generatorSpec, inv *Inventory) ([]Param, []string, 
 			out = append(out, ps...)
 
 		case g.List != nil:
-			warnings = append(warnings, fmt.Sprintf("generators[%d]: list generator is not expanded; its Applications are not covered by the targeting check", i))
+			warnings = append(warnings, Markdown(fmt.Sprintf("generators[%d]: list generator is not expanded; its Applications are not covered by the targeting check", i)))
 
 		case g.Git != nil:
-			warnings = append(warnings, fmt.Sprintf("generators[%d]: git generator is not expanded (it needs repository contents at both revisions); its Applications are not covered by the targeting check", i))
+			warnings = append(warnings, Markdown(fmt.Sprintf("generators[%d]: git generator is not expanded (it needs repository contents at both revisions); its Applications are not covered by the targeting check", i)))
 
 		case g.Matrix != nil:
-			warnings = append(warnings, fmt.Sprintf("generators[%d]: matrix generator is not expanded; its Applications are not covered by the targeting check", i))
+			warnings = append(warnings, Markdown(fmt.Sprintf("generators[%d]: matrix generator is not expanded; its Applications are not covered by the targeting check", i)))
 
 		default:
-			warnings = append(warnings, fmt.Sprintf("generators[%d]: unrecognised generator; not covered by the targeting check", i))
+			warnings = append(warnings, Markdown(fmt.Sprintf("generators[%d]: unrecognised generator; not covered by the targeting check", i)))
 		}
 	}
 	return out, warnings, nil
@@ -114,7 +114,7 @@ func expandClusters(g *clustersGenerator, inv *Inventory) ([]Param, error) {
 // establishes the base set, and each subsequent generator overrides values for
 // the params it matches, keyed by mergeKeys. Params produced only by a later
 // generator are discarded; merge is a left join, not a union.
-func expandMerge(g *mergeGenerator, inv *Inventory) ([]Param, []string, error) {
+func expandMerge(g *mergeGenerator, inv *Inventory) ([]Param, []Markdown, error) {
 	if len(g.Generators) == 0 {
 		return nil, nil, nil
 	}
