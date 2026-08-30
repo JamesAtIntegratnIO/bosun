@@ -79,10 +79,10 @@
 package mcp
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 // protocolVersion is the MCP revision this server speaks.
@@ -304,7 +304,7 @@ func (s *Server) write(w http.ResponseWriter, resp rpcResponse) {
 	}
 
 	var tree any
-	dec := json.NewDecoder(strings.NewReader(string(raw)))
+	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	if err := dec.Decode(&tree); err != nil {
 		s.logf("mcp: a response could not be re-read for redaction: %v", err)

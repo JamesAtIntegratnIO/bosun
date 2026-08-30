@@ -34,8 +34,8 @@ var mayImport = map[string]string{
 // difference, and a review that sees http.Get in this package has the whole
 // question in front of it on one line.
 var mayImportStdlib = map[string]bool{
-	"crypto/subtle": true, "encoding/json": true, "fmt": true, "net/http": true,
-	"strings": true, "time": true, "unicode/utf8": true,
+	"bytes": true, "crypto/subtle": true, "encoding/json": true, "fmt": true,
+	"net/http": true, "strings": true, "time": true, "unicode/utf8": true,
 }
 
 func TestThisPackageCannotReachTheOutsideWorld(t *testing.T) {

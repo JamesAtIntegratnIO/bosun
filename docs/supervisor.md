@@ -117,6 +117,32 @@ operational state, Stage names, pull request titles, findings, and no
 credentials. The chart can publish it through a Gateway API HTTPRoute or an
 Ingress; see the chart README.
 
+## Reading it from an agent
+
+The same findings again, typed, for the reader who is not a person. An on-call
+engineer's coding agent asks `pipeline_report` over MCP and gets each finding
+as fields it can branch on -- the kind, the severity, the subject, the evidence
+with its numbers, how long it has held, and where one exists the paste-ready
+command -- worst first, rather than the markdown above, which it would have to
+parse.
+
+```yaml
+mcp:
+  enabled: true
+  existingSecret: bosun-mcp
+```
+
+The 503 rule survives this move too, in the shape JSON can carry it: before the
+first sweep the `findings` field is **absent** rather than empty, and the
+result says in words that nothing has looked. An empty list would be read as
+"nothing is wrong", which is the measurement this whole package exists to stop
+anything recording.
+
+Beside the findings travels the sweep's own accounting, so a report with no
+findings can prove it looked; `clean` is true only when it did. It costs no API
+call anywhere, because it answers from the same snapshot the page renders. It
+is off by default and refuses to start without a token; see the chart README.
+
 ## Alerting
 
 The obvious rule is worth having:
