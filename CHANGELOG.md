@@ -33,6 +33,46 @@ All notable changes to `bosun`. Format follows
   cannot express that in one rule; a test fails if the two blocks stop
   agreeing.
 
+- **The supervisor says which metric stopped a Stage, and what it is holding.**
+  A `verification_stuck` finding used to report that a verification failed and
+  then hand back two `kubectl` commands telling the reader to go and look at
+  the AnalysisRun's `metricResults` -- the one question they already had. It
+  now reads that run and answers it: the metric by name, whether it errored or
+  failed, and what it last reported.
+
+  The distinction is the useful part. A metric that **errored** never got an
+  answer and one that **failed** got the wrong answer, and telling somebody to
+  fix their thresholds when their Prometheus is unreachable costs them the
+  afternoon this exists to save. That is the exact shape of the three findings
+  this feature came from: `argo-cd`, `cert-manager` and `open-webui` held for
+  three days by one NetworkPolicy that dropped every `verify.apps` query, which
+  a human found by reading AnalysisRuns.
+
+  **"An AnalysisRun with no timeout holds the queue indefinitely" is now a
+  reading rather than an assertion.** It was written into every long-running
+  verification finding whether or not it was true of that run. Argo Rollouts
+  runs a metric `count` times, and a metric with an `interval` and no `count`
+  measures until something stops it -- so the finding says which metric that
+  is, or says the run has no unbounded metric and is slow rather than endless.
+
+- **A wedged Stage names what stopped arriving.** "stopped receiving artifacts"
+  is true and unusable; a freight name is a hash, so printing that instead
+  would read as detail while saying less. The finding now names the image tag
+  or chart version the freight carries -- the half that matches the pull
+  request in the reader's other tab -- falling back to Kargo's alias, and to
+  the word `artifacts`, when it cannot.
+
+  **Both reads are one GET of one named object**, for the Stages a finding is
+  actually about. Kargo creates a Freight per discovery and prunes none of
+  them, so listing them would be the most expensive read in the service by an
+  order of magnitude, to print two. A healthy sweep makes neither request. A
+  refused or pruned read costs the detail and never the finding: every one is
+  produced exactly as before, and the report's notes say which read did not
+  land.
+
+  Needs `freights` and `analysisruns`, which the chart has granted since it
+  existed and nothing has used until now.
+
 ### Changed
 
 - **The status page wears the project's own colours.** It shipped in GitHub's
@@ -532,6 +572,25 @@ All notable changes to `bosun`. Format follows
   `workers()` rather than `ParseConfig` because a `Config` built as a literal
   reaches the same semaphore, and a bound only the parser applied would be one
   the gate's own callers could skip.
+
+### Removed
+
+- **BREAKING: `projects` and `analysistemplates` leave the chart's
+  ClusterRole.** Neither was ever read. Both arrived whole in the commit that
+  extracted bosun from the repository it grew up in, so they were copied
+  rather than reserved for a plan, and `git log -L` over that rule block
+  returns the one commit to prove it.
+
+  Breaking because narrowing a published ClusterRole is: an install that bound
+  its own ServiceAccount to it and used either grant loses it on upgrade.
+  Nothing in bosun does, at any setting.
+
+  Doing it now rather than leaving them is the point. Widening that role is a
+  patch and narrowing it is a breaking change, so a resource granted against a
+  feature nobody has written books a breaking change for something that may
+  never arrive. The same asymmetry is why `freights` and `analysisruns` stay:
+  this is the release that reads them. `charts/bosun/templates/rbac.yaml`
+  carries the rule, next to the list it governs.
 
 ## [0.25.0] - 2026-08-29
 
