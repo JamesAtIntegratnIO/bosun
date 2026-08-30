@@ -43,6 +43,67 @@ All notable changes to `bosun`. Format follows
 
 ### Added
 
+- **A read-only MCP server, on a listener of its own, with its first tool.**
+  Bosun computes the most expensive facts in the promotion loop -- why a Stage
+  silently stopped promoting, and the exact command that unsticks it -- and
+  until now published them only as prose: a comment on a pull request, a page
+  behind a port-forward, a metrics endpoint. That is right for a person reading
+  a page and useless to the agents people actually work through, which were
+  left scraping markdown written for somebody else.
+
+  `pipeline_report` answers with the last sweep's findings as typed values:
+  kind, severity, subject, the evidence with its numbers, how long the
+  situation has held, and where one exists the paste-ready command that
+  recovers it, worst first. Beside them travels the sweep's own accounting of
+  what it examined, so a report with no findings can prove it looked.
+
+  Nothing is computed. Every answer comes from the snapshot the sweep already
+  holds, so a request reaches no git host, no cluster and no model, and a
+  chatty client cannot spend an install's rate limit. Nothing mutates, because
+  no tool does and none is planned: the ClusterRole has no write verb and the
+  reason is written down.
+
+  Three rules land here rather than being retrofitted onto the three tools
+  that follow. **Honest absence is structural**: before the first sweep the
+  `findings` field is ABSENT rather than empty, and the result says in words
+  that nothing has looked -- the same distinction the HTTP surfaces make with
+  a 503, in the one shape JSON can carry it. **Every result is
+  repository-stamped** and carries the sweep timestamp and the answer's age.
+  **Facts are typed and text is tagged**: severities, kinds, counts and
+  durations are fields a string cannot forge, and every free-text field says
+  whether bosun wrote all of it or quoted a cluster inside it, because these
+  answers land in agents holding tools bosun refuses for itself.
+
+  Two controls keep credentials off the surface, in that order. The primary
+  one is a compile-time rule -- the `mcp` package imports the result types and
+  the redactor and nothing else, so no field path from any tool result reaches
+  a credential, and a reflection walk over the registered result types keeps
+  it true on paths no request exercises. The secondary one is the process
+  redactor from the prefactor before this, applied at the single point where
+  a byte reaches the wire rather than by each handler.
+
+  The transport is a hand-written JSON-RPC handler rather than the official Go
+  SDK, and that was the SDK's dependency graph rather than its API: it adds
+  eight modules to a `go.mod` with four direct requirements, among them
+  `golang.org/x/oauth2` and through it a client for the cloud metadata service
+  at 169.254.169.254 -- which answers instance credentials to anything that
+  asks, and which this project's own NetworkPolicy excepts by name for exactly
+  that reason. The auth check sits behind an interface either way, so the
+  verifier rung after the static token is additive.
+
+- **Every remedy is now composed from pieces bosun validated.** A remedy is
+  the highest-stakes string this project emits, because it is built to be run,
+  and the names interpolated into one come from a Kargo CRD `pipeline`
+  deliberately does not vendor. Every command builder now checks its object
+  names against the RFC1123 subdomain grammar, its repository paths and yq
+  keys against grammars of their own, and emits the finding WITHOUT a remedy
+  rather than a suspect one when a piece fails. Kubernetes validates these
+  names itself, so this is expected never to fire -- which is exactly why it
+  is cheap to enforce and loud when an upstream assumption stops holding. It
+  applies to the status page and the markdown report too, not only to MCP:
+  there is one place remedies are composed, so there is one place they are
+  checked.
+
 - **`web.theme`, so the page's treatment is a deployment decision.** `auto`
   (the default) follows the reader's system preference, which is what the page
   did before; `dark` and `light` stamp `data-theme` on the document -- the same

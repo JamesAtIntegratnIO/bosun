@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -146,7 +147,7 @@ func detectWedged(s *Snapshot) []Finding {
 			Subject:  st.Name,
 			Since:    age,
 			Summary: fmt.Sprintf("%s stopped receiving %s %s ago and will not retry on its own",
-				st.Name, what, human(age)),
+				st.Name, what, Human(age)),
 			Detail: fmt.Sprintf(
 				"Promotion `%s` ended %s and nothing has promoted this freight since. A terminal promotion is "+
 					"final: auto-promotion does not re-run one, because the freight has been promoted as far as "+
@@ -169,9 +170,10 @@ func detectWedged(s *Snapshot) []Finding {
 // from it and then validates the generateName itself as RFC1123, which a
 // trailing dot fails.
 func promoteCmd(ns, stage, freight string) string {
-	if ns == "" {
-		ns = "<namespace>"
+	if !safeNames(ns, stage, freight) {
+		return ""
 	}
+	ns = orNS(ns)
 	return fmt.Sprintf(`# Re-run it. A Warehouse refresh will NOT: it re-discovers artifacts,
 # and freight with a terminal promotion is never auto-promoted again.
 kubectl create -f - <<'EOF'
@@ -215,7 +217,7 @@ func detectStalled(s *Snapshot) []Finding {
 					Subject:  w.Name,
 					Since:    age,
 					Summary: fmt.Sprintf("Warehouse %s last discovered %s ago, on a %s interval",
-						w.Name, human(age), human(w.Interval)),
+						w.Name, Human(age), Human(w.Interval)),
 					Detail: "It has missed at least two sweeps. That is long enough not to be a slow " +
 						"registry, and a Warehouse that stopped looking is a pipeline that stopped delivering.",
 					Remedy: refreshCmd(w.Namespace, w.Name),
@@ -227,9 +229,10 @@ func detectStalled(s *Snapshot) []Finding {
 }
 
 func refreshCmd(ns, name string) string {
-	if ns == "" {
-		ns = "<namespace>"
+	if !safeNames(ns, name) {
+		return ""
 	}
+	ns = orNS(ns)
 	return fmt.Sprintf(`kubectl -n %s annotate warehouse %s \
   kargo.akuity.io/refresh="$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)" --overwrite`, ns, name)
 }
@@ -275,7 +278,7 @@ func detectOrphanedPromotions(s *Snapshot) []Finding {
 			Subject:  p.Stage,
 			Since:    age,
 			Summary: fmt.Sprintf("%s has been waiting %s for a pull request that is no longer open",
-				p.Stage, human(age)),
+				p.Stage, Human(age)),
 			Detail: fmt.Sprintf("Promotion `%s` is Running and its branch `%s` has no open pull request. "+
 				"Its last step waits for that pull request to merge, so it will hold this Stage's queue "+
 				"until it times out — nothing else promotes past it in the meantime.",
@@ -294,9 +297,10 @@ func detectOrphanedPromotions(s *Snapshot) []Finding {
 // running, which is indistinguishable from the annotation not having been
 // applied. Measured the hard way.
 func abortCmd(ns, promotion string) string {
-	if ns == "" {
-		ns = "<namespace>"
+	if !safeNames(ns, promotion) {
+		return ""
 	}
+	ns = orNS(ns)
 	return fmt.Sprintf(`# NOTE: abort=true is silently ignored. It must be the request object.
 kubectl -n %s annotate promotion %s \
   'kargo.akuity.io/abort={"action":"terminate"}' --overwrite`, ns, promotion)
@@ -328,9 +332,11 @@ func detectSupersededPRs(s *Snapshot) []Finding {
 			}
 		}
 		var older []string
+		var olderNumbers []int
 		for _, pr := range prs {
 			if pr.Number != newest.Number {
 				older = append(older, fmt.Sprintf("#%d", pr.Number))
+				olderNumbers = append(olderNumbers, pr.Number)
 			}
 		}
 		out = append(out, Finding{
@@ -342,19 +348,33 @@ func detectSupersededPRs(s *Snapshot) []Finding {
 			Detail: fmt.Sprintf("#%d is current; %s promote freight this Stage has already moved past. "+
 				"They cannot merge, but they still collect gate runs and triage comments, and they crowd "+
 				"the list a human reads.", newest.Number, joinAnd(older)),
-			Remedy: fmt.Sprintf("gh pr close %s --comment 'superseded by #%d'",
-				strings.Join(trimHashes(older), " "), newest.Number),
+			Remedy: closeCmd(olderNumbers, newest.Number),
 		})
 	}
 	return out
 }
 
-func trimHashes(in []string) []string {
-	out := make([]string, 0, len(in))
-	for _, s := range in {
-		out = append(out, strings.TrimPrefix(s, "#"))
+// closeCmd closes the superseded pull requests.
+//
+// A builder rather than a Sprintf at the call site, for the same reason the
+// kubectl commands are: every remedy this package emits comes out of a
+// function that has already decided its pieces are safe to interpolate, and a
+// remedy composed inline is one nobody checked. Here the pieces are pull
+// request numbers, so the grammar is "a positive integer" -- `gh pr close -1`
+// is a flag, not a pull request.
+func closeCmd(older []int, newest int) string {
+	if newest <= 0 || len(older) == 0 {
+		return ""
 	}
-	return out
+	nums := make([]string, 0, len(older))
+	for _, n := range older {
+		if n <= 0 {
+			return ""
+		}
+		nums = append(nums, strconv.Itoa(n))
+	}
+	return fmt.Sprintf("gh pr close %s --comment 'superseded by #%d'",
+		strings.Join(nums, " "), newest)
 }
 
 // detectVerificationStuck finds a Stage that a verification has stopped.
@@ -406,7 +426,7 @@ func detectVerificationStuck(s *Snapshot) []Finding {
 		if over {
 			f.Severity = Blocking
 			f.Summary = fmt.Sprintf("%s stopped promoting %s ago: its verification ended %s and Kargo will not re-run it",
-				st.Name, human(st.ReadySince), strings.ToLower(st.VerificationPhase))
+				st.Name, Human(st.ReadySince), strings.ToLower(st.VerificationPhase))
 			freight := "That freight"
 			if held != "" {
 				freight = "That freight (" + held + ")"
@@ -423,7 +443,7 @@ func detectVerificationStuck(s *Snapshot) []Finding {
 			f.Remedy = reverifyCmd(st.Namespace, st.Name, st.VerificationID)
 		} else {
 			f.Summary = fmt.Sprintf("%s has been verifying for %s, and nothing promotes past it meanwhile",
-				st.Name, human(st.ReadySince))
+				st.Name, Human(st.ReadySince))
 			switch {
 			case haveMetric && metric.Unbounded:
 				// The general claim below used to be made in every one of
@@ -473,6 +493,9 @@ func verificationDetail(v Verification, m VerifyMetric) string {
 // age, and hope the newest is the right one. That guess is what the reference
 // removes.
 func analysisCmd(stageNS string, v Verification, known bool) string {
+	if !safeNames(stageNS, v.Namespace, v.Name) {
+		return ""
+	}
 	if !known {
 		return fmt.Sprintf("kubectl -n %s get analysisruns --sort-by=.metadata.creationTimestamp | tail -5\n"+
 			"kubectl -n %s get analysisrun <name> -o jsonpath='{.status.metricResults}'",
@@ -503,6 +526,9 @@ func isTerminalVerification(phase string) bool {
 // until something asks it again. Proved by fixing a NetworkPolicy and watching
 // three Stages not move.
 func reverifyCmd(ns, stage, id string) string {
+	if !safeNames(ns, stage, id) {
+		return ""
+	}
 	ns = orNS(ns)
 	if id == "" {
 		return fmt.Sprintf(`# find the verification id, then ask for it again:
@@ -578,8 +604,7 @@ func detectDeadPins(s *Snapshot) ([]Finding, int) {
 					Detail: fmt.Sprintf("The promotion rewrites %s in a file that is not there. The step "+
 						"does not fail on a missing key, so the promotion will keep succeeding and keep "+
 						"changing nothing.", plural(len(u.Keys), "key")),
-					Remedy: fmt.Sprintf("# point the target at the file's new home, or drop it:\n"+
-						"grep -rn 'file: .*%s' --include=values.yaml .", trimDir(path)),
+					Remedy: findFileCmd(path),
 				})
 			case len(dead) > 0:
 				out = append(out, Finding{
@@ -594,13 +619,35 @@ func detectDeadPins(s *Snapshot) ([]Finding, int) {
 						"declaring them — and the target that writes them is often for a DIFFERENT artifact "+
 						"than the chart that reads them, which is why nothing connects the two.",
 						bullets(dead)),
-					Remedy: fmt.Sprintf("# confirm, then remove them from the target's `keys:` list:\n"+
-						"yq '%s' %s", u.Keys[0], path),
+					Remedy: deadKeyCmd(path, u.Keys),
 				})
 			}
 		}
 	}
 	return out, scanned
+}
+
+// findFileCmd looks for wherever the file the target names went.
+func findFileCmd(path string) string {
+	if !safePath(path) {
+		return ""
+	}
+	return fmt.Sprintf("# point the target at the file's new home, or drop it:\n"+
+		"grep -rn 'file: .*%s' --include=values.yaml .", trimDir(path))
+}
+
+// deadKeyCmd shows what the file does set, so the dead keys can be removed
+// from the target with the file in front of the reader.
+//
+// Both pieces come from a `yaml-update` step in somebody's values file rather
+// than from Kubernetes, so neither gets the object-name grammar; see remedy.go
+// for why they get one at all.
+func deadKeyCmd(path string, keys []string) string {
+	if len(keys) == 0 || !safePath(path) || !safeKeys(keys) {
+		return ""
+	}
+	return fmt.Sprintf("# confirm, then remove them from the target's `keys:` list:\n"+
+		"yq '%s' %s", keys[0], path)
 }
 
 func bullets(in []string) string {
@@ -665,12 +712,20 @@ func detectPendingStuck(s *Snapshot) []Finding {
 			Subject:  st.Name,
 			Since:    age,
 			Summary: fmt.Sprintf("%s has had a promotion Pending for %s, so nothing is reaching this Stage",
-				st.Name, human(age)),
+				st.Name, Human(age)),
 			Detail: detail,
-			Remedy: fmt.Sprintf("kubectl -n %s get promotions --sort-by=.metadata.creationTimestamp | tail -5\n"+
-				"kubectl -n %s describe promotion %s",
-				orNS(oldest.Namespace), orNS(oldest.Namespace), oldest.Name),
+			Remedy: describePendingCmd(oldest.Namespace, oldest.Name),
 		})
 	}
 	return out
+}
+
+// describePendingCmd shows the queue and then the promotion holding it.
+func describePendingCmd(ns, promotion string) string {
+	if !safeNames(ns, promotion) {
+		return ""
+	}
+	ns = orNS(ns)
+	return fmt.Sprintf("kubectl -n %s get promotions --sort-by=.metadata.creationTimestamp | tail -5\n"+
+		"kubectl -n %s describe promotion %s", ns, ns, promotion)
 }

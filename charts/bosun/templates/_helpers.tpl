@@ -65,6 +65,22 @@ app.kubernetes.io/instance: {{ .Release.Name }}
      timeout at the gateway that points at the gateway. Refused here, where the
      missing value has a name. */}}
 {{- if and .Values.web.enabled (or .Values.web.httpRoute.enabled .Values.web.ingress.enabled) .Values.networkPolicy.enabled (not .Values.web.allowFrom) }}{{ fail "bosun: web.allowFrom is empty while the status page is published and the NetworkPolicy is on, so nothing may reach the page's port; name your gateway's namespace, e.g. [{namespace: gateway-system}]" }}{{ end -}}
+{{/* The MCP surface with nothing to authenticate with.
+
+     The binary already refuses to start that listener and says why at every
+     start-up, which is the right behaviour for a hand-edited Deployment. It is
+     the wrong place to find out from a values file: the pod runs, the Service
+     publishes a port, and the only symptom is one WARNING in a log nobody is
+     reading. Refused here, at install time, where the missing value has a name.
+
+     `dangerouslyServeWithoutAuthentication` is the way past it, and it is
+     spelled to be uncomfortable to type on purpose. */}}
+{{- if and .Values.mcp.enabled (not .Values.mcp.existingSecret) (not .Values.mcp.dangerouslyServeWithoutAuthentication) }}{{ fail "bosun: mcp.existingSecret is required when mcp.enabled is true; without a token the MCP listener does not start at all. This chart never creates a Secret -- mint a token and name the Secret holding it. If you genuinely want an unauthenticated read API on that port, say so with mcp.dangerouslyServeWithoutAuthentication" }}{{ end -}}
+{{/* The MCP surface published to nobody. Same shape as web.allowFrom above,
+     and it matters more here: this is the listener built to be reached from
+     outside the cluster, so a policy that admits nothing is a surface that
+     answers nothing, from a port that looks published. */}}
+{{- if and .Values.mcp.enabled .Values.networkPolicy.enabled (not .Values.mcp.allowFrom) }}{{ fail "bosun: mcp.allowFrom is empty while the MCP surface is enabled and the NetworkPolicy is on, so nothing may reach its port; name the namespace your client or gateway runs in, e.g. [{namespace: gateway-system}]" }}{{ end -}}
 {{/* A route with the page switched off publishes a port the pod does not
      listen on, and neither the Service nor the route says so. */}}
 {{- if and (not .Values.web.enabled) (or .Values.web.httpRoute.enabled .Values.web.ingress.enabled) }}{{ fail "bosun: web.httpRoute or web.ingress is enabled while web.enabled is false; there would be nothing listening behind the route" }}{{ end -}}

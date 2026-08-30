@@ -1,0 +1,17 @@
+{
+  "id": 1,
+  "jsonrpc": "2.0",
+  "result": {
+    "tools": [
+      {
+        "description": "What bosun's last pipeline sweep found: promotions that ended without delivering, Warehouses that stopped discovering, verifications that will not re-run, and tracked pins that write nowhere. Each finding carries a typed kind and severity, how long the situation has held, and where one exists the exact command that recovers it. Findings are ordered worst first. The result also carries what the sweep managed to examine, so that a report with no findings can be told apart from a sweep that could not look. Answers from the last sweep's snapshot: it reaches no cluster, no git host and no model, and it can change nothing.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {},
+          "type": "object"
+        },
+        "name": "pipeline_report"
+      }
+    ]
+  }
+}

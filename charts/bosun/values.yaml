@@ -20,6 +20,13 @@ service:
   # The status page's port. See `web` below for why it is a second port and
   # not a path on the first.
   webPort: 8081
+  # The MCP surface's port. Its own, and for the same reason as `webPort`:
+  # both a NetworkPolicy and a gateway draw their lines at the port, so
+  # "let an agent read what the sweep found" only stays a smaller decision
+  # than "expose the endpoint that spends money and writes to your
+  # repository" if the two never share a listener. Nothing is rendered for
+  # it unless `mcp.enabled` is true.
+  mcpPort: 8082
 
 # The status page.
 #
@@ -124,6 +131,74 @@ web:
   # Empty admits nothing, which is the honest default: the page is not
   # published until you say where from. Naming your gateway's namespace is the
   # usual answer, and it is the same shape as every other peer in this file.
+  #
+  # e.g. [{namespace: gateway-system, podSelector: {app: envoy}}]
+  allowFrom: []
+
+# The read-only MCP surface.
+#
+# One MCP server, on its own port, serving what the last pipeline sweep found
+# as typed values an agent can branch on: each finding's kind, severity,
+# subject, evidence, how long it has held, and the exact command that recovers
+# it. It is the same state the status page renders, for the readers who are
+# not people.
+#
+# It computes nothing. Every answer comes from the snapshot the sweep already
+# left in memory, so a request costs no git API call, no cluster read and no
+# model call, and a chatty client cannot spend your rate limit. Nothing it
+# serves can change anything: there is no mutating tool, and there is not going
+# to be one -- the ClusterRole this chart writes has no write verb anywhere.
+#
+# OFF BY DEFAULT, and that is not a preference the way `web.enabled` is.
+# Upgrading an install must not open a new programmatic API on it. Turning this
+# on is a decision, and it needs a second one -- a token -- before anything
+# listens.
+#
+# What it reveals is what the status page reveals: the repository's name, your
+# Stage and Warehouse names, the findings and their remedies. No credential, no
+# prompt, no rendered diff. The difference is who reads it and what they hold:
+# these answers land in somebody's coding agent, which usually has a shell and
+# a checkout, so treat the token the way you would treat read access to your
+# pipeline's status handed to a program.
+mcp:
+  enabled: false
+
+  # The Secret holding the bearer token the listener requires.
+  #
+  # Required when `enabled` is true, and there is deliberately no default and
+  # no generated value: this chart never creates a Secret, and a token this
+  # chart invented would be one nobody could hand to a client.
+  #
+  # WITHOUT IT THE LISTENER DOES NOT START. The pod runs, the gate and the
+  # triage endpoint keep working, and the log says why at every start-up. That
+  # is deliberately unlike `promotionAuth`, whose caller is Kargo inside the
+  # cluster and whose unauthenticated form predates that setting; this surface
+  # is new and is built to be reached from outside the cluster, where "a token
+  # nobody set" and "an open API" are the same thing.
+  #
+  # Mint your own and put it in a Secret:
+  #   kubectl -n <ns> create secret generic bosun-mcp   #     --from-literal=token="$(head -c 32 /dev/urandom | base64)"
+  existingSecret: ""
+  tokenKey: token
+
+  # Run it with NO AUTHENTICATION AT ALL.
+  #
+  # Named the way it is because it should be uncomfortable to type and
+  # impossible to skim past in a values file. Anything that can reach this
+  # port then reads everything this install holds about your pipeline.
+  #
+  # There are real reasons to want it -- a gateway in front that already
+  # authenticates every request, or a laptop-bound experiment -- and it exists
+  # so those people do not instead discover that leaving the token empty
+  # works. It is not what an omission reaches: an unset token stops the
+  # listener rather than opening it.
+  dangerouslyServeWithoutAuthentication: false
+
+  # Who may reach the MCP port, when the NetworkPolicy is on.
+  #
+  # Empty admits nothing, which is the honest default and the same one
+  # `web.allowFrom` has: the surface is not reachable until you say where
+  # from. Naming your gateway's namespace is the usual answer.
   #
   # e.g. [{namespace: gateway-system, podSelector: {app: envoy}}]
   allowFrom: []

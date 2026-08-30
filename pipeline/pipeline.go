@@ -186,9 +186,13 @@ func (r *Report) Counts() map[Kind]map[Severity]int {
 	return out
 }
 
-// human renders a duration the way an operator says it: the largest unit that
+// Human renders a duration the way an operator says it: the largest unit that
 // still carries information. "72h0m0s" is a number a machine wrote.
-func human(d time.Duration) string {
+//
+// Exported for the same reason Severity.Mark is: more than one surface prints
+// these, and a finding that reads "3d" on the status page and "72h" over MCP
+// is one finding wearing two ages.
+func Human(d time.Duration) string {
 	switch {
 	case d <= 0:
 		return ""

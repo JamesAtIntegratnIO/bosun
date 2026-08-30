@@ -194,6 +194,41 @@ type Config struct {
 	// LiveReadsArgoCDNamespace is where Applications live.
 	LiveReadsArgoCDNamespace string
 
+	// MCP serves the read-only MCP surface on its own listener at MCPAddr.
+	//
+	// A third port, for the reason the status page has a second one: a
+	// NetworkPolicy and a gateway both draw their lines at the port, so a
+	// read-only surface stays smaller than the endpoint that spends money and
+	// writes to the repository only if the two never share a listener.
+	//
+	// Off by default, and unlike the status page that is not a preference. An
+	// upgrade must not open a new authenticated programmatic API on an install
+	// whose operator has not decided to have one.
+	MCP     bool
+	MCPAddr string
+
+	// MCPToken is the bearer token the MCP listener requires.
+	//
+	// Empty means the listener does not start, which is deliberately unlike
+	// PromotionToken. That endpoint's caller is Kargo inside the cluster and
+	// its unauthenticated form predates the setting, so requiring a token
+	// there would break every install that upgraded into it. This surface is
+	// new, and it is built to be reached from OUTSIDE the cluster, where "a
+	// token nobody set" and "an open API" are the same thing.
+	MCPToken string
+
+	// MCPAllowUnauthenticated runs the listener with no authentication at all.
+	//
+	// The escape hatch, and it is spelled to be regretted on sight:
+	// MCP_DANGEROUSLY_SERVE_WITHOUT_AUTHENTICATION. It exists because somebody
+	// genuinely does want it -- a gateway in front that already authenticates,
+	// a laptop-bound experiment -- and because the alternative to an explicit
+	// hatch is people discovering that an empty token works.
+	//
+	// It is never what an omission reaches. An unset token does not fall back
+	// to this; it stops the listener.
+	MCPAllowUnauthenticated bool
+
 	// PromotionToken is the bearer token POST /v1/promotion-opened requires.
 	//
 	// Empty means unauthenticated, which is what every deployment before this
@@ -331,6 +366,19 @@ func LoadConfig() (*Config, error) {
 
 	// The shared secret the promotion endpoint requires, when there is one.
 	c.PromotionToken = strings.TrimSpace(secret("PROMOTION_TOKEN"))
+
+	// The MCP surface. Off unless an operator said otherwise, which is the one
+	// default on this listener that is not negotiable: everything else here is
+	// a preference, and this is the difference between an upgrade and a new
+	// programmatic API somebody did not ask for.
+	c.MCP = b("MCP", false)
+	c.MCPAddr = env("MCP_ADDR", ":8082")
+	// TrimSpace for the reason every credential gets it: a mounted Secret
+	// carries its file's trailing newline, and a token that differs from the
+	// operator's by one invisible byte fails as "unauthorized", which is the
+	// symptom of a dozen unrelated mistakes.
+	c.MCPToken = strings.TrimSpace(secret("MCP_TOKEN"))
+	c.MCPAllowUnauthenticated = b("MCP_DANGEROUSLY_SERVE_WITHOUT_AUTHENTICATION", false)
 	if c.MaxConcurrentTriage, err = envInt("MAX_CONCURRENT_TRIAGE", 4); err != nil {
 		return nil, err
 	}
@@ -466,6 +514,7 @@ func (c *Config) Secrets() []string {
 		c.LLMKey,
 		c.ArgoCDToken,
 		c.PromotionToken,
+		c.MCPToken,
 	}
 }
 

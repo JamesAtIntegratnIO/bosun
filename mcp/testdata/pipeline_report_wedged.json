@@ -1,0 +1,48 @@
+{
+  "ageSeconds": 90,
+  "clean": false,
+  "examined": {
+    "namespaces": [
+      "addons"
+    ],
+    "notes": [
+      {
+        "origin": "bosun-quoting-cluster",
+        "text": "pins were not checked: no checkout was available, so a tracked key that writes nowhere would not have been found"
+      }
+    ],
+    "pins": 0,
+    "promotions": 1,
+    "pullRequests": 1,
+    "stages": 2,
+    "warehouses": 1
+  },
+  "findings": [
+    {
+      "age": "3d",
+      "ageSeconds": 259200,
+      "detail": {
+        "origin": "bosun-quoting-cluster",
+        "text": "Promotion `external-secrets.01abc.f08f1c9` ended errored and nothing has promoted this freight since. A terminal promotion is final: auto-promotion does not re-run one, because the freight has been promoted as far as the controller is concerned — the attempt merely failed. Every Application this Stage manages stays Synced and Healthy on the previous version, which is why nothing else reports it.\n\nWhy it ended: step \"step-8\": lookup api.github.com: server misbehaving"
+      },
+      "kind": "wedged_promotion",
+      "remedy": {
+        "command": "# Re-run it. A Warehouse refresh will NOT: it re-discovers artifacts,\n# and freight with a terminal promotion is never auto-promoted again.\nkubectl create -f - \u003c\u003c'EOF'\napiVersion: kargo.akuity.io/v1alpha1\nkind: Promotion\nmetadata:\n  generateName: external-secrets          # no trailing dot: the webhook validates this as RFC1123\n  namespace: addons\nspec:\n  stage: external-secrets\n  freight: f08f1c9\nEOF",
+        "origin": "bosun"
+      },
+      "severity": "blocking",
+      "subject": "external-secrets",
+      "summary": {
+        "origin": "bosun-quoting-cluster",
+        "text": "external-secrets stopped receiving artifacts 3d ago and will not retry on its own"
+      }
+    }
+  ],
+  "repository": "example/platform",
+  "status": {
+    "origin": "bosun",
+    "text": "🔴 Promotion pipeline — 1 Stage not delivering"
+  },
+  "swept": true,
+  "sweptAt": "2026-08-30T12:00:00Z"
+}

@@ -1,0 +1,28 @@
+{
+  "ageSeconds": 90,
+  "clean": true,
+  "examined": {
+    "namespaces": [
+      "addons"
+    ],
+    "notes": [
+      {
+        "origin": "bosun-quoting-cluster",
+        "text": "pins were not checked: no checkout was available, so a tracked key that writes nowhere would not have been found"
+      }
+    ],
+    "pins": 0,
+    "promotions": 0,
+    "pullRequests": 0,
+    "stages": 1,
+    "warehouses": 1
+  },
+  "findings": [],
+  "repository": "example/platform",
+  "status": {
+    "origin": "bosun",
+    "text": "Pipeline healthy — 1 Stage, 1 Warehouse and 0 promotions checked"
+  },
+  "swept": true,
+  "sweptAt": "2026-08-30T12:00:00Z"
+}

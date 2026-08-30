@@ -290,6 +290,42 @@ Set `promotionAuth.existingSecret` on the bosun chart and
 opt-in: leaving it unset keeps the endpoint open, and the pod says so in its
 log at every start-up.
 
+## What the MCP surface may reveal, and what it cannot
+
+The read-only MCP listener serves the sweep's own findings to programmatic
+callers. It is off by default, it refuses to start without a bearer token, and
+it is on a port of its own so that admitting a client to it never admits one to
+the endpoint that spends money and writes to the repository.
+
+Two things about it differ from every surface above, and both come from who is
+reading. Its answers land in another agent -- one that usually holds a shell, a
+checkout, and tools bosun refuses for itself.
+
+**No field path from a tool result can reach a credential, and that is a
+compile-time rule rather than a filter.** The `mcp` package imports the result
+types and the redactor and nothing else, so it cannot reach a client, a
+configuration, or a file. A reflection walk over every registered result type
+keeps it true on the paths no request exercises, because a behavioural test can
+only sample what a handler happened to produce. Underneath that sits the
+process redactor, applied at the single point where a byte reaches the wire:
+the primary control is that a credential cannot be in a result, and this is the
+second line for the text whose contents nobody chose.
+
+**Instructions in a result are bosun's own or absent.** A remedy is composed
+only by bosun's code, from pieces checked against a grammar before the command
+is emitted at all -- a piece that fails costs the finding its remedy rather than
+producing a suspect command. Every other free-text field carries an origin
+saying whether bosun wrote all of it or quoted a cluster inside it, and tool
+descriptions are constants, so nothing from a cluster reaches the field a client
+hands its model as instructions.
+
+**What it does not offer is sanitised text.** Bosun cannot make a careless
+client safe, and text sanitized to harmlessness does not exist. What it
+guarantees is provenance labelling and bosun-authored instructions only; a
+client that treats an origin-tagged quotation as an instruction has made a
+decision bosun cannot take back. The residual risk is real and it is stated
+here rather than left implied.
+
 ## Why a verdict names a commit
 
 Every checkout clones a branch; every verdict is published against the head SHA
