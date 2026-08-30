@@ -111,6 +111,49 @@ All notable changes to `bosun`. Format follows
 
 ### Changed
 
+- **Redaction is one thing the process owns, not a helper each git provider
+  reaches for.** A credential is taken out of text by `redact`: primed once at
+  start-up with every secret `config.go` loaded, and read through
+  `redact.Text` by any surface holding text it is about to log, post, or wrap
+  into an error.
+
+  The reasoning was already written down one level lower, on an unexported
+  helper the two git providers shared: no push embeds a credential in its
+  remote URL any more, but git quotes back whatever the server says and a
+  misconfigured host can echo a credential it was sent, so what git prints on
+  a failed push is not safe to forward unread. None of that is about git.
+  helm is a subprocess whose stderr becomes an error; the ArgoCD, Kubernetes
+  and model clients all turn responses into text somebody reads. Every one of
+  them was reached through a credential.
+
+  **What a pull request comment says is unchanged**, with one exception below.
+  Both push call sites still name the token they were built with, so a
+  provider constructed outside the composition root redacts its own credential
+  whether or not anything primed the process, and GitHub still names the
+  installation token minted for that one push, which start-up never saw.
+
+  Two rules the package exists to hold, and the second is the exception. An
+  unset credential -- and most installs configure only some of the five -- is
+  dropped rather than used, because `strings.ReplaceAll(s, "", m)` is a rule
+  that matches everywhere and turns every string in the process into confetti.
+  And a credential containing another is replaced whole, longest first. That
+  one is a real change: the old `redactErr(redactErr(s, tok), g.Token)` ran
+  the two in argument order, so where an installation token and the static one
+  shared a prefix the shorter went first and left the longer one's tail
+  standing in text now carrying a marker that claimed it was handled.
+
+  **Three derived tests, because the list is the half that rots.**
+  `redaction_test.go` walks `config.go`'s syntax tree for every call to
+  `envSecret`, loads a `Config` whose every credential is a distinct sentinel,
+  and fails if the redactor lets one through; it also walks `main.go`, so
+  deleting the one line that primes the process fails rather than passing.
+  `gitprovider/redaction_test.go` derives from the mechanism instead of the
+  call sites: `pushAuthEnv` is how a credential reaches git, so a function
+  that calls it and then quotes what git wrote to stderr must pass that text
+  through `redact.Text`. That last one is the incident the deleted helper's
+  own comment described -- gitea called it, github inlined two `ReplaceAll`
+  calls, and only one of the two was reviewed when the rules last changed.
+
 - **The status page wears the project's own colours.** It shipped in GitHub's
   palette -- `#0969da` links, `#0d1117` ground -- with an anchor emoji for a
   mark, none of which is Bosun's. That made the page a second place the brand

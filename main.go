@@ -59,6 +59,7 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 	"github.com/JamesAtIntegratnIO/bosun/pipeline"
+	"github.com/JamesAtIntegratnIO/bosun/redact"
 	"github.com/JamesAtIntegratnIO/bosun/supervisor"
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
 	"github.com/JamesAtIntegratnIO/bosun/web"
@@ -71,6 +72,11 @@ func main() {
 	if err != nil {
 		logger.Fatalf("configuration: %v", err)
 	}
+	// Before anything else is built, because everything built after this can
+	// fail with a message that quotes what it was given. A credential does not
+	// reach a log or a pull-request comment by being printed on purpose; it
+	// reaches one by being echoed back inside somebody else's error string.
+	redact.Prime(cfg.Secrets()...)
 	if cfg.NormaliseLegacyAuthor() {
 		logger.Print("ignoring the legacy author bosun <bosun@users.noreply.github.com>: " +
 			"that is the noreply address of an unrelated GitHub account; deriving the commit identity instead")

@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/JamesAtIntegratnIO/bosun/redact"
 )
 
 // The Gitea implementation is a port of the GitHub one, so the tests worth
@@ -178,9 +180,26 @@ func TestGiteaAddLabelCreatesAMissingLabel(t *testing.T) {
 
 // An HTTP failure carries the request URL, and PushFix's remote carries the
 // token. Nothing that reaches a log or a pull request comment may contain it.
+//
+// Both halves of the call PushFix makes, because the provider must hold on its
+// own: the token it was built with is named at the call site, so it goes
+// whether or not a composition root ever primed the process, and everything
+// the process was primed with goes too.
 func TestGiteaRedactsTheToken(t *testing.T) {
-	if got := redactErr("fatal: https://u:s3cret@host/x.git denied", "s3cret"); got != "fatal: https://u:***@host/x.git denied" {
-		t.Fatalf("redaction left the token in: %q", got)
+	t.Cleanup(func() { redact.Prime() })
+	redact.Prime("llm-key")
+
+	g := &Gitea{Token: "s3cret"}
+	got := redact.Text("fatal: https://u:s3cret@host/x.git denied, and llm-key expired", g.Token)
+	if want := "fatal: https://u:***@host/x.git denied, and *** expired"; got != want {
+		t.Fatalf("redaction left a credential in:\n got: %q\nwant: %q", got, want)
+	}
+
+	// And unprimed, which is every caller that is not the composition root:
+	// the provider's own credential still goes.
+	redact.Prime()
+	if got := redact.Text("fatal: https://u:s3cret@host/x.git denied", g.Token); got != "fatal: https://u:***@host/x.git denied" {
+		t.Fatalf("an unprimed process left the provider's own token in: %q", got)
 	}
 }
 

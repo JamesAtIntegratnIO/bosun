@@ -441,6 +441,34 @@ func (c *Config) validate() error {
 	return nil
 }
 
+// Secrets is every credential this configuration loaded, for priming the
+// process redactor at start-up.
+//
+// One list, here, beside the fields it names, rather than assembled at the
+// composition root: a credential added to Config is added ten lines from this
+// function, and the reviewer who adds it is the one who can see what is
+// missing. main only forwards what this returns.
+//
+// It is the whole set and not the subset that could plausibly be echoed back.
+// Which credential a misconfigured host quotes into its response is not
+// bosun's to predict, and the cost of an extra entry is one more string
+// comparison per redacted message.
+//
+// Unset entries are the normal case -- App auth leaves GitToken empty, token
+// auth leaves AppPrivateKey empty, and PromotionToken is optional -- and the
+// redactor drops them, because an empty secret used as a rule matches
+// everywhere. See redaction_test.go, which derives this list from config.go's
+// own syntax tree rather than trusting it.
+func (c *Config) Secrets() []string {
+	return []string{
+		c.GitToken,
+		c.AppPrivateKey,
+		c.LLMKey,
+		c.ArgoCDToken,
+		c.PromotionToken,
+	}
+}
+
 // NormaliseLegacyAuthor clears the author identity this project shipped as
 // its chart default for its whole early life, `bosun
 // <bosun@users.noreply.github.com>`, which by now sits copied into consumers'

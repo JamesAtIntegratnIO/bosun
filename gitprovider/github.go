@@ -12,6 +12,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/JamesAtIntegratnIO/bosun/redact"
 )
 
 // GitHub implements Provider against the rest API.
@@ -422,12 +424,17 @@ func (g *GitHub) PushFix(ctx context.Context, pr *PullRequest, root, message str
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
-			// Redact the token before this reaches a log or a PR comment.
-			// Redact the token that was used, not the configured
-			// one; with an App they are different, and leaking a live
-			// installation token into a pull-request comment would be a poor
-			// way to learn that.
-			msg := redactErr(redactErr(stderr.String(), tok), g.Token)
+			// Through the process redactor before it reaches a log or a
+			// pull-request comment; the redact package says why git's own
+			// output is the text this exists for.
+			//
+			// Both tokens are named rather than left to the priming. `tok` is
+			// the one that was actually used, and under an App it is minted
+			// per push, so start-up never saw it; g.Token is named because a
+			// GitHub built anywhere but the composition root -- a test, a
+			// tool -- must still remove its own credential whether or not
+			// anything primed the process.
+			msg := redact.Text(stderr.String(), tok, g.Token)
 			return fmt.Errorf("%s: %w: %s", s.args[1], err, snippet([]byte(msg)))
 		}
 	}
