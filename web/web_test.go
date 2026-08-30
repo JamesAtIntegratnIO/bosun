@@ -198,3 +198,51 @@ func TestPipelineHandlerBeforeFirstSweepIs503ForMachines(t *testing.T) {
 		t.Fatalf("a browser before the first sweep gets the honest page, got %d", rec.Code)
 	}
 }
+
+// The theme reaches the document, and "follow the system" stamps nothing.
+func TestThemeStampsTheDocument(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		theme string
+		want  string
+	}{
+		{"auto stamps no attribute", "", `<html lang="en">`},
+		{"dark", "dark", `<html lang="en" data-theme="dark">`},
+		{"light", "light", `<html lang="en" data-theme="light">`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &Server{Brand: "Bosun", Theme: tc.theme}
+			rec := httptest.NewRecorder()
+			s.Page()(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+
+			if got := rec.Body.String(); !strings.Contains(got, tc.want) {
+				t.Errorf("page does not carry %q", tc.want)
+			}
+			// Scoped to the element, not the document: the stylesheet
+			// mentions data-theme in two selectors, and matching those would
+			// make this assertion pass for the wrong reason.
+			html := rec.Body.String()
+			tag := html[strings.Index(html, "<html"):]
+			tag = tag[:strings.Index(tag, ">")+1]
+			if tc.theme == "" && strings.Contains(tag, "data-theme") {
+				t.Errorf("an unset theme stamped %s; that overrides the reader's system preference", tag)
+			}
+		})
+	}
+}
+
+// The mark is served, and served as an SVG.
+func TestMarkIsServed(t *testing.T) {
+	rec := httptest.NewRecorder()
+	(&Server{}).Mark()(rec, httptest.NewRequest(http.MethodGet, "/mark.svg", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "image/svg+xml" {
+		t.Errorf("Content-Type %q, want image/svg+xml", ct)
+	}
+	if !strings.HasPrefix(rec.Body.String(), "<svg") {
+		t.Error("body is not an SVG")
+	}
+}

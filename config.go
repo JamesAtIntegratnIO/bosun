@@ -34,6 +34,22 @@ type Config struct {
 	Web     bool
 	WebAddr string
 
+	// WebTheme is which of the site's two treatments the page renders in.
+	//
+	// An operator's choice and not a reader's, because the page cannot offer
+	// the reader one. It carries no script -- that is what lets a gateway put
+	// a strict content policy in front of it -- and it refreshes itself every
+	// minute, so the CSS-only toggle that would work without script would be
+	// wiped on every refresh. A cookie would work, and costs a route, a
+	// redirect and a Set-Cookie on a page that currently sets nothing.
+	//
+	// So the choice moves to where this install's other decisions already
+	// live. `auto` follows the reader's system preference, which is the right
+	// default and is what the page did before this existed; `dark` and
+	// `light` stamp the same `data-theme` attribute the site uses, and win
+	// over the system preference in both directions.
+	WebTheme WebThemeName
+
 	// Version is what the operator deployed, shown on the status page. The
 	// chart passes its appVersion; empty falls back to the binary's own build
 	// stamp, which an image built without its .git directory does not have.
@@ -214,6 +230,7 @@ func LoadConfig() (*Config, error) {
 	c := &Config{
 		Addr:                     env("AGENT_ADDR", ":8080"),
 		WebAddr:                  env("WEB_ADDR", ":8081"),
+		WebTheme:                 WebThemeName(env("WEB_THEME", "auto")),
 		Version:                  os.Getenv("AGENT_VERSION"),
 		Brand:                    env("AGENT_BRAND", "Bosun"),
 		GitProvider:              GitProviderName(env("GIT_PROVIDER", "github")),
@@ -378,6 +395,21 @@ func (c *Config) validate() error {
 	case GitGitHub, GitGitea:
 	default:
 		return fmt.Errorf("GIT_PROVIDER %q is not implemented yet -- see docs/git-providers.md", c.GitProvider)
+	}
+
+	// Refused rather than defaulted. A typo here renders a page in the theme
+	// the operator did not choose and says nothing about it, which is the
+	// quiet kind of wrong this whole component exists to notice elsewhere.
+	//
+	// The empty string is the one exception, and it is not a fourth value: it
+	// is the zero value of a Config nobody set this on. `env` turns an unset
+	// or empty WEB_THEME into "auto" before this runs, so "" cannot reach
+	// here from the environment -- only from a Config built in code, where
+	// rejecting a field the caller never mentioned would be the wrong answer.
+	switch c.WebTheme {
+	case "", WebThemeAuto, WebThemeDark, WebThemeLight:
+	default:
+		return fmt.Errorf("unknown WEB_THEME %q (auto, dark or light)", c.WebTheme)
 	}
 
 	// Checked here rather than left to the reader's start-up probe, because a
@@ -602,4 +634,17 @@ type LLMProviderName string
 const (
 	LLMOpenAI    LLMProviderName = "openai"
 	LLMAnthropic LLMProviderName = "anthropic"
+)
+
+// WebThemeName is the same shape for the same reason: validated in one switch
+// and rendered in another file. A value the validator accepts and the template
+// does not is a page that silently ignores what the values file asked for.
+type WebThemeName string
+
+const (
+	// WebThemeAuto emits no attribute at all, which is what leaves the page's
+	// media query in charge. It is not a third palette.
+	WebThemeAuto  WebThemeName = "auto"
+	WebThemeDark  WebThemeName = "dark"
+	WebThemeLight WebThemeName = "light"
 )

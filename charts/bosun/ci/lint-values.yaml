@@ -24,6 +24,9 @@ triage:
 # HTTPRoute, the Ingress and the NetworkPolicy rule that admits them, so a
 # template that stopped rendering fails here rather than on somebody's cluster.
 web:
+  # Not the default, so `helm lint` exercises the enum rather than only the
+  # value the schema would accept by omission.
+  theme: dark
   httpRoute:
     enabled: true
     parentRefs:

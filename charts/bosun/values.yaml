@@ -51,6 +51,32 @@ service:
 web:
   enabled: true
 
+  # Which of the two treatments the page renders in.
+  #
+  #   auto   follow the reader's own system preference (the default)
+  #   dark   the badge navy, always
+  #   light  the paper-and-cream treatment, always
+  #
+  # THIS IS AN OPERATOR'S SETTING BECAUSE THE PAGE CANNOT OFFER THE READER
+  # ONE. A toggle needs somewhere to remember the answer, and this page has
+  # nowhere: it carries no script, which is what lets a gateway put a strict
+  # content policy in front of it, and it refreshes itself every minute, so
+  # the CSS-only toggle that works without script would be wiped on every
+  # refresh. A cookie would work, and costs a route, a redirect and a
+  # Set-Cookie on a page that today sets nothing at all.
+  #
+  # `auto` is the honest default and is what the page did before this value
+  # existed. Set it when the reader's preference is the wrong input -- a
+  # wall-mounted dashboard in a dark room, or a screenshot in a document that
+  # has to look the same for everyone.
+  #
+  # Both explicit values beat the system preference in both directions, and
+  # both are the same palette the project's site uses. A value that is not one
+  # of the three is REFUSED at start-up rather than defaulted: a page rendered
+  # in a theme nobody chose, saying nothing about it, is exactly the quiet
+  # wrong this agent exists to notice elsewhere.
+  theme: auto
+
   # Publish it with a Gateway API HTTPRoute.
   #
   # Preferred over `ingress`, and not only on taste. Ingress is feature-frozen;

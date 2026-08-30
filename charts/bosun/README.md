@@ -377,6 +377,20 @@ No credential, no prompt, no rendered diff. Treat it as read access to your
 pipeline's status, because that is what it is, and put your gateway's
 authentication in front of it if that is more than you want published.
 
+`web.theme` picks which of the two treatments it renders in: `auto` (the
+default) follows the reader's own system preference, `dark` and `light` stamp
+`data-theme` on the document and beat that preference in both directions. Both
+are the palette from [the project's site](https://bosun.integratn.io), and a
+value that is not one of the three is refused by the schema at render time.
+
+It is an operator's setting because the page cannot offer the reader one. A
+toggle needs somewhere to remember the answer and this page has nowhere: it
+carries no script, which is what lets you put a strict content policy in front
+of it, and it refreshes itself every minute, so the CSS-only toggle that works
+without script would be wiped on every refresh. Set it when the reader's
+preference is the wrong input -- a wall-mounted dashboard, or a screenshot that
+has to look the same for everyone.
+
 Five values are refused rather than rendered, each because the failure it
 produces points nowhere near its cause:
 

@@ -338,7 +338,16 @@ func main() {
 	// sweep's report with its remedies. It renders only state the process
 	// already holds, so serving it costs no API call anywhere.
 	ws := &web.Server{
-		Brand:      cfg.Brand,
+		Brand: cfg.Brand,
+		// `auto` becomes the empty string, which is what stamps no attribute
+		// and leaves the page's media query in charge. The two names for
+		// "follow the system" meet here and nowhere else.
+		Theme: func() string {
+			if cfg.WebTheme == WebThemeAuto {
+				return ""
+			}
+			return string(cfg.WebTheme)
+		}(),
 		Version:    cfg.Version,
 		Repo:       cfg.GitOwner + "/" + cfg.GitRepo,
 		RepoLink:   repoLink(cfg.GitRepoURL),

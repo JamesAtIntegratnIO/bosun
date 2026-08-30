@@ -11,6 +11,35 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.30.0]
+
+### Added
+
+- **`web.theme`: which of the two treatments the page renders in.** `auto`
+  (the default, and what the page did before this existed) follows the
+  reader's own system preference; `dark` and `light` stamp `data-theme` on the
+  document and beat that preference in both directions. Both are the palette
+  from the project's site.
+
+  ```yaml
+  web:
+    theme: dark
+  ```
+
+  **An operator's setting because the page cannot offer the reader one.** A
+  toggle needs somewhere to remember the answer and this page has nowhere: it
+  carries no script, which is what lets a gateway put a strict content policy
+  in front of it, and it refreshes itself every minute, so the CSS-only toggle
+  that works without script would be wiped on every refresh. Set it when the
+  reader's preference is the wrong input -- a wall-mounted dashboard, or a
+  screenshot that has to look the same for everyone.
+
+  A value that is not one of the three is refused twice: by the schema at
+  render time, so a typo fails `helm template` rather than reaching a pod, and
+  by the agent at start-up if `WEB_THEME` is set directly.
+
+- **`appVersion` 0.30.0**, for the value above.
+
 ## [0.29.1]
 
 - **`appVersion` 0.29.1: the status page wears the project's own colours.**
