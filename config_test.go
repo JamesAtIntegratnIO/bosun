@@ -117,31 +117,32 @@ func TestEveryBooleanSettingAcceptsTheSameWords(t *testing.T) {
 		return v
 	}
 
-	// Off by default: absent means off, and every on-word turns it on.
-	for _, k := range []string{"GIT_INSECURE_SKIP_TLS_VERIFY", "GATE_FORK_PRS", "LIVE_READS"} {
-		if get(t, k, false) {
-			t.Errorf("%s: unset must stay off", k)
+	// The settings and their defaults are read out of config.go itself, not
+	// listed here. The two lists this replaces claimed to be every boolean and
+	// were already short by two -- ARGOCD_INSECURE_SKIP_TLS_VERIFY and WEB --
+	// which is what a hand-written list of things to check always does
+	// eventually. See configBools in config_chart_test.go.
+	bools := configBools(t)
+	for _, k := range sortedKeys(bools) {
+		def := bools[k]
+		if get(t, k, def) != def {
+			t.Errorf("%s: unset must stay %t, which is the default config.go reads it with", k, def)
 		}
+		// Whichever way the default points, both vocabularies must work and
+		// must disagree with each other.
 		for _, w := range onWords {
 			t.Setenv(k, w)
-			if !get(t, k, false) {
+			if !get(t, k, def) {
 				t.Errorf("%s=%s must be on", k, w)
 			}
 		}
-	}
-
-	// On by default: absent means on, and every off-word turns it off.
-	for _, k := range []string{"EXPLAIN_GREEN", "MIGRATE_DROPPED_VERSIONS", "UPSTREAM_NOTES",
-		"STRUCTURAL_MIGRATION", "SUPERVISE_PIPELINE"} {
-		if !get(t, k, true) {
-			t.Errorf("%s: unset must stay on", k)
-		}
 		for _, w := range offWords {
 			t.Setenv(k, w)
-			if get(t, k, true) {
+			if get(t, k, def) {
 				t.Errorf("%s=%s must be off", k, w)
 			}
 		}
+		os.Unsetenv(k)
 	}
 }
 
@@ -287,10 +288,12 @@ func TestEveryCredentialLoadsFromAFile(t *testing.T) {
 		return p
 	}
 
-	// Every credential this file reads. A new one that is not here is a new
-	// one that only arrives through the environment.
-	for _, k := range []string{"GIT_TOKEN", "GITHUB_APP_PRIVATE_KEY", "LLM_API_KEY",
-		"ARGOCD_TOKEN", "PROMOTION_TOKEN"} {
+	// Every credential this file reads, derived from config.go rather than
+	// listed. The comment that used to sit here said "a new one that is not
+	// here is a new one that only arrives through the environment" -- true,
+	// and nothing made it stay true. See configEnv in config_chart_test.go.
+	_, credentials := configEnv(t)
+	for _, k := range sortedKeys(credentials) {
 		t.Run(k, func(t *testing.T) {
 			// A mounted Secret ends in a newline and `echo -n` does not. A
 			// token with a stray \n is rejected exactly the way a wrong token
