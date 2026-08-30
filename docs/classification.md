@@ -16,27 +16,48 @@ the CRD addon is pinned at v1.4.0. Fix: move the CRD pin, provided the exact
 target version appears in the evidence. If it does not, this becomes an
 escalation, and the applier refuses the edit even if the model tries.
 
-## Repaired before a model is asked anything
+## Repaired without a classification
 
-This path runs before the model is called at all, so it is not a
-classification. It is listed here because it handles a case that otherwise
-reads like an escalation.
+These paths run before the model is asked to classify anything, so none of them
+is a verdict on this page's terms. They are listed here because each handles a
+case that otherwise reads like an escalation. Two of the three do call a model.
+What makes those repairs rather than judgements is that code checks the answer
+against the schema or the chart; nothing is accepted for sounding right.
 
 **A CRD stopped serving a version manifests here still declare.**
 external-secrets 2.x stops serving `v1beta1` while 39 manifests still declare
 it. The gate's report names the consumer kind, the dropped versions and the
 version that survives, so the rewrite takes no judgement: every declaring
 manifest gets its `apiVersion` value changed, and the re-run gate re-counts the
-consumers to confirm the repair.
+consumers to confirm the repair. **No model is involved in this one.**
 
-Where the swap alone is not the whole job, because a field the target schema
-would silently prune, one document at a time is sent to a model, which returns
-the complete migrated document. The proposal is refused whole unless it keeps
-the object's identity, fits the target schema, and contains no value that is
-not either at that same path in the original, displaced by the schema change,
-or dictated by the schema itself. A refusal escalates; it never half-applies.
-See [safety-model.md](safety-model.md) and
+**The swap alone is not the whole job**, because the target schema would
+silently prune a field the old version carried. One document at a time is sent
+to a model, which returns the complete migrated document. The proposal is
+refused whole unless it keeps the object's identity, fits the target schema,
+and contains no value that is not either at that same path in the original,
+displaced by the schema change, or dictated by the schema itself. A refusal
+escalates; it never half-applies, and one refused document holds back the plain
+swaps that were fine. See
 [ADR 0007](../adr/0007-structure-from-the-schema-data-from-the-document.md).
+
+**The chart will not render at the new version**, because its
+`values.schema.json` refuses keys this repository has been setting since before
+they were removed. `bosun` 0.20.0 to 0.25.1 carried four of them and helm
+failed before templating anything. The fix needs a key removed, a key renamed
+and sometimes a key added, and none of those is a scalar edit: a deletion has
+no `from` to corroborate against. So the model is shown both schemas and
+returns the whole values document, and the harness requires every value the new
+chart still declares to survive byte-identical, walks the proposal against the
+new schema, refuses any value neither the original nor the schema supplied, and
+**renders the chart with it before writing a line**. What lands is a plan of
+key operations applied one key at a time, so the file keeps its comments. A key
+the new schema requires and names no value for escalates with the key named,
+before the model is called at all. See
+[ADR 0013](../adr/0013-a-values-migration-is-a-plan-not-a-document.md).
+
+The full table of what each harness refuses is in
+[safety-model.md](safety-model.md).
 
 ## Escalated before a model is asked anything
 
@@ -60,6 +81,12 @@ become.
 
 **A document migration the harness refused.** The reshape was attempted and did
 not survive its checks. The comment carries what was lost, and why.
+
+**A values migration the harness refused, or could not place.** The proposal
+retuned a setting it was not about, or helm still would not render with it, or
+the keys it touches do not appear in exactly one of the files this change may
+write to. Zero matches and several are both refusals, because a wrong guess
+about which file holds a chart's values edits a different addon.
 
 **Removed CRDs or dropped subcharts.** kyverno 3.9.0 drops the cleanup
 subcharts several values keys point at, with seven minors of generate-rule

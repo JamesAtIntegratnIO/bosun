@@ -63,12 +63,23 @@ change, the set of clusters it matches did.
 | `removed` | No longer generated. This is a silent uninstall; ArgoCD will prune it. |
 | `moved` | Both, for the same ApplicationSet. Reported as one change, because reporting it as an unrelated add plus an unrelated remove buries the actual shape of what happened. |
 
-**`introduced`**: a whole ApplicationSet that did not exist before. **Not
-blocking.** Adding an addon is a deliberate act by the author of the pull
-request; the dangerous case is an addon that *already existed* quietly changing
-which clusters it reaches. Blocking on both would make every new-addon pull
-request red for a reason nobody needs to investigate, and a check people
-override by habit stops functioning as a check.
+**`introduced`**: a whole ApplicationSet that did not exist before, one entry
+per Application it generates. **Not blocking.** Adding an addon is a deliberate
+act by the author of the pull request; the dangerous case is an addon that
+*already existed* quietly changing which clusters it reaches. Blocking on both
+would make every new-addon pull request red for a reason nobody needs to
+investigate, and a check people override by habit stops functioning as a check.
+
+The entries carry what the diff does not. `cluster` says where the new
+Application lands and `to` says what it renders from. The entry count is the
+number of Applications the change creates, one per cluster the generator
+matched. The report prints the bucket as a **New addons** table, and when
+nothing else changed the verdict headline counts it: *No blocking findings —
+1 new Application, first appearance*.
+
+No rendered-resource changes are reported alongside them. Chart-diff pairs an
+Application's base and head rows to render its chart at both versions, and a
+first appearance has only a head row.
 
 **`versions`**: same Application, same clusters, different `targetRevision`.
 **Not blocking**, because this is the point of an automated bump pipeline.

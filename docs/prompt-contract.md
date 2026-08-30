@@ -214,6 +214,9 @@ Neither the prompt nor the model decides any of this:
 | Cannot invent data when reshaping a document | every value must be in the original or dictated by the target schema |
 | Cannot rename what it reshapes | identity fields byte-identical |
 | Cannot half-migrate | any refusal in a pass refuses the whole push |
+| Cannot retune a setting a values migration was not about | every value the new chart still declares survives byte-identical |
+| Cannot write values helm still refuses | helm must template the chart with the proposal first |
+| Cannot name the file or key it changes | the write is a plan derived from two validated documents, not the model's |
 
 That table is why a 9B model is an acceptable choice here. The model is not
 reliable. Every way it can be wrong is either cheap or refused before it
