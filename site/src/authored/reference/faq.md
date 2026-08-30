@@ -31,19 +31,26 @@ and only files that pass **both** `triage.allowPaths` (a standing grant) and
 `Scope` (the promotion's own file list for this request), and that are not on a
 deny-list configuration cannot remove from.
 
-The model itself writes nothing on any of the three paths where it has a say
-about a file.
+The model authors content on three of those paths and applies none of them. It
+has no file-edit tool, so the question is never whether it wrote something; it
+is what checked the thing it wrote.
 
 On the **mechanical** path it proposes scalar edits, and the applier refuses
-any whose `from` does not match the file. On the **structural** path it authors
-a complete migrated manifest, which the harness parses, checks for identity,
-schema validity and value provenance, and re-serialises from the validated
-structure. On the **values** path, for a bump whose new chart schema refuses
-keys this repository sets, it authors a complete values document; the harness
-requires every value the new chart still declares to survive byte-identical,
-renders the chart with the proposal before writing anything, and then applies
-not the document but a plan of key operations, one key's lines at a time, so
-your comments and formatting are untouched.
+any whose `from` does not match the file. The `to` it names is written to the
+line as it spelled it, so this is the path where the model's own text reaches
+disk; a version-shaped value has to appear in the evidence it was shown, and a
+port does not, which is why a moved port escalates.
+
+On the **structural** path it authors a complete migrated manifest, which the
+harness parses, checks for identity, schema validity and value provenance, and
+re-serialises from the validated structure rather than from its text.
+
+On the **values** path, for a bump whose new chart schema refuses keys this
+repository sets, it authors a complete values document. The harness requires
+every value the new chart still declares to survive byte-identical, renders the
+chart with the proposal before writing anything, and then applies not the
+document but a plan of key operations, one key's lines at a time, so your
+comments and formatting are untouched.
 
 None of the three reaches a branch except through code that can refuse it, and
 each refusal escalates rather than half-applying.

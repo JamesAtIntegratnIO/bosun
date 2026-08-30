@@ -5,14 +5,19 @@
 // default that flipped, a pin that must move with another, a port a policy
 // still names. Everything else it hands to a human.
 //
-// The model never writes. It returns a structured proposal, a verdict with a
-// set of scalar edits, or one whole document reshaped for a schema that moved
-// its fields, and this process applies it, behind an allowlist, a from-value
-// check and a corroboration check for a scalar, and behind identity,
-// schema-validity and value-provenance checks for a document. So "never edit
-// the gate", "never invent a version" and "never invent data" are properties of
-// the code, not requests in a prompt. See docs/safety-model.md,
-// docs/prompt-contract.md and adr/0007.
+// The model never applies, and it authors plenty: a scalar value, one whole
+// document reshaped for a schema that moved its fields, or one whole values
+// document for a chart version that refuses the values in the tree. This
+// process is what writes any of it, behind an allowlist, a from-value check and
+// a corroboration check for a scalar; behind identity, schema-validity and
+// value-provenance checks for a document; and behind those plus a render of the
+// chart itself for values. So "never edit the gate", "never invent a version"
+// and "never invent data" are properties of the code, not requests in a prompt.
+//
+// Not "the model never writes": the scalar it names is written to the line
+// verbatim. It applies nothing and chooses no path, which is the narrower claim
+// and the true one. See docs/safety-model.md, docs/prompt-contract.md, adr/0007
+// and adr/0013.
 //
 // # What lives here
 //

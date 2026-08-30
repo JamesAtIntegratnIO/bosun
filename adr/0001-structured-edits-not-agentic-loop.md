@@ -2,18 +2,27 @@
 
 - **Status:** accepted — **scope widened by
   [ADR 0007](0007-structure-from-the-schema-data-from-the-document.md)** on
-  2026-08-24
+  2026-08-24 and by
+  [ADR 0013](0013-a-values-migration-is-a-plan-not-a-document.md) on 2026-08-29
 - **Date:** 2026-08-22
 
-> **Read this with 0007.** The rule below still holds where it matters: the
-> model does not apply, and the harness does. What changed is the size of what
-> it may propose. This ADR assumed a proposal is always a *scalar* edit — path,
-> key, `from`, `to` — because a scalar is corroborable against the file. 0007
-> widened the proposal to a whole migrated document for the case a version swap
-> cannot reach, and replaced `from`-matching with three deterministic checks on
-> the output. On that path the model does author file content; the title's
-> "does not edit files" is accurate only in the sense it was written in, that
-> the model applies nothing.
+> **Read this with 0007 and 0013.** The rule below still holds where it
+> matters: the model does not apply, and the harness does. What changed is the
+> size of what it may propose. This ADR assumed a proposal is always a *scalar*
+> edit — path, key, `from`, `to` — because a scalar is corroborable against the
+> file. 0007 widened the proposal to a whole migrated document for the case a
+> version swap cannot reach, and replaced `from`-matching with three
+> deterministic checks on the output. 0013 widened it again to a whole values
+> document, checked by those three plus a render of the chart itself.
+>
+> **Do not quote this title as a guarantee.** On both widened paths the model
+> authors file content, and on the scalar path the `to` it names is written to
+> the line verbatim, so "it does not edit files" is true only in the sense it
+> was written in: the model applies nothing and chooses no path. Pages that
+> shortened it to "the model does not edit files" were wrong, and one of them
+> was the front page. The claim to make instead is the one in
+> [`docs/safety-model.md`](../docs/safety-model.md): the model proposes, the
+> harness applies, and each path names what checked the proposal.
 
 ## Context
 
