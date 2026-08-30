@@ -83,78 +83,20 @@ for c in "${charts[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# The branches the ci values cannot reach.
+# The default-off feature renders and the ArgoCD egress port check moved to Go.
 #
-# helm merges every `ci/*-values.yaml` with repeated -f, so those files
-# describe exactly one install and a second file cannot describe a different
-# one. Every default-off feature is therefore rendered by nothing above.
+# They are now chart_matrix_test.go in the root package, and they are stronger
+# there for two reasons. The list of switches is DERIVED from
+# charts/bosun/values.schema.json rather than hand-written, so a new toggle that
+# nothing renders fails with the line to add -- the five cases that used to live
+# here were the repair for the 0.25.0 ClusterRole, and nothing made a sixth join
+# them. And the assertions are about the parsed document rather than the exit
+# code, so "the egress rule opened podPort" is a comparison on a value instead
+# of the awk state machine it was here.
 #
-# Chart 0.25.0 published a ClusterRole that was not YAML whenever
-# `liveReads.enabled` was true: a `-}}` on a template comment ate the newline
-# after the previous rule, so the next rule began on its line. helm lint, the
-# schema and the render above were all green, because all three rendered the
-# feature off. It was found by rendering a real consumer's values by hand.
-#
-# helm parses what it renders, so `helm template` failing IS the check; no YAML
-# parser is needed here.
+# What stays in this file is what is genuinely a grep problem: the host-literal
+# scan, the owner-in-charts scan, the version pins, and the links.
 # ---------------------------------------------------------------------------
-echo "==> the default-off features still render"
-render_with() { # <label> <set-args...>
-  local label="$1"; shift
-  if helm template t charts/bosun -f charts/bosun/ci/lint-values.yaml "$@" >/dev/null 2>&1; then
-    ok "helm template charts/bosun ${label}"
-  else
-    helm template t charts/bosun -f charts/bosun/ci/lint-values.yaml "$@" 2>&1 \
-      | sed 's/^/        /' | head -6
-    bad "helm template charts/bosun ${label}"
-  fi
-}
-render_with "liveReads.enabled"        --set liveReads.enabled=true
-render_with "liveReads.scope=wide"     --set liveReads.enabled=true --set liveReads.scope=wide
-render_with "credentials.mountAsFiles" --set credentials.mountAsFiles=true
-render_with "serviceMonitor"           --set metrics.serviceMonitor.enabled=true \
-                                       --set metrics.serviceMonitor.namespace=monitoring
-render_with "supervise off"            --set supervise.enabled=false
-
-# ---------------------------------------------------------------------------
-# The ArgoCD egress rule names a pod port.
-#
-# A NetworkPolicy matches the destination port of the packet, and a ClusterIP
-# is DNAT'd to the backend pod's port before policy is evaluated, so this rule
-# has to name argocd-server's container port, not the Service port that
-# appears in `gate.argocd.baseURL`. Getting it wrong renders clean, lints
-# clean, passes the schema and then drops every packet, which is why the check
-# is here rather than left to a reviewer.
-#
-# What this asserts: the emitted port is `gate.argocd.podPort` and does not
-# move with the URL. Deriving it from `baseURL`, the obvious-looking
-# simplification, fails here.
-# ---------------------------------------------------------------------------
-echo "==> the ArgoCD egress rule names a pod port, not the URL's port"
-argocd_egress_port() { # <baseURL>
-  helm template t charts/bosun -f charts/bosun/ci/lint-values.yaml \
-    --show-only templates/networkpolicy.yaml \
-    --set gate.argocd.existingSecret=placeholder \
-    --set gate.argocd.baseURL="$1" 2>/dev/null \
-    | awk '/metadata.name: argocd$/{f=1} f&&/^ *port: /{print $2; exit}'
-}
-declared="$(sed -n 's/^ *podPort: \([0-9]*\).*/\1/p' charts/bosun/values.yaml)"
-http_port="$(argocd_egress_port http://argocd-server.argocd.svc)"
-https_port="$(argocd_egress_port https://argocd-server.argocd.svc)"
-if [ -z "$declared" ]; then
-  bad "charts/bosun/values.yaml declares no gate.argocd.podPort"
-elif [ "$http_port" != "$declared" ] || [ "$https_port" != "$declared" ]; then
-  bad "the ArgoCD egress rule opened ${http_port:-<none>} (http) and ${https_port:-<none>} (https), not podPort ${declared}"
-elif [ "$declared" = "80" ] || [ "$declared" = "443" ]; then
-  # The default itself, separately. The comparison above stays true if someone
-  # sets the default back to a Service port, because it compares the render to
-  # the default rather than to reality. 80 and 443 are the two numbers that
-  # cannot be a container port here: they are what the argocd-server Service
-  # publishes, and the packet has been DNAT'd past them.
-  bad "gate.argocd.podPort defaults to ${declared}, which is a Service port -- the rule needs the pod's"
-else
-  ok "gate.argocd.podPort ${declared} is the egress port for both http and https baseURLs"
-fi
 
 if command -v go >/dev/null 2>&1; then
   if go build ./... >/dev/null 2>&1; then ok "go build ./..."; else
