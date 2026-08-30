@@ -114,7 +114,20 @@ func objectFrom(source, cluster, defaultNS string, obj map[string]any) (Object, 
 		ns = defaultNS
 	}
 
-	raw, err := yaml.Marshal(stripVersionStamps(obj))
+	// The resolved namespace is written back into the body before hashing,
+	// for the same reason version stamps are stripped: it is already part of
+	// the object's identity, so a chart version that starts stamping
+	// `metadata.namespace` where the last one left it implicit changes no
+	// applied byte -- ArgoCD sends the destination either way -- and must not
+	// read as a changed resource. It did: the comment above names the exact
+	// pair, and after the identity fix the same pair still reported every
+	// object as "changed, 1 field" with a diff line saying the namespace was
+	// set to the place it was always going.
+	body := stripVersionStamps(obj)
+	if bm, ok := body["metadata"].(map[string]any); ok {
+		bm["namespace"] = ns
+	}
+	raw, err := yaml.Marshal(body)
 	if err != nil {
 		return Object{}, false
 	}
@@ -124,7 +137,7 @@ func objectFrom(source, cluster, defaultNS string, obj map[string]any) (Object, 
 		Source: source, Cluster: cluster,
 		APIVersion: apiVersion, Kind: kind, Namespace: ns, Name: name,
 		Hash: hex.EncodeToString(sum[:8]),
-		Body: stripVersionStamps(obj),
+		Body: body,
 	}, true
 }
 
@@ -137,6 +150,20 @@ type FieldChange struct {
 	Path string `json:"path"`
 	From string `json:"from,omitempty"`
 	To   string `json:"to,omitempty"`
+
+	// SetHere marks a change whose old or new value is one this repository
+	// sets in the Application's own values. Measured on a live bump: ten
+	// field lines, nine of them one inserted flag shifting a command array,
+	// and the reader's actual question -- does this touch anything I chose?
+	// -- answerable only by reading all ten. These are the lines that answer
+	// it, and the report surfaces them above the fold.
+	//
+	// A heuristic, and deliberately a marking rather than a filter: the value
+	// match has false negatives (a value templated into a larger string) and
+	// false positives (a short scalar half the chart shares), so the unmarked
+	// fields stay in the report, folded, where both a suspicious reader and
+	// the model's prompt still see them.
+	SetHere bool `json:"setHere,omitempty"`
 }
 
 // servedVersions is the set of versions a CustomResourceDefinition serves.
@@ -266,6 +293,12 @@ type ObjectChange struct {
 	// else, because there is no rendered output to inspect.
 	Reason string `json:"reason,omitempty"`
 
+	// ValuesChecked records that Fields were compared against the values
+	// this repository sets, so "no field marked" can be read as "none of
+	// them is yours" rather than "nobody looked". The same distinction
+	// ConsumersKnown draws two fields up, for the same reason.
+	ValuesChecked bool `json:"valuesChecked,omitempty"`
+
 	// Note is a computed fact about this change worth a reader's eyes,
 	// today, a removed binding whose ServiceAccount retains no RBAC in the
 	// new render. Reported under the item, never blocking.
@@ -353,6 +386,18 @@ func diffFields(before, after map[string]any) ([]FieldChange, int) {
 				out = append(out, FieldChange{Path: path, From: scalar(b), To: scalar(a)})
 				return
 			}
+			// Scalar lists are aligned rather than compared index by index.
+			// One flag inserted into a container command shifts every element
+			// after it, and index-wise that read as nine changed fields on a
+			// live report -- nine lines to say "gained --prefix=/". Aligned,
+			// it says exactly that. Only when it is actually shorter: for a
+			// replaced element the index-wise line `a -> b` beats a lost/
+			// gained pair, and lists of maps keep the index walk, where
+			// positional comparison is what a reader expects of containers.
+			if ops, ok := alignScalars(path, bb, aa, scalar); ok {
+				out = append(out, ops...)
+				return
+			}
 			n := len(bb)
 			if len(aa) > n {
 				n = len(aa)
@@ -381,8 +426,129 @@ func diffFields(before, after map[string]any) ([]FieldChange, int) {
 	return out, 0
 }
 
+// setHere reports whether a changed field carries a value this repository
+// sets: its old or new rendering equals one of the Application's own value
+// leaves, or contains one long enough not to match by accident.
+//
+// The exclusions are what keep the mark meaning something. Booleans and the
+// empty string appear in every chart, so a repository that sets one flag
+// would otherwise claim half the diff; the five-character floor on the
+// substring form exists because "1" is a replica count, a port digit and a
+// version fragment all at once, and equality already covers it.
+func setHere(f FieldChange, leaves map[string]bool) bool {
+	for leaf := range leaves {
+		switch leaf {
+		case "", "true", "false", "null":
+			continue
+		}
+		if f.From == leaf || f.To == leaf {
+			return true
+		}
+		if len(leaf) >= 5 && (strings.Contains(f.From, leaf) || strings.Contains(f.To, leaf)) {
+			return true
+		}
+	}
+	return false
+}
+
+// alignScalars diffs two scalar-only lists by alignment and reports the
+// elements that came and went, not the indexes that shifted.
+//
+// The second return is false when alignment is the wrong tool: an element that
+// is not a scalar (containers compare positionally, and a reader expects
+// that), or an edit the index walk states in fewer lines, a replaced element
+// being the common case. The paths carry a `[+]`/`[-]` suffix rather than an
+// index because the finding is membership, not position, and a report line
+// that named a position would send the reader counting.
+func alignScalars(path string, before, after []any, scalar func(any) string) ([]FieldChange, bool) {
+	render := func(in []any) ([]string, bool) {
+		out := make([]string, len(in))
+		for i, v := range in {
+			switch v.(type) {
+			case map[string]any, []any:
+				return nil, false
+			}
+			out[i] = scalar(v)
+		}
+		return out, true
+	}
+	b, ok := render(before)
+	if !ok {
+		return nil, false
+	}
+	a, ok := render(after)
+	if !ok {
+		return nil, false
+	}
+
+	// Longest common subsequence, the classic table. These lists are command
+	// lines and env values, tens of elements at most.
+	lcs := make([][]int, len(b)+1)
+	for i := range lcs {
+		lcs[i] = make([]int, len(a)+1)
+	}
+	for i := len(b) - 1; i >= 0; i-- {
+		for j := len(a) - 1; j >= 0; j-- {
+			if b[i] == a[j] {
+				lcs[i][j] = lcs[i+1][j+1] + 1
+			} else if lcs[i+1][j] >= lcs[i][j+1] {
+				lcs[i][j] = lcs[i+1][j]
+			} else {
+				lcs[i][j] = lcs[i][j+1]
+			}
+		}
+	}
+	var ops []FieldChange
+	i, j := 0, 0
+	for i < len(b) && j < len(a) {
+		switch {
+		case b[i] == a[j]:
+			i++
+			j++
+		case lcs[i+1][j] >= lcs[i][j+1]:
+			ops = append(ops, FieldChange{Path: path + "[-]", From: b[i]})
+			i++
+		default:
+			ops = append(ops, FieldChange{Path: path + "[+]", To: a[j]})
+			j++
+		}
+	}
+	for ; i < len(b); i++ {
+		ops = append(ops, FieldChange{Path: path + "[-]", From: b[i]})
+	}
+	for ; j < len(a); j++ {
+		ops = append(ops, FieldChange{Path: path + "[+]", To: a[j]})
+	}
+
+	// The index walk would emit one line per differing position. Alignment
+	// wins only when it says less.
+	indexwise := 0
+	n := len(b)
+	if len(a) > n {
+		n = len(a)
+	}
+	for k := 0; k < n; k++ {
+		var bv, av string
+		if k < len(b) {
+			bv = b[k]
+		}
+		if k < len(a) {
+			av = a[k]
+		}
+		if bv != av {
+			indexwise++
+		}
+	}
+	if len(ops) >= indexwise {
+		return nil, false
+	}
+	return ops, true
+}
+
 // diffObjects compares two object sets.
-func diffObjects(base, head []Object) []ObjectChange {
+// diffObjects compares two rendered object sets. valuesLeaves is the per-App
+// value sets from Table.ValuesLeaves; nil marks nothing and checks nothing.
+func diffObjects(base, head []Object, valuesLeaves map[string]map[string]bool) []ObjectChange {
 	byID := func(in []Object) map[string]Object {
 		m := make(map[string]Object, len(in))
 		for _, o := range in {
@@ -428,6 +594,12 @@ func diffObjects(base, head []Object) []ObjectChange {
 			c := ObjectChange{Kind: ObjectChanged, Object: o.Describe(), Cluster: o.Cluster}
 			if prev.Body != nil && o.Body != nil {
 				c.Fields, c.Truncated = diffFields(prev.Body, o.Body)
+				if leaves := valuesLeaves[o.Source]; leaves != nil {
+					c.ValuesChecked = true
+					for i := range c.Fields {
+						c.Fields[i].SetHere = setHere(c.Fields[i], leaves)
+					}
+				}
 			}
 			out = append(out, c)
 		}

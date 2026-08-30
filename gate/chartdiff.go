@@ -65,6 +65,7 @@ func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Ta
 		before, after []Object
 		changes       []ObjectChange
 		unrenderable  []Unrenderable
+		leaves        map[string]bool
 		warnings      []Markdown
 	}
 	results := make([]result, len(pairs))
@@ -148,6 +149,15 @@ func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Ta
 				res.before, res.after = b, a
 			}
 
+			// What this Application's own values supply, for the field diff
+			// to mark against. Read here because this goroutine already has
+			// the row and the checkout in hand, and best-effort for the same
+			// reason the README half of the values surface is: a values file
+			// that does not parse costs the marking, not the diff.
+			if vals, err := repoValues(repoRoot, p.after); err == nil {
+				res.leaves = leafValueSet(vals)
+			}
+
 			// Reached whether or not either render did, because it does not
 			// depend on one: the values surface comes from `helm show`, not
 			// from `helm template`. Behind the early return this used to sit
@@ -178,14 +188,44 @@ func ChartDiff(ctx context.Context, repoRoot string, cfg *Config, base, head *Ta
 	}
 	wg.Wait()
 
-	for _, res := range results {
+	for i, res := range results {
 		before = append(before, res.before...)
 		after = append(after, res.after...)
 		found.Changes = append(found.Changes, res.changes...)
 		found.Unrenderable = append(found.Unrenderable, res.unrenderable...)
 		found.Warnings = append(found.Warnings, res.warnings...)
+		if res.leaves != nil {
+			if found.ValuesLeaves == nil {
+				found.ValuesLeaves = map[string]map[string]bool{}
+			}
+			found.ValuesLeaves[pairs[i].after.App] = res.leaves
+		}
 	}
 	return before, after, found
+}
+
+// leafValueSet renders every scalar leaf of a values document as the string
+// the field diff will compare against.
+func leafValueSet(node any) map[string]bool {
+	out := map[string]bool{}
+	var rec func(any)
+	rec = func(n any) {
+		switch t := n.(type) {
+		case map[string]any:
+			for _, v := range t {
+				rec(v)
+			}
+		case []any:
+			for _, v := range t {
+				rec(v)
+			}
+		case nil:
+		default:
+			out[fmt.Sprintf("%v", t)] = true
+		}
+	}
+	rec(node)
+	return out
 }
 
 // ChartFindings is what a chart-diff pass produced besides rendered objects.
@@ -203,6 +243,10 @@ type ChartFindings struct {
 	Unrenderable []Unrenderable
 	// Warnings are coverage this pass lost, and blame nobody for.
 	Warnings []Markdown
+	// ValuesLeaves is, per rendered Application, the scalar values its own
+	// values supply -- Table.ValuesLeaves' content, computed here because
+	// this is the only place with the row and the checkout together.
+	ValuesLeaves map[string]map[string]bool
 }
 
 // Unrenderable is one Application whose chart will not render at the version

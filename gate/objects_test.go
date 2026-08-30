@@ -26,7 +26,7 @@ func TestObjectDiffReportsAddedRemovedAndChanged(t *testing.T) {
 	}
 
 	got := map[string]ObjectChangeKind{}
-	for _, c := range diffObjects(base, head) {
+	for _, c := range diffObjects(base, head, nil) {
 		got[c.Object] = c.Kind
 	}
 	if got["DaemonSet/frr-k8s in metallb-system"] != "added" {
@@ -47,7 +47,7 @@ func TestApiVersionChangeIsItsOwnKindAndBlocks(t *testing.T) {
 	base := []Object{obj("CustomResourceDefinition", "", "externalsecrets.external-secrets.io", "apiextensions.k8s.io/v1beta1", "x")}
 	head := []Object{obj("CustomResourceDefinition", "", "externalsecrets.external-secrets.io", "apiextensions.k8s.io/v1", "y")}
 
-	changes := diffObjects(base, head)
+	changes := diffObjects(base, head, nil)
 	if len(changes) != 1 {
 		t.Fatalf("want one change, not an add plus a remove: %+v", changes)
 	}
@@ -259,6 +259,7 @@ func TestChangedObjectReportsWhichFieldsMoved(t *testing.T) {
 	got := diffObjects(
 		[]Object{objWith("before", mk("explorer:0.4.6", 1))},
 		[]Object{objWith("after", mk("explorer:0.5.1", 2))},
+		nil,
 	)
 	if len(got) != 1 || got[0].Kind != "changed" {
 		t.Fatalf("want one changed object, got %+v", got)
@@ -285,6 +286,7 @@ func TestFieldDiffIsOmittedWhenBodiesWereNotCarried(t *testing.T) {
 	got := diffObjects(
 		[]Object{{Cluster: "prod", Kind: "Deployment", Name: "explorer", APIVersion: "apps/v1", Hash: "aaa"}},
 		[]Object{{Cluster: "prod", Kind: "Deployment", Name: "explorer", APIVersion: "apps/v1", Hash: "bbb"}},
+		nil,
 	)
 	if len(got) != 1 || got[0].Kind != "changed" {
 		t.Fatalf("the change must still be reported, got %+v", got)
@@ -339,7 +341,7 @@ func TestACRDThatStopsServingAVersionBlocks(t *testing.T) {
 	after := []Object{objWith("after", crd("externalsecrets.external-secrets.io",
 		map[string]any{"name": "v1", "served": true}))}
 
-	got := diffObjects(before, after)
+	got := diffObjects(before, after, nil)
 	if len(got) != 1 {
 		t.Fatalf("want one finding, got %+v", got)
 	}
@@ -362,7 +364,7 @@ func TestAbsentServedKeyMeansServed(t *testing.T) {
 	after := []Object{objWith("after", crd("things.example.io",
 		map[string]any{"name": "v1"}, map[string]any{"name": "v2"}))}
 
-	for _, c := range diffObjects(before, after) {
+	for _, c := range diffObjects(before, after, nil) {
 		if c.Kind == "crdVersionRemoved" {
 			t.Fatalf("nothing was dropped; got %+v", c)
 		}
@@ -377,7 +379,7 @@ func TestAVersionTurnedOffCountsAsDropped(t *testing.T) {
 	after := []Object{objWith("after", crd("things.example.io",
 		map[string]any{"name": "v1beta1", "served": false}, map[string]any{"name": "v1", "served": true}))}
 
-	got := diffObjects(before, after)
+	got := diffObjects(before, after, nil)
 	if len(got) != 1 || got[0].Kind != "crdVersionRemoved" || got[0].From != "v1beta1" {
 		t.Fatalf("want v1beta1 reported as dropped, got %+v", got)
 	}
@@ -390,6 +392,7 @@ func TestNoBodyMeansNoCRDClaimEitherWay(t *testing.T) {
 	got := diffObjects(
 		[]Object{{Cluster: "c", Kind: "CustomResourceDefinition", Name: "x", APIVersion: "apiextensions.k8s.io/v1", Hash: "a"}},
 		[]Object{{Cluster: "c", Kind: "CustomResourceDefinition", Name: "x", APIVersion: "apiextensions.k8s.io/v1", Hash: "b"}},
+		nil,
 	)
 	if len(got) != 1 || got[0].Kind != "changed" {
 		t.Fatalf("want the change still reported as changed, got %+v", got)

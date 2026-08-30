@@ -38,6 +38,7 @@ func Assemble(ctx context.Context, repoRoot string, cfg *Config, base, head *Tab
 		base.Warnings = append(base.Warnings, found.Warnings...)
 	}
 
+	head.ValuesLeaves = found.ValuesLeaves
 	res := Diff(base, head)
 	res.Unrenderable = found.Unrenderable
 

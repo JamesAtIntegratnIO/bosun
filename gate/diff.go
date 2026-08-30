@@ -285,7 +285,7 @@ func Diff(base, head *Table) *DiffResult {
 		}
 	}
 
-	res.Objects = diffObjects(base.Objects, head.Objects)
+	res.Objects = diffObjects(base.Objects, head.Objects, head.ValuesLeaves)
 	markMigrationConsistent(res.Objects)
 
 	sortChanges(res.Targeting)
@@ -318,30 +318,84 @@ func sortRows(rows []Row) {
 	})
 }
 
-// writeFields renders one object's changed leaves, folded.
+// writeFields renders one object's changed leaves.
+//
+// The fields a reader chose come first and unfolded; the chart's own stay
+// behind a fold whose summary says whether opening it can matter. Read back
+// from a live report: ten lines, one signal, and the reader's question --
+// does this touch anything I set? -- answerable only by reading all ten. The
+// re-run after a repair rewrites the same comment, so every line saved is
+// saved on every rendering of it.
+//
+// Folded, not filtered. The marking is a heuristic, the report is also the
+// evidence the model's prompt carries, and the one line worth reading on the
+// bump that prompted this was not values-linked -- a filter would have
+// hidden it, a fold prices it at one click.
 func writeFields(w io.Writer, o ObjectChange) {
 	if len(o.Fields) == 0 {
 		return
 	}
-	label := fmt.Sprintf("%d field", len(o.Fields))
-	if len(o.Fields) != 1 {
+	var yours, chartOwn []FieldChange
+	for _, f := range o.Fields {
+		if f.SetHere {
+			yours = append(yours, f)
+		} else {
+			chartOwn = append(chartOwn, f)
+		}
+	}
+
+	if len(yours) > 0 {
+		fmt.Fprintf(w, "  Values this repository sets:\n\n")
+		for _, f := range yours {
+			fieldLine(w, f)
+		}
+		fmt.Fprintln(w)
+		if len(chartOwn) == 0 {
+			if o.Truncated > 0 {
+				fmt.Fprintf(w, "  …and %d more field(s) beyond the report's cap\n", o.Truncated)
+			}
+			return
+		}
+	}
+
+	label := fmt.Sprintf("%d field", len(chartOwn))
+	if len(chartOwn) != 1 {
 		label += "s"
+	}
+	switch {
+	case len(yours) > 0:
+		label = fmt.Sprintf("%d more, the chart's own", len(chartOwn))
+	case o.ValuesChecked:
+		// The line that lets a reader stop here. "No field marked" from a
+		// diff that never looked would be the "we could not look" confusion
+		// all over again, which is what ValuesChecked exists to rule out.
+		label += ", none of them a value this repository sets"
 	}
 	if o.Truncated > 0 {
 		label += fmt.Sprintf(" (+%d more)", o.Truncated)
 	}
 	fmt.Fprintf(w, "  <details><summary>%s</summary>\n\n", label)
-	for _, f := range o.Fields {
-		switch {
-		case f.From == "":
-			fmt.Fprintf(w, "  - `%s`: set to `%s`\n", Inline(f.Path), Inline(f.To))
-		case f.To == "":
-			fmt.Fprintf(w, "  - `%s`: removed (was `%s`)\n", Inline(f.Path), Inline(f.From))
-		default:
-			fmt.Fprintf(w, "  - `%s`: `%s` → `%s`\n", Inline(f.Path), Inline(f.From), Inline(f.To))
-		}
+	for _, f := range chartOwn {
+		fieldLine(w, f)
 	}
 	fmt.Fprintf(w, "\n  </details>\n")
+}
+
+// fieldLine renders one changed leaf as a report bullet. The `[+]`/`[-]`
+// suffix is the aligned-list form: the finding is membership, not position.
+func fieldLine(w io.Writer, f FieldChange) {
+	switch {
+	case strings.HasSuffix(f.Path, "[+]"):
+		fmt.Fprintf(w, "  - `%s`: gained `%s`\n", Inline(strings.TrimSuffix(f.Path, "[+]")), Inline(f.To))
+	case strings.HasSuffix(f.Path, "[-]"):
+		fmt.Fprintf(w, "  - `%s`: lost `%s`\n", Inline(strings.TrimSuffix(f.Path, "[-]")), Inline(f.From))
+	case f.From == "":
+		fmt.Fprintf(w, "  - `%s`: set to `%s`\n", Inline(f.Path), Inline(f.To))
+	case f.To == "":
+		fmt.Fprintf(w, "  - `%s`: removed (was `%s`)\n", Inline(f.Path), Inline(f.From))
+	default:
+		fmt.Fprintf(w, "  - `%s`: `%s` → `%s`\n", Inline(f.Path), Inline(f.From), Inline(f.To))
+	}
 }
 
 func sortChanges(c []Change) {

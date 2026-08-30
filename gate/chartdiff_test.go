@@ -139,7 +139,7 @@ func TestIdenticalChangesAcrossClustersCollapse(t *testing.T) {
 		{Cluster: "a", Kind: "Deployment", Namespace: "x", Name: "c", APIVersion: "apps/v1", Hash: "2"},
 		{Cluster: "b", Kind: "Deployment", Namespace: "x", Name: "c", APIVersion: "apps/v1", Hash: "2"},
 	}
-	got := diffObjects(base, head)
+	got := diffObjects(base, head, nil)
 	if len(got) != 1 {
 		t.Fatalf("want one collapsed change, got %d: %+v", len(got), got)
 	}
@@ -165,9 +165,9 @@ func TestCollapsedChangeIsStableAcrossRuns(t *testing.T) {
 	}
 	base, head := mk("1"), mk("2")
 
-	want := diffObjects(base, head)
+	want := diffObjects(base, head, nil)
 	for i := 0; i < 200; i++ {
-		got := diffObjects(base, head)
+		got := diffObjects(base, head, nil)
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("run %d differs:\n got %+v\nwant %+v", i, got, want)
 		}
