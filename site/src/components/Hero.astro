@@ -4,9 +4,11 @@
  * the landing page, and Starlight's generated 404, which renders a hero of its
  * own. Anything added here appears on both.
  *
- * The right-hand card is a real gate report: the external-secrets 0.10.3 ->
- * 2.9.0 finding from docs/the-loop.md. A screenshot of the product doing its
- * job argues better than a paragraph claiming it does.
+ * The right-hand card is one real gate report, gitops_homelab_2_0#279:
+ * external-secrets 0.10.3 -> 2.10.0, blocked at 03:04 and repaired at 03:05.
+ * Every number in it comes off that pull request, including the reshape, which
+ * is the half a deterministic migration cannot do. A screenshot of the product
+ * doing its job argues better than a paragraph claiming it does.
  */
 import { Image } from 'astro:assets'
 import mark from '../assets/bosun.svg'
@@ -76,38 +78,67 @@ const actions = hero?.actions ?? []
       <figure class="bo-report">
         <figcaption class="bo-report__bar">
           <span class="bo-report__dots" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span class="bo-report__where">pull request #412 · addons-gate</span>
+          <span class="bo-report__where">pull request #279 · addons-gate</span>
         </figcaption>
 
         <div class="bo-report__body">
           <p class="bo-report__diff">
-            <span class="bo-del">- externalSecrets.defaultVersion: 0.10.3</span><br />
-            <span class="bo-add">+ externalSecrets.defaultVersion: 2.9.0</span>
+            <span class="bo-del">- defaultVersion: "0.10.3"</span>
+            <span class="bo-add">+ defaultVersion: 2.10.0</span>
           </p>
+          <p class="bo-report__file">addons/environments/production/addons/addons.yaml</p>
 
           <p class="bo-report__verdict">
             <span class="bo-chip bo-chip--red">blocking</span>
-            A CustomResourceDefinition stopped serving a version
+            Four CustomResourceDefinitions stopped serving a version
           </p>
 
           <ul class="bo-report__findings">
             <li>
-              <code>externalsecrets.external-secrets.io</code> no longer serves
-              <code>v1alpha1</code>, <code>v1beta1</code>
+              <code>external-secrets.io</code> drops <code>v1alpha1</code> and
+              <code>v1beta1</code>; only <code>v1</code> survives
             </li>
-            <li><strong>39 manifests</strong> in this repository still declare a dropped version</li>
-            <li>11 CRDs added · 25 resources changed</li>
+            <li>
+              <strong>28 manifests</strong> in this repository still declare a
+              dropped version, and <strong>60 ExternalSecrets</strong> are
+              running on one
+            </li>
+            <li>11 CRDs added · 21 resources changed</li>
           </ul>
 
-          <p class="bo-report__repair">
-            <span class="bo-chip bo-chip--green">repaired</span>
-            39 manifests migrated to <code>v1</code>, pushed to the branch. No model involved.
-          </p>
+          <div class="bo-report__steps">
+            <p class="bo-report__step">
+              <span class="bo-chip bo-chip--green">repaired</span>
+              Twenty-seven needed only an <code>apiVersion</code> swap. Bosun
+              made them with no model involved, comments and quoting intact.
+            </p>
+
+            <p class="bo-report__step">
+              <span class="bo-chip bo-chip--teal">reshaped</span>
+              The twenty-eighth needed more. <code>dataFrom</code> changed shape,
+              so a swap alone would have applied cleanly and dropped three values.
+            </p>
+
+            <p class="bo-report__diff bo-report__diff--nested">
+              <span class="bo-del">- dataFrom:</span>
+              <span class="bo-del">-   - key: demo/legacy</span>
+              <span class="bo-add">+ dataFrom:</span>
+              <span class="bo-add">+   - extract:</span>
+              <span class="bo-add">+       key: demo/legacy</span>
+            </p>
+
+            <p class="bo-report__note">
+              A 27B model drafted that document. Bosun checked it against the new
+              schema before writing a line: same object, and no value in it that
+              the original or the schema did not supply.
+            </p>
+          </div>
         </div>
       </figure>
 
       <p class="bo-report__caption">
-        The text diff was one line. This is what it deployed.
+        The text diff was one line. Blocked 03:04, repaired 03:05, green on the
+        re-run.
       </p>
     </div>
   </div>
