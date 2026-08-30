@@ -22,7 +22,7 @@ func esoFinding(t *testing.T) ObjectChange {
 		map[string]any{"name": "v1", "served": true}))}
 	after := []Object{objWith("after", crdWithNames("externalsecrets.external-secrets.io", "ExternalSecret",
 		map[string]any{"name": "v1", "served": true}))}
-	got := diffObjects(before, after)
+	got := diffObjects(before, after, nil)
 	if len(got) != 1 || got[0].Kind != "crdVersionRemoved" {
 		t.Fatalf("want one crdVersionRemoved finding, got %+v", got)
 	}
@@ -96,7 +96,7 @@ func TestAFindingWithoutAKindStaysBlocking(t *testing.T) {
 		map[string]any{"name": "v1", "served": true}))}
 	after := []Object{objWith("after", crd("things.example.io",
 		map[string]any{"name": "v1", "served": true}))}
-	got := diffObjects(before, after)
+	got := diffObjects(before, after, nil)
 
 	res := &DiffResult{Objects: got}
 	AnnotateConsumers(t.TempDir(), res)
@@ -142,7 +142,7 @@ func TestTheRepairsOwnMoveDoesNotReBlock(t *testing.T) {
 			map[string]any{"name": "v1", "served": true}))}
 		after := []Object{objWith("after", crdWithNames("clustersecretstores.external-secrets.io", "ClusterSecretStore",
 			map[string]any{"name": "v1", "served": true}))}
-		got := diffObjects(before, after)
+		got := diffObjects(before, after, nil)
 		if len(got) != 1 || got[0].Kind != "crdVersionRemoved" {
 			t.Fatalf("want one crdVersionRemoved finding, got %+v", got)
 		}
@@ -196,7 +196,7 @@ func TestARemovedCRDIsInspectedNotJustListed(t *testing.T) {
 		map[string]any{"name": "v2", "served": true},
 		map[string]any{"name": "v1alpha2", "served": true}))}
 
-	got := diffObjects(before, nil)
+	got := diffObjects(before, nil, nil)
 	if len(got) != 1 || got[0].Kind != "crdVersionRemoved" {
 		t.Fatalf("want the removal as a consumer-scanned finding, got %+v", got)
 	}
@@ -249,7 +249,7 @@ func TestARemovedBindingNamesItsOrphanedServiceAccount(t *testing.T) {
 	sa := map[string]any{"kind": "ServiceAccount", "name": "explorer", "namespace": "trivy-system"}
 	before := []Object{objWith("before", bindingWith("explorer", sa))}
 
-	got := diffObjects(before, nil)
+	got := diffObjects(before, nil, nil)
 	if len(got) != 1 || got[0].Kind != "removed" {
 		t.Fatalf("want a removed finding, got %+v", got)
 	}
@@ -265,7 +265,7 @@ func TestARemovedBindingNamesItsOrphanedServiceAccount(t *testing.T) {
 	}
 
 	// Rebound elsewhere in the head render: routine tidying, no note.
-	rebound := diffObjects(before, []Object{objWith("after", bindingWith("explorer-v2", sa))})
+	rebound := diffObjects(before, []Object{objWith("after", bindingWith("explorer-v2", sa))}, nil)
 	if len(rebound) != 2 {
 		t.Fatalf("want a removal and an addition, got %+v", rebound)
 	}
@@ -277,7 +277,7 @@ func TestARemovedBindingNamesItsOrphanedServiceAccount(t *testing.T) {
 
 	// A head binding whose subjects cannot be read: no claim either way.
 	blind := diffObjects(before, []Object{{Cluster: "prod", Kind: "ClusterRoleBinding",
-		Name: "opaque", APIVersion: "rbac.authorization.k8s.io/v1", Hash: "x"}})
+		Name: "opaque", APIVersion: "rbac.authorization.k8s.io/v1", Hash: "x"}}, nil)
 	for _, c := range blind {
 		if c.Note != "" {
 			t.Errorf("an unreadable binding forbids the claim, got note %q", c.Note)

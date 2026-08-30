@@ -11,6 +11,16 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.28.0]
+
+- **`appVersion` 0.28.0: the gate report stops burying its signal.** Field
+  diffs align scalar lists (one inserted flag is one `gained` line, not a
+  shifted array), drop namespace stamps that change no applied byte, and
+  surface the fields whose values the repository itself sets above a fold
+  whose summary -- `N fields, none of them a value this repository sets` --
+  is the whole read for most bumps. No chart template or value changes; the
+  version moves because the image does.
+
 ## [0.27.0]
 
 ### Changed
