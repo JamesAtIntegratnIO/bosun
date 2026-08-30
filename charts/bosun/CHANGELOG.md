@@ -11,6 +11,70 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.29.0]
+
+### Added
+
+- **`web`: the status page, and the two ways to publish it.** The pipeline
+  report renders itself as a page now, and this is where it gets a port, a
+  route and a network rule.
+
+  It listens on `service.webPort` (8081), and the second port is the whole
+  design rather than a detail. `service.port` also answers
+  `POST /v1/promotion-opened`, the endpoint that names the pull request the
+  agent edits and the files it reads into a published prompt. Both a
+  NetworkPolicy and a gateway draw their lines at the port, so "publish the
+  read-only page" is a smaller decision than "publish the endpoint that spends
+  money and writes to your repository" only because the two never share a
+  listener. Every route this chart renders targets `webPort`; nothing renders a
+  route for `service.port` and nothing ever will.
+
+  ```yaml
+  web:
+    httpRoute:
+      enabled: true
+      parentRefs: [{name: external, namespace: gateway-system, sectionName: https}]
+      hostnames: [bosun.example.com]
+    allowFrom:
+      - namespace: gateway-system
+        podSelector: {app: envoy}
+  ```
+
+  **`httpRoute` first, `ingress` second, and no nginx-specific anything.**
+  Ingress is feature-frozen: past a host and a path, every behaviour is a
+  controller annotation and the manifest stops describing what it does, and
+  `ingress-nginx` is in maintenance mode besides. The `ingress` block exists
+  for clusters without Gateway API and is otherwise the second choice.
+
+  **`web.allowFrom` is empty by default, so enabling the page publishes it to
+  nobody** until you name where from. That is the honest default for a surface
+  whose entire purpose is being reached from outside the namespace, and each
+  entry ANDs its namespace with its podSelector, the same shape as
+  `kargoPodSelector`.
+
+  The page has no authentication of its own. It reveals operational state --
+  the repository's name, open pull request titles, Stage and Warehouse names,
+  findings and remedies -- and no credential, prompt or rendered diff.
+  Whatever your gateway puts in front of it is the authentication.
+
+- **Five values are refused rather than rendered**, each because what it
+  produces points nowhere near its own cause: `httpRoute.enabled` with no
+  `parentRefs` (a route with no parent attaches to nothing and renders clean),
+  `ingress.enabled` with no `className` (an unclassed Ingress is claimed by
+  whichever controller claims those) or no `hosts` (an Ingress with no rules is
+  accepted and routes nothing), a published route with `networkPolicy.enabled`
+  and `allowFrom` empty (a timeout that blames the gateway), and a route with
+  `web.enabled: false` (nothing listening behind it).
+
+- **`AGENT_VERSION`.** The chart passes its own `appVersion` to the pod, which
+  is what puts a version on the status page: the image is built without its
+  `.git` directory, so the binary cannot prove its own and the chart is the one
+  thing that knows.
+
+### Changed
+
+- **`appVersion` 0.29.0**, for the page and the second listener.
+
 ## [0.28.2]
 
 - **`appVersion` 0.28.2: the values mark stops firing on the addon's own

@@ -107,6 +107,12 @@ type Service struct {
 	mu       sync.Mutex
 	results  map[string]*Outcome
 	inflight map[string]chan struct{}
+
+	// What the last sweep saw, for Status. Written at the end of each sweep,
+	// read by the status page; see status.go.
+	sweptAt  time.Time
+	sweepErr string
+	lastOpen []PRStatus
 }
 
 // ValidatePolicy is the host's schema-validation settings, each optional.
@@ -226,10 +232,20 @@ func (g *Service) sweep(ctx context.Context) {
 	prs, err := g.Git.ListOpenPullRequests(ctx)
 	if err != nil {
 		g.logf("gate: listing open pull requests: %v", err)
+		// Recorded, not only logged: a gate that cannot list has a status
+		// page reading "nothing open" forever, and that page's whole subject
+		// is the difference between "nothing is wrong" and "nobody looked".
+		g.mu.Lock()
+		g.sweptAt, g.sweepErr = time.Now(), err.Error()
+		g.mu.Unlock()
 		return
 	}
 
 	open := map[string]bool{}
+	// Verdicts already standing on the host, kept so the status snapshot can
+	// say what they were rather than shrugging about the commits this sweep
+	// deliberately did not re-litigate.
+	posted := map[string]gitprovider.CheckState{}
 	for i := range prs {
 		pr := &prs[i]
 		open[pr.HeadSHA] = true
@@ -249,6 +265,7 @@ func (g *Service) sweep(ctx context.Context) {
 			// on every sweep, for every pull request, forever.
 			g.logf("gate: PR %d: could not read the %q status, re-gating: %v", pr.Number, g.CheckName, err)
 		case state == gitprovider.CheckSuccess || state == gitprovider.CheckFailure:
+			posted[pr.HeadSHA] = state
 			continue
 		}
 		g.Ensure(ctx, pr)
@@ -262,6 +279,8 @@ func (g *Service) sweep(ctx context.Context) {
 			delete(g.results, sha)
 		}
 	}
+	g.sweptAt, g.sweepErr = time.Now(), ""
+	g.lastOpen = g.snapshotLocked(prs, posted)
 	g.mu.Unlock()
 }
 

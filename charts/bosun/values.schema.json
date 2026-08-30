@@ -78,6 +78,199 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 65535
+        },
+        "webPort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "The status page's port. Its own, and never service.port: the main port also answers POST /v1/promotion-opened, and both a NetworkPolicy and a gateway draw their lines at the port."
+        }
+      }
+    },
+    "web": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The read-only status page: what the agent watches, the gate's verdicts, and the last pipeline sweep with its remedies. Served on its own port so that publishing it never publishes POST /v1/promotion-opened.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "httpRoute": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Publish the page with a Gateway API HTTPRoute. Preferred over ingress: everything past a host and a path in an Ingress is a controller-specific annotation.",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "parentRefs": {
+              "type": "array",
+              "description": "The Gateways to attach to. Required when enabled: a route with no parent attaches to nothing and renders clean.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "group": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "namespace": {
+                    "type": "string"
+                  },
+                  "sectionName": {
+                    "type": "string"
+                  },
+                  "port": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 65535
+                  }
+                }
+              }
+            },
+            "hostnames": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "value"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "PathPrefix",
+                      "Exact"
+                    ]
+                  },
+                  "value": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "annotations": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "ingress": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Publish the page with an Ingress, for a cluster with no Gateway API.",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "className": {
+              "type": "string",
+              "description": "Required when enabled, with no default: an unclassed Ingress is claimed by whichever controller claims unclassed Ingresses."
+            },
+            "hosts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "host"
+                ],
+                "properties": {
+                  "host": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "paths": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "path": {
+                          "type": "string"
+                        },
+                        "pathType": {
+                          "type": "string",
+                          "enum": [
+                            "Prefix",
+                            "Exact",
+                            "ImplementationSpecific"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "tls": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "secretName": {
+                    "type": "string"
+                  },
+                  "hosts": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "annotations": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "allowFrom": {
+          "type": "array",
+          "description": "Who may reach the page's port when the NetworkPolicy is on. Empty admits nobody, which is the honest default for a surface that is not published until you say where from. Each entry ANDs its namespace and podSelector.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "namespace"
+            ],
+            "properties": {
+              "namespace": {
+                "type": "string",
+                "minLength": 1
+              },
+              "podSelector": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            }
+          }
         }
       }
     },

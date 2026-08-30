@@ -60,4 +60,12 @@ app.kubernetes.io/instance: {{ .Release.Name }}
      the rule it sits beside and reads exactly like it is not. Refused rather
      than rendered, because nothing about the running install would show it. */}}
 {{- if and .Values.metrics.serviceMonitor.enabled .Values.networkPolicy.enabled (not .Values.metrics.serviceMonitor.namespace) }}{{ fail "bosun: metrics.serviceMonitor.namespace is required when the ServiceMonitor and the NetworkPolicy are both enabled; without it the scrape rule admits any pod labelled prometheus, in any namespace" }}{{ end -}}
+{{/* A route to a port nothing may reach. The Ingress or HTTPRoute renders,
+     the Gateway accepts it, the page answers nothing, and the symptom is a
+     timeout at the gateway that points at the gateway. Refused here, where the
+     missing value has a name. */}}
+{{- if and .Values.web.enabled (or .Values.web.httpRoute.enabled .Values.web.ingress.enabled) .Values.networkPolicy.enabled (not .Values.web.allowFrom) }}{{ fail "bosun: web.allowFrom is empty while the status page is published and the NetworkPolicy is on, so nothing may reach the page's port; name your gateway's namespace, e.g. [{namespace: gateway-system}]" }}{{ end -}}
+{{/* A route with the page switched off publishes a port the pod does not
+     listen on, and neither the Service nor the route says so. */}}
+{{- if and (not .Values.web.enabled) (or .Values.web.httpRoute.enabled .Values.web.ingress.enabled) }}{{ fail "bosun: web.httpRoute or web.ingress is enabled while web.enabled is false; there would be nothing listening behind the route" }}{{ end -}}
 {{- end -}}

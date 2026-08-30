@@ -91,6 +91,32 @@ Both answer `503` before the first sweep completes, deliberately: a scraper
 that read zeroes from a supervisor which has not looked yet would record
 "nothing is wrong" as a measurement.
 
+## Reading it without curl
+
+The same report renders itself as a web page, on a port of its own:
+
+```bash
+kubectl -n bosun port-forward deploy/bosun 8081 &
+open http://localhost:8081
+```
+
+Markdown in a browser tab is source code, and the people who most need this
+report, whoever is wondering why an addon has not updated in three days, are
+exactly the people who will not port-forward and pipe `curl` through a
+renderer. The page carries every finding with its remedy, plus the gate's open
+pull requests and what the triage is doing right now. `/pipeline` on that port
+serves the page to a browser and the markdown to everything else, so no
+existing script changes.
+
+The 503 rule survives the move, on the formats where it matters: a machine
+asking before the first sweep still gets 503, and a human gets a page that says
+"no sweep has completed yet" in words.
+
+The page is read-only, has no authentication of its own, and reveals
+operational state, Stage names, pull request titles, findings, and no
+credentials. The chart can publish it through a Gateway API HTTPRoute or an
+Ingress; see the chart README.
+
 ## Alerting
 
 The obvious rule is worth having:

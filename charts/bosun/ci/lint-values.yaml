@@ -19,6 +19,30 @@ gate:
 triage:
   allowPaths:
     - addons/**
+# The status page published both ways at once, which is not a deployment
+# anybody wants and is exactly what a lint fixture is for: it renders the
+# HTTPRoute, the Ingress and the NetworkPolicy rule that admits them, so a
+# template that stopped rendering fails here rather than on somebody's cluster.
+web:
+  httpRoute:
+    enabled: true
+    parentRefs:
+      - name: external
+        namespace: gateway-system
+        sectionName: https
+    hostnames: [bosun.example.com]
+  ingress:
+    enabled: true
+    className: traefik
+    hosts:
+      - host: bosun.example.com
+        paths: [{path: /, pathType: Prefix}]
+    tls:
+      - secretName: bosun-tls
+        hosts: [bosun.example.com]
+  allowFrom:
+    - namespace: gateway-system
+      podSelector: {app: envoy}
 networkPolicy:
   enabled: true
   kargoNamespace: kargo

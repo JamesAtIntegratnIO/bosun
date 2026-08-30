@@ -65,6 +65,34 @@ spec:
         - protocol: TCP
           port: {{ .Values.service.port }}
     {{- end }}
+    {{- /* The status page, and only its own port.
+
+           `web.allowFrom` is empty by default, so enabling the page publishes
+           it to nobody until somebody names where from -- normally the
+           namespace the gateway runs in. That is the honest default for a
+           surface whose whole purpose is to be looked at from outside the
+           namespace.
+
+           Every peer here is ANDed inside one entry, namespace and pods
+           together, for the same reason `kargoPodSelector` is: two list
+           entries would be a union and would widen a rule that looks like it
+           narrowed one. And the port is `webPort` and never `service.port`:
+           this rule exists precisely so that admitting a gateway to the page
+           does not admit it to POST /v1/promotion-opened. */}}
+    {{- range (.Values.web.enabled | ternary .Values.web.allowFrom list) }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .namespace }}
+          {{- with .podSelector }}
+          podSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+          {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.service.webPort }}
+    {{- end }}
   egress:
     {{- /* DNS, to the cluster resolver and nowhere else. This is the only rule
            this chart writes that opens 53, and it is a containment rule rather

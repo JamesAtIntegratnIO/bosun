@@ -40,6 +40,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -55,6 +56,7 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/pipeline"
 	"github.com/JamesAtIntegratnIO/bosun/supervisor"
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
+	"github.com/JamesAtIntegratnIO/bosun/web"
 )
 
 func main() {
@@ -320,8 +322,9 @@ func main() {
 	//
 	// The reader is guaranteed here: it is built whenever supervision is on,
 	// so there is no nil case left to log about.
+	var sup *supervisor.Supervisor
 	if cfg.Supervise {
-		sup := &supervisor.Supervisor{
+		sup = &supervisor.Supervisor{
 			Collector: &pipeline.Collector{Kargo: reader, PRs: git},
 			Every:     cfg.SuperviseEvery,
 			Log:       func(f string, a ...any) { logger.Printf(f, a...) },
@@ -329,7 +332,46 @@ func main() {
 			// property of what is merged.
 			Checkout: supervisor.ShallowCheckout(cfg.GitRepoURL, "", cfg.CloneRoot),
 		}
-		mux.HandleFunc("GET /pipeline", sup.Handler("markdown"))
+	}
+
+	// The status page: what this agent is, what it watches, and the last
+	// sweep's report with its remedies. It renders only state the process
+	// already holds, so serving it costs no API call anywhere.
+	ws := &web.Server{
+		Brand:      cfg.Brand,
+		Version:    cfg.Version,
+		Repo:       cfg.GitOwner + "/" + cfg.GitRepo,
+		RepoLink:   repoLink(cfg.GitRepoURL),
+		CheckName:  cfg.CheckName,
+		Model:      model.Name(),
+		GatePoll:   cfg.GatePoll,
+		Clusters:   len(inv.Clusters),
+		Features:   features(cfg),
+		EgressLine: egressLine(cfg),
+		Gate:       func() web.GateStatus { return gateStatus(gs) },
+		Triage:     srv.Status,
+	}
+	if cfg.Supervise {
+		ws.SweepEvery = cfg.SuperviseEvery
+		ws.Report = sup.Report
+	}
+	// The page is on this port too, at the root. Not the port to publish, that
+	// is the web listener below, but this is the port everybody already
+	// forwards to reach /pipeline and /metrics, and a read-only page is
+	// strictly less than what this port already answers.
+	mux.HandleFunc("GET /{$}", ws.Page())
+	// The same handler the web listener gets: markdown for a script, which is
+	// everything /pipeline ever served, and the page for a browser arriving
+	// through a port-forward.
+	//
+	// Registered whether or not supervision is on, because the page links here
+	// and the page is served either way. Inside the block below, those links
+	// 404'd on this port for an install with `supervise.enabled: false`, while
+	// the same links on the web port answered the 503 that says why. The
+	// handler already distinguishes "supervision is off" from "no sweep yet".
+	mux.HandleFunc("GET /pipeline", ws.PipelineHandler())
+
+	if cfg.Supervise {
 		mux.HandleFunc("GET /metrics", sup.Handler("metrics"))
 		go sup.Run(runCtx)
 		logger.Printf("pipeline: supervising Kargo every %s; report on /pipeline (?format=text for a terminal), metrics on /metrics",
@@ -340,6 +382,32 @@ func main() {
 		Addr:              cfg.Addr,
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	// The status page's own listener. Its own port rather than a path on the
+	// main one, because the main port also answers POST /v1/promotion-opened:
+	// a NetworkPolicy and a gateway both draw their lines at the port, so
+	// "expose the read-only page" can only stay smaller than "expose the
+	// endpoint that spends money and writes to the repository" if the two
+	// never share one. Nothing else is registered here, and nothing here
+	// mutates anything.
+	var webSrv *http.Server
+	if cfg.Web {
+		webMux := http.NewServeMux()
+		webMux.HandleFunc("GET /{$}", ws.Page())
+		webMux.HandleFunc("GET /pipeline", ws.PipelineHandler())
+		webMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+		webSrv = &http.Server{
+			Addr:              cfg.WebAddr,
+			Handler:           webMux,
+			ReadHeaderTimeout: 10 * time.Second,
+		}
+		go func() {
+			logger.Printf("web: status page on %s", cfg.WebAddr)
+			if err := webSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logger.Fatalf("serving the status page: %v", err)
+			}
+		}()
 	}
 
 	go func() {
@@ -359,8 +427,67 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(ctx)
+	if webSrv != nil {
+		_ = webSrv.Shutdown(ctx)
+	}
 	srv.Wait()
 	logger.Print("stopped")
+}
+
+// features is the agent's switchable posture, named for the page in the same
+// order values.yaml discusses them.
+func features(cfg *Config) []web.Feature {
+	return []web.Feature{
+		{Name: "Explain green gates", On: cfg.Explain},
+		{Name: "Migrate dropped versions", On: cfg.Migrate},
+		{Name: "Structural migration", On: cfg.Structural},
+		{Name: "Upstream release notes", On: cfg.Upstream},
+		{Name: "Live cluster reads", On: cfg.LiveReads},
+		{Name: "Gate fork pull requests", On: cfg.GateForkPRs},
+	}
+}
+
+// egressLine is the one sentence the page says about where the agent may go.
+// It compresses the two start-up log lines, and like them it keeps the two
+// guarantees separate: the public half is a deny-list, the internal half is
+// closed and only widened by name.
+func egressLine(cfg *Config) string {
+	s := "Every outbound request is logged; internal networks are refused at the dial"
+	if len(cfg.EgressAllowPrivate) > 0 {
+		s += " except " + strings.Join(cfg.EgressAllowPrivate, ", ")
+	}
+	if n := len(cfg.EgressDeny); n == 1 {
+		s += "; 1 public host is denied by name"
+	} else if n > 1 {
+		s += fmt.Sprintf("; %d public hosts are denied by name", n)
+	}
+	return s + "."
+}
+
+// repoLink turns the clone URL into a browsable one where the two coincide,
+// which they do on every https host this supports. An ssh remote yields no
+// link, and the page then names the repository without one, rather than
+// guessing at a web root that may not exist.
+func repoLink(cloneURL string) string {
+	u := strings.TrimSuffix(strings.TrimSpace(cloneURL), ".git")
+	if strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
+		return u
+	}
+	return ""
+}
+
+// gateStatus adapts the gate's account of itself to the page's vocabulary.
+// The copy is the point: web deliberately depends on nothing that can dial.
+func gateStatus(gs *gateservice.Service) web.GateStatus {
+	g := gs.Status()
+	out := web.GateStatus{
+		SweptAt: g.SweptAt, Err: g.Err,
+		Held: g.Held, Running: g.Running,
+	}
+	for _, pr := range g.Open {
+		out.Open = append(out.Open, web.GatePR(pr))
+	}
+	return out
 }
 
 // Server accepts Kargo's call and gets out of the way.
@@ -398,6 +525,11 @@ type Server struct {
 	mu       sync.Mutex
 	inFlight map[int]agent.Promotion
 	pending  map[int]agent.Promotion
+	// done and failed count triages since the process started, for the status
+	// page; failed is the subset that errored. They reset with the pod, and
+	// the page says so.
+	done   int
+	failed int
 
 	sem     chan struct{}
 	semOnce sync.Once
@@ -520,7 +652,14 @@ func (s *Server) PromotionOpened(w http.ResponseWriter, r *http.Request) {
 				defer cancel()
 
 				start := time.Now()
-				if err := s.run(ctx, cur); err != nil {
+				err := s.run(ctx, cur)
+				s.mu.Lock()
+				s.done++
+				if err != nil {
+					s.failed++
+				}
+				s.mu.Unlock()
+				if err != nil {
 					s.Log.Printf("PR %d: triage failed after %s: %v",
 						cur.PRNumber, time.Since(start).Round(time.Second), err)
 					return
@@ -560,6 +699,25 @@ func samePromotion(a, b agent.Promotion) bool {
 
 // Wait blocks until in-flight triage finishes.
 func (s *Server) Wait() { s.wg.Wait() }
+
+// Status is the handler's account of itself for the status page: which pull
+// requests are being triaged right now, which have a newer promotion queued
+// behind one, and the totals since start-up. Sorted, because a set that
+// reshuffles between refreshes reads like activity.
+func (s *Server) Status() web.TriageStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := web.TriageStatus{Done: s.done, Failed: s.failed}
+	for n := range s.inFlight {
+		st.InFlight = append(st.InFlight, n)
+	}
+	for n := range s.pending {
+		st.Queued = append(st.Queued, n)
+	}
+	sort.Ints(st.InFlight)
+	sort.Ints(st.Queued)
+	return st
+}
 
 // upstreamResolver reads what maintainers wrote, when it can.
 //

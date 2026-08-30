@@ -12,6 +12,11 @@ spec:
     - name: http
       port: {{ .Values.service.port }}
       targetPort: http
+    {{- if .Values.web.enabled }}
+    - name: web
+      port: {{ .Values.service.webPort }}
+      targetPort: web
+    {{- end }}
 {{- if .Values.serviceAccount.create }}
 ---
 apiVersion: v1
