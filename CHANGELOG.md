@@ -5,6 +5,42 @@ All notable changes to `bosun`. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **A merge gate that abstained because a file's inode moved.** `git fetch`
+  ends by spawning `git maintenance run --auto --detach`, which daemonises and
+  outlives the fetch that started it. Every checkout here is fetched into more
+  than once -- `EnsureHead` pins the commit under judgement, then `MergeBase`
+  walks a ladder of deepening fetches, up to six inside a second -- so one of
+  those background passes is in flight during the next fetch by construction,
+  not by bad luck.
+
+  A pass that decides to repack rewrites `.git/shallow` through a lock and a
+  rename, which is a new inode even where the content is unchanged. Meanwhile
+  a shallow fetch reads that file while building its request, negotiates with
+  the host, and re-stats it before taking the lock; git compares inode, size
+  and mtime, so a file that moved in between is `fatal: shallow file has
+  changed since we read it` and the fetch dies with 128. Nothing is damaged --
+  git is refusing to act on a read it can no longer trust -- but `MergeBase`
+  returned the error, and the gate then had no revision to diff against and
+  declined to judge a pull request that was fine.
+
+  Every git command in a checkout now runs under `maintenance.auto=false` and
+  `gc.auto=0` (both keys, because which one a fetch consults moved between git
+  versions), and nothing here wanted the maintenance: these checkouts are
+  cloned for one pull request and deleted once it has been answered, so
+  repacking one buys nothing and cost this. A fetch that hits the message
+  anyway -- an operator's own `gc`, a clone root shared with a second run --
+  is retried once, because the error means nothing was written and bosun does
+  not own every process on the machine.
+
+  Seen first as an intermittent CI failure, on a test whose clone was never
+  shallow to begin with: `git clone --depth 1 /some/path` ignores the depth,
+  hardlinks the whole object store, and says so in a warning on stderr that
+  nothing was reading. Those clones go through `file://` now and fail if what
+  comes back is a complete history, so the ladder they exist to check is the
+  ladder that runs.
+
 ### Added
 
 - **`web.theme`, so the page's treatment is a deployment decision.** `auto`

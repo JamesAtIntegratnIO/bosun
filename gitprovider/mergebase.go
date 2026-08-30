@@ -79,7 +79,7 @@ func MergeBase(ctx context.Context, dir, headRef, baseRef string) (string, error
 		// question unanswerable, because deepening the base alone reaches the
 		// branch point from the other direction. Giving up here would turn a
 		// host's reticence into a refusal to gate.
-		if err := gitRun(ctx, dir, "fetch", "--quiet", "--depth", depthArg, "origin", headRef); err != nil {
+		if err := gitFetch(ctx, dir, "--depth", depthArg, "origin", headRef); err != nil {
 			headErr = err
 		}
 		if err := fetchBase(ctx, dir, baseRef, "--depth", depthArg); err != nil {
@@ -96,7 +96,7 @@ func MergeBase(ctx context.Context, dir, headRef, baseRef string) (string, error
 	// Rare enough to be worth the cost when it happens: a branch more than a
 	// thousand commits behind its base is one somebody has forgotten, and the
 	// wrong answer on it is a report claiming it removes the last year of work.
-	if err := gitRun(ctx, dir, "fetch", "--quiet", "--unshallow", "origin"); err != nil {
+	if err := gitFetch(ctx, dir, "--unshallow", "origin"); err != nil {
 		// A repository that is already complete refuses --unshallow, which is
 		// not a failure to fetch: the history is there either way.
 		if !strings.Contains(err.Error(), "does not make sense") {
@@ -130,9 +130,10 @@ func MergeBase(ctx context.Context, dir, headRef, baseRef string) (string, error
 // Fetching by name and naming the result afterwards asks nothing of the host
 // that EnsureHead does not already ask.
 func fetchBase(ctx context.Context, dir, baseRef string, args ...string) error {
-	fetch := append([]string{"fetch", "--quiet"}, args...)
-	fetch = append(fetch, "origin", baseRef)
-	if err := gitRun(ctx, dir, fetch...); err != nil {
+	// A fresh slice rather than appending to args, which is the caller's and
+	// would be written through on any call that had spare capacity.
+	fetch := append(append([]string{}, args...), "origin", baseRef)
+	if err := gitFetch(ctx, dir, fetch...); err != nil {
 		return err
 	}
 	return gitRun(ctx, dir, "update-ref", mergeBaseRef, "FETCH_HEAD")
@@ -141,7 +142,7 @@ func fetchBase(ctx context.Context, dir, baseRef string, args ...string) error {
 // gitRun runs one git command in dir, with its stderr in the error, because
 // "exit status 128" is the same sentence for every way this can fail.
 func gitRun(ctx context.Context, dir string, args ...string) error {
-	full := append([]string{"-C", dir}, args...)
+	full := withoutBackgroundMaintenance(append([]string{"-C", dir}, args...)...)
 	cmd := exec.CommandContext(ctx, "git", full...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
@@ -153,7 +154,7 @@ func gitRun(ctx context.Context, dir string, args ...string) error {
 
 // gitLine runs a git command that prints one object name, and returns it.
 func gitLine(ctx context.Context, dir string, args ...string) (string, error) {
-	full := append([]string{"-C", dir}, args...)
+	full := withoutBackgroundMaintenance(append([]string{"-C", dir}, args...)...)
 	cmd := exec.CommandContext(ctx, "git", full...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr

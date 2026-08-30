@@ -305,11 +305,15 @@ func EnsureHead(ctx context.Context, dir, want string) error {
 	if strings.EqualFold(got, want) || strings.HasPrefix(strings.ToLower(got), strings.ToLower(want)) {
 		return nil
 	}
+	// Through withoutBackgroundMaintenance because this fetch is the first of
+	// several into the same checkout: MergeBase's deepening ladder follows it
+	// within milliseconds, and a background pass left running here is the one
+	// that rewrites .git/shallow underneath it.
 	for _, args := range [][]string{
 		{"-C", dir, "fetch", "--quiet", "--depth", "1", "origin", want},
 		{"-C", dir, "checkout", "--quiet", "--detach", "FETCH_HEAD"},
 	} {
-		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd := exec.CommandContext(ctx, "git", withoutBackgroundMaintenance(args...)...)
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {

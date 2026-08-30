@@ -51,14 +51,28 @@ func trimNewline(s string) string {
 	return s
 }
 
-// clone is the shallow clone every caller starts from, which is the whole
-// reason MergeBase has to fetch anything at all.
-func shallowClone(t *testing.T, url, branch string) string {
+// shallowClone is the shallow clone every caller starts from, which is the
+// whole reason MergeBase has to fetch anything at all.
+//
+// Through file:// rather than the path git would otherwise take: `git clone
+// --depth 1 /some/path` ignores the depth, hardlinks the whole object store
+// and says so in a warning on stderr that nothing here was reading. These
+// tests ran for their first weeks against a complete history, where the first
+// `git merge-base` answers out of the clone and the deepening ladder they
+// exist to check never runs.
+func shallowClone(t *testing.T, origin, branch string) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "work")
-	out, err := exec.Command("git", "clone", "--quiet", "--depth", "1", "--branch", branch, url, dir).CombinedOutput()
+	out, err := exec.Command("git", "clone", "--quiet", "--depth", "1", "--branch", branch, "file://"+origin, dir).CombinedOutput()
 	if err != nil {
 		t.Fatalf("clone: %v: %s", err, out)
+	}
+	// The self-check on that: a clone that is not shallow makes every
+	// assertion below pass for the wrong reason, and looks identical.
+	if got, err := exec.Command("git", "-C", dir, "rev-parse", "--is-shallow-repository").Output(); err != nil {
+		t.Fatal(err)
+	} else if trimNewline(string(got)) != "true" {
+		t.Fatalf("the checkout under test is not shallow, so nothing here exercises deepening")
 	}
 	return dir
 }
