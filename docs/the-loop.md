@@ -5,7 +5,7 @@ running. Every component appears once, doing the one thing it does; component
 reference and configuration live in their own documents.
 
 The worked example is a real promotion, generalised: `external-secrets` moving
-`0.10.3 → 2.9.0`. The visible diff is one line and every check starts green,
+`0.10.3 → 2.10.0`. The visible diff is one line and every check starts green,
 and it would have broken every manifest in the repository still declaring the
 API versions the new chart stops serving.
 
@@ -22,7 +22,7 @@ API versions the new chart stops serving.
 
 ## 1. A version appears
 
-A Kargo Warehouse watching the chart repository discovers `2.9.0`. The Stage
+A Kargo Warehouse watching the chart repository discovers `2.10.0`. The Stage
 rewrites the one pinned line in the target list, pushes a branch, and opens a
 pull request. The visible diff is a version number.
 
@@ -51,10 +51,11 @@ down to the fields that changed; it does the same when the version held still
 and a values file the Application layers was edited, which is the only way an
 addon whose chart lives in a registry is covered at all.
 
-For our example the render says: eleven CRDs added, twenty-five resources
-changed, and four CustomResourceDefinitions **stop serving** `v1alpha1` and
-`v1beta1`. The gate scans the repository for manifests still declaring those
-versions, finds them, and blocks:
+For our example the render says: eleven CRDs added, twenty-one resources
+changed, and four CustomResourceDefinitions **stop serving** a version this
+repository still declares — `v1beta1` on all four, `v1alpha1` on three. The
+gate scans the repository for manifests declaring those versions, finds
+twenty-eight, and blocks:
 
 > **A CustomResourceDefinition stopped serving a version.** Anything still
 > declaring it breaks on apply.
@@ -84,7 +85,7 @@ opened, so the agent is already waiting for `addons-gate` to settle. Its own
 commit status says so, `pending`, "reading addons-gate", so that a reader can
 tell *working* from *done with nothing to say*.
 
-The gate is red. Six things can happen, in strict order of preference.
+The gate is red. What happens next, in strict order of preference.
 
 **The deterministic repair.** If the only blocking finding is dropped served
 versions, no judgement is needed: the gate already computed the consumer kind,
@@ -93,25 +94,27 @@ bullet a person reads, and as a `<!-- gitops-gate:dropped … -->` block the
 repair reads. Two spellings because half of a bullet is the name of an object a
 chart rendered, and a chart must not be able to write the instruction. Bosun
 rewrites every declaring manifest, apiVersion values only, preserving
-quoting and comments, deny-list and allowlist consulted for every file, and
-pushes the migration to the pull request's branch. **No model is involved.**
-The gate re-runs on the new commit, counts the consumers again, finds none, and
-goes green, so the same scanner that demanded the repair is the one that
-verifies it.
+quoting and comments, deny-list and allowlist consulted for every file.
+**The swap itself calls no model.** The gate re-runs on the pushed commit,
+counts the consumers again, finds none, and goes green, so the same scanner
+that demanded the repair is the one that verifies it.
 
-**The reshape.** Sometimes swapping the version is not the whole job: the
-target schema prunes a field the old one carried, so the document parses,
-applies and quietly loses a value while the render, the gate and the repository
-all look fine. A model is asked for the migrated document itself, one document
-at a time and capped per pull request. This is one of two paths on which a
+**The reshape.** The swap is not always the whole job, so a second pass runs
+over the files it just rewrote, before any of them are pushed. The target
+schema prunes a field the old one carried, so the document parses, applies and
+quietly loses a value while the render, the gate and the repository all look
+fine. A model is asked for the migrated document itself, one document at a time
+and capped per pull request. This is one of two paths on which a
 model authors whole file content, the values migration below being the other,
 and on neither does it apply what it wrote. The proposal is refused
 whole unless it keeps the object's identity, fits the target schema, and
 contains no value that is not either at that same path in the original,
 displaced by the schema change, or dictated by the schema itself. What lands is
 re-serialised from the structure the harness validated rather than written back
-as the model's text. A refusal escalates, and values dropped along the way are
-listed in the comment even when dropping them was right. See
+as the model's text. A refusal escalates and nothing is pushed, the swaps that
+were fine included: half a migration turns the gate green over a document the
+apiserver still prunes. Values dropped along the way are listed in the comment
+even when dropping them was right. See
 [ADR 0007](../adr/0007-structure-from-the-schema-data-from-the-document.md).
 
 **The values migration.** A different red: the chart will not render at the new
@@ -177,10 +180,11 @@ maintainers' own release notes. A green render that still warrants eyes, a
 major boundary crossed, RBAC that vanished, notes describing a manual step,
 gets **Worth a look before merging** and the label, and blocks nothing.
 
-Escalations on this path are where gate rules come from. The example on this
-page was first caught here, by the model flagging a version distance no render
-reveals; that judgement then became code, the gate's deterministic
-served-version rule, and then the deterministic repair. Promoting a model's
+Escalations on this path are where gate rules come from. This chart's dropped
+versions were first caught here, on an earlier external-secrets promotion, by
+the model flagging a version distance no render reveals; that judgement then
+became code, the gate's deterministic served-version rule, and then the
+deterministic repair that fixes the promotion on this page. Promoting a model's
 one-off finding into a gate rule is how this system gets less dependent on the
 model over time.
 

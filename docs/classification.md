@@ -25,11 +25,12 @@ What makes those repairs rather than judgements is that code checks the answer
 against the schema or the chart; nothing is accepted for sounding right.
 
 **A CRD stopped serving a version manifests here still declare.**
-external-secrets 2.x stops serving `v1beta1` while 39 manifests still declare
-it. The gate's report names the consumer kind, the dropped versions and the
-version that survives, so the rewrite takes no judgement: every declaring
-manifest gets its `apiVersion` value changed, and the re-run gate re-counts the
-consumers to confirm the repair. **No model is involved in this one.**
+external-secrets 2.x stops serving `v1alpha1` and `v1beta1` while 28 manifests
+still declare one of them. The gate's report names the consumer kind, the
+dropped versions and the version that survives, so the rewrite takes no
+judgement: every declaring manifest gets its `apiVersion` value changed, and
+the re-run gate re-counts the consumers to confirm the repair. **No model is
+involved in this one.**
 
 **The swap alone is not the whole job**, because the target schema would
 silently prune a field the old version carried. One document at a time is sent

@@ -283,7 +283,9 @@
   font-family: var(--sl-font-mono);
   font-size: 0.92em;
   color: var(--bo-teal-300);
-  word-break: break-all;
+  /* `anywhere`, not `break-all`: the long CRD name has to break somewhere on a
+     narrow card, but `apiVersion` fits and must not be split down the middle. */
+  overflow-wrap: anywhere;
 }
 
 :root[data-theme='light'] .bo-report__body code {
@@ -298,6 +300,34 @@
   border-radius: 7px;
   background: var(--bo-code-bg);
   overflow-x: auto;
+}
+
+/* One line per span, and `pre` so the YAML keeps the indentation that is the
+   whole point of the reshape: `key` moves under `extract`. Block spans also
+   mean the newlines between them in the source are whitespace between blocks,
+   which is not rendered, so no `<br>` is needed and none may be added. */
+.bo-report__diff span {
+  display: block;
+  white-space: pre;
+}
+
+/* The reshape diff sits inside the repair block rather than heading the card,
+   so it is quieter and indented to the text it illustrates. */
+.bo-report__diff--nested {
+  font-size: 0.71rem;
+  line-height: 1.45;
+  margin: 0 0 0.55rem 0.9rem;
+  padding: 0.45rem 0.6rem;
+}
+
+/* The file the one-line diff is in. Long enough to wrap on a narrow card, and
+   the whole point is that it is one path, so it wraps rather than scrolls. */
+.bo-report__file {
+  margin: -0.55rem 0 0.9rem;
+  font-family: var(--sl-font-mono);
+  font-size: 0.68rem;
+  color: var(--sl-color-gray-3);
+  overflow-wrap: anywhere;
 }
 
 .bo-del {
@@ -341,12 +371,25 @@
   border: 1px solid color-mix(in srgb, #4ac07a 40%, transparent);
 }
 
+/* Teal, not green: the reshape is a repair the gate has not yet re-counted,
+   and giving it the same green as the deterministic swap would say the two
+   arrived with the same evidence behind them. */
+.bo-chip--teal {
+  background: color-mix(in srgb, var(--bo-teal-500) 20%, transparent);
+  color: var(--bo-teal-300);
+  border: 1px solid color-mix(in srgb, var(--bo-teal-500) 45%, transparent);
+}
+
 :root[data-theme='light'] .bo-chip--red {
   color: var(--bo-coral-700);
 }
 
 :root[data-theme='light'] .bo-chip--green {
   color: #1c5840;
+}
+
+:root[data-theme='light'] .bo-chip--teal {
+  color: var(--bo-teal-700);
 }
 
 .bo-report__verdict {
@@ -365,11 +408,24 @@
   margin-bottom: 0.25rem;
 }
 
-.bo-report__repair {
-  margin: 0;
-  padding-top: 0.8rem;
+/* What the gate found is above the rule; what bosun did about it is below. */
+.bo-report__steps {
+  padding-top: 0.85rem;
   border-top: 1px solid var(--bo-rule);
+}
+
+.bo-report__step {
+  margin: 0 0 0.6rem;
   color: var(--sl-color-gray-2);
+}
+
+.bo-report__note {
+  margin: 0;
+  padding-inline-start: 0.9rem;
+  border-inline-start: 2px solid color-mix(in srgb, var(--bo-teal-500) 35%, transparent);
+  font-size: 0.79rem;
+  line-height: 1.5;
+  color: var(--sl-color-gray-3);
 }
 
 .bo-report__caption {
@@ -567,7 +623,7 @@
 }
 
 /* The findings column. Coral is this site's "look at this" colour, and a green
-   tick beside "thirty-nine manifests still declare them" reads as reassurance. */
+   tick beside "twenty-eight manifests still declare them" reads as reassurance. */
 .bo-split--esc li::before {
   content: '!';
   color: var(--bo-coral-400);
