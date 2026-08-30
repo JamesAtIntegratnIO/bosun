@@ -1,0 +1,9 @@
+{
+  "clean": false,
+  "repository": "example/platform",
+  "status": {
+    "origin": "bosun",
+    "text": "No sweep has completed yet, so nothing is claimed about this pipeline. This is not a clean report: the supervisor has not looked. Ask again after the next sweep."
+  },
+  "swept": false
+}

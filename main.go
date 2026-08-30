@@ -58,6 +58,7 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/gateservice"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
+	"github.com/JamesAtIntegratnIO/bosun/mcp"
 	"github.com/JamesAtIntegratnIO/bosun/pipeline"
 	"github.com/JamesAtIntegratnIO/bosun/redact"
 	"github.com/JamesAtIntegratnIO/bosun/supervisor"
@@ -435,6 +436,82 @@ func main() {
 		}()
 	}
 
+	// The MCP listener. A third port, and the first surface here built to be
+	// reached from outside the cluster.
+	//
+	// Everything about how it is switched on is a decision rather than a
+	// default. It is off unless an operator said otherwise, because an upgrade
+	// must not open a new programmatic API on an install that did not ask for
+	// one. It refuses to start without a token, deliberately unlike the
+	// promotion endpoint above: that endpoint's caller is Kargo inside the
+	// cluster and its unauthenticated form predates the setting, whereas here
+	// "a token nobody set" and "an open API on a published port" are the same
+	// thing. And the way to run it without one is a value spelled to be
+	// regretted on sight, so that the person who genuinely wants it has said
+	// so on purpose.
+	var mcpSrv *http.Server
+	if cfg.MCP {
+		auth, refusal := mcpAuth(cfg)
+		if auth == nil {
+			// Not fatal. The gate, the triage endpoint and the sweep are all
+			// still worth running, and killing the pod over one listener would
+			// take them down with it. Loud, and at every start-up, which is
+			// the same trade the unauthenticated promotion endpoint makes one
+			// screen up.
+			logger.Print(refusal)
+		} else {
+			ms := &mcp.Server{
+				Repository: cfg.GitOwner + "/" + cfg.GitRepo,
+				Auth:       auth,
+				Version:    cfg.Version,
+				Log:        func(f string, a ...any) { logger.Printf(f, a...) },
+				// The sweep's own snapshot, and nothing else. nil before the
+				// first sweep completes, which every tool reports as "nothing
+				// has looked yet" rather than as a clean pipeline.
+				//
+				// With supervision off there is no sweep to read, so the
+				// surface answers that honestly forever rather than pretending
+				// to a report it will never have.
+				Report: func() *pipeline.Report {
+					if sup == nil {
+						return nil
+					}
+					return sup.Report()
+				},
+			}
+			h, err := ms.Handler()
+			if err != nil {
+				// A wiring mistake in this file rather than an operator's, so
+				// it is fatal: the alternative is a pod that runs with a
+				// surface silently missing.
+				logger.Fatalf("the MCP surface could not be built: %v", err)
+			}
+			mcpSrv = &http.Server{
+				Addr:              cfg.MCPAddr,
+				Handler:           h,
+				ReadHeaderTimeout: 10 * time.Second,
+			}
+			if !cfg.Supervise {
+				// Worth a line, because the surface answers rather than
+				// failing: every tool it serves today reads the sweep, so with
+				// supervision off it truthfully reports that nothing has
+				// looked, forever. That is the honest answer and it is
+				// indistinguishable, from the client's side, from an install
+				// whose first sweep has not finished yet.
+				logger.Print("mcp: supervise.enabled is false, so there is no sweep to read; " +
+					"pipeline_report will report that no sweep has completed for as long as " +
+					"that stays true")
+			}
+			go func() {
+				logger.Printf("mcp: read-only tools on %s%s (%s); %s",
+					cfg.MCPAddr, mcp.EndpointPath, auth.Describe(), toolNames())
+				if err := mcpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					logger.Fatalf("serving the MCP surface: %v", err)
+				}
+			}()
+		}
+	}
+
 	go func() {
 		logger.Printf("%s listening on %s (model %s, repo %s/%s, allow %v)",
 			cfg.Brand, cfg.Addr, model.Name(), cfg.GitOwner, cfg.GitRepo, cfg.AllowPaths)
@@ -455,8 +532,54 @@ func main() {
 	if webSrv != nil {
 		_ = webSrv.Shutdown(ctx)
 	}
+	if mcpSrv != nil {
+		_ = mcpSrv.Shutdown(ctx)
+	}
 	srv.Wait()
 	logger.Print("stopped")
+}
+
+// mcpAuth decides how the MCP listener authenticates, or refuses to start it.
+//
+// A function rather than a switch inside main, because the decision is the
+// interesting part and main is not testable. What it returns is either an
+// Auth or the sentence an operator reads in the pod log, never both and never
+// neither.
+//
+// The rule it encodes: an unset token stops the listener. That is deliberately
+// unlike PROMOTION_TOKEN, whose unset form has to keep working because every
+// install that predates the setting has one -- but that endpoint's caller is
+// Kargo inside the cluster, and this listener is built to be reached from
+// outside it. "Nobody set a token" and "an open programmatic API on a
+// published port" are the same situation here, so the only way to the
+// unauthenticated posture is a value spelled to be regretted on sight.
+func mcpAuth(cfg *Config) (mcp.Auth, string) {
+	switch {
+	case cfg.MCPToken != "":
+		return mcp.BearerToken{Token: cfg.MCPToken}, ""
+	case cfg.MCPAllowUnauthenticated:
+		return mcp.Unauthenticated{}, ""
+	}
+	return nil, "WARNING: the MCP surface is enabled and is NOT starting: no token is set. " +
+		"Set mcp.existingSecret (MCP_TOKEN, or MCP_TOKEN_FILE) so the listener requires a " +
+		"bearer token. This listener is built to be reached from outside the cluster, so an " +
+		"unset token is not a default it can fall back on -- if you genuinely want no " +
+		"authentication, say so with mcp.dangerouslyServeWithoutAuthentication."
+}
+
+// toolNames is what the MCP listener serves, for the start-up log.
+//
+// Read from the registry rather than written here, so the line an operator
+// sees is the tool set the process actually registered. "What does this
+// disclose" is the question somebody asks before routing anything to this
+// port, and a hand-written list is how the answer stops being true.
+func toolNames() string {
+	tools := mcp.Tools()
+	names := make([]string, 0, len(tools))
+	for _, t := range tools {
+		names = append(names, t.Name)
+	}
+	return "tools: " + strings.Join(names, ", ")
 }
 
 // features is the agent's switchable posture, named for the page in the same

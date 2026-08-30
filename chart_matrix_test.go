@@ -103,6 +103,29 @@ var matrix = map[string]switchRow{
 		{Set: "web.theme=auto"},
 	}},
 
+	// The MCP surface, and the two rows that are the point of it. Off by
+	// default, so nothing else in this repository renders any of it -- which is
+	// the 0.25.0 ClusterRole's exact situation, and the reason this table is
+	// derived from the schema rather than written by hand.
+	"mcp.enabled": {Positions: []position{
+		{Set: "mcp.enabled=true",
+			With: []string{"mcp.existingSecret=bosun-mcp",
+				"mcp.allowFrom[0].namespace=gateway-system"},
+			Why: "the whole surface -- a container port, a Service port, a NetworkPolicy peer " +
+				"and a credential -- rendered by nothing until this row existed"},
+		{Set: "mcp.enabled=true", Refuses: "mcp.existingSecret is required",
+			Why: "without a token the listener does not start, and the only symptom is one " +
+				"WARNING in a pod log beside a Service that publishes the port anyway"},
+	}},
+	"mcp.dangerouslyServeWithoutAuthentication": {Positions: []position{
+		{Set: "mcp.dangerouslyServeWithoutAuthentication=true",
+			// Deliberately no existingSecret: rendering the surface with no
+			// credential at all is the whole of what this hatch does.
+			With: []string{"mcp.enabled=true"},
+			Why: "the escape hatch is the one way to render the surface with no credential, " +
+				"and a hatch nothing renders is a hatch nobody has checked still opens"},
+	}},
+
 	"web.httpRoute.enabled": {Positions: []position{{Set: "web.httpRoute.enabled=false"}}},
 	"web.ingress.enabled":   {Positions: []position{{Set: "web.ingress.enabled=false"}}},
 

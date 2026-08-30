@@ -93,6 +93,28 @@ spec:
         - protocol: TCP
           port: {{ $.Values.service.webPort }}
     {{- end }}
+    {{- /* The MCP surface, and only its own port.
+
+           Everything the rule above says applies here and one thing more:
+           this is the listener built to be reached from OUTSIDE the cluster,
+           so it is the one where a peer written a little too wide is a
+           programmatic read API published to whoever noticed. `mcp.allowFrom`
+           is empty by default and admits nobody until an operator names where
+           from, and the port is `mcpPort` and never `service.port`. */}}
+    {{- range (.Values.mcp.enabled | ternary .Values.mcp.allowFrom list) }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .namespace }}
+          {{- with .podSelector }}
+          podSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+          {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.service.mcpPort }}
+    {{- end }}
   egress:
     {{- /* DNS, to the cluster resolver and nowhere else. This is the only rule
            this chart writes that opens 53, and it is a containment rule rather

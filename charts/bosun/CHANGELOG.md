@@ -11,6 +11,51 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.32.0]
+
+`appVersion` moves with it: this is the chart for the agent that serves the
+sweep's findings to an agent over MCP.
+
+### Added
+
+- **`mcp`, a read-only MCP surface on a third port.** One tool today,
+  `pipeline_report`, answering with the last sweep's findings as typed values
+  an agent can branch on rather than markdown it has to parse. It computes
+  nothing -- every answer comes from the snapshot the sweep already holds --
+  so a request costs no git API call, no cluster read and no model call, and
+  nothing it serves can change anything.
+
+  **Off by default, and that is not a preference the way `web.enabled` is.**
+  Upgrading an install must not open a new programmatic API on it. `helm
+  upgrade` over 0.31.0 changes nothing: no port on the Service, no peer in the
+  NetworkPolicy, no variable in the Deployment.
+
+  **The listener does not start without a token.** `mcp.existingSecret` names
+  the Secret holding it, this chart refuses to render without one, and the
+  binary refuses to start the listener without one on top of that -- the
+  second is for the Deployment somebody edits by hand. That is deliberately
+  unlike `promotionAuth`, whose caller is Kargo inside the cluster and whose
+  unauthenticated form predates that setting; this surface is built to be
+  reached from outside the cluster, where "a token nobody set" and "an open
+  API" are the same thing. The token reads through the same path as every
+  other credential, so `credentials.mountAsFiles` and a mounted Secret's
+  trailing newline work without special handling.
+
+  `mcp.dangerouslyServeWithoutAuthentication` is the way past that, and it is
+  spelled to be uncomfortable to type. It exists so the one operator who
+  genuinely wants an unauthenticated read API -- behind a gateway that already
+  authenticates, say -- says so on purpose rather than discovering that an
+  empty token works.
+
+  `mcp.allowFrom` is who may reach the port when the NetworkPolicy is on, empty
+  by default and refused at render time while the surface is enabled: the same
+  shape and the same honest default as `web.allowFrom`.
+
+- **`service.mcpPort`** (default 8082), its own port for the reason `webPort`
+  is: both a NetworkPolicy and a gateway draw their lines at the port, so a
+  read-only surface stays smaller than the endpoint that spends money and
+  writes to your repository only if the two never share a listener.
+
 ## [0.31.0]
 
 `appVersion` moves with it: this is the chart for the agent that reads the

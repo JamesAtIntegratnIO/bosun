@@ -17,6 +17,11 @@ spec:
       port: {{ .Values.service.webPort }}
       targetPort: web
     {{- end }}
+    {{- if .Values.mcp.enabled }}
+    - name: mcp
+      port: {{ .Values.service.mcpPort }}
+      targetPort: mcp
+    {{- end }}
 {{- if .Values.serviceAccount.create }}
 ---
 apiVersion: v1

@@ -415,6 +415,92 @@ kubectl -n bosun port-forward deploy/bosun 8081 &
 open http://localhost:8081
 ```
 
+## The MCP surface
+
+The same facts the page renders, served to the readers who are not people.
+
+An on-call engineer's coding agent asks `pipeline_report` what has stopped
+promoting and gets each finding as typed values: the kind to branch on, the
+severity, the subject, the evidence with its numbers, how long it has held,
+and where one exists the paste-ready command that recovers it, worst first.
+Beside them travels the sweep's own accounting of what it examined, so a
+report with no findings can prove it looked rather than merely returning
+nothing.
+
+It computes nothing. Every answer comes from the snapshot the last sweep left
+in memory, so a request reaches no git host, no cluster and no model, and a
+chatty client cannot spend your rate limit. Nothing it serves can change
+anything: there is no mutating tool, and there is not going to be one -- the
+ClusterRole this chart writes has no write verb anywhere, and a feature that
+seems to need one is a signal to reconsider the feature.
+
+```yaml
+mcp:
+  enabled: true
+  existingSecret: bosun-mcp   # required; this chart never creates a Secret
+  tokenKey: token
+  allowFrom:
+    - namespace: gateway-system
+      podSelector: {app: envoy}
+service:
+  mcpPort: 8082               # the default
+```
+
+```bash
+kubectl -n bosun create secret generic bosun-mcp   --from-literal=token="$(head -c 32 /dev/urandom | base64)"
+```
+
+**Off by default, and that is not a preference the way `web.enabled` is.**
+Upgrading an install must not open a new programmatic API on it, so `helm
+upgrade` from a release before this one changes nothing: no port on the
+Service, no peer in the NetworkPolicy, no variable in the Deployment.
+
+**Without a token the listener does not start.** The chart refuses to render,
+and the binary refuses to start the listener on top of that, which is the half
+that covers a Deployment somebody edits by hand. That is deliberately unlike
+`promotionAuth`, whose caller is Kargo inside the cluster and whose
+unauthenticated form predates the setting; this is the one listener built to be
+reached from outside the cluster, where "a token nobody set" and "an open API"
+are the same thing.
+
+`mcp.dangerouslyServeWithoutAuthentication` is the way past that, and it is
+spelled to be uncomfortable to type and impossible to skim past. There are real
+reasons to want it -- a gateway in front that already authenticates every
+request, or a laptop-bound experiment -- and it exists so those people say so on
+purpose rather than discovering that leaving the token empty works.
+
+**It is on its own port, for the same reason the page is, and it matters more
+here.** `service.port` answers the endpoint that spends money and writes to
+your repository; this is the surface you are most likely to publish beyond the
+namespace. A NetworkPolicy and a gateway both draw their lines at the port.
+
+**What it reveals is what the page reveals**: the repository's name, your Stage
+and Warehouse names, the findings and their remedies. No credential, no prompt,
+no rendered diff. The difference is who reads it and what they hold -- these
+answers land in somebody's coding agent, which usually has a shell and a
+checkout -- so treat the token as read access to your pipeline's status handed
+to a program.
+
+One value is refused rather than rendered:
+
+| Refused | Because |
+|---|---|
+| `mcp.enabled` with no `existingSecret` and no explicit hatch | the listener would not start; the pod runs, the Service publishes a port, and the only symptom is one WARNING in a log nobody is reading |
+
+`allowFrom` is deliberately not a second row. Empty admits nobody, and that is
+a working configuration rather than a mistake: a port-forward reaches the pod
+through the kubelet, which NetworkPolicy does not govern, so the paragraph
+below is exactly how to look at this surface before naming anyone.
+
+Point a client at `http://<host>:8082/mcp` over streamable HTTP, with the token
+as a bearer credential. Before deciding whether to publish it, look at it over
+a port-forward:
+
+```bash
+kubectl -n bosun port-forward deploy/bosun 8082 &
+curl -sS -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json'   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'   http://localhost:8082/mcp
+```
+
 ## The halves of the network path this chart cannot write
 
 This chart writes the policy governing what reaches the agent and what the

@@ -98,6 +98,15 @@ refuses, or any fix needing a file outside the addon's own tree.
 
 It comments, labels, and stops. **It never closes a pull request.**
 
+**Answers an agent, read-only**, on a listener of its own. The same facts the
+status page renders -- what has stopped promoting, why, how long it has held,
+and the exact command that recovers it -- served over MCP as typed values a
+coding agent can branch on, rather than markdown written for a person. Nothing
+is computed: every answer comes from the snapshot the last sweep already holds,
+so a request reaches no git host, no cluster and no model. Nothing mutates,
+because no tool does. Off by default, and it refuses to start without a token.
+See [the chart README](charts/bosun/README.md#the-mcp-surface).
+
 ## The safety model is code, not prompt
 
 The model never **applies**. It returns a structured verdict and a proposal:

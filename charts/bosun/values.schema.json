@@ -84,6 +84,12 @@
           "minimum": 1,
           "maximum": 65535,
           "description": "The status page's port. Its own, and never service.port: the main port also answers POST /v1/promotion-opened, and both a NetworkPolicy and a gateway draw their lines at the port."
+        },
+        "mcpPort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "The MCP surface's port. Its own, and never service.port or service.webPort: both a NetworkPolicy and a gateway draw their lines at the port, so a read-only surface stays smaller than the endpoint that spends money and writes to the repository only if the two never share a listener."
         }
       }
     },
@@ -257,6 +263,51 @@
         "allowFrom": {
           "type": "array",
           "description": "Who may reach the page's port when the NetworkPolicy is on. Empty admits nobody, which is the honest default for a surface that is not published until you say where from. Each entry ANDs its namespace and podSelector.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "namespace"
+            ],
+            "properties": {
+              "namespace": {
+                "type": "string",
+                "minLength": 1
+              },
+              "podSelector": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "mcp": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The read-only MCP surface: what the last pipeline sweep found, served as typed values on a port of its own for the readers who are not people. Computes nothing, mutates nothing, and costs no git, cluster or model call per request. Off by default, because an upgrade must not open a new programmatic API on an install that did not ask for one.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "existingSecret": {
+          "type": "string",
+          "description": "The Secret holding the listener's bearer token. Required when enabled: without it the listener does not start, and the pod log says so at every start-up. This chart never creates a Secret."
+        },
+        "tokenKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dangerouslyServeWithoutAuthentication": {
+          "type": "boolean",
+          "description": "Run the MCP listener with no authentication at all. Anything that can reach the port then reads everything this install holds about the pipeline. Named to be regretted on sight, and never what an omission reaches: an unset token stops the listener rather than opening it."
+        },
+        "allowFrom": {
+          "type": "array",
+          "description": "Who may reach the MCP port when the NetworkPolicy is on. Empty admits nothing, which is the honest default for a surface whose purpose is to be reached from outside the namespace.",
           "items": {
             "type": "object",
             "additionalProperties": false,

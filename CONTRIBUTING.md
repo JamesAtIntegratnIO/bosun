@@ -40,6 +40,7 @@ on its own:
 | The ClusterRole covers the API reads the code makes | Not yet. A missing grant is a 403 that `cluster/` turns into a soft, honest sentence, so nothing would ever look | `chart_rbac_test.go` against `cluster.Reads()`, which the request paths are built from |
 | The prompt, the schema and the struct state one response shape | The hand-written list meant to hold two of them together omitted `escalationReason` | `llm/contract_test.go`, all four statements, every list derived |
 | Every credential `config.go` reads primes the process redactor | Not yet. A credential added to `Config` and wired to its one client compiles, passes, and has no symptom until a host echoes it back inside an error string | `redaction_test.go`, both sets derived: the credentials from `config.go`'s syntax tree, the coverage from a real `Config` of sentinels through `redact.Text`, and `main`'s own call from its syntax tree, so deleting the priming fails rather than passing |
+| The shape of every MCP tool result, which somebody else's agent parses | Not yet, and this side of it cannot break loudly: the other half is a client in a repository this CI will never run. A renamed field, or an absence that becomes an empty array, is a silent break there and a passing build here | `mcp/testdata/*.json` through `mcp/contract_test.go` -- golden files, so a schema cannot drift without a reviewer seeing the diff, and `mcp_credentials_test.go`, which walks the result types from `mcp.Tools()` and the credential names from `config.go`'s syntax tree |
 
 This is why both halves live in one repository. A boundary is safe where its
 contract can be tested; across two repositories, no CI run can check both
@@ -123,6 +124,7 @@ it deliberately does not:
 | `gate/` | rendering the repository and diffing it, with no git host and no model |
 | `gateservice/` | running the gate in-process, per open pull request, on a timer |
 | `supervisor/` | the pipeline sweep: the promotions that never happened |
+| `mcp/` | the read-only tool surface, and the shape of what it hands back. The one listener built to be reached from outside the cluster, which is why it imports the result types and the redactor and nothing else |
 | `prompt/` | what the model is told, and what the eval suite scores |
 | `edits/`, `migrate/`, `structural/`, `valuesmigrate/` | the four ways a file gets written, each behind its own refusals |
 | `internal/` | fixtures two packages need and nobody outside this module should have. Today: a chart repository on loopback, because a chart directory cannot express two versions of one chart |

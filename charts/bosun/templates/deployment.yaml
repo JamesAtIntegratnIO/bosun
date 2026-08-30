@@ -59,6 +59,14 @@ spec:
             - name: web
               containerPort: {{ .Values.service.webPort }}
             {{- end }}
+            {{- if .Values.mcp.enabled }}
+            # The MCP surface, on a port of its own. Same reason as the page
+            # above, and it matters more here: this is the listener built to
+            # be reached from outside the cluster, and both a NetworkPolicy
+            # and a gateway draw their lines at the port.
+            - name: mcp
+              containerPort: {{ .Values.service.mcpPort }}
+            {{- end }}
           env:
             - name: AGENT_ADDR
               value: ":{{ .Values.service.port }}"
@@ -82,6 +90,29 @@ spec:
               value: {{ .Values.branding.name | default "bosun" | quote }}
             - name: MAX_CONCURRENT_TRIAGE
               value: {{ .Values.maxConcurrentTriage | default 4 | quote }}
+            - name: MCP
+              value: {{ .Values.mcp.enabled | quote }}
+            {{- if .Values.mcp.enabled }}
+            - name: MCP_ADDR
+              value: ":{{ .Values.service.mcpPort }}"
+            # Sent always when the surface is on, including `false`, so that
+            # the posture an operator chose is visible in `kubectl get deploy
+            # -o yaml` rather than inferred from a variable that is not there.
+            - name: MCP_DANGEROUSLY_SERVE_WITHOUT_AUTHENTICATION
+              value: {{ .Values.mcp.dangerouslyServeWithoutAuthentication | quote }}
+            {{- if .Values.mcp.existingSecret }}
+            {{- if $files }}
+            - name: MCP_TOKEN_FILE
+              value: {{ printf "%s/mcp-token" $credDir | quote }}
+            {{- else }}
+            - name: MCP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mcp.existingSecret }}
+                  key: {{ .Values.mcp.tokenKey | default "token" }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
             {{- if .Values.promotionAuth.existingSecret }}
             {{- if $files }}
             - name: PROMOTION_TOKEN_FILE
@@ -382,6 +413,13 @@ spec:
                   items:
                     - key: {{ $.Values.promotionAuth.tokenKey | default "token" }}
                       path: promotion-token
+              {{- end }}
+              {{- if and .Values.mcp.enabled .Values.mcp.existingSecret }}
+              - secret:
+                  name: {{ .Values.mcp.existingSecret }}
+                  items:
+                    - key: {{ .Values.mcp.tokenKey | default "token" }}
+                      path: mcp-token
               {{- end }}
         {{- end }}
         {{- if .Values.gate.argocd.caSecret }}

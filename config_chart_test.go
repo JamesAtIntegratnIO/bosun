@@ -51,6 +51,23 @@ func envShapes() []struct {
 			"credentials.mountAsFiles=true",
 			"promotionAuth.existingSecret=bosun-promotion",
 			"llm.existingSecret=bosun-llm", "llm.apiKeyKey=api-key")}},
+		// The MCP surface, both credential forms. It is off by default, so no
+		// other render reaches its variables at all -- and the token is a
+		// credential like every other one, which means it has to appear in
+		// both spellings and in neither at once.
+		{"the MCP surface", []helmtest.Option{base, helmtest.Set(
+			"mcp.enabled=true", "mcp.existingSecret=bosun-mcp"),
+			helmtest.SetJSON("mcp.allowFrom", `[{"namespace":"gateway-system"}]`)}},
+		{"the MCP surface with file credentials", []helmtest.Option{base, helmtest.Set(
+			"credentials.mountAsFiles=true",
+			"mcp.enabled=true", "mcp.existingSecret=bosun-mcp"),
+			helmtest.SetJSON("mcp.allowFrom", `[{"namespace":"gateway-system"}]`)}},
+		// Enabled with no peer named, which is a working configuration rather
+		// than a mistake: a port-forward reaches the pod through the kubelet,
+		// which NetworkPolicy does not govern. It renders, and nothing may
+		// reach the port from inside the cluster.
+		{"the MCP surface admitting nobody", []helmtest.Option{base, helmtest.Set(
+			"mcp.enabled=true", "mcp.existingSecret=bosun-mcp")}},
 		{"a GitHub App", []helmtest.Option{base, helmtest.SetString(
 			"git.app.appId=1234",
 			"git.app.installationId=5678",
@@ -242,6 +259,16 @@ func TestTheChartRefusesValuesThatCouldNotStart(t *testing.T) {
 			text: "web.allowFrom is empty",
 			opts: []helmtest.Option{helmtest.Values("ci/lint-values.yaml"),
 				helmtest.SetJSON("web.allowFrom", `[]`)},
+		},
+		// The MCP surface's two cross-field rules. The first is the one that
+		// matters: an operator who enables the surface and forgets the token
+		// gets a pod that runs, a Service that publishes a port, and one
+		// WARNING in a log nobody is reading.
+		{
+			name: "the MCP surface with no token",
+			text: "mcp.existingSecret is required",
+			opts: []helmtest.Option{helmtest.Values("ci/lint-values.yaml"),
+				helmtest.Set("mcp.enabled=true")},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
