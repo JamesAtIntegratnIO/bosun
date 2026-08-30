@@ -164,23 +164,31 @@ import LoopDiagram from '../../components/LoopDiagram.astro';
 <section class="bo-section not-content">
   <div class="bo-strip">
     <p class="bo-kicker">The safety model</p>
-    <h2 style="margin-bottom:1rem">The model does not edit files</h2>
+    <h2 style="margin-bottom:1rem">The model has no file-edit tool</h2>
     <p style="max-width:52em;color:var(--sl-color-gray-2);line-height:1.65">
-      It returns a structured verdict and a proposal: scalar edits, a complete
-      migrated manifest, or a complete migrated values document. The service
-      applies what survives its own checks, behind a path allowlist and a
-      deny-list its own configuration cannot remove from. A values proposal has
-      to clear one more bar than a schema walk, because helm is asked to render
-      the chart with it before a line is written. So
+      It writes plenty. A scalar value, a whole reshaped manifest, a whole
+      migrated values document: all three are content the model authored, and
+      the first of them lands on the line exactly as it spelled it. What it
+      cannot do is <em>apply</em> any of it, or decide which files are
+      writable. It returns a structured proposal and the service does the
+      writing, behind a path allowlist and a deny-list its own configuration
+      cannot remove from.
+    </p>
+    <p style="max-width:52em;color:var(--sl-color-gray-2);line-height:1.65">
+      Each path is checked by something the model does not control: a
+      <code>from</code> value that must already be in the file, a target schema,
+      and for values, helm itself, asked to render the chart with the proposal
+      before a line is written. So
       <em>“never edit the gate, never weaken a policy to go green”</em> is an
       invariant the service enforces, not an instruction the model is asked to
       respect. A model that ignores the prompt entirely still cannot touch CI
       configuration.
     </p>
     <p style="max-width:52em;color:var(--sl-color-gray-2);line-height:1.65">
-      A model with file-edit tools can make a red gate green by deleting the
-      check, and from outside that looks the same as a repair. Every guarantee
-      here follows from putting the edit behind code the model cannot reach.
+      A model holding file-edit tools can make a red gate green by deleting the
+      check, and from outside that looks the same as a repair. Handing it a
+      document to write is a much smaller grant, and the difference is that a
+      document is judged against a schema it did not choose.
     </p>
     <p style="margin-top:1.4rem">
       <a class="bo-btn bo-btn--ghost" href="/concepts/safety-model/">Read what is enforced, and where</a>
