@@ -330,6 +330,77 @@ hang.
 
 See [`adr/0006-live-reads-are-scoped-by-group.md`](../../adr/0006-live-reads-are-scoped-by-group.md).
 
+## The status page
+
+One read-only HTML page: what this agent is watching, which pull requests have
+a verdict and which is being rendered right now, what the pipeline sweep found,
+and the exact command that ends each finding.
+
+The report has been served on `/pipeline` as markdown since the supervisor was
+written, and markdown in a browser tab is source code. The people who most need
+it, whoever is wondering why an addon has not updated in three days, are exactly
+the people who will not port-forward and pipe `curl` through a renderer. So the
+same report now renders itself.
+
+**It is on its own port, and that is the entire reason it can be published.**
+`service.port` also answers `POST /v1/promotion-opened`, the endpoint that names
+the pull request the agent edits and the files it reads into a published prompt.
+A NetworkPolicy and a gateway both draw their lines at the port, so "expose the
+read-only page" stays a smaller decision than "expose the endpoint that spends
+money and writes to your repository" only because the two never share a
+listener.
+
+```yaml
+web:
+  enabled: true             # the default
+  httpRoute:
+    enabled: true
+    parentRefs: [{name: external, namespace: gateway-system, sectionName: https}]
+    hostnames: [bosun.example.com]
+  allowFrom:
+    - namespace: gateway-system     # who may reach the page's port
+      podSelector: {app: envoy}
+```
+
+**Gateway API, not `ingress-nginx`.** An `ingress` block is here for clusters
+without Gateway API, and it is the second choice: Ingress is feature-frozen, so
+everything past a host and a path is a controller-specific annotation and the
+manifest stops describing what it does. `ingress-nginx` in particular is in
+maintenance mode. An HTTPRoute names the Gateway it attaches to, and the policy
+that gateway carries, TLS, authentication, rate limits, belongs to whoever runs
+it.
+
+**Neither route adds authentication, and the page has none of its own.** What
+it reveals is operational state: the repository's name, the titles of open pull
+requests, your Stage and Warehouse names, and the findings with their remedies.
+No credential, no prompt, no rendered diff. Treat it as read access to your
+pipeline's status, because that is what it is, and put your gateway's
+authentication in front of it if that is more than you want published.
+
+Five values are refused rather than rendered, each because the failure it
+produces points nowhere near its cause:
+
+| Refused | Because |
+|---|---|
+| `httpRoute.enabled` with no `parentRefs` | a route with no parent attaches to no Gateway, renders clean, and serves nothing |
+| `ingress.enabled` with no `className` | an unclassed Ingress is claimed by whichever controller claims unclassed Ingresses |
+| `ingress.enabled` with no `hosts` | an Ingress with no rules is accepted and routes nothing; the page answers the default backend instead of 404ing anywhere you would look |
+| a route published, `networkPolicy.enabled`, `allowFrom` empty | nothing may reach the page's port; the symptom is a timeout that blames the gateway |
+| a route with `web.enabled: false` | there is nothing listening behind it |
+
+The cross-namespace `parentRefs` above still needs the Gateway's own listener
+to admit routes from this namespace (`allowedRoutes.namespaces`), which is the
+same shape as every other far end in the section below: this chart cannot write
+it, and without it the route is simply not accepted.
+
+Without a route, the page is still there on a port-forward, which is how to
+look at it before deciding whether to publish it at all:
+
+```bash
+kubectl -n bosun port-forward deploy/bosun 8081 &
+open http://localhost:8081
+```
+
 ## The halves of the network path this chart cannot write
 
 This chart writes the policy governing what reaches the agent and what the
@@ -460,9 +531,11 @@ brief degrades to saying it had no evidence.
   as a literal env value. No `create`, `update`, `patch` or `delete` anywhere.
   The agent observes the cluster and writes to pull requests, never to the
   cluster.
-- **Not exposed.** No Ingress or HTTPRoute. Only Kargo calls it, in-cluster.
-  Publishing it would be gratuitous exposure of something that can spend money
-  and write to your repository.
+- **The port Kargo calls is not exposed.** No Ingress or HTTPRoute is ever
+  rendered for `service.port`; publishing it would be gratuitous exposure of
+  something that can spend money and write to your repository. The read-only
+  status page has a port of its own and can be published, which is why it has
+  one. See [The status page](#the-status-page).
 - **Every network path has a far end this chart cannot write.** The agent's
   namespace must admit Kargo's controller *and* the controller's own egress
   policy must permit the agent; the same is true of argocd-server's ingress,

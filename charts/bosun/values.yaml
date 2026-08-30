@@ -11,12 +11,96 @@ nameOverride: ""
 fullnameOverride: ""
 
 service:
+  # The port Kargo calls: POST /v1/promotion-opened, plus the probes and
+  # /metrics. Nothing but Kargo and your scraper has any reason to reach it,
+  # and this chart still renders no Ingress or HTTPRoute for it, publishing
+  # something that can spend money and write to your repository would be
+  # gratuitous exposure.
   port: 8080
+  # The status page's port. See `web` below for why it is a second port and
+  # not a path on the first.
+  webPort: 8081
 
-# Kargo calls this in-cluster. Nothing else needs to reach it, and publishing
-# something that can spend money and write to your repository would be
-# gratuitous exposure, so this chart deliberately renders no Ingress or
-# HTTPRoute at all.
+# The status page.
+#
+# One read-only HTML page: what this agent is watching, which pull requests
+# have a verdict, what the pipeline sweep found, and the exact command that
+# ends each finding. The report has been served on /pipeline as markdown since
+# the supervisor was written, and markdown in a browser tab is source code, so
+# the people who most need it -- whoever is wondering why an addon has not
+# updated in three days -- are exactly the people who will not port-forward and
+# pipe curl through a renderer.
+#
+# It renders only state the process already holds. A page load costs no git API
+# call, no model call and no cluster read, so a browser tab left open on
+# refresh spends nothing.
+#
+# It is served on its own port, and that is the whole reason it can be
+# published at all. The main port also answers POST /v1/promotion-opened; a
+# NetworkPolicy and a gateway both draw their lines at the port, so "expose the
+# read-only page" stays a smaller decision than "expose the endpoint that
+# spends money and writes to your repository" only because the two never share
+# a listener.
+#
+# What it reveals, and it is not nothing: the repository's name, the titles of
+# open pull requests, the names of your Stages and Warehouses, and the findings
+# and remedies. No credential, no prompt, no rendered diff. Treat it the way
+# you would treat read access to your pipeline's status, because that is what
+# it is, and it has no authentication of its own: `ingress` and `httpRoute`
+# below are where you put your gateway's.
+web:
+  enabled: true
+
+  # Publish it with a Gateway API HTTPRoute.
+  #
+  # Preferred over `ingress`, and not only on taste. Ingress is feature-frozen;
+  # everything past a host and a path is a controller-specific annotation, so
+  # the manifest stops describing what it does. An HTTPRoute names the Gateway
+  # it attaches to, and the policy that gateway carries -- TLS, authentication,
+  # rate limits -- belongs to whoever runs it rather than to this chart.
+  #
+  # `parentRefs` is required when this is on: an HTTPRoute with no parent
+  # attaches to nothing and renders clean, which is the quiet failure this
+  # whole component exists to notice about other people's systems.
+  httpRoute:
+    enabled: false
+    # e.g. [{name: external, namespace: gateway-system, sectionName: https}]
+    parentRefs: []
+    # e.g. [bosun.example.com]. Empty attaches to every hostname the parent
+    # Gateway listener serves, which is rarely what anyone means.
+    hostnames: []
+    # Matched paths, in the order given. The default publishes the whole page
+    # surface: `/` and `/pipeline`.
+    paths:
+      - type: PathPrefix
+        value: /
+    annotations: {}
+
+  # Publish it with an Ingress instead, for a cluster with no Gateway API.
+  #
+  # `className` is required when this is on and there is deliberately no
+  # default: an Ingress with no class is claimed by whichever controller
+  # decided to claim unclassed Ingresses, which on a cluster with more than one
+  # is not a decision this chart can make for you.
+  #
+  # Note that `ingress-nginx` is in maintenance mode and stops receiving
+  # updates; its successor is InGate, and Gateway API is where that work is
+  # going. If you are choosing today, choose `httpRoute` above.
+  ingress:
+    enabled: false
+    className: ""
+    hosts: []             # e.g. [{host: bosun.example.com, paths: [{path: /, pathType: Prefix}]}]
+    tls: []               # e.g. [{secretName: bosun-tls, hosts: [bosun.example.com]}]
+    annotations: {}
+
+  # Who may reach the page's port, when the NetworkPolicy is on.
+  #
+  # Empty admits nothing, which is the honest default: the page is not
+  # published until you say where from. Naming your gateway's namespace is the
+  # usual answer, and it is the same shape as every other peer in this file.
+  #
+  # e.g. [{namespace: gateway-system, podSelector: {app: envoy}}]
+  allowFrom: []
 
 # Who may call POST /v1/promotion-opened.
 #

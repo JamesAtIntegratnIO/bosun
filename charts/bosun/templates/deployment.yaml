@@ -50,9 +50,29 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
+            {{- if .Values.web.enabled }}
+            # The status page, on a port of its own. Not tidiness: the port
+            # above also answers POST /v1/promotion-opened, and both a
+            # NetworkPolicy and a gateway draw their lines at the port, so a
+            # page that shared this one could not be published without
+            # publishing that.
+            - name: web
+              containerPort: {{ .Values.service.webPort }}
+            {{- end }}
           env:
             - name: AGENT_ADDR
               value: ":{{ .Values.service.port }}"
+            - name: WEB
+              value: {{ .Values.web.enabled | quote }}
+            {{- if .Values.web.enabled }}
+            - name: WEB_ADDR
+              value: ":{{ .Values.service.webPort }}"
+            {{- end }}
+            # What the operator deployed, shown on the status page. The image
+            # is built without its .git directory, so the binary cannot prove
+            # its own version and the chart is the one thing that knows.
+            - name: AGENT_VERSION
+              value: {{ .Chart.AppVersion | quote }}
             - name: AGENT_BRAND
               value: {{ .Values.branding.name | default "bosun" | quote }}
             - name: MAX_CONCURRENT_TRIAGE

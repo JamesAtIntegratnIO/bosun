@@ -12,7 +12,10 @@ import (
 // remember a magic string is an adapter that will forget it.
 const ReportMarker = "<!-- bosun:pipeline -->"
 
-func (s Severity) mark() string {
+// Mark is the severity's glyph, exported because the web page and the
+// markdown report must agree on it or the same finding reads differently on
+// two surfaces.
+func (s Severity) Mark() string {
 	switch s {
 	case Blocking:
 		return "🔴"
@@ -49,7 +52,7 @@ func (r *Report) Headline() string {
 	if n := counts[Note]; n > 0 {
 		parts = append(parts, plural(n, "note"))
 	}
-	return r.Worst().mark() + " Promotion pipeline — " + joinAnd(parts)
+	return r.Worst().Mark() + " Promotion pipeline — " + joinAnd(parts)
 }
 
 // Render writes the whole report as markdown.
@@ -85,8 +88,8 @@ func (r *Report) Render(w io.Writer) {
 		if len(fs) == 0 {
 			continue
 		}
-		fmt.Fprintf(w, "### %s %s\n\n", sev.mark(), sectionTitle(sev))
-		fmt.Fprintf(w, "%s\n\n", sectionBlurb(sev))
+		fmt.Fprintf(w, "### %s %s\n\n", sev.Mark(), sev.SectionTitle())
+		fmt.Fprintf(w, "%s\n\n", sev.SectionBlurb())
 		for _, f := range fs {
 			r.renderFinding(w, f)
 		}
@@ -94,7 +97,10 @@ func (r *Report) Render(w io.Writer) {
 	r.renderChecked(w)
 }
 
-func sectionTitle(s Severity) string {
+// SectionTitle and SectionBlurb are the report's section copy, exported for
+// the same reason Mark is: two renderings of one report should not have two
+// vocabularies.
+func (s Severity) SectionTitle() string {
 	switch s {
 	case Blocking:
 		return "Not delivering"
@@ -105,7 +111,7 @@ func sectionTitle(s Severity) string {
 	}
 }
 
-func sectionBlurb(s Severity) string {
+func (s Severity) SectionBlurb() string {
 	switch s {
 	case Blocking:
 		return "These have stopped, and will not start again on their own. " +
@@ -158,7 +164,7 @@ func (r *Report) renderChecked(w io.Writer) {
 func (r *Report) Text(w io.Writer) {
 	fmt.Fprintf(w, "%s\n\n", r.Headline())
 	for _, f := range r.Findings {
-		fmt.Fprintf(w, "%s %s\n", f.Severity.mark(), f.Summary)
+		fmt.Fprintf(w, "%s %s\n", f.Severity.Mark(), f.Summary)
 		for _, line := range strings.Split(strings.TrimSpace(f.Detail), "\n") {
 			if strings.TrimSpace(line) != "" {
 				fmt.Fprintf(w, "    %s\n", line)

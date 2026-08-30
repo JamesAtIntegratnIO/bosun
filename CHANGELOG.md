@@ -5,6 +5,36 @@ All notable changes to `bosun`. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **The report renders itself.** `/pipeline` has served markdown since the
+  supervisor was written, and markdown in a browser tab is source code, so the
+  people who most need it -- whoever is wondering why an addon has not updated
+  in three days -- were the people least likely to port-forward and pipe `curl`
+  through a renderer. The same report is now a page: every finding with its
+  remedy in a copyable block, the gate's open pull requests and the verdict
+  standing on each, what the triage is doing right now, and the feature posture
+  and egress stance this install is actually running under.
+
+  It renders only state the process already holds, so a page load costs no git
+  API call, no model call and no cluster read; a tab left open on the one-minute
+  refresh spends nothing but the render. No script, no external asset, and every
+  finding, note and pull request title is escaped, because finding text quotes
+  cluster objects and a title is whatever the bump wrote.
+
+  **It listens on a second port** (`WEB_ADDR`, `:8081`), and that is the point
+  rather than a detail. The first port also answers
+  `POST /v1/promotion-opened`; a NetworkPolicy and a gateway both draw their
+  lines at the port, so the page can be published without publishing the
+  endpoint that spends money and writes to the repository only because the two
+  never share a listener.
+
+  `/pipeline` is unchanged for everything that already reads it: markdown by
+  default, `?format=text` for a terminal, and 503 before the first sweep. A
+  browser gets the page instead, and before the first sweep it gets the page
+  saying "no sweep has completed yet" rather than a 503, because the sentence
+  a scraper must not misread is one a human should just be told.
+
 ### Fixed
 
 - **A value naming the addon itself no longer claims the addon's label

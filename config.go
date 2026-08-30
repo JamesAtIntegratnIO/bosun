@@ -23,6 +23,22 @@ import (
 type Config struct {
 	Addr string
 
+	// Web serves the status page on its own listener at WebAddr.
+	//
+	// A second port rather than a path on the first, because the first port
+	// also answers POST /v1/promotion-opened, and "expose the read-only page"
+	// must never be one routing mistake away from "expose the endpoint that
+	// spends money and writes to the repository". A NetworkPolicy and a
+	// gateway both draw their lines at the port, so the separation has to
+	// exist there to exist at all.
+	Web     bool
+	WebAddr string
+
+	// Version is what the operator deployed, shown on the status page. The
+	// chart passes its appVersion; empty falls back to the binary's own build
+	// stamp, which an image built without its .git directory does not have.
+	Version string
+
 	// Git host.
 	GitProvider GitProviderName
 	// GitAPIBase means different things per host, because the hosts do:
@@ -197,6 +213,8 @@ func LoadConfig() (*Config, error) {
 	}
 	c := &Config{
 		Addr:                     env("AGENT_ADDR", ":8080"),
+		WebAddr:                  env("WEB_ADDR", ":8081"),
+		Version:                  os.Getenv("AGENT_VERSION"),
 		Brand:                    env("AGENT_BRAND", "Bosun"),
 		GitProvider:              GitProviderName(env("GIT_PROVIDER", "github")),
 		GitInsecureSkipTLSVerify: b("GIT_INSECURE_SKIP_TLS_VERIFY", false),
@@ -255,6 +273,9 @@ func LoadConfig() (*Config, error) {
 	if c.UpstreamMaxCommits, err = envInt("UPSTREAM_MAX_COMMITS", upstream.MaxCompareCommits); err != nil {
 		return nil, err
 	}
+	// Default on: the page is read-only, renders only what the process holds,
+	// and reaches nobody until something in the cluster routes to its port.
+	c.Web = b("WEB", true)
 	c.Supervise = b("SUPERVISE_PIPELINE", true)
 	if c.SuperviseEvery, err = envDur("SUPERVISE_INTERVAL", 10*time.Minute); err != nil {
 		return nil, err

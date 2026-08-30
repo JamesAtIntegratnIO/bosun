@@ -1,0 +1,91 @@
+{{- if .Values.web.enabled }}
+{{- $web := .Values.web -}}
+{{- /*
+How the status page gets published, and the one rule both halves obey.
+
+Every route here targets `service.webPort` and never `service.port`. The main
+port answers POST /v1/promotion-opened, the endpoint that names the pull
+request the agent edits and the files it reads into a published prompt, and a
+route is not a place where that distinction can be recovered: a path-based rule
+on the wrong port publishes the endpoint to whoever can send a POST, and
+renders exactly as clean as this does.
+
+Neither half adds authentication. The page is read-only and reveals
+operational state, repository name, pull request titles, Stage names,
+findings, and whoever runs the gateway owns the policy in front of it.
+*/ -}}
+{{- if $web.httpRoute.enabled }}
+{{- if not $web.httpRoute.parentRefs }}
+{{- fail "bosun: web.httpRoute.parentRefs is required when web.httpRoute.enabled is true; an HTTPRoute with no parent attaches to no Gateway, renders clean, and serves nothing" }}
+{{- end }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "bosun.fullname" . }}
+  labels:
+    {{- include "bosun.labels" . | nindent 4 }}
+  {{- with $web.httpRoute.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    {{- toYaml $web.httpRoute.parentRefs | nindent 4 }}
+  {{- with $web.httpRoute.hostnames }}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - matches:
+        {{- range $web.httpRoute.paths }}
+        - path:
+            type: {{ .type | default "PathPrefix" }}
+            value: {{ .value | quote }}
+        {{- end }}
+      backendRefs:
+        - name: {{ include "bosun.fullname" . }}
+          port: {{ .Values.service.webPort }}
+{{- end }}
+{{- if $web.ingress.enabled }}
+{{- if not $web.ingress.className }}
+{{- fail "bosun: web.ingress.className is required when web.ingress.enabled is true; an Ingress with no class is claimed by whichever controller claims unclassed Ingresses, which this chart cannot choose for you" }}
+{{- end }}
+{{- if not $web.ingress.hosts }}
+{{- fail "bosun: web.ingress.hosts is required when web.ingress.enabled is true; an Ingress with no rules is accepted by the controller and routes nothing, so the page answers the default backend instead of 404ing anywhere you would look" }}
+{{- end }}
+{{- if $web.httpRoute.enabled }}
+---
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "bosun.fullname" . }}
+  labels:
+    {{- include "bosun.labels" . | nindent 4 }}
+  {{- with $web.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ $web.ingress.className }}
+  {{- with $web.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range $web.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path | default "/" | quote }}
+            pathType: {{ .pathType | default "Prefix" }}
+            backend:
+              service:
+                name: {{ include "bosun.fullname" $ }}
+                port:
+                  number: {{ $.Values.service.webPort }}
+          {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}
