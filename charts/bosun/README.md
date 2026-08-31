@@ -525,7 +525,9 @@ saying whose words they are: `bosun`, or `bosun-quoting-` something. The
 contract is that instructions in a result are bosun's own or absent. It is not
 an offer of sanitised text -- there is no such thing -- it is the labelling a
 careful client needs to fence the rest. See
-[the safety model](../../docs/safety-model.md#what-the-mcp-surface-may-reveal-and-what-it-cannot).
+[the safety model](../../docs/safety-model.md#what-the-mcp-surface-may-reveal-and-what-it-cannot),
+and [the MCP surface](../../docs/mcp.md) for the four tools, the token, and the
+trust model the answers are served under.
 
 One value is refused rather than rendered:
 

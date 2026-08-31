@@ -61,6 +61,7 @@ export default defineConfig({
             { label: 'Mechanical or escalate', slug: 'concepts/classification' },
             { label: 'The prompt contract', slug: 'concepts/prompt-contract' },
             { label: 'The pipeline supervisor', slug: 'concepts/supervisor' },
+            { label: 'The MCP surface', slug: 'concepts/mcp' },
           ],
         },
         {

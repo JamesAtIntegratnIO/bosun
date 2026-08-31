@@ -78,6 +78,13 @@ const PAGES = [
     description:
       'Sweeping the Kargo pipeline for the promotions that never happened, because nothing about a promotion that did not occur produces an event.',
   },
+  {
+    src: 'docs/mcp.md',
+    out: 'concepts/mcp',
+    title: 'The MCP surface',
+    description:
+      'The read-only tool surface: the four tools, what a caller gets before the first sweep, the token, and what it discloses to whoever you publish it to.',
+  },
 
   // --- The gate -----------------------------------------------------------
   {

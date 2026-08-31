@@ -43,6 +43,33 @@ All notable changes to `bosun`. Format follows
 
 ### Added
 
+- **A documentation page for the MCP surface.** The four tools and what each
+  answers, what a caller gets before the first sweep and why an absence there is
+  not an empty result, turning it on, and the token -- one page, beside the
+  supervisor's and the status page's, rather than the paragraphs it had been
+  spread across. [`docs/mcp.md`](docs/mcp.md), on the site as *The MCP surface*,
+  and in the README's component table so a reader finds it from the front page.
+
+  The disclosure is stated where somebody deciding whether to publish the port
+  will read it, beside the status page's own note and saying the same thing over
+  a wider list: operational metadata is served -- Stage and Application names,
+  chart versions, findings and their remedies, pull-request titles and labels,
+  and the helm and schema error strings the page does not carry -- and no
+  credential is. The difference between the two surfaces is who reads them and
+  what they hold.
+
+  The safety model's section for this surface now separates what is enforced --
+  no mutation, no live read, no configuration reach, redaction, composed
+  remedies, origin tagging, stamp stripping -- from the risk that remains, which
+  is stated in words rather than implied: bosun cannot make a careless client
+  safe, because text sanitised to harmlessness does not exist. What it
+  guarantees is provenance labelling and instructions that are bosun's own or
+  absent. The trust model cites
+  [ADR 0014](adr/0014-an-install-serves-one-trust-domain.md) rather than
+  restating its argument: the pages say only that an install's view is served
+  flat and whole, with no per-project or per-caller filtering anywhere, and
+  point at the record for why.
+
 - **`gate_status` and `triage_status`: the queue, and what the agent is doing
   about one of it.** `gate_status` answers what bosun's last gate sweep saw
   across every open pull request: each one with the state standing against its

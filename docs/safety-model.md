@@ -295,7 +295,20 @@ log at every start-up.
 The read-only MCP listener serves the sweep's own findings to programmatic
 callers. It is off by default, it refuses to start without a bearer token, and
 it is on a port of its own so that admitting a client to it never admits one to
-the endpoint that spends money and writes to the repository.
+the endpoint that spends money and writes to the repository. The four tools it
+serves, and how to turn it on, are in [the MCP surface](mcp.md).
+
+**No tool mutates anything, and none reads anything live.** There is no
+mutating tool and no write verb in the ClusterRole to build one on, so a client
+that could ask cannot be answered. Every result comes from the snapshot the
+last sweep left in memory, which is why a call reaches no cluster, no git host
+and no model: a chatty client cannot spend an install's rate limit, and a
+hostile one cannot use this surface to make bosun's credentials issue a request
+on its behalf.
+
+What the surface serves, it serves whole: there is no per-project or per-caller
+filtering of the readout here or on any other surface, for the reasons in
+[ADR 0014](../adr/0014-an-install-serves-one-trust-domain.md).
 
 Two things about it differ from every surface above, and both come from who is
 reading. Its answers land in another agent -- one that usually holds a shell, a
@@ -365,8 +378,8 @@ bosun stopped copying.
 client safe, and text sanitised to harmlessness does not exist. What it
 guarantees is provenance labelling and bosun-authored instructions only; a
 client that treats an origin-tagged quotation as an instruction has made a
-decision bosun cannot take back. The residual risk is real and it is stated
-here rather than left implied.
+decision bosun cannot take back, in whatever tools that client holds. The
+residual risk is real and it is stated here rather than left implied.
 
 ## Why a verdict names a commit
 
