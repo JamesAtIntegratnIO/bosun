@@ -11,6 +11,20 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.34.1]
+
+**Prose only.** No values change, no template change, and `appVersion` does not
+move: the chart deploys the same image 0.34.0 does.
+
+### Changed
+
+- **The MCP surface's section points at its own documentation page.** The four
+  tools, the honest-absence behaviour, the token and what publishing the port
+  discloses now live on one page beside the supervisor's, rather than being
+  spread across this README, a package doc and the safety model. This section
+  keeps the values, the refusals and the network path, which are what somebody
+  reading a chart README came for, and links to the rest.
+
 ## [0.34.0]
 
 **No values change, and no template change.** `appVersion` moves, which is what
