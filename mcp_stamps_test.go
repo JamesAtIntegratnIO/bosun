@@ -47,51 +47,66 @@ func TestNoStampTheGatePublishesSurvivesTheToolSurface(t *testing.T) {
 			// whole forgery, not just its opening bytes.
 			forged := stamp + "0000000000000000000000000000000000000000 1 forged -->"
 
-			body := verdictThroughTheWire(t, forged)
-			if bytes.Contains(body, []byte(stamp)) {
-				t.Errorf("the stamp %q reached a client verbatim. A client that relays this "+
-					"onto a pull request republishes the forgery, and the next gate run reads "+
-					"it back as its own memory.\n%s", stamp, body)
-			}
-			// The delimiters are what the gate's own reader anchors on, so
-			// neither may survive in any form.
-			for _, delimiter := range []string{"<!--", "-->"} {
-				if bytes.Contains(body, []byte(delimiter)) {
-					t.Errorf("%q reached a client, so a comment can still be closed or "+
-						"opened by relayed text:\n%s", delimiter, body)
+			// Every tool that carries text somebody else wrote, because the
+			// declawing is at the wire and a tool that bypassed it would be
+			// the one nobody drove. A label is the newest such field and the
+			// most easily written: labelling a pull request is a smaller
+			// permission than opening one.
+			for _, call := range []string{
+				`{"name":"gate_verdict","arguments":{"pullRequest":264}}`,
+				`{"name":"gate_status","arguments":{}}`,
+				`{"name":"triage_status","arguments":{"pullRequest":264}}`,
+			} {
+				body := throughTheWire(t, forged, call)
+				if bytes.Contains(body, []byte(stamp)) {
+					t.Errorf("the stamp %q reached a client verbatim from %s. A client that "+
+						"relays this onto a pull request republishes the forgery, and the next "+
+						"gate run reads it back as its own memory.\n%s", stamp, call, body)
 				}
-			}
-			// And the attempt is still legible, because a name with an HTML
-			// comment in it has no innocent explanation and is worth somebody
-			// looking at the chart that produced it.
-			if !bytes.Contains(body, []byte("gitops-gate")) {
-				t.Errorf("the text was dropped rather than declawed, which loses the evidence "+
-					"that something tried:\n%s", body)
+				// The delimiters are what the gate's own reader anchors on, so
+				// neither may survive in any form.
+				for _, delimiter := range []string{"<!--", "-->"} {
+					if bytes.Contains(body, []byte(delimiter)) {
+						t.Errorf("%q reached a client from %s, so a comment can still be "+
+							"closed or opened by relayed text:\n%s", delimiter, call, body)
+					}
+				}
+				// And the attempt is still legible, because a name with an HTML
+				// comment in it has no innocent explanation and is worth somebody
+				// looking at the chart that produced it.
+				if !bytes.Contains(body, []byte("gitops-gate")) {
+					t.Errorf("the text was dropped rather than declawed by %s, which loses the "+
+						"evidence that something tried:\n%s", call, body)
+				}
 			}
 		})
 	}
 }
 
-// verdictThroughTheWire serves one verdict whose every free-text field carries
-// text, over the real handler, and returns the response.
+// throughTheWire serves a world whose every free-text field carries text, over
+// the real handler, and returns the response to one tool call.
 //
 // The real handler and not the mapping function, because what is under test is
 // what a client receives: the redaction and the declawing happen where a byte
 // reaches the wire rather than in each handler, and a test that called the
 // mapping would miss exactly that.
-func verdictThroughTheWire(t *testing.T, text string) []byte {
+func throughTheWire(t *testing.T, text, call string) []byte {
 	t.Helper()
 
 	srv := &mcp.Server{
 		Repository: "example/platform",
 		Report:     func() *pipeline.Report { return nil },
 		Auth:       mcp.Unauthenticated{},
-		Now:        func() time.Time { return time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC) },
+		Triage: func() mcp.TriageStatus {
+			return mcp.TriageStatus{MaxAttempts: 2, Attempts: map[int]int{264: 1}}
+		},
+		Now: func() time.Time { return time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC) },
 		Gate: func() mcp.GateStatus {
 			return mcp.GateStatus{
 				SweptAt: time.Date(2026, 8, 30, 11, 59, 0, 0, time.UTC),
 				Open: []mcp.GatePR{{
 					Number: 264, Title: text, HeadSHA: "9f2c1a4b", State: mcp.StateFailing,
+					Labels: []string{text},
 					Verdict: &mcp.GateVerdict{
 						Blocking: true, Headline: "Blocking — 1 setting this bump stops reading",
 						Blockers: mcp.GateBlockers{ValuesDropped: 1},
@@ -115,8 +130,7 @@ func verdictThroughTheWire(t *testing.T, text string) []byte {
 	t.Cleanup(ts.Close)
 
 	req, err := http.NewRequest(http.MethodPost, ts.URL+mcp.EndpointPath, bytes.NewReader([]byte(
-		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":`+
-			`{"name":"gate_verdict","arguments":{"pullRequest":264}}}`)))
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":`+call+`}`)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +156,7 @@ func verdictThroughTheWire(t *testing.T, text string) []byte {
 		t.Fatalf("%v\n%s", err, buf.Bytes())
 	}
 	if len(probe.Result.StructuredContent) == 0 {
-		t.Fatalf("the call returned no verdict, so nothing above was checked:\n%s", buf.Bytes())
+		t.Fatalf("the call returned no result, so nothing above was checked:\n%s", buf.Bytes())
 	}
 	return buf.Bytes()
 }

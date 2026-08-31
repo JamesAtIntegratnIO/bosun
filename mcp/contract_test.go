@@ -55,6 +55,23 @@ func TestTheResultShapeIsWhatItWas(t *testing.T) {
 		{"before the first gate sweep", "gate_verdict_unswept.json", func(t *testing.T) any {
 			return newFixture(t, nil).callWith(t, "gate_verdict", `{"pullRequest":264}`)
 		}},
+		{"the queue", "gate_status_queue.json", func(t *testing.T) any {
+			return newFixture(t, nil).withGate(blocked()).call(t, "gate_status")
+		}},
+		{"a queue before the first gate sweep", "gate_status_unswept.json", func(t *testing.T) any {
+			return newFixture(t, nil).call(t, "gate_status")
+		}},
+		{"a pull request being triaged", "triage_status_running.json", func(t *testing.T) any {
+			return newFixture(t, nil).withGate(blocked()).
+				withTriage(TriageStatus{InFlight: []int{264}, MaxAttempts: 2,
+					Attempts: map[int]int{264: 1}}).
+				callWith(t, "triage_status", `{"pullRequest":264}`)
+		}},
+		{"a pull request the agent is not working", "triage_status_idle.json", func(t *testing.T) any {
+			return newFixture(t, nil).withGate(green()).
+				withTriage(TriageStatus{MaxAttempts: 2, Attempts: map[int]int{41: 0}}).
+				callWith(t, "triage_status", `{"pullRequest":41}`)
+		}},
 		{"the tool set", "tools_list.json", func(t *testing.T) any {
 			f := newFixture(t, nil)
 			_, body := f.post(t, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)

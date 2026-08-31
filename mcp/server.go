@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -45,6 +46,15 @@ type Server struct {
 	// this surface is most careful about.
 	Gate func() GateStatus
 
+	// Triage is what the agent is doing right now, or the zero value when
+	// nothing is wired.
+	//
+	// A function for the reason Report and Gate are: it changes on every
+	// promotion, and a copy taken at wiring time would report the work in
+	// flight at start-up forever. The zero value is an agent working nothing,
+	// which is both the common case and the honest answer.
+	Triage func() TriageStatus
+
 	// Auth decides whether a request may be served.
 	//
 	// An interface with one implementation, which is the shape asked for
@@ -77,6 +87,28 @@ func (s *Server) now() time.Time {
 		return s.Now()
 	}
 	return time.Now()
+}
+
+// stamp is when a sweep finished and how long ago, for the three fields every
+// result carries: swept, sweptAt, ageSeconds.
+//
+// One copy of it, because there is one clock guard and four handlers. A
+// negative age is answered as zero rather than published: a clock that went
+// backwards between the sweep and the request is a machine's problem, and
+// "-3 seconds old" is a number every client would have to write the same
+// special case for. Four copies of that decision is how three of them keep it.
+//
+// The zero time is the before-the-first-sweep case and reports false, which is
+// what makes every caller's absent fields absent for the same reason.
+func (s *Server) stamp(at time.Time) (*time.Time, *int64, bool) {
+	if at.IsZero() {
+		return nil, nil, false
+	}
+	age := int64(s.now().Sub(at).Seconds())
+	if age < 0 {
+		age = 0
+	}
+	return &at, &age, true
 }
 
 // Tool is one read-only tool.
@@ -114,11 +146,23 @@ func (s *Server) tools() []Tool {
 		Result:      Report{},
 		Call:        func(json.RawMessage) (any, error) { return s.pipelineReport(), nil },
 	}, {
+		Name:        "gate_status",
+		Description: gateStatusDescription,
+		Params:      noArguments,
+		Result:      Queue{},
+		Call:        s.gateStatus,
+	}, {
 		Name:        "gate_verdict",
 		Description: gateVerdictDescription,
 		Params:      gateVerdictParams,
 		Result:      Verdict{},
 		Call:        s.gateVerdict,
+	}, {
+		Name:        "triage_status",
+		Description: triageStatusDescription,
+		Params:      triageStatusParams,
+		Result:      Triage{},
+		Call:        s.triageStatus,
 	}}
 }
 
@@ -232,6 +276,47 @@ func (s *Server) callTool(r *http.Request, params json.RawMessage) (any, *rpcErr
 		}, nil
 	}
 	return nil, &rpcError{Code: codeInvalidParams, Message: "unknown tool " + p.Name}
+}
+
+// pullRequestArgs is the argument every per-pull-request tool takes.
+//
+// One type and one reading of it, rather than one per tool: the two tools that
+// take these are asking about the same object with the same words, and a
+// second copy of the parse is a second answer to "is 0 a pull request" waiting
+// to be given.
+type pullRequestArgs struct {
+	PullRequest int    `json:"pullRequest"`
+	Repository  string `json:"repository"`
+}
+
+// pullRequest is the number a per-pull-request tool was asked about, or the
+// refusal to hand back.
+//
+// pullRequest is required and repository is not, and the asymmetry is the
+// decision. An install binds to one repository, so the argument exists to be
+// stamped rather than to be chosen; making it optional now and meaningful
+// later is compatible, while teaching a client that answers are install-wide
+// and then narrowing them is not.
+func (s *Server) pullRequest(raw json.RawMessage) (int, error) {
+	var args pullRequestArgs
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &args); err != nil {
+			return 0, fmt.Errorf("arguments are not an object with a pullRequest number")
+		}
+	}
+	if args.PullRequest < 1 {
+		return 0, fmt.Errorf("pullRequest must be the number of a pull request")
+	}
+	if args.Repository != "" && args.Repository != s.Repository {
+		// The caller's own string is deliberately not echoed back. It would
+		// travel through the redactor and the comment stripper like anything
+		// else, and there is still no reason to put text this process did not
+		// author into a message a client renders when it has nothing to say
+		// with it. Naming the install's own repository answers the question
+		// the caller was actually asking.
+		return 0, fmt.Errorf("this install watches %s and nothing else", s.Repository)
+	}
+	return args.PullRequest, nil
 }
 
 // remoteAddr is who asked, for the audit line.

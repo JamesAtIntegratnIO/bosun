@@ -160,16 +160,7 @@ func (s *Server) pipelineReport() Report {
 		return out
 	}
 
-	at := rep.At
-	age := int64(s.now().Sub(at).Seconds())
-	if age < 0 {
-		// A clock that went backwards between the sweep and the request. Zero
-		// rather than a negative age: "-3 seconds old" is a number a client
-		// would have to write a special case for, and the honest reading of
-		// the situation is "as fresh as it gets".
-		age = 0
-	}
-	out.Swept, out.SweptAt, out.AgeSeconds = true, &at, &age
+	out.SweptAt, out.AgeSeconds, out.Swept = s.stamp(rep.At)
 	out.Clean = rep.Clean()
 	// Bosun's own, and the tag is a claim worth checking rather than a
 	// courtesy: Report.Headline composes from counts and fixed words and

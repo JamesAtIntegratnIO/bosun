@@ -484,7 +484,14 @@ func main() {
 				// copied once: the sweep replaces it on every pass, and this
 				// listener's whole promise is that an answer is as old as the
 				// sweep it names rather than as old as the process.
-				Gate: func() mcp.GateStatus { return mcpGateStatus(gs) },
+				Gate: func() mcp.GateStatus { return mcpGateStatus(gs.Status()) },
+				// What the agent is doing right now, read per request for the
+				// same reason: the answer changes on every promotion, and the
+				// question this tool exists for is whether the agent is still
+				// working.
+				Triage: func() mcp.TriageStatus {
+					return mcpTriageStatus(srv.Status(), srv.Triage, gs.Status())
+				},
 			}
 			h, err := ms.Handler()
 			if err != nil {
@@ -657,6 +664,10 @@ func gateStatus(gs *gateservice.Service) web.GateStatus {
 // vocabulary, and it is the same copy gateStatus makes one function up, for a
 // stronger version of the same reason.
 //
+// A function of the snapshot rather than of the service, so what it copies can
+// be checked without a git host: this crossing is a contract neither package
+// can see, and a test of it should not need a sweep to run first.
+//
 // web depends on nothing that can dial because a status page should not. mcp
 // depends on nothing that can dial because it is the one listener built to be
 // reached from outside the cluster, and the rule that no field path from a
@@ -667,15 +678,52 @@ func gateStatus(gs *gateservice.Service) web.GateStatus {
 // Dull on purpose. Nothing is decided in this function: gate computed the
 // verdict and gateservice remembered it, and everything here is a field
 // landing in a field of the same name.
-func mcpGateStatus(gs *gateservice.Service) mcp.GateStatus {
-	g := gs.Status()
-	out := mcp.GateStatus{SweptAt: g.SweptAt, Err: g.Err}
+func mcpGateStatus(g gateservice.Status) mcp.GateStatus {
+	out := mcp.GateStatus{SweptAt: g.SweptAt, Err: g.Err, Held: g.Held, Running: g.Running}
 	for _, pr := range g.Open {
 		out.Open = append(out.Open, mcp.GatePR{
 			Number: pr.Number, Title: pr.Title, URL: pr.URL,
 			HeadSHA: pr.HeadSHA, State: pr.State, Err: pr.Err,
+			Labels:  append([]string(nil), pr.Labels...),
 			Verdict: mcpVerdict(pr.Verdict),
 		})
+	}
+	return out
+}
+
+// mcpTriageStatus adapts the agent's account of itself to the tool surface's
+// vocabulary, from the two halves that hold it.
+//
+// The phase comes from the promotion endpoint, which knows what it is running
+// to the microsecond. The attempts come from the labels the gate's last sweep
+// saw, counted by the agent's own method rather than by a second reading of
+// the same prefix: the cap's memory is a label under a name that follows the
+// brand, and two counts of it would disagree exactly on a renamed install --
+// one saying an attempt remains, the other having already escalated.
+//
+// So the count crosses as a number and the labels cross as strings, and
+// nothing on the far side has to know how either was arrived at. mcp cannot
+// import agent, which is the point: the tool surface holds no client of
+// anything, and this file is where the two vocabularies are allowed to meet.
+func mcpTriageStatus(st web.TriageStatus, tr *agent.Triage, g gateservice.Status) mcp.TriageStatus {
+	out := mcp.TriageStatus{
+		InFlight: append([]int(nil), st.InFlight...),
+		Queued:   append([]int(nil), st.Queued...),
+	}
+	if tr == nil {
+		// No agent wired is no cap and no attempts, rather than a cap of
+		// zero, which would publish "every attempt spent" for a pull request
+		// nothing has ever touched.
+		return out
+	}
+	out.MaxAttempts = tr.MaxAttempts
+	out.Attempts = map[int]int{}
+	for _, pr := range g.Open {
+		// Every pull request the sweep saw gets an entry, including the zero:
+		// "the sweep looked and this one has spent nothing" is a different
+		// answer from "the sweep never saw it", and the tool surface
+		// publishes a count only for the first.
+		out.Attempts[pr.Number] = tr.AttemptsUsed(pr.Labels)
 	}
 	return out
 }

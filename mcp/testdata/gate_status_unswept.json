@@ -1,0 +1,8 @@
+{
+  "repository": "example/platform",
+  "status": {
+    "origin": "bosun",
+    "text": "No gate sweep has completed yet, so no verdict is claimed about any pull request. This is not a passing verdict: the gate has not looked. Ask again after the next sweep."
+  },
+  "swept": false
+}

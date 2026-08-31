@@ -11,6 +11,38 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.34.0]
+
+**No values change, and no template change.** `appVersion` moves, which is what
+this release is: the agent it deploys serves two more MCP tools. An install
+that has `mcp.enabled: false`, which is every install that has not said
+otherwise, is unaffected in every respect.
+
+### Added
+
+- **`gate_status` and `triage_status` on the MCP surface.** The queue, and what
+  the agent is doing about one of it. `gate_status` answers what the last sweep
+  saw across every open pull request -- each with the state standing against its
+  head commit, whether it blocks, and the blocker breakdown as counts -- and,
+  when the sweep could not list pull requests at all, the error that stopped it.
+  A gate that cannot reach your git host otherwise has one symptom a caller can
+  see, which is a queue that reads empty forever.
+
+  `triage_status` answers what the agent is doing on one pull request now: the
+  phase, how many automatic fix attempts it has spent against its cap, and the
+  labels standing on the pull request. That is the difference between an agent
+  still working and one that has finished and will not try again -- the same
+  distinction its commit status draws for a person.
+
+  Both compute nothing: the answers come from the snapshots the sweeps already
+  hold, so they cost no git API call, no cluster read and no model call.
+
+  **They reveal what the status page already reveals**, to whoever holds the
+  token, plus one thing it does not: the labels standing on a pull request.
+  Those are operational metadata like the rest -- the same strings anybody with
+  read access to the repository can see -- and they travel tagged as text
+  somebody else wrote, because anyone who can label a pull request chooses them.
+
 ## [0.33.0]
 
 **No values change, and no template change.** `appVersion` moves, which is what

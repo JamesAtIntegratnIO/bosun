@@ -322,8 +322,15 @@ hands its model as instructions.
 The origins are a closed vocabulary, and a client fences on the shape rather
 than on the list: a field is `bosun`, or it is `bosun-quoting-` something.
 Today the something is a cluster, this repository, a rendered chart, helm, the
-schema validator, the render as a whole, or a pull request's author. Only the
-first is a claim that bosun wrote every byte.
+schema validator, the render as a whole, a pull request's author, or a label
+standing on a pull request. Only the first is a claim that bosun wrote every
+byte.
+
+A label is tagged as somebody else's even though bosun writes some of them.
+Attempt labels are the agent's own and a `needs-human` is a maintainer's, and
+in a repository where anybody may label they are anybody's -- so the field
+carries one origin saying the weakest true thing about it, rather than a
+per-label judgement a hostile label would imitate by choosing bosun's prefix.
 
 **A verdict's typed facts are vetted, not tagged.** One block on the gate
 verdict carries no origin, and that is deliberate: the dropped-served-version

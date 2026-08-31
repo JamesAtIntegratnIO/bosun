@@ -354,12 +354,14 @@ func TestAHandlerNamesWhatItIsMissing(t *testing.T) {
 		{"no repository", func(s *Server) { s.Repository = "" }, "Repository"},
 		{"no report", func(s *Server) { s.Report = nil }, "Report"},
 		{"no gate", func(s *Server) { s.Gate = nil }, "Gate"},
+		{"no triage", func(s *Server) { s.Triage = nil }, "Triage"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := &Server{
 				Repository: "example/platform",
 				Report:     func() *pipeline.Report { return nil },
 				Gate:       func() GateStatus { return GateStatus{} },
+				Triage:     func() TriageStatus { return TriageStatus{} },
 				Auth:       BearerToken{Token: testToken},
 			}
 			tc.bend(s)

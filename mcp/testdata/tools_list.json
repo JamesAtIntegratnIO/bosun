@@ -13,6 +13,15 @@
         "name": "pipeline_report"
       },
       {
+        "description": "The queue: every open pull request bosun's last gate sweep saw, with the verdict standing against each head commit -- the state, whether it blocks, and the blocker breakdown as counts per kind. Call gate_verdict for the findings behind one of those counts. If the sweep could not list pull requests at all, the result says so in its own field, so an empty queue is never confused with a gate that could not look. Answers from the last sweep's snapshot: it reaches no cluster, no git host and no model, and it can change nothing.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {},
+          "type": "object"
+        },
+        "name": "gate_status"
+      },
+      {
         "description": "Why one pull request is blocked, or why it is not: the verdict the gate reached against its head commit. Returns the blocker breakdown as counts per kind and every finding behind them, with dropped API versions carried as fields -- which definition, which versions it stopped serving, which one survives, and the kind of manifest that has to move. Findings say whether an edit in the repository could clear them, so a caller stops hunting for one that does not exist, and the list of what the gate could not render travels beside them, because a clean verdict over a partial render is a narrower claim. A pull request with no verdict standing is answered as such and is never reported as passing. Answers from the last sweep's snapshot: it reaches no cluster, no git host and no model, and it can change nothing.",
         "inputSchema": {
           "additionalProperties": false,
@@ -33,6 +42,28 @@
           "type": "object"
         },
         "name": "gate_verdict"
+      },
+      {
+        "description": "What bosun's agent is doing about one pull request: the phase it is in, how many automatic fix attempts it has spent against its cap, and the labels standing on the pull request. Use it to tell an agent that is still working from one that has finished and will not try again. A pull request the agent is not working is answered as such rather than as an error. The phase is this process's own current state; the labels and the attempt count are as old as the sweep the result names. Answers from a snapshot: it reaches no cluster, no git host and no model, and it can change nothing.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "pullRequest": {
+              "description": "The pull request number to report on.",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "repository": {
+              "description": "The repository, owner/repo. Optional: an install watches exactly one, and omitting this asks about that one.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "pullRequest"
+          ],
+          "type": "object"
+        },
+        "name": "triage_status"
       }
     ]
   }
