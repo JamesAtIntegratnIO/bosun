@@ -42,6 +42,11 @@ type fixture struct {
 	srv    *Server
 	http   *httptest.Server
 	logged []string
+	// gate is what the gate's last sweep saw. The zero value is the
+	// before-the-first-sweep case; withGate replaces it, and the server reads
+	// it per request rather than at wiring time, which is what a real
+	// composition root does too.
+	gate GateStatus
 }
 
 // newFixture builds the server. report is what the supervisor holds; nil is
@@ -53,6 +58,7 @@ func newFixture(t *testing.T, report *pipeline.Report) *fixture {
 	f.srv = &Server{
 		Repository: "example/platform",
 		Report:     func() *pipeline.Report { return report },
+		Gate:       func() GateStatus { return f.gate },
 		Auth:       BearerToken{Token: testToken},
 		Version:    "0.31.0",
 		Log:        func(format string, a ...any) { f.logged = append(f.logged, fmt.Sprintf(format, a...)) },
@@ -94,12 +100,25 @@ func (f *fixture) postWith(t *testing.T, body, authorization string) (int, []byt
 	return resp.StatusCode, out
 }
 
-// call runs one tool and returns its structuredContent as raw JSON, which is
-// the value a client actually reads.
+// withGate installs what the gate's last sweep saw and returns the fixture,
+// so a test can say what it is about in one expression.
+func (f *fixture) withGate(g GateStatus) *fixture {
+	f.gate = g
+	return f
+}
+
+// call runs one tool with no arguments.
 func (f *fixture) call(t *testing.T, tool string) json.RawMessage {
 	t.Helper()
+	return f.callWith(t, tool, `{}`)
+}
+
+// callWith runs one tool and returns its structuredContent as raw JSON, which
+// is the value a client actually reads.
+func (f *fixture) callWith(t *testing.T, tool, args string) json.RawMessage {
+	t.Helper()
 	code, body := f.post(t, `{"jsonrpc":"2.0","id":1,"method":"tools/call",`+
-		`"params":{"name":"`+tool+`","arguments":{}}}`)
+		`"params":{"name":"`+tool+`","arguments":`+args+`}}`)
 	if code != http.StatusOK {
 		t.Fatalf("tools/call answered %d: %s", code, body)
 	}
@@ -129,6 +148,17 @@ func (f *fixture) report(t *testing.T) Report {
 	var out Report
 	if err := json.Unmarshal(f.call(t, "pipeline_report"), &out); err != nil {
 		t.Fatalf("the result does not decode as a Report: %v", err)
+	}
+	return out
+}
+
+// verdict decodes a gate_verdict result for one pull request.
+func (f *fixture) verdict(t *testing.T, number int) Verdict {
+	t.Helper()
+	var out Verdict
+	raw := f.callWith(t, "gate_verdict", fmt.Sprintf(`{"pullRequest":%d}`, number))
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("the result does not decode as a Verdict: %v", err)
 	}
 	return out
 }
@@ -285,3 +315,111 @@ func healthy() *world {
 // errRefused is what a missing ClusterRole grant looks like to a sweep: a read
 // that is refused rather than one that answers nothing.
 var errRefused = errors.New("stages.kargo.akuity.io is forbidden")
+
+// The gate's half of the world, in the shapes the composition root hands over.
+//
+// Written out rather than produced by a gate run, and that is the seam rather
+// than a shortcut: a real run shells helm against a chart repository, and
+// gate's own tests are where the render is under test. What is under test here
+// is what a caller receives, so the input is the value the adapter produces
+// and the adapter itself is checked in the root package, where gate and this
+// package are both visible at once.
+//
+// blockedHead is the commit every blocked fixture is about. Fixed, so a test
+// asserts a stamp rather than tolerating one.
+const (
+	blockedHead = "9f2c1a4b8e6d0c3f5a7b9d1e3f5a7b9d1e3f5a7b"
+	greenHead   = "3c1d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d"
+)
+
+// blocked is the verdict this tool was argued for: a bump that will not render
+// on one Application, drops a served API version four manifests still declare,
+// moves an object's own apiVersion, stops reading two settings, and renders one
+// manifest the target schemas reject.
+func blocked() GateStatus {
+	return GateStatus{
+		SweptAt: sweptAt,
+		Open: []GatePR{{
+			Number: 264, Title: "chore(deps): bump external-secrets to 0.10.0",
+			URL:     "https://example.invalid/example/platform/pull/264",
+			HeadSHA: blockedHead, State: StateFailing,
+			Verdict: &GateVerdict{
+				Blocking: true,
+				Headline: "Blocking — 1 Application whose chart will not render at the new version, " +
+					"1 object whose own apiVersion moved, 4 manifests still declaring a dropped API " +
+					"version, 2 settings this bump stops reading and 1 manifest the target schemas reject",
+				Blockers: GateBlockers{
+					APIVersion: 1, Consumers: 4, Unrenderable: 1, ValuesDropped: 2, Schema: 1,
+				},
+				Findings: []GateFinding{{
+					Kind: "unrenderable", Count: 1, Blocking: true, RepositorySideRemedy: true,
+					Subject: "authentik", Cluster: "prod-eu", From: "2024.2.0", To: "2024.6.0",
+					Detail: "the chart will not render at the version this change moves it to, " +
+						"so there is nothing to diff and nothing that will sync",
+					Reason: "execution error at (authentik/templates/server.yaml:12): " +
+						".Values.postgresql.host is required",
+				}, {
+					Kind: "droppedVersion", Count: 4, Blocking: true, RepositorySideRemedy: true,
+					Subject: "CustomResourceDefinition/externalsecrets.external-secrets.io in external-secrets",
+					Cluster: "prod-eu", From: "v1beta1", To: "v1",
+					Detail: "1 version no longer served; 4 manifests in this repository still " +
+						"declare a dropped version",
+					ConsumersScanned: true,
+					ConsumerFiles: []string{
+						"addons/argo-cd/externalsecret.yaml", "addons/grafana/externalsecret.yaml",
+						"addons/harbor/externalsecret.yaml", "addons/vault/externalsecret.yaml",
+					},
+					Dropped: &GateDropped{
+						Definition:   "externalsecrets.external-secrets.io",
+						Group:        "external-secrets.io",
+						ConsumerKind: "ExternalSecret",
+						Versions:     []string{"v1beta1"},
+						Surviving:    "v1",
+					},
+				}, {
+					Kind: "apiVersion", Count: 1, Blocking: true, RepositorySideRemedy: false,
+					Subject: "Ingress/authentik in authentik", Cluster: "prod-eu",
+					From: "networking.k8s.io/v1beta1", To: "networking.k8s.io/v1",
+					Detail: "this object's own apiVersion moved, which renders cleanly and can " +
+						"break at apply",
+				}, {
+					Kind: "valuesDropped", Count: 2, Blocking: true, RepositorySideRemedy: true,
+					Subject: "grafana", Cluster: "prod-eu", From: "7.3.0", To: "8.0.0",
+					Keys: []string{"grafana.ini.auth.oauth_auto_login", "sidecar.dashboards.searchNamespace"},
+					Detail: "2 settings set here that the new chart version no longer declares; " +
+						"helm ignores an unknown value rather than failing on it, so they stop " +
+						"applying while the render stays green",
+				}, {
+					Kind: "schema", Count: 1, Blocking: true, RepositorySideRemedy: false,
+					Subject: "Deployment/harbor-core", Source: "addons/harbor on prod-eu",
+					Detail: "the target cluster's schemas reject this manifest",
+					Reason: "problem validating schema. Check JSON formatting: " +
+						"spec.replicas: got string, want integer",
+				}},
+				NotCovered: []string{
+					"kube-prometheus-stack: kube-prometheus-stack renders at 62.0.0 but not at " +
+						"61.3.2, so its resource changes are NOT covered: exit status 1",
+				},
+				BaseRev: "1a2b3c4d", HeadRev: "9f2c1a4b",
+			},
+		}},
+	}
+}
+
+// green is a pull request the gate ran and found nothing wrong with. The
+// findings list is EMPTY rather than absent, and that is the whole difference
+// between this and every other fixture here.
+func green() GateStatus {
+	return GateStatus{
+		SweptAt: sweptAt,
+		Open: []GatePR{{
+			Number: 41, Title: "chore(deps): bump argo-cd to 7.7.0",
+			URL:     "https://example.invalid/example/platform/pull/41",
+			HeadSHA: greenHead, State: StatePassing,
+			Verdict: &GateVerdict{
+				Headline: "No blocking findings — 1 version changed, nothing else",
+				BaseRev:  "1a2b3c4d", HeadRev: "3c1d5e7f",
+			},
+		}},
+	}
+}

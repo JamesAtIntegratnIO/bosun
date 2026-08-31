@@ -11,6 +11,28 @@
           "type": "object"
         },
         "name": "pipeline_report"
+      },
+      {
+        "description": "Why one pull request is blocked, or why it is not: the verdict the gate reached against its head commit. Returns the blocker breakdown as counts per kind and every finding behind them, with dropped API versions carried as fields -- which definition, which versions it stopped serving, which one survives, and the kind of manifest that has to move. Findings say whether an edit in the repository could clear them, so a caller stops hunting for one that does not exist, and the list of what the gate could not render travels beside them, because a clean verdict over a partial render is a narrower claim. A pull request with no verdict standing is answered as such and is never reported as passing. Answers from the last sweep's snapshot: it reaches no cluster, no git host and no model, and it can change nothing.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "pullRequest": {
+              "description": "The pull request number to report the verdict for.",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "repository": {
+              "description": "The repository, owner/repo. Optional: an install watches exactly one, and omitting this asks about that one.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "pullRequest"
+          ],
+          "type": "object"
+        },
+        "name": "gate_verdict"
       }
     ]
   }

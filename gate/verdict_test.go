@@ -129,7 +129,11 @@ func TestTheVerdictHeadlineCannotBeMistakenForAParsedHeading(t *testing.T) {
 // status, because the report was written before validation ran. The report,
 // the marker and the status have to be three renderings of one answer.
 func TestSchemaFailuresBlockAndReachTheHeadlineAndTheMarker(t *testing.T) {
-	res := &DiffResult{SchemaFailures: 3}
+	res := &DiffResult{Schema: []SchemaFailure{
+		{Source: "apps", Kind: "Deployment", Name: "one", Message: "replicas: got string, want integer"},
+		{Source: "apps", Kind: "Deployment", Name: "two", Message: "replicas: got string, want integer"},
+		{Source: "addons on prod", Kind: "ConfigMap", Name: "three", Message: "data.nested: got object, want string"},
+	}}
 
 	if !res.Blocking() {
 		t.Error("three rejected manifests must block")

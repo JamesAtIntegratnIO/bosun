@@ -99,13 +99,18 @@ refuses, or any fix needing a file outside the addon's own tree.
 It comments, labels, and stops. **It never closes a pull request.**
 
 **Answers an agent, read-only**, on a listener of its own. The same facts the
-status page renders -- what has stopped promoting, why, how long it has held,
-and the exact command that recovers it -- served over MCP as typed values a
-coding agent can branch on, rather than markdown written for a person. Nothing
-is computed: every answer comes from the snapshot the last sweep already holds,
-so a request reaches no git host, no cluster and no model. Nothing mutates,
-because no tool does. Off by default, and it refuses to start without a token.
-See [the chart README](charts/bosun/README.md#the-mcp-surface).
+status page and the report comment carry -- what has stopped promoting, why,
+how long it has held, the exact command that recovers it, and why a given pull
+request is blocked -- served over MCP as typed values a coding agent can branch
+on, rather than markdown written for a person. Ask `gate_verdict` about a pull
+request and the blocker breakdown comes back as counts per kind, with the
+findings behind them and the dropped API versions as fields. Nothing is
+computed: every answer comes from the snapshot the last sweep already holds, so
+a request reaches no git host, no cluster and no model. Nothing mutates,
+because no tool does. Text bosun did not write travels tagged with whose it is,
+because these answers land in agents holding tools bosun refuses for itself.
+Off by default, and it refuses to start without a token. See
+[the chart README](charts/bosun/README.md#the-mcp-surface).
 
 ## The safety model is code, not prompt
 

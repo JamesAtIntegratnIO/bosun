@@ -43,6 +43,64 @@ All notable changes to `bosun`. Format follows
 
 ### Added
 
+- **`gate_verdict`: why a pull request is blocked, as data.** A platform
+  engineer whose pull request is red asks their coding agent why, and the agent
+  asks bosun. What comes back is the verdict standing against the head commit:
+  the blocker breakdown as counts per kind, every finding behind those counts,
+  and the dropped API versions as fields -- which definition, which versions it
+  stopped serving, which one survives, and the kind of manifest that has to
+  move. Each finding says whether an edit in the repository could clear it, so
+  an agent stops hunting for one that does not exist, and the list of what the
+  gate could not render travels beside them, because a clean verdict over a
+  partial render is a narrower claim than a clean verdict over a whole one.
+
+  Answering this used to mean scraping the pull-request comment and parsing
+  `<!-- gitops-gate:… -->` stamps out of it, which made an internal wire format
+  into a public contract and got the reader nothing that was typed. Nothing new
+  is computed: the answer comes from the snapshot the last gate sweep already
+  holds, so a request reaches no git host, no cluster and no model.
+
+  **A pull request with no verdict standing is answered as such, and never as a
+  passing one.** There are six ways to have no verdict -- no sweep has run, the
+  sweep could not list pull requests, the sweep ran and this pull request was
+  not open, a render is in flight, a verdict already stood on the git host and
+  was not re-litigated, the gate could not run -- and each has its own state
+  and its own sentence, so a client never has to read two fields to tell them
+  apart. The findings field is *absent* in all of them, and *empty* only when
+  the gate looked and found nothing.
+
+- **Provenance tagging, and the rule every later tool inherits.** This is where
+  text bosun did not write first enters an MCP result, and that is most of its
+  weight: a verdict carries chart-rendered object names, helm and schema error
+  strings, and pull-request titles. All of it lands in another model's context,
+  and that model usually holds tools bosun refuses for itself -- so a hostile
+  release note does not need to jailbreak bosun's model, only to be delivered
+  by it to a better-armed one.
+
+  Facts travel in typed fields a string cannot forge, and free text travels
+  tagged with where it came from: a rendered chart, helm, the schema validator,
+  the render as a whole, this repository, the cluster, a pull request's author,
+  or bosun itself. The contract a client can rely on is that instructions in a
+  result are bosun's own or absent. The dropped-version detail is the one block
+  that carries no tag, because it is what a repair acts on with no person in
+  between: every field of it is matched against the repair contract's own
+  grammars first, and a finding whose fields do not hold their shape is
+  published without them rather than with them labelled.
+
+  What is not on offer is sanitised text. It does not exist, and claiming it
+  would be the more dangerous lie.
+
+- **The gate's stamp grammar is stripped from every MCP response.** The gate
+  keeps its memory inside its own pull-request comment -- the last verdict, the
+  head it judged, the migration a repair performs -- because a gate with no
+  database has nowhere else to put it. A client of this surface reads a verdict
+  and writes prose onto a pull request, so a stamp smuggled through a
+  chart-rendered object name would make that client a forgery relay,
+  republishing a verdict the gate never reached against a commit it never
+  judged. The HTML comment delimiters are broken where a byte reaches the wire,
+  visibly rather than silently: an object whose name contains an HTML comment
+  is worth somebody looking at the chart that produced it.
+
 - **A read-only MCP server, on a listener of its own, with its first tool.**
   Bosun computes the most expensive facts in the promotion loop -- why a Stage
   silently stopped promoting, and the exact command that unsticks it -- and
@@ -171,6 +229,20 @@ All notable changes to `bosun`. Format follows
   existed and nothing has used until now.
 
 ### Changed
+
+- **The gate's verdict is enumerable, and its breakdown is that list added
+  up.** `DiffResult.Findings` names every reason the gate has an opinion --
+  what it is about, its contribution to the breakdown, whether it blocks, and
+  whether an edit in the repository could clear it -- and `Blockers` now folds
+  over it rather than walking the result a second time. Two walks over the same
+  findings is how a caller ends up holding a count of three and a list of two,
+  with no way to tell which half is lying.
+
+- **Schema validation returns the failures, not a count of them.** The report
+  comment always named the rejected manifests; the structured verdict could
+  only say `schema=3`, which reads exactly like a bug in whatever produced the
+  number. `gate.ValidateManifests` now returns one `SchemaFailure` per
+  rejection, and the prose and the slice are two renderings of one pass.
 
 - **Redaction is one thing the process owns, not a helper each git provider
   reaches for.** A credential is taken out of text by `redact`: primed once at

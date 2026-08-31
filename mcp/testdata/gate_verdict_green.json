@@ -1,0 +1,32 @@
+{
+  "ageSeconds": 90,
+  "baseCommit": "1a2b3c4d",
+  "blockers": {
+    "apiVersion": 0,
+    "consumers": 0,
+    "schema": 0,
+    "source": 0,
+    "targeting": 0,
+    "unrenderable": 0,
+    "unscanned": 0,
+    "valuesDropped": 0
+  },
+  "blocking": false,
+  "findings": [],
+  "headCommit": "3c1d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d",
+  "notCovered": [],
+  "pullRequest": 41,
+  "repository": "example/platform",
+  "state": "passing",
+  "status": {
+    "origin": "bosun",
+    "text": "No blocking findings — 1 version changed, nothing else"
+  },
+  "swept": true,
+  "sweptAt": "2026-08-30T12:00:00Z",
+  "title": {
+    "origin": "bosun-quoting-pull-request-author",
+    "text": "chore(deps): bump argo-cd to 7.7.0"
+  },
+  "url": "https://example.invalid/example/platform/pull/41"
+}

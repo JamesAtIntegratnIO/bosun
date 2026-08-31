@@ -427,6 +427,25 @@ Beside them travels the sweep's own accounting of what it examined, so a
 report with no findings can prove it looked rather than merely returning
 nothing.
 
+A platform engineer whose pull request is blocked asks `gate_verdict` why, and
+gets the blocker breakdown as counts per kind, every finding behind those
+counts, and the dropped API versions as fields -- which definition, which
+versions it stopped serving, which one survives, and the kind of manifest that
+has to move. Each finding says whether an edit in the repository could clear
+it, so an agent stops hunting for one that does not exist, and the list of what
+the gate could not render travels beside them, because a clean verdict over a
+partial render is a narrower claim than a clean verdict over a whole one. The
+answer is stamped with the head commit it judged, so a stale one can be told
+from a current one.
+
+**A pull request with no verdict standing is answered as such**, and never as a
+passing one. There are several ways to have no verdict -- a render in flight, a
+verdict already standing on the git host that this process did not re-run, a
+gate that could not run at all, a sweep that could not list pull requests --
+and each gets its own state and its own sentence. The findings field is
+*absent* in every one of them, and *empty* only when the gate looked and found
+nothing.
+
 It computes nothing. Every answer comes from the snapshot the last sweep left
 in memory, so a request reaches no git host, no cluster and no model, and a
 chatty client cannot spend your rate limit. Nothing it serves can change
@@ -474,12 +493,23 @@ here.** `service.port` answers the endpoint that spends money and writes to
 your repository; this is the surface you are most likely to publish beyond the
 namespace. A NetworkPolicy and a gateway both draw their lines at the port.
 
-**What it reveals is what the page reveals**: the repository's name, your Stage
-and Warehouse names, the findings and their remedies. No credential, no prompt,
+**What it reveals is what the page and the report comment reveal**: the
+repository's name, your Stage and Warehouse names, your Application and
+rendered-object names, chart versions, helm and schema error strings,
+pull-request titles, the findings and their remedies. No credential, no prompt,
 no rendered diff. The difference is who reads it and what they hold -- these
 answers land in somebody's coding agent, which usually has a shell and a
 checkout -- so treat the token as read access to your pipeline's status handed
 to a program.
+
+**Text bosun did not write travels tagged.** A verdict quotes names a chart
+chose and errors a tool produced, and a client of this surface usually holds
+tools bosun refuses for itself, so every free-text field carries an origin
+saying whose words they are: `bosun`, or `bosun-quoting-` something. The
+contract is that instructions in a result are bosun's own or absent. It is not
+an offer of sanitised text -- there is no such thing -- it is the labelling a
+careful client needs to fence the rest. See
+[the safety model](../../docs/safety-model.md#what-the-mcp-surface-may-reveal-and-what-it-cannot).
 
 One value is refused rather than rendered:
 
