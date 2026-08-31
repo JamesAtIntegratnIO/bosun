@@ -35,6 +35,16 @@ type Server struct {
 	// most careful about.
 	Report func() *pipeline.Report
 
+	// Gate is what the gate's last sweep saw, or the zero value before the
+	// first one.
+	//
+	// A function for the same reason Report is: the sweep replaces its
+	// snapshot on every pass, and a copy taken at wiring time would answer
+	// with the state of the world at start-up forever. A zero SweptAt is not
+	// an error, it is the "no sweep has completed" case, and it is the case
+	// this surface is most careful about.
+	Gate func() GateStatus
+
 	// Auth decides whether a request may be served.
 	//
 	// An interface with one implementation, which is the shape asked for
@@ -103,6 +113,12 @@ func (s *Server) tools() []Tool {
 		Params:      noArguments,
 		Result:      Report{},
 		Call:        func(json.RawMessage) (any, error) { return s.pipelineReport(), nil },
+	}, {
+		Name:        "gate_verdict",
+		Description: gateVerdictDescription,
+		Params:      gateVerdictParams,
+		Result:      Verdict{},
+		Call:        s.gateVerdict,
 	}}
 }
 

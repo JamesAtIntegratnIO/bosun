@@ -65,6 +65,20 @@
 // better-armed one. The contract a client can rely on: instructions in a
 // result are bosun's own or absent.
 //
+// Two corollaries, both of which land with gate_verdict because that is where
+// text bosun did not write first enters a result.
+//
+// A field published as fact rather than as tagged text has to be vetted rather
+// than labelled. There is exactly one -- the migration a dropped-version
+// finding demands, which is what a repair acts on with no person in between --
+// and it is published only when every piece of it holds an identifier's shape.
+// A finding that fails keeps its prose and loses the fields.
+//
+// And the gate's own stamp grammar is stripped from every response, in
+// declaw below. The gate keeps its memory inside its pull-request comment, so
+// a client that relays bosun's text back onto a pull request must not be able
+// to relay a forged verdict with it.
+//
 // # And two controls, in that order
 //
 // The primary one is a compile-time dependency rule: this package imports the
@@ -170,6 +184,10 @@ func (s *Server) Handler() (http.Handler, error) {
 		return nil, fmt.Errorf("no Report: with nothing to read, every tool would answer " +
 			"\"no sweep has completed\" forever, which is indistinguishable from a supervisor " +
 			"that is switched off")
+	case s.Gate == nil:
+		return nil, fmt.Errorf("no Gate: gate_verdict would report that no gate sweep has " +
+			"completed for every pull request forever, which is the one answer that must never " +
+			"be a wiring mistake")
 	}
 
 	mux := http.NewServeMux()
@@ -276,10 +294,12 @@ const instructions = "Read-only access to what bosun's last sweep found about on
 
 // write serialises a response, and is the one place a byte reaches the wire.
 //
-// Redaction happens HERE rather than in each handler, which is the whole point
-// of having one exit: a handler that forgot to call it would be a leak with no
-// symptom until a misconfigured host echoed a credential back inside an error
-// string this then serialised. The compile-time rule that no result type can
+// Redaction and the declawing of HTML comment delimiters both happen HERE
+// rather than in each handler, which is the whole point of having one exit: a
+// handler that forgot to call it would be a leak with no symptom until a
+// misconfigured host echoed a credential back inside an error string this then
+// serialised, or a chart-rendered name carried a stamp out to a client that
+// writes onto pull requests. The compile-time rule that no result type can
 // reach a credential is the primary control; this is the second line, for the
 // text whose contents nobody chose.
 //

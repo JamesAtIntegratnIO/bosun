@@ -193,17 +193,40 @@ func DroppedBlock(drops []Dropped) string {
 // the reader would refuse, which is the whole reason the two are not two
 // functions.
 func droppedEntry(d Dropped) (string, bool) {
-	if !contractCRD.MatchString(d.CRD) || !contractKind.MatchString(d.Kind) ||
-		!contractTarget.MatchString(d.Target) || len(d.Versions) == 0 {
+	if !d.WellFormed() {
 		return "", false
-	}
-	for _, v := range d.Versions {
-		if !contractVersion.MatchString(v) {
-			return "", false
-		}
 	}
 	return fmt.Sprintf("crd=%s kind=%s versions=%s target=%s",
 		d.CRD, d.Kind, strings.Join(d.Versions, ","), d.Target), true
+}
+
+// WellFormed reports whether every field of this finding holds the shape the
+// contract's own patterns accept.
+//
+// Exported because the read surfaces need the same answer the writer and the
+// reader already agree on. A dropped-version finding published as typed fields
+// -- the definition, the versions that are gone, the survivor, the kind
+// consumers declare -- makes exactly the claim the contract block makes, to a
+// reader that will act on it, so it has to pass exactly the same check. A
+// finding that fails is published without those fields rather than with
+// unvetted ones, which is the same trade droppedEntry makes: an absent
+// migration is a missing convenience, a forged one is an incident.
+//
+// The patterns, not a second copy of them. Nothing here can spell a space, a
+// backtick or a newline, so no value that passes can end a comment early,
+// forge a second entry, or carry a sentence into a field a client reads as
+// fact.
+func (d Dropped) WellFormed() bool {
+	if !contractCRD.MatchString(d.CRD) || !contractKind.MatchString(d.Kind) ||
+		!contractTarget.MatchString(d.Target) || len(d.Versions) == 0 {
+		return false
+	}
+	for _, v := range d.Versions {
+		if !contractVersion.MatchString(v) {
+			return false
+		}
+	}
+	return true
 }
 
 // ParseReport extracts every repairable dropped-version finding from a gate

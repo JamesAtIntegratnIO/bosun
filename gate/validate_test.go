@@ -75,8 +75,8 @@ func TestValidateManifestsPassesAValidStream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failures != 0 {
-		t.Errorf("a valid manifest must not fail: %d\n%s", failures, out.String())
+	if len(failures) != 0 {
+		t.Errorf("a valid manifest must not fail: %d\n%s", len(failures), out.String())
 	}
 	// Silence and success must not look the same: a reader has to be able to
 	// tell "it passed" from "it did not run".
@@ -98,8 +98,8 @@ func TestValidateManifestsCountsAndNamesAFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failures != 1 {
-		t.Fatalf("want one failure, got %d\n%s", failures, out.String())
+	if len(failures) != 1 {
+		t.Fatalf("want one failure, got %d\n%s", len(failures), out.String())
 	}
 	// The count is what blocks; the text is what a human acts on, so it has to
 	// name the object rather than just report a number.
@@ -129,8 +129,8 @@ func TestSkipKindsSuppressesTheFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failures != 0 {
-		t.Errorf("a skipped kind must not fail: %d\n%s", failures, out.String())
+	if len(failures) != 0 {
+		t.Errorf("a skipped kind must not fail: %d\n%s", len(failures), out.String())
 	}
 }
 
@@ -180,9 +180,9 @@ func TestAKindlessDocumentIsNotASchemaFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failures != 0 {
+	if len(failures) != 0 {
 		t.Fatalf("a values file is not a manifest the schemas reject, got %d failure(s):\n%s",
-			failures, report.String())
+			len(failures), report.String())
 	}
 	// Never silent: a reader must be able to tell "skipped a values file" from
 	// "skipped your manifest".
@@ -212,9 +212,9 @@ func TestADocumentWithAKindIsStillValidated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failures != 1 {
+	if len(failures) != 1 {
 		t.Fatalf("a ConfigMap whose data is not string-valued must still fail, got %d:\n%s",
-			failures, report.String())
+			len(failures), report.String())
 	}
 	if !strings.Contains(report.String(), "app/thing (1)") {
 		t.Errorf("the skipped values file must still be counted beside the real failure:\n%s", report.String())

@@ -55,10 +55,12 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/cluster"
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/egress"
+	"github.com/JamesAtIntegratnIO/bosun/gate"
 	"github.com/JamesAtIntegratnIO/bosun/gateservice"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 	"github.com/JamesAtIntegratnIO/bosun/mcp"
+	"github.com/JamesAtIntegratnIO/bosun/migrate"
 	"github.com/JamesAtIntegratnIO/bosun/pipeline"
 	"github.com/JamesAtIntegratnIO/bosun/redact"
 	"github.com/JamesAtIntegratnIO/bosun/supervisor"
@@ -478,6 +480,11 @@ func main() {
 					}
 					return sup.Report()
 				},
+				// The gate's own snapshot, read per request rather than
+				// copied once: the sweep replaces it on every pass, and this
+				// listener's whole promise is that an answer is as old as the
+				// sweep it names rather than as old as the process.
+				Gate: func() mcp.GateStatus { return mcpGateStatus(gs) },
 			}
 			h, err := ms.Handler()
 			if err != nil {
@@ -633,9 +640,108 @@ func gateStatus(gs *gateservice.Service) web.GateStatus {
 		Held: g.Held, Running: g.Running,
 	}
 	for _, pr := range g.Open {
-		out.Open = append(out.Open, web.GatePR(pr))
+		// Field by field rather than a type conversion. The two shapes were
+		// identical until the gate started holding the verdict itself, and
+		// the page shows what a person can act on from a browser: a number, a
+		// title, a link and a colour. Converting whole would put the
+		// breakdown, the findings and every rendered object's name behind a
+		// template that renders none of them.
+		out.Open = append(out.Open, web.GatePR{
+			Number: pr.Number, Title: pr.Title, URL: pr.URL, State: pr.State,
+		})
 	}
 	return out
+}
+
+// mcpGateStatus adapts the gate's account of itself to the tool surface's
+// vocabulary, and it is the same copy gateStatus makes one function up, for a
+// stronger version of the same reason.
+//
+// web depends on nothing that can dial because a status page should not. mcp
+// depends on nothing that can dial because it is the one listener built to be
+// reached from outside the cluster, and the rule that no field path from a
+// tool result reaches a credential is held by the import list rather than by a
+// filter. gateservice shells helm and calls a git host; copying the fields
+// here is what keeps that rule a compile-time one.
+//
+// Dull on purpose. Nothing is decided in this function: gate computed the
+// verdict and gateservice remembered it, and everything here is a field
+// landing in a field of the same name.
+func mcpGateStatus(gs *gateservice.Service) mcp.GateStatus {
+	g := gs.Status()
+	out := mcp.GateStatus{SweptAt: g.SweptAt, Err: g.Err}
+	for _, pr := range g.Open {
+		out.Open = append(out.Open, mcp.GatePR{
+			Number: pr.Number, Title: pr.Title, URL: pr.URL,
+			HeadSHA: pr.HeadSHA, State: pr.State, Err: pr.Err,
+			Verdict: mcpVerdict(pr.Verdict),
+		})
+	}
+	return out
+}
+
+// mcpVerdict copies one verdict across, or nothing when the gate holds none.
+func mcpVerdict(v *gate.Summary) *mcp.GateVerdict {
+	if v == nil {
+		return nil
+	}
+	out := &mcp.GateVerdict{
+		Blocking: v.Blocking,
+		Headline: v.Headline,
+		Blockers: mcp.GateBlockers{
+			Targeting: v.Blockers.Targeting, Source: v.Blockers.Source,
+			APIVersion: v.Blockers.APIVersion, Consumers: v.Blockers.Consumers,
+			Unscanned: v.Blockers.Unscanned, Unrenderable: v.Blockers.Unrenderable,
+			ValuesDropped: v.Blockers.ValuesDropped, Schema: v.Blockers.Schema,
+		},
+		NotCovered: append([]string(nil), v.NotCovered...),
+		BaseRev:    v.BaseRev,
+		HeadRev:    v.HeadRev,
+	}
+	for _, f := range v.Findings {
+		out.Findings = append(out.Findings, mcp.GateFinding{
+			Kind:  string(f.Kind),
+			Count: f.Count, Blocking: f.Blocking,
+			// Asked of the kind rather than copied off the finding, because
+			// this is the one field on the crossing that gate does not
+			// already carry as data: it is a property of the class, and
+			// gate/findings_test.go is what keeps it agreeing with the
+			// breakdown's own answer.
+			RepositorySideRemedy: f.Kind.RepositorySideRemedy(),
+			Subject:              f.Subject,
+			Cluster:              f.Cluster,
+			Source:               f.Source,
+			From:                 f.From,
+			To:                   f.To,
+			Detail:               f.Detail,
+			Reason:               f.Reason,
+			Keys:                 append([]string(nil), f.Keys...),
+			ConsumerFiles:        append([]string(nil), f.ConsumerFiles...),
+			ConsumersScanned:     f.ConsumersScanned,
+			Dropped:              mcpDropped(f.Dropped),
+		})
+	}
+	return out
+}
+
+// mcpDropped copies the migration a finding demands, and only when the gate
+// vouched for every field of it.
+//
+// The nil check is the whole function's reason to exist: gate publishes this
+// block only for a finding that passed the repair contract's grammars, so nil
+// here means "bosun would not vouch for the detail" rather than "there is no
+// detail", and the tool surface says exactly that.
+func mcpDropped(d *migrate.Dropped) *mcp.GateDropped {
+	if d == nil {
+		return nil
+	}
+	return &mcp.GateDropped{
+		Definition:   d.CRD,
+		Group:        d.Group,
+		ConsumerKind: d.Kind,
+		Versions:     append([]string(nil), d.Versions...),
+		Surviving:    d.Target,
+	}
 }
 
 // Server accepts Kargo's call and gets out of the way.

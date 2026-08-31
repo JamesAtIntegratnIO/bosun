@@ -39,7 +39,67 @@ const (
 	// OriginRepository: composed by bosun, quoting text read from the
 	// repository -- a file path, a promotion target's key.
 	OriginRepository Origin = "bosun-quoting-repository"
+
+	// OriginChart: a name or a value a rendered chart chose. Object names,
+	// Application names, values keys, chart versions.
+	//
+	// The origin this surface is most careful about, and the one that
+	// justifies tagging identities rather than only prose. A Kargo Stage name
+	// reached an apiserver, so it is an RFC1123 subdomain and there is no
+	// sentence in it for anything to hide inside. A chart-rendered name never
+	// reached one: `helm template` does not apply, so `metadata.name` is
+	// whatever the template wrote, newlines and backticks included. The gate
+	// already publishes its migration contract twice for exactly this reason
+	// -- once as prose a person reads, once as a machine-readable block a
+	// repair executes -- because half of the human bullet is a name a chart
+	// chose, and a chart must not be able to write an instruction.
+	OriginChart Origin = "bosun-quoting-chart"
+
+	// OriginHelm: what helm said when it would not render a chart, verbatim.
+	//
+	// Its own origin rather than OriginChart because bosun composed no part
+	// of it: a rendered name arrives inside a sentence this process wrote,
+	// and this is a whole string somebody else's program produced, quoted
+	// because it is the only evidence there is. A chart that will not render
+	// leaves nothing to diff, so the reader cannot look this up anywhere else.
+	OriginHelm Origin = "bosun-quoting-helm"
+
+	// OriginValidator: what the schema validator said about one rejected
+	// manifest, verbatim.
+	OriginValidator Origin = "bosun-quoting-validator"
+
+	// OriginRender: composed by bosun, quoting whatever refused a read the
+	// gate wanted -- helm at the revision the change starts from, a
+	// repository scan that failed, an ApplicationSet that would not expand.
+	//
+	// The coverage the run lost, in other words, which is a different claim
+	// from a finding: a finding is "we looked and this is wrong", these are
+	// "we did not look here".
+	OriginRender Origin = "bosun-quoting-render"
+
+	// OriginAuthor: written by whoever opened the pull request. Its title,
+	// today.
+	//
+	// Worth its own origin even though it is the most obviously untrusted
+	// string on the surface, because it is also the one a client is most
+	// tempted to render as a heading. Anybody who can open a pull request
+	// against the gated repository can choose these bytes.
+	OriginAuthor Origin = "bosun-quoting-pull-request-author"
 )
+
+// There is deliberately no origin for an upstream release note.
+//
+// Not an oversight: no tool registered here can carry one. Release notes are
+// read on the explain path, which turns a red gate into a sentence a person
+// reads on the pull request, and nothing on that path is published as a tool
+// result yet. The tag lands with the tool that carries one, because a constant
+// declared for a field nothing fills is a promise to a client that this
+// surface cannot keep.
+//
+// What a client fences on is the shape rather than the list -- `bosun`, or
+// `bosun-quoting-` something -- precisely so that the vocabulary can grow with
+// the tools without a client's default branch quietly swallowing a kind of
+// text it has never seen.
 
 // Text is one free-text field and where its content came from.
 //
@@ -74,10 +134,28 @@ type Text struct {
 // An absent remedy says "no remedy exists for this finding", and a cap that
 // quietly produced one would make that sentence untrue in a case no client
 // could detect.
+//
+// Lists are deliberately not capped by length, only their entries. A verdict's
+// consumer files are the manifests a repair has to move, so a list cut to
+// twenty would understate a migration to the one reader that acts on it, and
+// would do so in the case that needs the number most. The bound on those is
+// upstream and real: they are the files a repository scan found, and a
+// repository with ten thousand of them has a problem this surface should
+// report rather than hide. If a real install ever floods a client from here,
+// the answer is a count beside a truncated list rather than a quiet cut.
 const (
 	maxSummary = 500
 	maxDetail  = 4000
 	maxNote    = 1000
+	// maxName bounds an identity: an object name, a values key, a file path,
+	// a chart version. 253 is the longest legal Kubernetes object name, and
+	// the gate's own subjects wrap one in a sentence -- `Kind/name in
+	// namespace` -- so the ceiling is a small multiple of it rather than the
+	// number itself. Anything longer is not a name.
+	maxName = 1024
+	// maxTitle bounds a pull request's title, generously: every git host caps
+	// one far below this, and the cap is here because none of them promises to.
+	maxTitle = 500
 )
 
 // say builds a Text, capped and trimmed.
@@ -126,8 +204,9 @@ func redacted(v any) (any, error) {
 	return redactTree(tree), nil
 }
 
-// redactTree removes this process's credentials from every string in a decoded
-// JSON tree, in place where it can and by rebuilding where it cannot.
+// redactTree scours every string in a decoded JSON tree -- this process's
+// credentials out, HTML comment delimiters broken -- in place where it can and
+// by rebuilding where it cannot.
 //
 // Keys as well as values. Nothing on this surface puts a credential in a key
 // today and nothing enumerates what a future result type might; a walk that
@@ -139,7 +218,7 @@ func redacted(v any) (any, error) {
 func redactTree(v any) any {
 	switch t := v.(type) {
 	case string:
-		return redact.Text(t)
+		return scour(t)
 	case json.Number:
 		return t
 	case []any:
@@ -150,10 +229,72 @@ func redactTree(v any) any {
 	case map[string]any:
 		out := make(map[string]any, len(t))
 		for k, val := range t {
-			out[redact.Text(k)] = redactTree(val)
+			out[scour(k)] = redactTree(val)
 		}
 		return out
 	default:
 		return v
 	}
 }
+
+// scour is the two things done to every string on the way out: this process's
+// credentials removed, and the delimiters of an HTML comment broken.
+//
+// Deliberately not called anything built on "sanitise". Neither pass makes
+// hostile text harmless, and this surface's whole claim about such text is
+// that it is labelled rather than cleaned; a name promising otherwise would be
+// read by the next person as the guarantee this package explicitly does not
+// offer.
+func scour(s string) string { return declaw(redact.Text(s)) }
+
+// declaw breaks the HTML comment delimiters in a string.
+//
+// # What this stops
+//
+// The gate keeps its memory inside its own pull-request comment. There is no
+// database, and the only per-pull-request storage a git host offers is the
+// comment, so the last verdict, the head commit it judged, and the migration a
+// repair is to perform all travel as HTML comments -- invisible to a reader,
+// read back by the next gate run, and acted on.
+//
+// Which makes them forgeable by anything that can get bytes into that comment.
+// A client of this surface is one of those things: it reads a verdict here and
+// writes prose onto the pull request, and if a chart-rendered object name in
+// what it read carried `<!-- gitops-gate:verdict 0 ... -->`, the client
+// publishes a verdict the gate never reached, on a commit it never judged.
+// Nothing in the chain is compromised; each link does its job.
+//
+// So the delimiters are broken here, at the one place where a byte reaches the
+// wire, and a client that relays bosun's text cannot become the relay.
+//
+// # Why the delimiters and not the stamps
+//
+// A list of today's stamps -- head, verdict, was, dropped, blockers, and the
+// report marker -- is a list that goes stale the first time somebody adds a
+// seventh, and the symptom of a stale one is nothing at all. The grammar under
+// all of them is the HTML comment, there is exactly one spelling of its
+// opener, and breaking that cannot fall behind a stamp nobody told this file
+// about. mcp_stamps_test.go is what proves the coverage, and it derives the
+// stamps from the packages that publish them rather than listing them here.
+//
+// # Why it is loud
+//
+// Replaced with a sentence rather than deleted, because a chart or a title
+// containing an HTML comment is worth a reader's eyes -- there is no innocent
+// reason for one to be in an object's name -- and a silently trimmed string is
+// one nobody can look up in the chart that produced it. The same argument
+// gate.Inline makes where it escapes a backtick visibly.
+func declaw(s string) string {
+	if !strings.Contains(s, "<!--") && !strings.Contains(s, "-->") {
+		return s
+	}
+	s = strings.ReplaceAll(s, "<!--", commentOpener)
+	return strings.ReplaceAll(s, "-->", commentCloser)
+}
+
+// What a broken delimiter is replaced with. Neither is a delimiter, and both
+// say what happened.
+const (
+	commentOpener = "[bosun removed an html comment opener]"
+	commentCloser = "[bosun removed an html comment closer]"
+)

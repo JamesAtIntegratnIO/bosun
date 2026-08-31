@@ -1,0 +1,12 @@
+{
+  "ageSeconds": 90,
+  "pullRequest": 999,
+  "repository": "example/platform",
+  "state": "absent",
+  "status": {
+    "origin": "bosun",
+    "text": "The last gate sweep did not see this pull request among the open ones. It may have been merged or closed, or opened since the sweep ran. Nothing here is a verdict on it."
+  },
+  "swept": true,
+  "sweptAt": "2026-08-30T12:00:00Z"
+}

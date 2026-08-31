@@ -11,6 +11,32 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.33.0]
+
+**No values change, and no template change.** `appVersion` moves, which is what
+this release is: the agent it deploys serves a second MCP tool. An install that
+has `mcp.enabled: false`, which is every install that has not said otherwise,
+is unaffected in every respect.
+
+### Added
+
+- **`gate_verdict` on the MCP surface.** An engineer's coding agent can now ask
+  why a pull request is blocked and get the answer as data: the blocker
+  breakdown as counts per kind, every finding behind those counts, and the
+  dropped API versions as fields -- which definition, which versions it stopped
+  serving, which one survives, and the kind of manifest that has to move.
+  Findings say whether an edit in the repository could clear them, so a caller
+  stops hunting for one that does not exist.
+
+  Like `pipeline_report`, it computes nothing: the answer comes from the
+  snapshot the last gate sweep already holds, so it costs no git API call, no
+  cluster read and no model call.
+
+  **It reveals what the report comment on a pull request already reveals**, to
+  whoever holds the token: your Application and object names, chart versions,
+  helm and schema error strings, and pull-request titles. It is the same
+  operational metadata the status page renders, in a shape a program can read.
+
 ## [0.32.0]
 
 `appVersion` moves with it: this is the chart for the agent that serves the

@@ -3,6 +3,7 @@ package gateservice
 import (
 	"time"
 
+	"github.com/JamesAtIntegratnIO/bosun/gate"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 )
 
@@ -34,15 +35,58 @@ type Status struct {
 	Running int
 }
 
+// The states a pull request's head commit can be in, as the sweep sees them.
+//
+// Constants rather than literals at the assignment sites, because this
+// vocabulary now has readers outside this package: the status page renders a
+// colour per state, and the MCP surface publishes the word itself to a client
+// that branches on it. Three copies of five strings is how a sixth state
+// reaches one reader and not the others -- and the reader that would miss it
+// is the programmatic one, which has no eyes on it.
+const (
+	// StatePassing and StateFailing are verdicts: the gate ran and answered.
+	StatePassing = "passing"
+	StateFailing = "failing"
+	// StateError is the gate failing to run, which is not a failing verdict:
+	// nothing was judged, and the two want opposite reactions.
+	StateError = "error"
+	// StateRunning is a render in flight.
+	StateRunning = "running"
+	// StateUnknown is a verdict this sweep neither produced nor read. The
+	// honest word is the vague one.
+	StateUnknown = "unknown"
+)
+
 // PRStatus is one open pull request as the gate last saw it.
 type PRStatus struct {
 	Number int
 	Title  string
 	URL    string
+	// HeadSHA is the commit the state below is about.
+	//
+	// On the snapshot because a verdict that does not name its commit cannot
+	// be told apart from a stale one, and a reader deciding whether to trust
+	// this answer is asking exactly that. The page shows it; a programmatic
+	// reader needs it to know whether to ask again.
+	HeadSHA string
 	// State is the verdict on the head commit: "passing", "failing", "error"
 	// (the gate could not run), "running" (a render is in flight), or
 	// "unknown" (the sweep could not read one and did not produce one).
 	State string
+	// Err is why the gate could not run, and "" otherwise. Set exactly when
+	// State is "error": that state on its own says a run failed and gives a
+	// reader nothing to do about it.
+	Err string
+	// Verdict is the whole answer as data, or nil when this process did not
+	// produce one.
+	//
+	// Nil is a real and common answer rather than a gap. A verdict already
+	// standing on the git host is deliberately not re-litigated, so its state
+	// is known and its breakdown is not; a run in flight has neither yet. A
+	// reader that finds a state here and no verdict is being told the
+	// difference, which is the difference between "green" and "green,
+	// according to a run this process never made".
+	Verdict *gate.Summary
 }
 
 // Status returns a copy of what the last sweep recorded.
@@ -68,30 +112,31 @@ func (g *Service) snapshotLocked(prs []gitprovider.PullRequest, posted map[strin
 	out := make([]PRStatus, 0, len(prs))
 	for i := range prs {
 		pr := &prs[i]
-		st := PRStatus{Number: pr.Number, Title: pr.Title, URL: pr.URL}
+		st := PRStatus{Number: pr.Number, Title: pr.Title, URL: pr.URL, HeadSHA: pr.HeadSHA}
 		switch {
 		case g.inflight[pr.HeadSHA] != nil:
-			st.State = "running"
+			st.State = StateRunning
 		default:
 			if o, ok := g.results[pr.HeadSHA]; ok {
+				st.Verdict = o.Verdict
 				switch {
 				case o.Err != nil:
-					st.State = "error"
+					st.State, st.Err = StateError, o.Err.Error()
 				case o.State == gitprovider.CheckSuccess:
-					st.State = "passing"
+					st.State = StatePassing
 				default:
-					st.State = "failing"
+					st.State = StateFailing
 				}
 			} else if s, ok := posted[pr.HeadSHA]; ok {
 				if s == gitprovider.CheckSuccess {
-					st.State = "passing"
+					st.State = StatePassing
 				} else {
-					st.State = "failing"
+					st.State = StateFailing
 				}
 			} else {
 				// A verdict this sweep neither produced nor read. The honest
 				// word is the vague one.
-				st.State = "unknown"
+				st.State = StateUnknown
 			}
 		}
 		out = append(out, st)

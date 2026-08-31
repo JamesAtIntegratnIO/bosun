@@ -315,9 +315,44 @@ second line for the text whose contents nobody chose.
 only by bosun's code, from pieces checked against a grammar before the command
 is emitted at all -- a piece that fails costs the finding its remedy rather than
 producing a suspect command. Every other free-text field carries an origin
-saying whether bosun wrote all of it or quoted a cluster inside it, and tool
+saying whether bosun wrote all of it or quoted somebody else inside it, and tool
 descriptions are constants, so nothing from a cluster reaches the field a client
 hands its model as instructions.
+
+The origins are a closed vocabulary, and a client fences on the shape rather
+than on the list: a field is `bosun`, or it is `bosun-quoting-` something.
+Today the something is a cluster, this repository, a rendered chart, helm, the
+schema validator, the render as a whole, or a pull request's author. Only the
+first is a claim that bosun wrote every byte.
+
+**A verdict's typed facts are vetted, not tagged.** One block on the gate
+verdict carries no origin, and that is deliberate: the dropped-served-version
+detail -- which definition, which versions are gone, which one survives, which
+kind of manifest moves -- is what a repair acts on with no person in between,
+so a tag would be the wrong instrument. Every field of it is matched against
+the repair contract's own grammars, which admit no space, no backtick and no
+newline, and a finding whose fields do not hold their shape is published
+without them rather than with them labelled. Absence there means bosun would
+not vouch for the detail, never that there is none.
+
+**The gate's own stamp grammar is stripped from every response.** The gate
+keeps its memory inside its pull-request comment, because a gate with no
+database has nowhere else to put it: the last verdict, the head it judged and
+the migration a repair performs all travel as HTML comments and are read back
+on the next run. A client of this surface reads a verdict and writes prose onto
+a pull request, so a stamp smuggled through a chart-rendered object name would
+make that client a forgery relay -- republishing a verdict the gate never
+reached, against a commit it never judged. Nothing in that chain is
+compromised, which is why the HTML comment delimiters are broken where a byte
+reaches the wire rather than blamed on the client. Broken visibly, and not
+deleted: an object whose name contains an HTML comment is worth somebody
+looking at the chart that produced it.
+
+**Free-text fields are length-capped.** The client's context is a resource this
+surface can spend without ever seeing the bill, and nothing upstream bounds a
+helm error or a release note. A field that was cut says so, because a note that
+happens to end in an ellipsis would otherwise be indistinguishable from one
+bosun stopped copying.
 
 **What it does not offer is sanitised text.** Bosun cannot make a careless
 client safe, and text sanitised to harmlessness does not exist. What it

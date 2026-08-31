@@ -38,6 +38,23 @@ func TestTheResultShapeIsWhatItWas(t *testing.T) {
 			func(t *testing.T) any { return newFixture(t, sweep(t, healthy())).call(t, "pipeline_report") }},
 		{"before the first sweep", "pipeline_report_unswept.json",
 			func(t *testing.T) any { return newFixture(t, nil).call(t, "pipeline_report") }},
+		{"a blocked pull request", "gate_verdict_blocked.json", func(t *testing.T) any {
+			return newFixture(t, nil).withGate(blocked()).
+				callWith(t, "gate_verdict", `{"pullRequest":264}`)
+		}},
+		{"a pull request the gate found nothing wrong with", "gate_verdict_green.json",
+			func(t *testing.T) any {
+				return newFixture(t, nil).withGate(green()).
+					callWith(t, "gate_verdict", `{"pullRequest":41}`)
+			}},
+		{"a pull request the last sweep did not see", "gate_verdict_absent.json",
+			func(t *testing.T) any {
+				return newFixture(t, nil).withGate(green()).
+					callWith(t, "gate_verdict", `{"pullRequest":999}`)
+			}},
+		{"before the first gate sweep", "gate_verdict_unswept.json", func(t *testing.T) any {
+			return newFixture(t, nil).callWith(t, "gate_verdict", `{"pullRequest":264}`)
+		}},
 		{"the tool set", "tools_list.json", func(t *testing.T) any {
 			f := newFixture(t, nil)
 			_, body := f.post(t, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)

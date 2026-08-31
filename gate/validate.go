@@ -13,25 +13,53 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// SchemaFailure is one rendered manifest the target cluster's schemas reject.
+//
+// The structured half of what ValidateManifests also writes as prose, and it
+// exists because a count with nothing behind it is the shape this project
+// spends its tests refusing. The report comment carries the sentences; a
+// caller reading the verdict as data got `schema=3` and no way to learn which
+// three, which reads exactly like a bug in whatever produced the number.
+//
+// Every field is text somebody else wrote: Kind and Name come out of a
+// rendered manifest, Message out of kubeconform. Source is bosun's own key for
+// the source that produced the stream, which is a config file's `name` or an
+// Application's, so it is not bosun's either.
+type SchemaFailure struct {
+	// Source is which rendered stream the manifest came from, in the form the
+	// report headings use: a source name, or "<source> on <cluster>".
+	Source string `json:"source"`
+	// Kind and Name identify the manifest inside that stream.
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+	// Message is kubeconform's own verdict on it, verbatim.
+	Message string `json:"message"`
+}
+
 // ValidateManifests renders every source and schema-validates the result with
 // kubeconform, writing a markdown report of the findings to w. It returns the
-// number of manifests that failed.
+// manifests that failed, one entry per rejection.
+//
+// The slice and the prose are two renderings of one pass rather than two
+// passes: the report is what a person reads on the pull request, the slice is
+// what a read surface publishes, and a gate that counted them separately would
+// eventually disagree with itself about its own verdict.
 //
 // -ignore-missing-schemas is effectively mandatory rather than a convenience:
 // CRDs outside the big projects are in no published catalogue, and without it
 // one unknown kind fails a run that had nothing wrong with it. The cost is
 // real and worth stating; those kinds are not checked.
-func ValidateManifests(ctx context.Context, repoRoot string, cfg *Config, inv *Inventory, w io.Writer) (int, error) {
+func ValidateManifests(ctx context.Context, repoRoot string, cfg *Config, inv *Inventory, w io.Writer) ([]SchemaFailure, error) {
 	if _, err := exec.LookPath("kubeconform"); err != nil {
-		return 0, fmt.Errorf("kubeconform is not on PATH: %w", err)
+		return nil, fmt.Errorf("kubeconform is not on PATH: %w", err)
 	}
 
 	streams, err := renderStreams(ctx, repoRoot, cfg, inv)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	var failures int
+	var failures []SchemaFailure
 	// Sorted, because the map above is ranged and this report goes into a
 	// comment that is rewritten on every run: an unordered section list is a
 	// diff between two runs that is not a difference in the manifests.
@@ -44,12 +72,14 @@ func ValidateManifests(ctx context.Context, repoRoot string, cfg *Config, inv *I
 	for _, name := range names {
 		out, err := runKubeconform(ctx, cfg, streams[name].manifests)
 		if err != nil {
-			return 0, fmt.Errorf("running kubeconform on %s: %w", name, err)
+			return nil, fmt.Errorf("running kubeconform on %s: %w", name, err)
 		}
 		if len(out) > 0 {
-			failures += len(out)
 			fmt.Fprintf(w, "### %s\n\n", name)
 			for _, r := range out {
+				failures = append(failures, SchemaFailure{
+					Source: name, Kind: r.Kind, Name: r.Name, Message: r.Msg,
+				})
 				fmt.Fprintf(w, "- `%s/%s`: %s\n", r.Kind, r.Name, r.Msg)
 			}
 			fmt.Fprintln(w)
@@ -70,7 +100,7 @@ func ValidateManifests(ctx context.Context, repoRoot string, cfg *Config, inv *I
 			strings.Join(skipped, ", "))
 	}
 
-	if failures == 0 {
+	if len(failures) == 0 {
 		fmt.Fprintf(w, "All rendered manifests passed schema validation.\n")
 	}
 	return failures, nil

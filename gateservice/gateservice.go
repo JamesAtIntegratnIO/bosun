@@ -162,6 +162,19 @@ type Outcome struct {
 	// everything downstream of the triage parses evidence out of this string,
 	// and it is now handed over instead of scraped back.
 	Report string
+	// Verdict is the whole answer as data: the headline, the counted
+	// breakdown, every finding behind it, and what the run could not look at.
+	// Nil when the gate did not reach a verdict, which is exactly when Err is
+	// set.
+	//
+	// Held for the same reason Unrenderable is, one rung further out. The
+	// report is prose and half of it is strings a chart chose; this is the
+	// value a read surface publishes to another agent, so it never goes
+	// through markdown and a chart cannot spell one. The DiffResult itself is
+	// deliberately not kept: it carries every rendered object's field diff,
+	// for every open pull request, to answer questions that are all answered
+	// by the summary.
+	Verdict *gate.Summary
 	// Unrenderable is the repair contract for the Applications this run could
 	// not render at the version the head moves them to.
 	//
@@ -459,7 +472,7 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 	// status, and the triage agent read the marker.
 	var schemaDetail strings.Builder
 	if cfg.Validate.Enabled {
-		res.SchemaFailures, err = gate.ValidateManifests(ctx, head, cfg, inv, &schemaDetail)
+		res.Schema, err = gate.ValidateManifests(ctx, head, cfg, inv, &schemaDetail)
 		if err != nil {
 			return g.broke(ctx, pr, fmt.Errorf("schema validation: %w", err))
 		}
@@ -467,11 +480,11 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 
 	var report strings.Builder
 	res.Report(&report)
-	if res.SchemaFailures > 0 {
+	if len(res.Schema) > 0 {
 		fmt.Fprintf(&report, "### Schema validation\n\n%s\n", schemaDetail.String())
 	}
 
-	out := &Outcome{Report: report.String(), Unrenderable: res.Unrenderable}
+	out := &Outcome{Report: report.String(), Unrenderable: res.Unrenderable, Verdict: res.Summarise()}
 	blocking := res.Blocking()
 
 	// The comment is for humans and for the audit trail; the verdict no

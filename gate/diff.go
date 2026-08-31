@@ -115,19 +115,25 @@ type DiffResult struct {
 	BaseRev string `json:"baseRev,omitempty"`
 	HeadRev string `json:"headRev,omitempty"`
 
-	// SchemaFailures is manifests the target cluster's schemas reject, set by
-	// the caller that ran validation.
+	// Schema is manifests the target cluster's schemas reject, set by the
+	// caller that ran validation.
 	//
 	// It lives on the result rather than beside it because the headline, the
 	// machine-readable marker and the commit status are all derived from this
 	// struct. Kept outside, a run blocked only by schema validation published
 	// a report headlined "No blocking findings" next to a red cross, the
 	// report and the status disagreeing about the same run.
-	SchemaFailures int `json:"schemaFailures,omitempty"`
+	//
+	// The failures themselves rather than a count of them, because the count
+	// is now published to a caller that cannot read the report comment: a
+	// blocker breakdown saying `schema=3` with no way to reach the three is a
+	// number a reader has to take on faith, which is the one thing this gate
+	// asks of nobody.
+	Schema []SchemaFailure `json:"schema,omitempty"`
 }
 
 func (d *DiffResult) Blocking() bool {
-	if len(d.Targeting) > 0 || len(d.Other) > 0 || d.SchemaFailures > 0 {
+	if len(d.Targeting) > 0 || len(d.Other) > 0 || len(d.Schema) > 0 {
 		return true
 	}
 	// An API version moving under an existing resource is a migration, and
@@ -461,25 +467,51 @@ func SaysNothingChanged(report string) bool {
 // Blockers counts the reasons this result is blocking. The type lives in the
 // migrate package with the rest of the report's format, so that the writer and
 // the reader cannot drift.
-func (d *DiffResult) Blockers() migrate.Blockers {
+//
+// Folded over Findings rather than counted from the result a second time. The
+// breakdown and the list behind it are now both published -- the marker to the
+// repair, the list to whatever reads the MCP surface -- and two walks over the
+// same findings is how a caller ends up holding a count of three and a list of
+// two, with no way to tell which half is lying. One walk cannot disagree with
+// itself.
+func (d *DiffResult) Blockers() migrate.Blockers { return blockersOf(d.Findings()) }
+
+// blockersOf is the fold itself, over findings a caller already has.
+//
+// Split out because Summarise needs all three answers -- the headline, the
+// breakdown and the list -- and going through Blockers for each of them would
+// walk the findings three times and give a caller three chances to hold two
+// halves from different walks.
+func blockersOf(findings []Finding) migrate.Blockers {
 	var b migrate.Blockers
-	b.Targeting = len(d.Targeting)
-	b.Source = len(d.Other)
-	for _, o := range d.Objects {
-		switch {
-		case o.Kind == ObjectAPIVersionMoved && !o.PartOfMigration:
-			b.APIVersion++
-		case o.Kind == ObjectCRDVersionRemoved && !o.ConsumersKnown:
-			b.Unscanned++
-		case o.Kind == ObjectCRDVersionRemoved && len(o.ConsumerFiles) > 0:
-			b.Consumers += len(o.ConsumerFiles)
-		case o.Kind == ObjectValuesKeyDropped:
-			b.ValuesDropped += len(o.Keys)
-		case o.Kind == ObjectRenderFailed:
-			b.Unrenderable++
+	for _, f := range findings {
+		switch f.Kind {
+		case FindingTargeting:
+			b.Targeting += f.Count
+		case FindingSource:
+			b.Source += f.Count
+		case FindingAPIVersion:
+			b.APIVersion += f.Count
+		case FindingDroppedVersion:
+			// One finding, two buckets, and which one it lands in is the
+			// whole point of the distinction: a definition whose consumers
+			// were counted contributes the manifests it found, and one whose
+			// consumers could not be counted contributes itself. "We could
+			// not look" is not "we looked and found none", and the report has
+			// separate words for them because the remedies differ.
+			if f.ConsumersScanned {
+				b.Consumers += f.Count
+			} else {
+				b.Unscanned += f.Count
+			}
+		case FindingValuesDropped:
+			b.ValuesDropped += f.Count
+		case FindingUnrenderable:
+			b.Unrenderable += f.Count
+		case FindingSchema:
+			b.Schema += f.Count
 		}
 	}
-	b.Schema = d.SchemaFailures
 	return b
 }
 
@@ -521,7 +553,12 @@ func (d *DiffResult) droppedContract() []migrate.Dropped {
 // happened to contain "**API version changed**" would make the agent believe
 // there was an unrepairable blocker in every report that mentioned one.
 func (d *DiffResult) Verdict() (blocking bool, headline string) {
-	bl := d.Blockers()
+	return d.verdict(d.Blockers())
+}
+
+// verdict is the headline over a breakdown a caller already has, so that
+// Summarise can ask for all three answers off one walk of the findings.
+func (d *DiffResult) verdict(bl migrate.Blockers) (blocking bool, headline string) {
 	var why []string
 	// First, because it is the only finding that says the Application does
 	// not work at all. Everything below it describes a change; this describes
@@ -690,13 +727,16 @@ func joinAnd(parts []string) string {
 // giving up that guarantee and should buffer like the other two.
 func (d *DiffResult) Report(w io.Writer) {
 	fmt.Fprintf(w, "%s\n", ReportMarker)
-	blocking, headline := d.Verdict()
+	// One walk of the findings for both, rather than one each: the headline is
+	// the breakdown in words, and reading them from two walks is how they
+	// start disagreeing.
+	b := d.Blockers()
+	blocking, headline := d.verdict(b)
 	// The breakdown, machine-readable, for the same reason ReportMarker is
 	// emitted here rather than remembered by each adapter: an agent reading
 	// this report should not have to infer why it is red from prose that was
 	// written for a person. Every adapter that posts the report verbatim
 	// carries it, so the CI path gets it for free.
-	b := d.Blockers()
 	fmt.Fprintf(w, "%stargeting=%d source=%d apiVersion=%d consumers=%d unscanned=%d unrenderable=%d valuesDropped=%d schema=%d -->\n",
 		migrate.BlockersMarker, b.Targeting, b.Source, b.APIVersion, b.Consumers, b.Unscanned,
 		b.Unrenderable, b.ValuesDropped, b.Schema)
