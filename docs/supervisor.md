@@ -140,8 +140,14 @@ anything recording.
 
 Beside the findings travels the sweep's own accounting, so a report with no
 findings can prove it looked; `clean` is true only when it did. It costs no API
-call anywhere, because it answers from the same snapshot the page renders. It
-is off by default and refuses to start without a token; see the chart README.
+call anywhere, because it answers from the same snapshot the page renders.
+
+Three more tools answer the questions either side of a finding: `gate_status`,
+`gate_verdict` and `triage_status`. Like the page, the surface is read-only and
+reveals operational metadata and no credential; unlike the page it is off by
+default and refuses to start without a bearer token, because it is built to be
+reached from outside the cluster. [The MCP surface](mcp.md) is the whole of it:
+the four tools, the token, and what publishing it discloses.
 
 ## Alerting
 
