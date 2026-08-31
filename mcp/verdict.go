@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"encoding/json"
-	"fmt"
 	"time"
 )
 
@@ -38,13 +37,9 @@ const gateVerdictDescription = "Why one pull request is blocked, or why it is no
 	"passing. Answers from the last sweep's snapshot: it reaches no cluster, no git host and no " +
 	"model, and it can change nothing."
 
-// gateVerdictParams is the tool's input schema.
-//
-// pullRequest is required and repository is not, and the asymmetry is the
-// decision. An install binds to one repository, so the argument exists to be
-// stamped rather than to be chosen; making it optional now and meaningful
-// later is compatible, while teaching a client that answers are install-wide
-// and then narrowing them is not.
+// gateVerdictParams is the tool's input schema. Why pullRequest is required
+// and repository is not is written where both tools' arguments are read:
+// Server.pullRequest.
 var gateVerdictParams = json.RawMessage(`{"type":"object","properties":{` +
 	`"pullRequest":{"type":"integer","minimum":1,` +
 	`"description":"The pull request number to report the verdict for."},` +
@@ -74,7 +69,16 @@ type GateStatus struct {
 	Err string
 	// Open is every pull request the last sweep saw, each with whatever
 	// verdict stands against its head commit.
+	//
+	// A sweep that could not list leaves what the last one that could saw, so
+	// Err and a non-empty Open together mean a queue older than SweptAt.
 	Open []GatePR
+	// Held is how many verdicts this process has in memory, and Running how
+	// many gate runs are in flight. gate_status publishes both; before the
+	// first sweep they are zero and are published as absent rather than as
+	// numbers.
+	Held    int
+	Running int
 }
 
 // GatePR is one open pull request as the gate last saw it.
@@ -89,6 +93,13 @@ type GatePR struct {
 	State string
 	// Err is why the gate could not run, set exactly when State is error.
 	Err string
+	// Labels are what stood on the pull request when the sweep listed it.
+	//
+	// Carried on the snapshot rather than fetched per request, because a tool
+	// call may reach no git host at all -- and they are the attempt cap's only
+	// memory, so a reader asking what the agent will do next cannot compute
+	// them from anything else.
+	Labels []string
 	// Verdict is the whole answer as data, or nil when this process did not
 	// produce one -- a verdict already standing on the git host is not
 	// re-litigated, and a run in flight has nothing yet.
@@ -398,34 +409,14 @@ type Dropped struct {
 	Surviving string `json:"surviving"`
 }
 
-// verdictArgs is the tool's arguments.
-type verdictArgs struct {
-	PullRequest int    `json:"pullRequest"`
-	Repository  string `json:"repository"`
-}
-
 // gateVerdict answers from the last gate sweep, and from nothing else.
 func (s *Server) gateVerdict(raw json.RawMessage) (any, error) {
-	var args verdictArgs
-	if len(raw) > 0 {
-		if err := json.Unmarshal(raw, &args); err != nil {
-			return nil, fmt.Errorf("arguments are not an object with a pullRequest number")
-		}
-	}
-	if args.PullRequest < 1 {
-		return nil, fmt.Errorf("pullRequest must be the number of a pull request")
-	}
-	if args.Repository != "" && args.Repository != s.Repository {
-		// The caller's own string is deliberately not echoed back. It would
-		// travel through the redactor and the comment stripper like anything
-		// else, and there is still no reason to put text this process did not
-		// author into a message a client renders when it has nothing to say
-		// with it. Naming the install's own repository answers the question
-		// the caller was actually asking.
-		return nil, fmt.Errorf("this install watches %s and nothing else", s.Repository)
+	number, err := s.pullRequest(raw)
+	if err != nil {
+		return nil, err
 	}
 
-	out := Verdict{Repository: s.Repository, PullRequest: args.PullRequest}
+	out := Verdict{Repository: s.Repository, PullRequest: number}
 
 	g := s.gate()
 	if g.SweptAt.IsZero() {
@@ -433,13 +424,7 @@ func (s *Server) gateVerdict(raw json.RawMessage) (any, error) {
 		return out, nil
 	}
 
-	at := g.SweptAt
-	age := int64(s.now().Sub(at).Seconds())
-	if age < 0 {
-		// A clock that went backwards between the sweep and the request.
-		age = 0
-	}
-	out.Swept, out.SweptAt, out.AgeSeconds = true, &at, &age
+	out.SweptAt, out.AgeSeconds, out.Swept = s.stamp(g.SweptAt)
 	if g.Err != "" {
 		// Bosun's sentence with the git host's error in it, which is exactly
 		// the string a misconfigured host is most likely to echo a credential
@@ -449,7 +434,7 @@ func (s *Server) gateVerdict(raw json.RawMessage) (any, error) {
 
 	var pr *GatePR
 	for i := range g.Open {
-		if g.Open[i].Number == args.PullRequest {
+		if g.Open[i].Number == number {
 			pr = &g.Open[i]
 			break
 		}

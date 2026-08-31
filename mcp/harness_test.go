@@ -47,6 +47,10 @@ type fixture struct {
 	// it per request rather than at wiring time, which is what a real
 	// composition root does too.
 	gate GateStatus
+	// triage is what the agent is doing right now. The zero value is an agent
+	// working nothing, which is the common case and the one a caller asking
+	// about a pull request nobody is triaging has to be answered from.
+	triage TriageStatus
 }
 
 // newFixture builds the server. report is what the supervisor holds; nil is
@@ -59,6 +63,7 @@ func newFixture(t *testing.T, report *pipeline.Report) *fixture {
 		Repository: "example/platform",
 		Report:     func() *pipeline.Report { return report },
 		Gate:       func() GateStatus { return f.gate },
+		Triage:     func() TriageStatus { return f.triage },
 		Auth:       BearerToken{Token: testToken},
 		Version:    "0.31.0",
 		Log:        func(format string, a ...any) { f.logged = append(f.logged, fmt.Sprintf(format, a...)) },
@@ -104,6 +109,12 @@ func (f *fixture) postWith(t *testing.T, body, authorization string) (int, []byt
 // so a test can say what it is about in one expression.
 func (f *fixture) withGate(g GateStatus) *fixture {
 	f.gate = g
+	return f
+}
+
+// withTriage installs what the agent is doing and returns the fixture.
+func (f *fixture) withTriage(tr TriageStatus) *fixture {
+	f.triage = tr
 	return f
 }
 
@@ -159,6 +170,27 @@ func (f *fixture) verdict(t *testing.T, number int) Verdict {
 	raw := f.callWith(t, "gate_verdict", fmt.Sprintf(`{"pullRequest":%d}`, number))
 	if err := json.Unmarshal(raw, &out); err != nil {
 		t.Fatalf("the result does not decode as a Verdict: %v", err)
+	}
+	return out
+}
+
+// queue decodes a gate_status result.
+func (f *fixture) queue(t *testing.T) Queue {
+	t.Helper()
+	var out Queue
+	if err := json.Unmarshal(f.call(t, "gate_status"), &out); err != nil {
+		t.Fatalf("the result does not decode as a Queue: %v", err)
+	}
+	return out
+}
+
+// triageStatus decodes a triage_status result for one pull request.
+func (f *fixture) triageStatus(t *testing.T, number int) Triage {
+	t.Helper()
+	var out Triage
+	raw := f.callWith(t, "triage_status", fmt.Sprintf(`{"pullRequest":%d}`, number))
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("the result does not decode as a Triage: %v", err)
 	}
 	return out
 }
@@ -339,10 +371,12 @@ const (
 func blocked() GateStatus {
 	return GateStatus{
 		SweptAt: sweptAt,
+		Held:    2, Running: 1,
 		Open: []GatePR{{
 			Number: 264, Title: "chore(deps): bump external-secrets to 0.10.0",
 			URL:     "https://example.invalid/example/platform/pull/264",
 			HeadSHA: blockedHead, State: StateFailing,
+			Labels: []string{"dependencies", "bosun/attempt-1"},
 			Verdict: &GateVerdict{
 				Blocking: true,
 				Headline: "Blocking — 1 Application whose chart will not render at the new version, " +
@@ -412,6 +446,7 @@ func blocked() GateStatus {
 func green() GateStatus {
 	return GateStatus{
 		SweptAt: sweptAt,
+		Held:    1,
 		Open: []GatePR{{
 			Number: 41, Title: "chore(deps): bump argo-cd to 7.7.0",
 			URL:     "https://example.invalid/example/platform/pull/41",

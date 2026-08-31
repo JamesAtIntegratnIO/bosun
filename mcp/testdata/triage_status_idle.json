@@ -1,0 +1,21 @@
+{
+  "ageSeconds": 90,
+  "attemptCap": 2,
+  "attempts": 0,
+  "attemptsExhausted": false,
+  "labels": [],
+  "phase": "idle",
+  "pullRequest": 41,
+  "repository": "example/platform",
+  "status": {
+    "origin": "bosun",
+    "text": "The agent is not working this pull request. That is the resting state rather than a failure: it triages on a promotion and stops when it has commented, pushed, or escalated. The attempt count says whether it has worked this one before, and the labels say how it left it."
+  },
+  "swept": true,
+  "sweptAt": "2026-08-30T12:00:00Z",
+  "title": {
+    "origin": "bosun-quoting-pull-request-author",
+    "text": "chore(deps): bump argo-cd to 7.7.0"
+  },
+  "url": "https://example.invalid/example/platform/pull/41"
+}

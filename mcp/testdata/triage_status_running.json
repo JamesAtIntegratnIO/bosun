@@ -1,0 +1,30 @@
+{
+  "ageSeconds": 90,
+  "attemptCap": 2,
+  "attempts": 1,
+  "attemptsExhausted": false,
+  "labels": [
+    {
+      "origin": "bosun-quoting-pull-request-label",
+      "text": "dependencies"
+    },
+    {
+      "origin": "bosun-quoting-pull-request-label",
+      "text": "bosun/attempt-1"
+    }
+  ],
+  "phase": "running",
+  "pullRequest": 264,
+  "repository": "example/platform",
+  "status": {
+    "origin": "bosun",
+    "text": "A triage for this pull request is running now. It may push a fix, explain the gate, or escalate to a human; nothing is decided yet. Ask again shortly."
+  },
+  "swept": true,
+  "sweptAt": "2026-08-30T12:00:00Z",
+  "title": {
+    "origin": "bosun-quoting-pull-request-author",
+    "text": "chore(deps): bump external-secrets to 0.10.0"
+  },
+  "url": "https://example.invalid/example/platform/pull/264"
+}

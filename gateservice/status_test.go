@@ -98,3 +98,30 @@ func TestStatusMarksARefusedRunAsError(t *testing.T) {
 		t.Fatalf("the refusal is held so it is not reposted every poll; held %d", st.Held)
 	}
 }
+
+// The labels standing on a pull request ride along in the snapshot.
+//
+// The sweep has them in hand -- the pull requests it lists carry them -- and
+// the read surfaces that publish them may not reach the git host at all: a
+// tool call answers from this snapshot or it answers nothing. Fetching them on
+// request would make a read surface's answer depend on a token, a network hop
+// and a rate limit, which is the property this whole snapshot exists to avoid.
+func TestTheSnapshotCarriesTheLabelsTheSweepSaw(t *testing.T) {
+	files := map[string]string{".gitops-gate.yaml": gateConfig}
+	h := newGateHarness(t, files, files)
+	pr := gatePR("50171ed")
+	pr.Labels = []string{"bosun/attempt-1", "bosun/escalated"}
+	h.git.OpenPRs = []gitprovider.PullRequest{*pr}
+
+	h.gs.sweep(context.Background())
+
+	st := h.gs.Status()
+	if len(st.Open) != 1 {
+		t.Fatalf("the sweep saw one open pull request; status shows %d", len(st.Open))
+	}
+	got := st.Open[0].Labels
+	if len(got) != 2 || got[0] != "bosun/attempt-1" || got[1] != "bosun/escalated" {
+		t.Fatalf("the snapshot must carry what the sweep saw standing on the pull request, "+
+			"got %v", got)
+	}
+}

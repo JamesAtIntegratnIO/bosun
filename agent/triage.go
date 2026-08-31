@@ -286,7 +286,7 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	// having been called.
 	t.working(ctx, pr, "reading %s", t.CheckName)
 
-	attempt := attemptsSoFar(pr.Labels, t.attemptPrefix()) + 1
+	attempt := t.AttemptsUsed(pr.Labels) + 1
 	if attempt > t.MaxAttempts {
 		t.say(ctx, pr, "escalated: %d of %d fix attempts used without a green gate",
 			t.MaxAttempts, t.MaxAttempts)
@@ -680,6 +680,23 @@ func (t *Triage) reserveAttempt(ctx context.Context, pr *gitprovider.PullRequest
 			attempt, t.MaxAttempts, label, err)
 	}
 	return nil
+}
+
+// AttemptsUsed is how many self-fix attempts the labels standing on a pull
+// request record.
+//
+// Exported because a read surface publishes it: a caller asking what the agent
+// is doing about a pull request wants to know whether it will try again, and
+// that answer is this number against MaxAttempts. The labels are the cap's only
+// memory, so they are also the only place the answer exists.
+//
+// A method rather than a function taking a prefix, because the prefix follows
+// the brand and a caller that had to know that could get it wrong in the one
+// direction that matters: counting under the wrong name reports an agent with
+// attempts left when it has none. The path that enforces the cap calls this
+// too, so there is one count rather than two that agree today.
+func (t *Triage) AttemptsUsed(labels []string) int {
+	return attemptsSoFar(labels, t.attemptPrefix())
 }
 
 // attemptPrefix is the label prefix the attempt cap counts. It follows the

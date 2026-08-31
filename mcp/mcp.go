@@ -184,6 +184,10 @@ func (s *Server) Handler() (http.Handler, error) {
 		return nil, fmt.Errorf("no Report: with nothing to read, every tool would answer " +
 			"\"no sweep has completed\" forever, which is indistinguishable from a supervisor " +
 			"that is switched off")
+	case s.Triage == nil:
+		return nil, fmt.Errorf("no Triage: triage_status would report that the agent is " +
+			"working nothing for every pull request forever, which reads as a finished agent " +
+			"rather than as a missing wire")
 	case s.Gate == nil:
 		return nil, fmt.Errorf("no Gate: gate_verdict would report that no gate sweep has " +
 			"completed for every pull request forever, which is the one answer that must never " +

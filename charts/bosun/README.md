@@ -438,6 +438,22 @@ partial render is a narrower claim than a clean verdict over a whole one. The
 answer is stamped with the head commit it judged, so a stale one can be told
 from a current one.
 
+An engineer asks `gate_status` for the queue and gets every open pull request
+the last sweep saw, each with the state standing against its head commit,
+whether it blocks, and the blocker breakdown as counts. **A sweep that could
+not list pull requests says so in a field of its own**, because the other
+symptom of a gate that cannot reach your git host is a queue that reads
+"nothing open" forever -- so an empty queue is published only by a sweep that
+actually listed, and one held over from an earlier sweep travels with the error
+that says it is stale.
+
+An engineer asks `triage_status` what the agent is doing about one pull request
+and gets the phase, the automatic fix attempts spent against the cap, and the
+labels standing on it: still working, or finished and not trying again. A pull
+request the agent is not working is answered as such rather than as an error.
+The phase is current; the labels and the attempt count are as old as the sweep
+the answer names, because a tool call reaches no git host.
+
 **A pull request with no verdict standing is answered as such**, and never as a
 passing one. There are several ways to have no verdict -- a render in flight, a
 verdict already standing on the git host that this process did not re-run, a
@@ -496,8 +512,8 @@ namespace. A NetworkPolicy and a gateway both draw their lines at the port.
 **What it reveals is what the page and the report comment reveal**: the
 repository's name, your Stage and Warehouse names, your Application and
 rendered-object names, chart versions, helm and schema error strings,
-pull-request titles, the findings and their remedies. No credential, no prompt,
-no rendered diff. The difference is who reads it and what they hold -- these
+pull-request titles and labels, the findings and their remedies. No credential,
+no prompt, no rendered diff. The difference is who reads it and what they hold -- these
 answers land in somebody's coding agent, which usually has a shell and a
 checkout -- so treat the token as read access to your pipeline's status handed
 to a program.

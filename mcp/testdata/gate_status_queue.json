@@ -1,0 +1,35 @@
+{
+  "ageSeconds": 90,
+  "held": 2,
+  "open": [
+    {
+      "blockers": {
+        "apiVersion": 1,
+        "consumers": 4,
+        "schema": 1,
+        "source": 0,
+        "targeting": 0,
+        "unrenderable": 1,
+        "unscanned": 0,
+        "valuesDropped": 2
+      },
+      "blocking": true,
+      "headCommit": "9f2c1a4b8e6d0c3f5a7b9d1e3f5a7b9d1e3f5a7b",
+      "number": 264,
+      "state": "failing",
+      "title": {
+        "origin": "bosun-quoting-pull-request-author",
+        "text": "chore(deps): bump external-secrets to 0.10.0"
+      },
+      "url": "https://example.invalid/example/platform/pull/264"
+    }
+  ],
+  "repository": "example/platform",
+  "running": 1,
+  "status": {
+    "origin": "bosun",
+    "text": "This is every pull request the last gate sweep saw open, with the verdict standing against each head commit. Ask gate_verdict about one of them for the findings behind its counts."
+  },
+  "swept": true,
+  "sweptAt": "2026-08-30T12:00:00Z"
+}

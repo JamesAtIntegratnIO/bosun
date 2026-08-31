@@ -104,7 +104,13 @@ how long it has held, the exact command that recovers it, and why a given pull
 request is blocked -- served over MCP as typed values a coding agent can branch
 on, rather than markdown written for a person. Ask `gate_verdict` about a pull
 request and the blocker breakdown comes back as counts per kind, with the
-findings behind them and the dropped API versions as fields. Nothing is
+findings behind them and the dropped API versions as fields. Ask `gate_status`
+for the queue -- every open pull request and the verdict standing on it, or the
+error that stopped the sweep from listing them, because a gate that cannot
+reach the git host otherwise reads as a quiet week. Ask `triage_status` what
+the agent is doing about one, and the phase, the attempts it has spent against
+its cap and the labels standing on it say whether it is still working or has
+finished and will not try again. Nothing is
 computed: every answer comes from the snapshot the last sweep already holds, so
 a request reaches no git host, no cluster and no model. Nothing mutates,
 because no tool does. Text bosun did not write travels tagged with whose it is,

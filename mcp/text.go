@@ -77,6 +77,18 @@ const (
 	// "we did not look here".
 	OriginRender Origin = "bosun-quoting-render"
 
+	// OriginLabel: a label standing on a pull request, as the git host
+	// reports it.
+	//
+	// Not folded into OriginAuthor, and not published as bosun's own even
+	// though bosun writes some of them: an attempt label is bosun's, a
+	// `needs-human` is a maintainer's, and a repository where anybody can
+	// label is a repository where these bytes are anybody's. One origin for
+	// the field, saying the weakest true thing about it, rather than a
+	// per-label guess a hostile label could imitate by choosing bosun's
+	// prefix.
+	OriginLabel Origin = "bosun-quoting-pull-request-label"
+
 	// OriginAuthor: written by whoever opened the pull request. Its title,
 	// today.
 	//

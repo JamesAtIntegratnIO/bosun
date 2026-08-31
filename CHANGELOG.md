@@ -43,6 +43,49 @@ All notable changes to `bosun`. Format follows
 
 ### Added
 
+- **`gate_status` and `triage_status`: the queue, and what the agent is doing
+  about one of it.** `gate_status` answers what bosun's last gate sweep saw
+  across every open pull request: each one with the state standing against its
+  head commit, whether it blocks, and the blocker breakdown as counts per kind.
+  `gate_verdict` is still where the findings behind one of those counts live,
+  and this is the call before it -- the one that says which pull request to ask
+  about.
+
+  Beside the queue travels the sweep's own failure. A gate that cannot reach
+  the git host has two symptoms: a line in a log nobody is reading, and a queue
+  that says nothing is open, forever, which is the reading a caller will take.
+  So an empty queue is published only by a sweep that actually listed, and a
+  sweep that could not says so in a field of its own. A queue held over from an
+  earlier sweep is published rather than dropped -- it is evidence, and a
+  caller with stale evidence is better off than one with none -- with the error
+  beside it saying it is older than the sweep time above it.
+
+  `triage_status` answers what the agent is doing on one pull request right
+  now: the phase it is in, how many automatic fix attempts it has spent against
+  its cap, and the labels standing on the pull request. That is the difference
+  between an agent still working and one that has finished and will not try
+  again, which is the same distinction its commit status exists to draw for a
+  person. A pull request the agent is not working is answered as such and never
+  as an error: not working one is the resting state, and the attempt count is
+  what says whether it ever did.
+
+  The phase and the labels come from two different clocks, and the result says
+  so. What is running is this process's own state, current to the microsecond;
+  the labels and therefore the attempt count are as old as the last gate sweep,
+  because a tool call may reach no git host at all. So the labels now ride
+  along in the sweep's snapshot rather than being fetched on request, and the
+  attempt count is made with the agent's own arithmetic rather than a second
+  reading of the same label prefix -- the cap remembers under a name that
+  follows the brand, and two counts of it would disagree exactly on a renamed
+  install, where one says an attempt remains and the other has already
+  escalated.
+
+  Labels are the first text on this surface that anybody with write access to
+  the repository chooses, so they carry an origin of their own rather than
+  being folded into the pull-request author's. Bosun writes some of them, and
+  that is not a reason to publish any of them as bosun's own: a per-label guess
+  is one a hostile label imitates by choosing bosun's prefix.
+
 - **`gate_verdict`: why a pull request is blocked, as data.** A platform
   engineer whose pull request is red asks their coding agent why, and the agent
   asks bosun. What comes back is the verdict standing against the head commit:

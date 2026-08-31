@@ -3,6 +3,10 @@ package agent
 import (
 	"context"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
 	"strings"
 	"testing"
 
@@ -71,5 +75,100 @@ func TestTheAttemptIsRecordedBeforeTheFixIsPushed(t *testing.T) {
 	}
 	if len(h.git.Labelled) == 0 || !strings.Contains(h.git.Labelled[0], "attempt") {
 		t.Errorf("the attempt label must be written first, got %v", h.git.Labelled)
+	}
+}
+
+// What the cap has spent is readable from outside this package, and it is the
+// same arithmetic the cap itself does.
+//
+// A read surface publishes "attempts used against the cap" so a caller can
+// tell an agent that will try again from one that is finished. That number is
+// counted from labels under a prefix that follows the brand, and a second
+// implementation of the count would be a second answer: one that says the
+// agent will retry while this one has already escalated. So there is one
+// method, this package's own path calls it too, and the label prefix stays
+// private.
+func TestWhatTheCapHasSpentIsReadableFromOutside(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		brand  string
+		labels []string
+		want   int
+	}{
+		{"nothing yet", "", nil, 0},
+		{"one attempt", "", []string{"bosun/attempt-1"}, 1},
+		{"attempts and other labels", "", []string{
+			"dependencies", "bosun/attempt-1", "bosun/attempt-2", "bosun/escalated"}, 2},
+		{"a renamed agent counts its own", "Deckhand",
+			[]string{"deckhand/attempt-1", "bosun/attempt-1"}, 1},
+		{"a label that merely mentions the prefix", "",
+			[]string{"needs bosun/attempt-1"}, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tr := &Triage{Brand: tc.brand, MaxAttempts: 2}
+			if got := tr.AttemptsUsed(tc.labels); got != tc.want {
+				t.Errorf("want %d attempts used, got %d, from %v", tc.want, got, tc.labels)
+			}
+		})
+	}
+}
+
+// And there is exactly one place that counts, so the published number and the
+// number that stops a repair cannot drift apart.
+//
+// Derived from this package's own syntax tree rather than from a string search
+// for today's call: what has to stay true is that the raw counter has one
+// caller, not that one line reads the way it reads now. A second call site
+// added anywhere in this package fails this the day it is written, which a
+// grep for a spelling cannot do.
+func TestOnlyOneThingCountsWhatTheCapHasSpent(t *testing.T) {
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool {
+		return !strings.HasSuffix(fi.Name(), "_test.go")
+	}, 0)
+	if err != nil {
+		t.Fatalf("could not parse this package: %v", err)
+	}
+	pkg, ok := pkgs["agent"]
+	if !ok {
+		t.Fatal("this walk did not find package agent; it is reading the wrong directory")
+	}
+
+	callers := map[string]int{}
+	calls := 0
+	for _, file := range pkg.Files {
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok {
+				continue
+			}
+			ast.Inspect(fn, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				if id, ok := call.Fun.(*ast.Ident); ok && id.Name == "attemptsSoFar" {
+					calls++
+					callers[fn.Name.Name]++
+				}
+				return true
+			})
+		}
+	}
+
+	// The self-check, and not optional: a walk that finds no calls compares
+	// nothing and reads exactly like a pass.
+	if calls == 0 {
+		t.Fatal("this walk found no call to attemptsSoFar; the counter has been renamed or " +
+			"moved and this test is proving nothing. Fix the walk rather than deleting it.")
+	}
+	for name, n := range callers {
+		if name != "AttemptsUsed" {
+			t.Errorf("%s calls attemptsSoFar directly (%d time(s)).\n"+
+				"AttemptsUsed is the one count, because a read surface publishes it as what "+
+				"the agent has spent against the cap. Two counts is how a caller is told an "+
+				"attempt remains by one half while the other has already escalated -- and "+
+				"they disagree only on a renamed install, where the prefix differs.", name, n)
+		}
 	}
 }

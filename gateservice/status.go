@@ -77,6 +77,20 @@ type PRStatus struct {
 	// State is "error": that state on its own says a run failed and gives a
 	// reader nothing to do about it.
 	Err string
+	// Labels are the labels standing on the pull request when the sweep
+	// listed it.
+	//
+	// Carried rather than fetched, for the reason nothing else here is
+	// fetched either: a reader of this snapshot may have no way to reach the
+	// git host, and one that did would make every read cost a call against an
+	// install's rate limit. The sweep already has them -- a listed pull
+	// request arrives with its labels on it -- so this is a field kept rather
+	// than a read made.
+	//
+	// They are how the attempt cap remembers across restarts, which is why a
+	// reader asking what the agent will do next needs them and cannot compute
+	// them.
+	Labels []string
 	// Verdict is the whole answer as data, or nil when this process did not
 	// produce one.
 	//
@@ -112,7 +126,8 @@ func (g *Service) snapshotLocked(prs []gitprovider.PullRequest, posted map[strin
 	out := make([]PRStatus, 0, len(prs))
 	for i := range prs {
 		pr := &prs[i]
-		st := PRStatus{Number: pr.Number, Title: pr.Title, URL: pr.URL, HeadSHA: pr.HeadSHA}
+		st := PRStatus{Number: pr.Number, Title: pr.Title, URL: pr.URL, HeadSHA: pr.HeadSHA,
+			Labels: append([]string(nil), pr.Labels...)}
 		switch {
 		case g.inflight[pr.HeadSHA] != nil:
 			st.State = StateRunning
