@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/JamesAtIntegratnIO/bosun/gate"
 )
 
 // The Applications and ApplicationSets ArgoCD serves, and the URL comparison
@@ -83,6 +85,21 @@ type Application struct {
 	// TrackingID is the tracking annotation's value, empty when absent.
 	TrackingID string
 
+	// Destination is where this Application lands: `spec.destination`, as
+	// ArgoCD serves it.
+	//
+	// Read even though nothing about the render needs it, because the fleet
+	// listing does and this is the one read that has it. A second read to
+	// recover a field that arrived on the first is a second call against an
+	// operator's ArgoCD for a fact this process already threw away.
+	//
+	// gate's own type rather than a copy of it here, unlike every other shape
+	// in this file. The others are decoded into what a render needs and turned
+	// into gate's vocabulary by `sourcesFor`; this one is already gate's
+	// vocabulary, and a private twin of it would be two identical structs with
+	// a hand copy between them.
+	Destination gate.Destination
+
 	// Sources is every source this Application has, with the singular
 	// `spec.source` folded in as a one-element list so callers have one shape.
 	Sources []AppSource
@@ -130,9 +147,10 @@ func (a *ArgoCD) Applications(ctx context.Context) ([]Application, error) {
 		Items []struct {
 			Metadata objectMeta `json:"metadata"`
 			Spec     struct {
-				Project        string      `json:"project"`
-				Source         *AppSource  `json:"source"`
-				Sources        []AppSource `json:"sources"`
+				Project        string           `json:"project"`
+				Destination    gate.Destination `json:"destination"`
+				Source         *AppSource       `json:"source"`
+				Sources        []AppSource      `json:"sources"`
 				SourceHydrator *struct {
 					DrySource *AppSource `json:"drySource"`
 				} `json:"sourceHydrator"`
@@ -146,11 +164,12 @@ func (a *ArgoCD) Applications(ctx context.Context) ([]Application, error) {
 	apps := make([]Application, 0, len(out.Items))
 	for _, item := range out.Items {
 		app := Application{
-			Name:       item.Metadata.Name,
-			Namespace:  item.Metadata.Namespace,
-			Project:    item.Spec.Project,
-			TrackingID: item.Metadata.Annotations[trackingAnnotation],
-			Sources:    item.Spec.Sources,
+			Name:        item.Metadata.Name,
+			Namespace:   item.Metadata.Namespace,
+			Project:     item.Spec.Project,
+			Destination: item.Spec.Destination,
+			TrackingID:  item.Metadata.Annotations[trackingAnnotation],
+			Sources:     item.Spec.Sources,
 		}
 		// ArgoCD accepts either the singular or the plural and stores what it
 		// was given, so both arrive on the wire in the wild. Folding the

@@ -113,6 +113,11 @@ type Service struct {
 	sweptAt  time.Time
 	sweepErr string
 	lastOpen []PRStatus
+
+	// What the last live reading of ArgoCD served, for Status. Written by a
+	// RUN rather than by the sweep, because that is where the reading happens;
+	// see retainFleet in status.go.
+	fleet *Fleet
 }
 
 // ValidatePolicy is the host's schema-validation settings, each optional.
@@ -419,10 +424,25 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 	// and a smaller scope reports no change with total confidence.
 	var derived *gate.Derivation
 	if g.Derive != nil {
+		// Stamped before the call rather than after it. The reading is only
+		// as good as the moment it started -- ArgoCD may change while it is
+		// being read -- so a timestamp taken on return overstates how fresh
+		// the rows are by however long the read took, in the one field a
+		// caller uses to decide whether to trust them.
+		readAt := time.Now()
 		derived, err = g.Derive(ctx, g.Remote.URL())
 		if err != nil {
 			return g.broke(ctx, pr, fmt.Errorf("deriving what this repository deploys: %w", err))
 		}
+		// Kept, rather than used and dropped. The reading says what the whole
+		// control plane runs and where, this run needs a fraction of it to
+		// decide what to render, and every other reader of that fact was
+		// paying a cluster credential for it.
+		//
+		// Retained here rather than after the render, because the reading is
+		// what succeeded: a chart that will not render says nothing about
+		// whether ArgoCD answered.
+		g.retainFleet(derived, inv, readAt)
 	}
 
 	p, err := buildPlan(head, fileCfg, cfgName, derived)

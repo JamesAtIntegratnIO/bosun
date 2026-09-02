@@ -32,6 +32,22 @@ type Derivation struct {
 	// so the report can say how large a world the scope was derived from.
 	Applications, ApplicationSets int
 
+	// Fleet is every Application the reading served, unfiltered, with where
+	// each one lands.
+	//
+	// Beside Sources rather than derived from them, because they answer
+	// different questions. Sources is what to render, and it is deliberately
+	// narrow: only Applications pointing at the gated repository, deduplicated
+	// by resolved shape, so fifty clusters off one path render once. This is
+	// what runs, and it is deliberately whole: one row per Application, and
+	// the Application of somebody else's repository is on this control plane
+	// whether or not this gate renders it.
+	//
+	// It is carried because the reading is already paid for. Deriving a scope
+	// and discarding the world it was derived from is how "where does this
+	// run" became a question somebody answered with a cluster credential.
+	Fleet []FleetApp
+
 	// Warnings are the things skipped and why. A source the derivation could
 	// not turn into a render is a blind spot, and a blind spot that announces
 	// itself is survivable.

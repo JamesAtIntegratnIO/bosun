@@ -79,6 +79,45 @@ type GateStatus struct {
 	// numbers.
 	Held    int
 	Running int
+	// Fleet is what the last live reading of ArgoCD saw the control plane
+	// running, or nil when no gate run has made one.
+	//
+	// It rides here rather than on a provider of its own because it is
+	// produced by the sweep and discarded by it, which is what Gate already
+	// carries. A fourth provider function would give the composition root a
+	// third thing to keep fresh and a third way for one tool's snapshot to be
+	// older than another's without anything saying so.
+	//
+	// nil is a real answer and a common one: the reading is made when a gate
+	// RUN renders a pull request, so a sweep that had nothing to render leaves
+	// this alone rather than emptying it.
+	Fleet *GateFleet
+}
+
+// GateFleet is one live reading of what ArgoCD serves, and when it was made.
+//
+// The whole reading rather than a set of rows, because the timestamp belongs
+// to the reading rather than to any row of it: rows observed together are
+// stale together, and a per-row copy of one clock is what would let a
+// refactor make half a reading look fresher than the other half.
+type GateFleet struct {
+	// ObservedAt is when the reading was made, which is when a gate run
+	// derived what this repository deploys -- not when the sweep finished.
+	ObservedAt time.Time
+	// Apps is every Application the reading served, unfiltered. Empty is a
+	// real answer: an ArgoCD serving nothing.
+	Apps []GateFleetApp
+}
+
+// GateFleetApp is one Application the live reading served.
+type GateFleetApp struct {
+	// Name and Namespace identify the Application object itself.
+	Name      string
+	Namespace string
+	// Cluster is the cluster it lands on, resolved against the same cluster
+	// inventory the render expands generators over, and "" when the
+	// destination named no cluster that inventory knows.
+	Cluster string
 }
 
 // GatePR is one open pull request as the gate last saw it.

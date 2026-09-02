@@ -45,6 +45,21 @@ same class a cluster-wide read of Applications exposes — and never a secret
 between teams of the same org. Credentials are never operational metadata.
 _Avoid_: telemetry, sensitive data
 
+**Fleet**:
+Every Application an install's ArgoCD serves, and the cluster each lands on,
+as one live reading saw them. Read on every gate run to decide what to render
+and retained whole, so it is broader than what the gate renders: an
+Application of a repository this install does not gate is in the fleet.
+_Avoid_: inventory (that is the cluster set the gate expands generators
+against, which is a different list with a different reader), cluster, estate
+
+**Live reading**:
+One read of what ArgoCD serves, made by a gate run rather than by a sweep. Its
+own clock: an install with no open pull request renders nothing and therefore
+reads nothing, so a fleet can be older than the sweep that publishes it, and
+every row says when it was observed.
+_Avoid_: snapshot (overloaded: every read surface serves one), scan, poll
+
 **Honest absence**:
 The rule that "nothing found" must be unrepresentable unless something
 actually looked: a sweep that examined nothing publishes no zeroes, a surface

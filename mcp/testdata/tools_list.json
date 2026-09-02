@@ -78,6 +78,15 @@
           "type": "object"
         },
         "name": "handoff_queue"
+      },
+      {
+        "description": "The fleet as bosun's last live reading of ArgoCD saw it: every Application that reading served, with the cluster each one lands on. Use it to answer \"where does this run\" without a cluster credential of your own. Names and clusters only -- no manifest, values file or rendered object is served here, by any argument. Every row says when it was observed, which is as old as the last gate run rather than the last sweep: an install with no open pull request renders nothing and therefore reads nothing. Answers from that snapshot: it reaches no cluster, no git host and no model, and it can change nothing.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {},
+          "type": "object"
+        },
+        "name": "inventory"
       }
     ]
   }

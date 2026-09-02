@@ -14,7 +14,7 @@ so the version after them is what shipped.
 ## [0.35.0]
 
 **No values change, and no template change.** `appVersion` moves, which is what
-this release is: the agent it deploys serves one more MCP tool. An install that
+this release is: the agent it deploys serves two more MCP tools. An install that
 has `mcp.enabled: false`, which is every install that has not said otherwise, is
 unaffected in every respect.
 
@@ -33,6 +33,21 @@ unaffected in every respect.
 
   The disclosure notes gain their entry: what this tool reveals is what
   `gate_verdict` reveals, about the pull requests the agent gave up on.
+
+- **`inventory` on the MCP surface.** Every Application the last live reading of
+  ArgoCD served, with the cluster each one lands on -- the answer to "where does
+  this run" that otherwise needs a cluster credential of its own. Names and
+  clusters only: no manifest, no values file and no rendered object crosses that
+  boundary.
+
+  Its age is not the sweep's. The reading is made when the gate renders a pull
+  request, so an install with none open makes none, and every row carries when
+  it was observed rather than borrowing the sweep's stamp.
+
+  The disclosure notes gain their entry, and it is the one worth reading twice
+  before publishing the port: unlike every other tool this one is not scoped to
+  the gated repository, so it lists every Application the ArgoCD account you
+  gave bosun can see.
 
 ## [0.34.1]
 

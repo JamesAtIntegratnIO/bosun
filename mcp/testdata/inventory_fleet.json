@@ -1,0 +1,70 @@
+{
+  "ageSeconds": 90,
+  "applications": [
+    {
+      "cluster": {
+        "origin": "bosun-quoting-cluster",
+        "text": "prod-eu"
+      },
+      "name": {
+        "origin": "bosun-quoting-cluster",
+        "text": "argo-cd"
+      },
+      "namespace": {
+        "origin": "bosun-quoting-cluster",
+        "text": "argocd"
+      },
+      "observedAgeSeconds": 390,
+      "observedAt": "2026-08-30T11:55:00Z",
+      "observedIn": "live"
+    },
+    {
+      "cluster": {
+        "origin": "bosun-quoting-cluster",
+        "text": "prod-eu"
+      },
+      "name": {
+        "origin": "bosun-quoting-cluster",
+        "text": "external-secrets"
+      },
+      "namespace": {
+        "origin": "bosun-quoting-cluster",
+        "text": "argocd"
+      },
+      "observedAgeSeconds": 390,
+      "observedAt": "2026-08-30T11:55:00Z",
+      "observedIn": "live"
+    },
+    {
+      "cluster": {
+        "origin": "bosun-quoting-cluster",
+        "text": "prod-us"
+      },
+      "name": {
+        "origin": "bosun-quoting-cluster",
+        "text": "tenant-billing"
+      },
+      "namespace": {
+        "origin": "bosun-quoting-cluster",
+        "text": "argocd"
+      },
+      "observedAgeSeconds": 390,
+      "observedAt": "2026-08-30T11:55:00Z",
+      "observedIn": "live"
+    }
+  ],
+  "chartDetail": {
+    "expanded": false,
+    "status": {
+      "origin": "bosun",
+      "text": "No row says what it renders from. The chart, the pinned version and the ApplicationSet an Application was generated from come from the gate's render expansion, and this build does not retain it. These charts are not unpinned; nothing here has read what they render from."
+    }
+  },
+  "repository": "example/platform",
+  "status": {
+    "origin": "bosun",
+    "text": "This is every Application bosun's last live reading of ArgoCD served, with the cluster each one lands on. They are not filtered by repository: this is what the install's ArgoCD credentials can see. Each row says when it was observed."
+  },
+  "swept": true,
+  "sweptAt": "2026-08-30T12:00:00Z"
+}

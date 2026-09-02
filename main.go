@@ -696,6 +696,20 @@ func gateStatus(gs *gateservice.Service) web.GateStatus {
 // landing in a field of the same name.
 func mcpGateStatus(g gateservice.Status) mcp.GateStatus {
 	out := mcp.GateStatus{SweptAt: g.SweptAt, Err: g.Err, Held: g.Held, Running: g.Running}
+	if g.Fleet != nil {
+		// nil crosses as nil, and that is the one decision in this function. A
+		// zero-valued GateFleet here would publish an empty fleet, which is
+		// what an ArgoCD serving nothing looks like -- and the tool's whole
+		// job is that "nothing runs here" and "nothing has read" are different
+		// answers.
+		fleet := &mcp.GateFleet{ObservedAt: g.Fleet.ObservedAt}
+		for _, a := range g.Fleet.Apps {
+			fleet.Apps = append(fleet.Apps, mcp.GateFleetApp{
+				Name: a.Name, Namespace: a.Namespace, Cluster: a.Cluster,
+			})
+		}
+		out.Fleet = fleet
+	}
 	for _, pr := range g.Open {
 		out.Open = append(out.Open, mcp.GatePR{
 			Number: pr.Number, Title: pr.Title, URL: pr.URL,

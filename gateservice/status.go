@@ -33,6 +33,50 @@ type Status struct {
 	// gate runs are in flight right now.
 	Held    int
 	Running int
+	// Fleet is what the last live reading of ArgoCD served, or nil when no
+	// gate run has made one.
+	//
+	// Its own clock, and that is the point rather than an oversight. The
+	// reading is made by a RUN, and a sweep with nothing to render makes none,
+	// so on a quiet install this is older than SweptAt above and stays that
+	// way. A reader told only the sweep's time would be reading a number about
+	// something else.
+	Fleet *Fleet
+}
+
+// Fleet is one live reading of what ArgoCD serves.
+//
+// Retained rather than recomputed, because the run has already paid for it:
+// the gate reads what this repository deploys to decide what to render, and
+// the same read says what every other Application on the control plane is and
+// where it lands. Discarding that is what left "where does this run" answerable
+// only with a cluster credential.
+//
+// Nothing here is content. Names and a cluster, which is what a listing is; a
+// reader wanting what an Application deploys is asking the render, and this
+// type has nowhere to put the answer.
+type Fleet struct {
+	// ObservedAt is when the reading was made.
+	ObservedAt time.Time
+	// Apps is every Application it served, unfiltered and in a stable order.
+	// Empty is a real answer: an ArgoCD serving nothing.
+	Apps []FleetApp
+}
+
+// FleetApp is one Application, and where it lands.
+type FleetApp struct {
+	// Name and Namespace identify the Application object itself.
+	Name      string
+	Namespace string
+	// Cluster is the cluster it lands on, as the cluster inventory names it,
+	// and "" when the destination resolved to no cluster that inventory knows.
+	//
+	// Resolved here rather than published raw: a destination is a cluster name
+	// or an apiserver address depending on who wrote the Application, and only
+	// the inventory knows the two are one cluster. Empty rather than the
+	// unresolved address, because a wrong cluster name is acted on and a
+	// missing one is asked about.
+	Cluster string
 }
 
 // The states a pull request's head commit can be in, as the sweep sees them.
@@ -107,13 +151,57 @@ type PRStatus struct {
 func (g *Service) Status() Status {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return Status{
+	out := Status{
 		SweptAt: g.sweptAt,
 		Err:     g.sweepErr,
 		Open:    append([]PRStatus(nil), g.lastOpen...),
 		Held:    len(g.results),
 		Running: len(g.inflight),
 	}
+	if g.fleet != nil {
+		// Copied down to the slice, not just the pointer. The readers of this
+		// are a status page and a tool surface, and one of them holding a
+		// window onto the sweep's own memory is how a reader ends up editing
+		// what the next one sees.
+		out.Fleet = &Fleet{
+			ObservedAt: g.fleet.ObservedAt,
+			Apps:       append([]FleetApp(nil), g.fleet.Apps...),
+		}
+	}
+	return out
+}
+
+// retainFleet keeps the live reading a run just made, resolved onto the
+// clusters the same run read.
+//
+// The newest reading wins, and it is compared by time rather than by arrival:
+// runs are concurrent up to the configured limit, so two readings can land out
+// of order, and a snapshot that took whichever finished last would occasionally
+// publish the older fleet with the newer stamp on it.
+//
+// A run that could not derive does not reach here at all, which is deliberate:
+// the last reading stays, stamped with when it was actually made. Stale
+// evidence beats none as long as it is labelled stale, and the label is the
+// timestamp.
+func (g *Service) retainFleet(d *gate.Derivation, inv *gate.Inventory, at time.Time) {
+	if d == nil {
+		return
+	}
+	apps := make([]FleetApp, 0, len(d.Fleet))
+	for _, a := range d.Fleet {
+		apps = append(apps, FleetApp{
+			Name:      a.Name,
+			Namespace: a.Namespace,
+			Cluster:   inv.ClusterFor(a.Destination),
+		})
+	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.fleet != nil && g.fleet.ObservedAt.After(at) {
+		return
+	}
+	g.fleet = &Fleet{ObservedAt: at, Apps: apps}
 }
 
 // snapshotLocked renders the sweep's view of its pull requests. Called with

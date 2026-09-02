@@ -454,6 +454,18 @@ request the agent is not working is answered as such rather than as an error.
 The phase is current; the labels and the attempt count are as old as the sweep
 the answer names, because a tool call reaches no git host.
 
+A platform engineer's agent asks `inventory` what this fleet runs and gets
+every Application the last live reading of ArgoCD served, with the cluster each
+one lands on -- the answer that otherwise needs a cluster credential of its
+own, for a reading this pod already makes on every gate run and used to throw
+away. **Names and clusters only**: no manifest, no values file and no rendered
+object crosses that boundary, by any argument, and the result type has nowhere
+to put one. **Its age is not the sweep's**, and that is the sentence to read
+before trusting a row: the reading is made when the gate renders a pull
+request, so an install with none open makes none and the fleet stays as old as
+the last one. Every row carries when it was observed, so the staleness is
+readable rather than assumed, and no tool call is allowed to go and refresh it.
+
 **A pull request with no verdict standing is answered as such**, and never as a
 passing one. There are several ways to have no verdict -- a render in flight, a
 verdict already standing on the git host that this process did not re-run, a
@@ -524,6 +536,13 @@ are the list to weigh before you publish the port:
   has spent against the cap.
 - `handoff_queue` -- which pull requests the agent gave up on, and everything
   `gate_verdict` reveals about each of them.
+- `inventory` -- your fleet: Application names, the namespaces those objects
+  live in, and the cluster names they land on. Every Application the ArgoCD
+  account you gave bosun can list, not only the ones belonging to the
+  repository it gates, so weigh this one against how broad that account is.
+  Chart names, the versions pinned to them and the ApplicationSet names they
+  were generated from are not served yet and will be, so read this entry as
+  the shorter half of what it will eventually disclose.
 
 No credential, no prompt, no rendered diff. The difference is who reads it and
 what they hold -- these answers land in somebody's coding agent, which usually
