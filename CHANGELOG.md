@@ -5,55 +5,6 @@ All notable changes to `bosun`. Format follows
 
 ## [Unreleased]
 
-### Added
-
-- **`inventory`, the fleet as the live reading saw it.** The gate reads what
-  ArgoCD says this control plane runs on every run it makes, uses a fraction of
-  it to decide what to render, and used to throw the rest away. A platform
-  agent asking which cluster an Application lands on then went to the cluster
-  with a credential of its own, for a fact this process had computed minutes
-  earlier. The reading is retained now and served: every Application ArgoCD
-  served, with the cluster each one lands on.
-
-  **Names and clusters, and the line is drawn on the type.** No manifest, no
-  values file, no values leaf and no rendered object can cross this boundary,
-  because the result type has no map, no interface and no raw bytes anywhere in
-  it to put one in. This is the tool most able to become a manifest proxy one
-  small field at a time, and a structural test is what makes the refusal
-  something a reviewer can check rather than something a handler happens to do.
-
-  **Its age is not the sweep's.** The reading is made by a gate *run*, so an
-  install with no open pull request renders nothing, reads nothing, and holds a
-  fleet as old as its last pull request; a brand-new one holds none at all.
-  That is published rather than solved: every row carries its own `observedAt`
-  and `observedAgeSeconds`, no tool call may go and refresh it, and the three
-  situations -- no sweep, a sweep with no reading, a reading that served
-  nothing -- are three different answers on the wire rather than one empty
-  list. The honest fix for the staleness, if it turns out to be the thing
-  operators complain about, is a scheduled fleet read: a change to what the
-  sweep does, not to what a tool call may do.
-
-  **No row says what it renders from.** Chart, pinned version and originating
-  ApplicationSet come from the gate's render expansion, which is not retained
-  yet, so `chartDetail.expanded` is `false` and a sentence beside it says the
-  expansion has not run. "These charts are unpinned" and "nothing has read what
-  they render from" are different claims, and only the second is true.
-
-  The rows are not filtered by repository, and that is ADR 0014 rather than an
-  oversight: an install's horizon is set by what its credentials can read, and
-  narrowing this means narrowing the ArgoCD account, not teaching the readout to
-  hide. The chart README and `docs/mcp.md` say what publishing the port now
-  discloses.
-
-  The reading crosses on the snapshot the gate surface already carries rather
-  than on a provider of its own, so the composition root gains nothing new to
-  keep fresh, and `spec.destination` is read on the Applications call that was
-  already being made. A destination is a cluster name or an apiserver address
-  depending on who wrote the Application; it is resolved against the cluster
-  inventory the same run reads, and a destination that resolves to no known
-  cluster leaves the row's cluster absent rather than carrying an address
-  nothing checked.
-
 ### Fixed
 
 - **A merge gate that abstained because a file's inode moved.** `git fetch`
@@ -128,6 +79,90 @@ All notable changes to `bosun`. Format follows
   own source -- neither package can import the other, and a rename on either
   side would otherwise be a queue that is empty forever.
 
+- **`verdict_history`: what the gate said before now, as data.** A sixth MCP
+  tool, answering what the gate's verdict was on each of one pull request's
+  earlier head commits -- the commit, whether that verdict blocked, and the
+  gate's own headline for it, newest first. It is the difference between "my
+  last push fixed it" and "the gate changed its mind", two readings of the same
+  green that want opposite next moves, and until now telling them apart meant a
+  person expanding a collapsed table in a pull-request comment.
+
+  Nothing new is computed or fetched for it. A gate with no database keeps its
+  memory as HTML stamps inside its own comment, because that is the only
+  per-pull-request storage a git host offers, and the publish path already
+  parses those stamps on every run to carry them forward. It kept the parse
+  instead of dropping it: the sweep carries the rows onto its snapshot and the
+  tool publishes them, so a tool call still reaches no cluster, no git host and
+  no model.
+
+  Which makes this the one answer on the surface read off the git host rather
+  than composed in the pod, and the result says so. The rows name the
+  pull-request comment as their source, because the people who can edit that
+  comment are the people who can write to the gated repository -- a set nothing
+  else here is exposed to. The cap on how many verdicts the comment remembers
+  is published beside the entries, so as many entries as the cap reads as
+  "older ones were dropped" rather than as a short life; the order is stated
+  rather than left to be inferred; and a recorded commit that is not written
+  the way a commit is loses its commit rather than being published as one.
+
+  Three absences stay distinct, in the words `gate_verdict` already uses: no
+  sweep has completed (`unswept`), a sweep completed and did not see this pull
+  request open (`absent`), and a sweep saw it and there was no gate comment to
+  read a history from (`unknown`). None of them is a claim that the gate has
+  never blocked it. A history that was read and recorded nothing is an *empty*
+  list under `recorded`, which is a fourth answer again.
+
+  [`docs/mcp.md`](docs/mcp.md) gains its section, the safety model gains the
+  note about the one answer with a comment editor in its trust picture, and the
+  chart README's disclosure notes gain its entry.
+
+
+- **`inventory`, the fleet as the live reading saw it.** The gate reads what
+  ArgoCD says this control plane runs on every run it makes, uses a fraction of
+  it to decide what to render, and used to throw the rest away. A platform
+  agent asking which cluster an Application lands on then went to the cluster
+  with a credential of its own, for a fact this process had computed minutes
+  earlier. The reading is retained now and served: every Application ArgoCD
+  served, with the cluster each one lands on.
+
+  **Names and clusters, and the line is drawn on the type.** No manifest, no
+  values file, no values leaf and no rendered object can cross this boundary,
+  because the result type has no map, no interface and no raw bytes anywhere in
+  it to put one in. This is the tool most able to become a manifest proxy one
+  small field at a time, and a structural test is what makes the refusal
+  something a reviewer can check rather than something a handler happens to do.
+
+  **Its age is not the sweep's.** The reading is made by a gate *run*, so an
+  install with no open pull request renders nothing, reads nothing, and holds a
+  fleet as old as its last pull request; a brand-new one holds none at all.
+  That is published rather than solved: every row carries its own `observedAt`
+  and `observedAgeSeconds`, no tool call may go and refresh it, and the three
+  situations -- no sweep, a sweep with no reading, a reading that served
+  nothing -- are three different answers on the wire rather than one empty
+  list. The honest fix for the staleness, if it turns out to be the thing
+  operators complain about, is a scheduled fleet read: a change to what the
+  sweep does, not to what a tool call may do.
+
+  **No row says what it renders from.** Chart, pinned version and originating
+  ApplicationSet come from the gate's render expansion, which is not retained
+  yet, so `chartDetail.expanded` is `false` and a sentence beside it says the
+  expansion has not run. "These charts are unpinned" and "nothing has read what
+  they render from" are different claims, and only the second is true.
+
+  The rows are not filtered by repository, and that is ADR 0014 rather than an
+  oversight: an install's horizon is set by what its credentials can read, and
+  narrowing this means narrowing the ArgoCD account, not teaching the readout to
+  hide. The chart README and `docs/mcp.md` say what publishing the port now
+  discloses.
+
+  The reading crosses on the snapshot the gate surface already carries rather
+  than on a provider of its own, so the composition root gains nothing new to
+  keep fresh, and `spec.destination` is read on the Applications call that was
+  already being made. A destination is a cluster name or an apiserver address
+  depending on who wrote the Application; it is resolved against the cluster
+  inventory the same run reads, and a destination that resolves to no known
+  cluster leaves the row's cluster absent rather than carrying an address
+  nothing checked.
 - **A documentation page for the MCP surface.** The tools and what each
   answers, what a caller gets before the first sweep and why an absence there is
   not an empty result, turning it on, and the token -- one page, beside the

@@ -454,6 +454,15 @@ request the agent is not working is answered as such rather than as an error.
 The phase is current; the labels and the attempt count are as old as the sweep
 the answer names, because a tool call reaches no git host.
 
+An engineer whose merge would not go green asks `verdict_history` what the gate
+said on the pull request's earlier head commits and gets each one as data: the
+commit, whether that verdict blocked, and the gate's own headline for it,
+newest first. It is how a push that fixed something is told from a gate that
+changed its mind, and it is the one answer here read off your git host rather
+than computed in the pod -- a gate with no database keeps its memory as HTML
+comments inside its own comment on the pull request, so the result names that
+comment as its source and publishes the cap on how many verdicts it remembers.
+
 A platform engineer's agent asks `inventory` what this fleet runs and gets
 every Application the last live reading of ArgoCD served, with the cluster each
 one lands on -- the answer that otherwise needs a cluster credential of its
@@ -536,6 +545,9 @@ are the list to weigh before you publish the port:
   has spent against the cap.
 - `handoff_queue` -- which pull requests the agent gave up on, and everything
   `gate_verdict` reveals about each of them.
+- `verdict_history` -- the verdicts the gate reached on that pull request's
+  earlier head commits, with their commits and the gate's headlines, which name
+  blocker counts and kinds.
 - `inventory` -- your fleet: Application names, the namespaces those objects
   live in, and the cluster names they land on. Every Application the ArgoCD
   account you gave bosun can list, not only the ones belonging to the

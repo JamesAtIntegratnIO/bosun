@@ -113,12 +113,14 @@ the agent is doing about one, and the phase, the attempts it has spent against
 its cap and the labels standing on it say whether it is still working or has
 finished and will not try again. Ask `handoff_queue` for the ones it gave up
 on, and each comes back with the findings behind it and the attempts it spent
-before it stopped. Ask `inventory` what the fleet runs, and every Application
-the last live reading of ArgoCD served comes back with the cluster it lands on
--- names and clusters, never manifests, and each row stamped with when it was
-observed. Nothing is
-computed: every answer comes from the snapshot the last sweep already holds, so
-a request reaches no git host, no cluster and no model. Nothing mutates,
+before it stopped. Ask `verdict_history` what the gate said on the pull
+request's earlier head commits, and a gate that has been flapping is data
+rather than somebody's impression of a comment. Ask `inventory` what the fleet
+runs, and every Application the last live reading of ArgoCD served comes back
+with the cluster it lands on -- names and clusters, never manifests, and each
+row stamped with when it was observed. Nothing is computed: every answer comes
+from the snapshot the last sweep already holds, so a request reaches no git
+host, no cluster and no model. Nothing mutates,
 because no tool does. Text bosun did not write travels tagged with whose it is,
 because these answers land in agents holding tools bosun refuses for itself.
 Off by default, and it refuses to start without a token. See

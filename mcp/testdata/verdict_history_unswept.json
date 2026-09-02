@@ -1,0 +1,10 @@
+{
+  "pullRequest": 264,
+  "repository": "example/platform",
+  "state": "unswept",
+  "status": {
+    "origin": "bosun",
+    "text": "No gate sweep has completed yet, so nothing has been read about what the gate has said on any pull request. This is not a claim that it has never blocked this one: nothing has looked. Ask again after the next sweep."
+  },
+  "swept": false
+}

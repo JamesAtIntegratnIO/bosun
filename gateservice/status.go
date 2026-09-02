@@ -42,6 +42,13 @@ type Status struct {
 	// way. A reader told only the sweep's time would be reading a number about
 	// something else.
 	Fleet *Fleet
+	// HistoryCap is how many earlier verdicts one pull request's comment
+	// remembers, which is what makes a short history readable: a history
+	// exactly this long has had older entries dropped from it.
+	//
+	// On the snapshot rather than looked up by a reader, so the number a
+	// client is told is the number this build applied to the rows beside it.
+	HistoryCap int
 }
 
 // Fleet is one live reading of what ArgoCD serves.
@@ -145,6 +152,21 @@ type PRStatus struct {
 	// difference, which is the difference between "green" and "green,
 	// according to a run this process never made".
 	Verdict *gate.Summary
+	// History is what the gate said on each earlier head commit of this pull
+	// request, oldest first, as the last publish onto it read the stamps back
+	// out of its own comment.
+	//
+	// A POINTER to a slice, because absent and empty are different answers
+	// here and publishing it is only worth anything if a reader can tell them
+	// apart. Nil is "this process has read no comment for this pull request"
+	// -- there is none, or none has been read since it started. Present and
+	// empty is "the comment was read and recorded no earlier verdict", which
+	// is what a pull request the gate has answered exactly once looks like.
+	//
+	// It is what the gate read off the git host rather than what this process
+	// computed, which puts whoever can edit that comment in the trust picture.
+	// The read surfaces that publish it say so.
+	History *[]VerdictRow
 }
 
 // Status returns a copy of what the last sweep recorded.
@@ -152,11 +174,12 @@ func (g *Service) Status() Status {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	out := Status{
-		SweptAt: g.sweptAt,
-		Err:     g.sweepErr,
-		Open:    append([]PRStatus(nil), g.lastOpen...),
-		Held:    len(g.results),
-		Running: len(g.inflight),
+		SweptAt:    g.sweptAt,
+		Err:        g.sweepErr,
+		Open:       append([]PRStatus(nil), g.lastOpen...),
+		Held:       len(g.results),
+		Running:    len(g.inflight),
+		HistoryCap: MaxHistory,
 	}
 	if g.fleet != nil {
 		// Copied down to the slice, not just the pointer. The readers of this
@@ -216,6 +239,13 @@ func (g *Service) snapshotLocked(prs []gitprovider.PullRequest, posted map[strin
 		pr := &prs[i]
 		st := PRStatus{Number: pr.Number, Title: pr.Title, URL: pr.URL, HeadSHA: pr.HeadSHA,
 			Labels: append([]string(nil), pr.Labels...)}
+		if held, read := g.history[pr.Number]; read {
+			// Key-present rather than length, so a comment that recorded no
+			// earlier verdict crosses as an empty history and a comment
+			// nothing has read crosses as no history at all.
+			rows := append(make([]VerdictRow, 0, len(held)), held...)
+			st.History = &rows
+		}
 		switch {
 		case g.inflight[pr.HeadSHA] != nil:
 			st.State = StateRunning

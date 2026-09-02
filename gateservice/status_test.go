@@ -125,3 +125,181 @@ func TestTheSnapshotCarriesTheLabelsTheSweepSaw(t *testing.T) {
 			"got %v", got)
 	}
 }
+
+// The verdicts a pull request's own comment recorded ride along in the
+// snapshot too.
+//
+// The publish path parses those stamps out of the existing comment on every
+// run, because that is how the gate carries its memory forward, and until this
+// crossing existed it threw the parse away at the end of the function. A
+// reader that wanted "has this gate been flapping?" had to fetch the comment
+// and parse an internal format back out of it -- which is a git-host call a
+// tool call may not make, and a private format made public by whoever guessed
+// at it.
+func TestTheSnapshotCarriesTheVerdictsTheCommentRecorded(t *testing.T) {
+	gs, f := commentHarness(t)
+	ctx := context.Background()
+
+	// Two publishes, so the second one has an earlier verdict to read: the
+	// red pass, which the repair then edited over.
+	red := &gitprovider.PullRequest{Number: 7, HeadSHA: "cfb553ee5c23"}
+	gs.comment(ctx, red, reportFor(true, "Blocking — 4 manifests still declaring a dropped API version", "red"))
+	green := &gitprovider.PullRequest{Number: 7, HeadSHA: "36fd60989cea"}
+	gs.comment(ctx, green, reportFor(false, "No blocking findings — 2 versions changed", "green"))
+
+	// A verdict already standing on the host, so the sweep lists and snapshots
+	// without running the gate: the history has to survive a sweep that judges
+	// nothing, because that is most sweeps.
+	f.OpenPRs = []gitprovider.PullRequest{{Number: 7, HeadSHA: "36fd60989cea"}}
+	f.Check = gitprovider.CheckSuccess
+	gs.sweep(ctx)
+
+	st := gs.Status()
+	if st.HistoryCap != MaxHistory {
+		t.Errorf("the snapshot must carry the cap it applied, got %d", st.HistoryCap)
+	}
+	if len(st.Open) != 1 {
+		t.Fatalf("the sweep saw one open pull request; status shows %d", len(st.Open))
+	}
+	got := st.Open[0].History
+	if got == nil {
+		t.Fatal("the comment was read and its earlier verdict was dropped again, which is " +
+			"the whole thing this crossing exists to stop")
+	}
+	if len(*got) != 1 {
+		t.Fatalf("want the one earlier verdict, got %d: %+v", len(*got), *got)
+	}
+	row := (*got)[0]
+	if row.SHA != "cfb553ee5c23" {
+		t.Errorf("the earlier verdict must name the commit it judged, got %q", row.SHA)
+	}
+	if !row.Blocking {
+		t.Error("the earlier verdict blocked, and a history that forgets that cannot be " +
+			"counted for flips")
+	}
+	if row.Headline != "Blocking — 4 manifests still declaring a dropped API version" {
+		t.Errorf("the history must say WHAT was wrong, got %q", row.Headline)
+	}
+}
+
+// Oldest first, which is the order the comment records and the order the
+// renderer reads.
+//
+// Stated here because the read surface publishes the reverse and cannot see
+// this side: a client is told newest-first, and the reversal is only correct
+// while this is the order it reverses.
+func TestTheSnapshotsHistoryIsOldestFirst(t *testing.T) {
+	gs, f := commentHarness(t)
+	ctx := context.Background()
+
+	for _, sha := range []string{"aaaa1111", "bbbb2222", "cccc3333", "dddd4444"} {
+		gs.comment(ctx, &gitprovider.PullRequest{Number: 7, HeadSHA: sha},
+			reportFor(true, "Blocking — "+sha, "body"))
+	}
+
+	f.OpenPRs = []gitprovider.PullRequest{{Number: 7, HeadSHA: "dddd4444"}}
+	f.Check = gitprovider.CheckSuccess
+	gs.sweep(ctx)
+
+	got := gs.Status().Open[0].History
+	if got == nil {
+		t.Fatal("no history was carried, so the ordering below was never read")
+	}
+	var shas []string
+	for _, row := range *got {
+		shas = append(shas, row.SHA)
+	}
+	want := []string{"aaaa1111", "bbbb2222", "cccc3333"}
+	if len(shas) != len(want) {
+		t.Fatalf("want the three earlier verdicts, got %v", shas)
+	}
+	for i := range want {
+		if shas[i] != want[i] {
+			t.Fatalf("the history must be oldest first, got %v", shas)
+		}
+	}
+}
+
+// A pull request whose comment nothing has read carries no history, rather
+// than an empty one.
+//
+// The distinction the read surface publishes as two different answers: "the
+// gate has said nothing before now" and "nothing has looked at what it said".
+func TestAPullRequestWithNoCommentReadCarriesNoHistory(t *testing.T) {
+	gs, f := commentHarness(t)
+	ctx := context.Background()
+
+	f.OpenPRs = []gitprovider.PullRequest{{Number: 7, HeadSHA: "36fd60989cea"}}
+	f.Check = gitprovider.CheckSuccess
+	gs.sweep(ctx)
+
+	st := gs.Status()
+	if len(st.Open) != 1 {
+		t.Fatalf("the sweep saw one open pull request; status shows %d", len(st.Open))
+	}
+	if st.Open[0].History != nil {
+		t.Fatalf("a pull request nothing has published onto must carry no history, got %+v",
+			*st.Open[0].History)
+	}
+}
+
+// A listing the host refused records no history, rather than recording that
+// there is none.
+//
+// The publish still happens -- a report nobody can read is worse than a
+// duplicate one -- and the empty parse it falls back on is the same empty
+// parse a pull request with no gate comment produces. Storing it would publish
+// "no earlier verdicts" for a pull request whose comment nothing managed to
+// open.
+func TestACommentListingThatFailedRecordsNoHistory(t *testing.T) {
+	gs, f := commentHarness(t)
+	ctx := context.Background()
+
+	gs.comment(ctx, &gitprovider.PullRequest{Number: 7, HeadSHA: "cfb553ee5c23"},
+		reportFor(true, "Blocking — one", "red"))
+
+	f.ListCommentsErr = errors.New("the host said 403")
+	gs.comment(ctx, &gitprovider.PullRequest{Number: 7, HeadSHA: "36fd60989cea"},
+		reportFor(false, "No blocking findings", "green"))
+	f.ListCommentsErr = nil
+
+	f.OpenPRs = []gitprovider.PullRequest{{Number: 7, HeadSHA: "36fd60989cea"}}
+	f.Check = gitprovider.CheckSuccess
+	gs.sweep(ctx)
+
+	if h := gs.Status().Open[0].History; h != nil {
+		t.Fatalf("a refused listing must leave no claim about the history, got %+v", *h)
+	}
+}
+
+// A pull request that stops being open stops being remembered.
+//
+// The same leak the held verdicts are pruned for, one rung out: the memory a
+// merged pull request's history describes lives in a comment on the git host,
+// and nothing here will ever be asked about it again.
+func TestAClosedPullRequestsHistoryIsDropped(t *testing.T) {
+	gs, f := commentHarness(t)
+	ctx := context.Background()
+
+	gs.comment(ctx, &gitprovider.PullRequest{Number: 7, HeadSHA: "cfb553ee5c23"},
+		reportFor(true, "Blocking — one", "red"))
+	gs.comment(ctx, &gitprovider.PullRequest{Number: 7, HeadSHA: "36fd60989cea"},
+		reportFor(false, "No blocking findings", "green"))
+
+	f.OpenPRs = []gitprovider.PullRequest{{Number: 7, HeadSHA: "36fd60989cea"}}
+	f.Check = gitprovider.CheckSuccess
+	gs.sweep(ctx)
+	if gs.Status().Open[0].History == nil {
+		t.Fatal("the history was never recorded, so the drop below proves nothing")
+	}
+
+	f.OpenPRs = nil
+	gs.sweep(ctx)
+
+	gs.mu.Lock()
+	held := len(gs.history)
+	gs.mu.Unlock()
+	if held != 0 {
+		t.Fatalf("a merged pull request's history is a slow leak; %d still held", held)
+	}
+}

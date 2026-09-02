@@ -542,3 +542,92 @@ func withFleet(g GateStatus) GateStatus {
 	}
 	return g
 }
+
+// history decodes a verdict_history result for one pull request.
+func (f *fixture) history(t *testing.T, number int) History {
+	t.Helper()
+	var out History
+	raw := f.callWith(t, "verdict_history", fmt.Sprintf(`{"pullRequest":%d}`, number))
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("the result does not decode as a History: %v", err)
+	}
+	return out
+}
+
+// toolCall is one registered tool and arguments it accepts.
+type toolCall struct {
+	name string
+	args string
+}
+
+// everyToolCall is one call per registered tool.
+//
+// The subject is derived from the registry, so a tool added without a thought
+// for the assertions below fails here rather than quietly escaping them: a
+// listener's auth check, its audit line and its promise to reach nothing are
+// properties of the surface, not of the tools somebody remembered to name.
+//
+// The arguments are the part that cannot be derived -- a schema says a number
+// is required and not which number this fixture's world holds -- so they are a
+// table, and a table missing an entry is a failure rather than a tool skipped.
+func everyToolCall(t *testing.T) []toolCall {
+	t.Helper()
+	args := map[string]string{
+		"pipeline_report": `{}`,
+		"gate_status":     `{}`,
+		"gate_verdict":    `{"pullRequest":264}`,
+		"triage_status":   `{"pullRequest":264}`,
+		"handoff_queue":   `{}`,
+		"verdict_history": `{"pullRequest":264}`,
+		"inventory":       `{}`,
+	}
+
+	tools := Tools()
+	if len(tools) == 0 {
+		t.Fatal("this package registers no tools, so every assertion driven from here runs " +
+			"against nothing and reads exactly like a pass")
+	}
+	out := make([]toolCall, 0, len(tools))
+	for _, tool := range tools {
+		a, ok := args[tool.Name]
+		if !ok {
+			t.Fatalf("the tool %q has no arguments in this table, so nothing here drives it. "+
+				"Add them rather than removing the check: the auth table, the audit log and "+
+				"the reaches-nothing assertion are all replayed from this list.", tool.Name)
+		}
+		out = append(out, toolCall{name: tool.Name, args: a})
+		delete(args, tool.Name)
+	}
+	for name := range args {
+		t.Errorf("this table names %q, which is not a registered tool; the assertions "+
+			"driven from it are exercising a surface that no longer exists", name)
+	}
+	return out
+}
+
+// flapping is the world this tool was argued for: a pull request whose verdict
+// has gone red, green and red again across three head commits.
+//
+// A flip in it rather than three of the same, because "the gate changed its
+// mind" and "my push fixed it" are the two readings a caller is here to tell
+// apart, and a history with no flip in it cannot tell them apart at all.
+//
+// Oldest first, which is the order the gate's own comment records and the
+// order the snapshot carries; the wire's is the reverse, and that reversal is
+// what TestTheHistoryIsNewestFirst reads.
+func flapping() GateStatus {
+	g := blocked()
+	g.HistoryCap = 10
+	rows := []GateVerdictRow{{
+		SHA: "1f0e2d3c", Blocking: true,
+		Headline: "Blocking — 4 manifests still declaring a dropped API version",
+	}, {
+		SHA: "2a4b6c8d", Blocking: false,
+		Headline: "No blocking findings — 1 version changed, nothing else",
+	}, {
+		SHA: "3b5d7f9a", Blocking: true,
+		Headline: "Blocking — 1 Application whose chart will not render at the new version",
+	}}
+	g.Open[0].History = &rows
+	return g
+}

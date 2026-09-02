@@ -695,7 +695,8 @@ func gateStatus(gs *gateservice.Service) web.GateStatus {
 // verdict and gateservice remembered it, and everything here is a field
 // landing in a field of the same name.
 func mcpGateStatus(g gateservice.Status) mcp.GateStatus {
-	out := mcp.GateStatus{SweptAt: g.SweptAt, Err: g.Err, Held: g.Held, Running: g.Running}
+	out := mcp.GateStatus{SweptAt: g.SweptAt, Err: g.Err, Held: g.Held, Running: g.Running,
+		HistoryCap: g.HistoryCap}
 	if g.Fleet != nil {
 		// nil crosses as nil, and that is the one decision in this function. A
 		// zero-valued GateFleet here would publish an empty fleet, which is
@@ -716,9 +717,32 @@ func mcpGateStatus(g gateservice.Status) mcp.GateStatus {
 			HeadSHA: pr.HeadSHA, State: pr.State, Err: pr.Err,
 			Labels:  append([]string(nil), pr.Labels...),
 			Verdict: mcpVerdict(pr.Verdict),
+			History: mcpHistory(pr.History),
 		})
 	}
 	return out
+}
+
+// mcpHistory copies the verdicts a pull request's comment recorded, or nothing
+// when no comment has been read for it.
+//
+// The nil check is the whole function, and it is the reason this is not an
+// inline append. Absent and empty are different answers on both sides of this
+// crossing -- "no comment has been read" against "one was read and recorded no
+// earlier verdict" -- and a helpful copy that turned the first into the second
+// would publish "the gate has never blocked this" for a pull request nothing
+// has looked at the history of.
+func mcpHistory(rows *[]gateservice.VerdictRow) *[]mcp.GateVerdictRow {
+	if rows == nil {
+		return nil
+	}
+	out := make([]mcp.GateVerdictRow, 0, len(*rows))
+	for _, row := range *rows {
+		out = append(out, mcp.GateVerdictRow{
+			SHA: row.SHA, Blocking: row.Blocking, Headline: row.Headline,
+		})
+	}
+	return &out
 }
 
 // mcpTriageStatus adapts the agent's account of itself to the tool surface's

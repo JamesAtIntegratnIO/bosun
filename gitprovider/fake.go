@@ -27,8 +27,14 @@ type Fake struct {
 	ListErr error
 	// Comments is the pull request's history, oldest first.
 	Comments []Comment
-	Check    CheckState
-	CheckErr error
+	// ListCommentsErr makes every ListComments fail, which is the shape of a
+	// token that may write a comment and not read one. The gate publishes
+	// anyway -- a report nobody can read is worse than a duplicate one -- and
+	// the run then knows nothing about what it said before, which is a
+	// different answer from knowing there was nothing.
+	ListCommentsErr error
+	Check           CheckState
+	CheckErr        error
 	// CheckCalls counts CheckStatus calls, so a test can assert whether the
 	// status on the commit was read at all.
 	CheckCalls int
@@ -95,6 +101,9 @@ func (f *Fake) ListOpenPullRequests(_ context.Context) ([]PullRequest, error) {
 }
 
 func (f *Fake) ListComments(_ context.Context, _ int) ([]Comment, error) {
+	if f.ListCommentsErr != nil {
+		return nil, f.ListCommentsErr
+	}
 	return append([]Comment(nil), f.Comments...), nil
 }
 

@@ -80,6 +80,28 @@
         "name": "handoff_queue"
       },
       {
+        "description": "What the gate said about one pull request on each of its earlier head commits: the commit, whether that verdict blocked the merge, and the gate's own headline for it. Newest first. Use it to tell a push that fixed something from a gate that changed its mind, and to count how often a verdict has flipped. The entries are read out of the gate's own comment on the pull request, which is where a gate with no database keeps its memory, so the result names that comment as the source and publishes the cap on how many verdicts it remembers -- a history exactly that long has had older ones dropped. A pull request no history has been read for is answered as such rather than as one that has never been red. Answers from the last sweep's snapshot: it reaches no cluster, no git host and no model, and it can change nothing.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "pullRequest": {
+              "description": "The pull request number to report the earlier verdicts for.",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "repository": {
+              "description": "The repository, owner/repo. Optional: an install watches exactly one, and omitting this asks about that one.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "pullRequest"
+          ],
+          "type": "object"
+        },
+        "name": "verdict_history"
+      },
+      {
         "description": "The fleet as bosun's last live reading of ArgoCD saw it: every Application that reading served, with the cluster each one lands on. Use it to answer \"where does this run\" without a cluster credential of your own. Names and clusters only -- no manifest, values file or rendered object is served here, by any argument. Every row says when it was observed, which is as old as the last gate run rather than the last sweep: an install with no open pull request renders nothing and therefore reads nothing. Answers from that snapshot: it reaches no cluster, no git host and no model, and it can change nothing.",
         "inputSchema": {
           "additionalProperties": false,
