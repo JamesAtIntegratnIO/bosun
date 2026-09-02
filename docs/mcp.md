@@ -136,6 +136,43 @@ Two things follow from where the entries come from, and neither is hidden:
   lose the flip. Absence there means bosun would not vouch for the value, never
   that the verdict had no commit.
 
+### `inventory`
+
+**Answers** what this fleet runs: every Application bosun's last live reading
+of ArgoCD served, with the cluster each one lands on. Use it to answer "where
+does this run" without a cluster credential of your own.
+
+**Takes** no arguments.
+
+**Names and clusters only.** No manifest, no values file, no values leaf and no
+rendered object crosses this boundary, by any argument — and the result type
+has nowhere to put one, which is checked structurally rather than left to what
+a handler happens to fill in. This is the tool most able to become a manifest
+proxy one small field at a time, so the line is drawn on the type.
+
+**The rows are not filtered by repository.** They are every Application the
+install's ArgoCD credentials can see, which on most control planes is more than
+the one repository this install gates. An install's horizon is set by its
+intake and never by its readout —
+[ADR 0014](../adr/0014-an-install-serves-one-trust-domain.md) — so the way to
+narrow this is to narrow the ArgoCD account, not to ask the tool for less.
+
+**It is the one result whose age is not the sweep's**, and this is the sentence
+to read before trusting a row. The reading is made when the gate *renders* a
+pull request, not when the sweep runs, so an install with nothing open makes
+none: the fleet stays as old as the last pull request, and on a brand-new
+install there is no reading at all. Every row therefore carries its own
+`observedAt` and `observedAgeSeconds` beside the result's `sweptAt`, and no
+tool call is allowed to go and refresh it. That staleness is published rather
+than solved; if it becomes the thing operators complain about, the honest fix
+is a scheduled fleet read, which is a change to what the sweep does rather than
+to what a tool call may do.
+
+**No row says what it renders from yet.** The chart, the pinned version and the
+originating ApplicationSet come from the gate's render expansion, which this
+build does not retain, so `chartDetail.expanded` is `false` and the sentence
+beside it says so. A client must not read that as a fleet of unpinned charts.
+
 ## No resources, and no sampling
 
 The surface offers tools and nothing else. No resources — the tempting one is
@@ -204,6 +241,20 @@ Then one entry per tool, because what there is to be absent differs:
   pull request and no comment has been read for it", which is the common answer
   rather than the broken one. `sweepError` is what separates the two, and the
   `status` sentence says which is which.
+- `inventory` publishes `applications` when a live reading has been made and
+  withholds it otherwise, and **the sweep decides nothing about that** — the two
+  are separate claims on one result. No reading yet: the rows are absent, and
+  the sentence says whether a sweep has completed too, because "nothing has
+  looked at all" and "the gate has swept but rendered nothing" are different
+  situations on the same install. A reading was made: `applications` is present,
+  and **empty** only when that reading served no Application at all. The
+  separation is load-bearing rather than tidy: a sweep stamps itself only once
+  every pull request it started has been answered, and the reading happens
+  inside that, so a process that gated its rows on the sweep would deny holding
+  a fleet it was holding. Absence inside a row is its own answer too: a row with
+  no `cluster` is one whose destination resolved to no cluster the inventory
+  knows, which is two ArgoCD reads disagreeing rather than an Application with
+  nowhere to go.
 
 One consequence worth knowing before it surprises anybody: with
 `supervise.enabled: false` there is no sweep to read, so `pipeline_report`
@@ -315,6 +366,11 @@ they are the list to weigh before publishing the port:
 - `verdict_history` — the verdicts the gate reached on that pull request's
   earlier head commits, with their commits and the gate's headlines, which name
   blocker counts and kinds.
+- `inventory` — your fleet: Application names, the namespaces those objects
+  live in, and the cluster names they land on. Every Application the install's
+  ArgoCD account can list, not only those of the gated repository, so this is
+  the entry to weigh if that account is broader than the team holding the
+  token.
 
 It serves **no credential**, no prompt, and no rendered diff — no field path
 from any tool result can reach one, and that is a compile-time property rather

@@ -463,6 +463,18 @@ than computed in the pod -- a gate with no database keeps its memory as HTML
 comments inside its own comment on the pull request, so the result names that
 comment as its source and publishes the cap on how many verdicts it remembers.
 
+A platform engineer's agent asks `inventory` what this fleet runs and gets
+every Application the last live reading of ArgoCD served, with the cluster each
+one lands on -- the answer that otherwise needs a cluster credential of its
+own, for a reading this pod already makes on every gate run and used to throw
+away. **Names and clusters only**: no manifest, no values file and no rendered
+object crosses that boundary, by any argument, and the result type has nowhere
+to put one. **Its age is not the sweep's**, and that is the sentence to read
+before trusting a row: the reading is made when the gate renders a pull
+request, so an install with none open makes none and the fleet stays as old as
+the last one. Every row carries when it was observed, so the staleness is
+readable rather than assumed, and no tool call is allowed to go and refresh it.
+
 **A pull request with no verdict standing is answered as such**, and never as a
 passing one. There are several ways to have no verdict -- a render in flight, a
 verdict already standing on the git host that this process did not re-run, a
@@ -536,6 +548,13 @@ are the list to weigh before you publish the port:
 - `verdict_history` -- the verdicts the gate reached on that pull request's
   earlier head commits, with their commits and the gate's headlines, which name
   blocker counts and kinds.
+- `inventory` -- your fleet: Application names, the namespaces those objects
+  live in, and the cluster names they land on. Every Application the ArgoCD
+  account you gave bosun can list, not only the ones belonging to the
+  repository it gates, so weigh this one against how broad that account is.
+  Chart names, the versions pinned to them and the ApplicationSet names they
+  were generated from are not served yet and will be, so read this entry as
+  the shorter half of what it will eventually disclose.
 
 No credential, no prompt, no rendered diff. The difference is who reads it and
 what they hold -- these answers land in somebody's coding agent, which usually

@@ -105,11 +105,23 @@ func (s *Server) stamp(at time.Time) (*time.Time, *int64, bool) {
 	if at.IsZero() {
 		return nil, nil, false
 	}
+	age := s.since(at)
+	return &at, &age, true
+}
+
+// since is how long ago a moment was, in seconds, floored at zero.
+//
+// Split out of stamp because a row of the fleet inventory carries an age
+// without carrying an absence: it exists only because a reading was made, so
+// there is nothing for the zero time to mean. What it must NOT have is a
+// second answer to "what is a negative age" -- see stamp for why that is
+// answered as zero.
+func (s *Server) since(at time.Time) int64 {
 	age := int64(s.now().Sub(at).Seconds())
 	if age < 0 {
-		age = 0
+		return 0
 	}
-	return &at, &age, true
+	return age
 }
 
 // Tool is one read-only tool.
@@ -179,6 +191,12 @@ func (s *Server) tools() []Tool {
 		Params:      verdictHistoryParams,
 		Result:      History{},
 		Call:        s.verdictHistory,
+	}, {
+		Name:        "inventory",
+		Description: inventoryDescription,
+		Params:      noArguments,
+		Result:      Fleet{},
+		Call:        s.inventory,
 	}}
 }
 
