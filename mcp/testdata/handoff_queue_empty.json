@@ -1,0 +1,12 @@
+{
+  "ageSeconds": 90,
+  "attemptCap": 2,
+  "repository": "example/platform",
+  "status": {
+    "origin": "bosun",
+    "text": "The last gate sweep listed the open pull requests and none of them is waiting on a human. This is a sweep that looked, rather than a gate that could not: a sweep that failed to list says so in sweepError instead."
+  },
+  "swept": true,
+  "sweptAt": "2026-08-30T12:00:00Z",
+  "waiting": []
+}

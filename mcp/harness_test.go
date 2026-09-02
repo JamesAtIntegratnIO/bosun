@@ -184,6 +184,16 @@ func (f *fixture) queue(t *testing.T) Queue {
 	return out
 }
 
+// handoff decodes a handoff_queue result.
+func (f *fixture) handoff(t *testing.T) Handoff {
+	t.Helper()
+	var out Handoff
+	if err := json.Unmarshal(f.call(t, "handoff_queue"), &out); err != nil {
+		t.Fatalf("the result does not decode as a Handoff: %v", err)
+	}
+	return out
+}
+
 // triageStatus decodes a triage_status result for one pull request.
 func (f *fixture) triageStatus(t *testing.T, number int) Triage {
 	t.Helper()
@@ -438,6 +448,34 @@ func blocked() GateStatus {
 			},
 		}},
 	}
+}
+
+// handedOver puts the agent's escalation label on every open pull request in a
+// world, so a fixture built for another tool can be asked of this one.
+//
+// The label is spelled out rather than taken from the constant the handler
+// selects on, because a fixture built from that constant agrees with it by
+// construction: the two would still match after a rename that made the surface
+// select on a label nothing writes. mcp_handoff_test.go in the repository root
+// is the other half, and it takes the label from the agent's own source.
+func handedOver(g GateStatus) GateStatus {
+	for i := range g.Open {
+		g.Open[i].Labels = append(g.Open[i].Labels, "needs-human")
+	}
+	return g
+}
+
+// escalated is the world handoff_queue was written for: the blocked pull
+// request, with the agent's escalation label standing on it, beside a green
+// one that nobody is waiting on.
+//
+// Two pull requests and one label, because a queue that returned both would be
+// gate_status under another name and every assertion about selection would
+// pass against it.
+func escalated() GateStatus {
+	g := handedOver(blocked())
+	g.Open = append(g.Open, green().Open...)
+	return g
 }
 
 // green is a pull request the gate ran and found nothing wrong with. The

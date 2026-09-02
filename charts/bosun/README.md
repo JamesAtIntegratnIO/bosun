@@ -522,6 +522,8 @@ are the list to weigh before you publish the port:
   helm and schema error strings.
 - `triage_status` -- the labels standing on a pull request, and the attempts it
   has spent against the cap.
+- `handoff_queue` -- which pull requests the agent gave up on, and everything
+  `gate_verdict` reveals about each of them.
 
 No credential, no prompt, no rendered diff. The difference is who reads it and
 what they hold -- these answers land in somebody's coding agent, which usually

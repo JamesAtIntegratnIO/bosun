@@ -56,6 +56,7 @@ func TestNoStampTheGatePublishesSurvivesTheToolSurface(t *testing.T) {
 				`{"name":"gate_verdict","arguments":{"pullRequest":264}}`,
 				`{"name":"gate_status","arguments":{}}`,
 				`{"name":"triage_status","arguments":{"pullRequest":264}}`,
+				`{"name":"handoff_queue","arguments":{}}`,
 			} {
 				body := throughTheWire(t, forged, call)
 				if bytes.Contains(body, []byte(stamp)) {
@@ -106,7 +107,15 @@ func throughTheWire(t *testing.T, text, call string) []byte {
 				SweptAt: time.Date(2026, 8, 30, 11, 59, 0, 0, time.UTC),
 				Open: []mcp.GatePR{{
 					Number: 264, Title: text, HeadSHA: "9f2c1a4b", State: mcp.StateFailing,
-					Labels: []string{text},
+					// The forged label, beside the one that puts this pull
+					// request in the handoff queue: a tool that never returned
+					// it would carry none of the text below, and would pass
+					// every assertion here while publishing whatever it liked.
+					// So the second one is the label the agent actually writes,
+					// read from agent's own source -- a literal here would go
+					// on satisfying this fixture after a rename that made the
+					// handoff arm of this test vacuous.
+					Labels: []string{text, escalationLabel(t)},
 					Verdict: &mcp.GateVerdict{
 						Blocking: true, Headline: "Blocking — 1 setting this bump stops reading",
 						Blockers: mcp.GateBlockers{ValuesDropped: 1},

@@ -92,11 +92,12 @@ func (s *Server) now() time.Time {
 // stamp is when a sweep finished and how long ago, for the three fields every
 // result carries: swept, sweptAt, ageSeconds.
 //
-// One copy of it, because there is one clock guard and four handlers. A
+// One copy of it, because there is one clock guard and a handler per tool. A
 // negative age is answered as zero rather than published: a clock that went
 // backwards between the sweep and the request is a machine's problem, and
 // "-3 seconds old" is a number every client would have to write the same
-// special case for. Four copies of that decision is how three of them keep it.
+// special case for. A copy of that decision per handler is how most of them
+// keep it.
 //
 // The zero time is the before-the-first-sweep case and reports false, which is
 // what makes every caller's absent fields absent for the same reason.
@@ -135,9 +136,10 @@ type Tool struct {
 
 // tools is the registered tool set, bound to this server.
 //
-// One list, built here, rather than a registry a tool adds itself to: with
-// four tools coming, the value of being able to read the whole surface in one
-// place is higher than the value of letting a file register itself.
+// One list, built here, rather than a registry a tool adds itself to: the
+// value of being able to read the whole surface in one place is higher than
+// the value of letting a file register itself, and "what does this disclose"
+// is the question an operator asks before routing anything to this port.
 func (s *Server) tools() []Tool {
 	return []Tool{{
 		Name:        "pipeline_report",
@@ -163,6 +165,12 @@ func (s *Server) tools() []Tool {
 		Params:      triageStatusParams,
 		Result:      Triage{},
 		Call:        s.triageStatus,
+	}, {
+		Name:        "handoff_queue",
+		Description: handoffQueueDescription,
+		Params:      handoffQueueParams,
+		Result:      Handoff{},
+		Call:        s.handoffQueue,
 	}}
 }
 
@@ -280,10 +288,11 @@ func (s *Server) callTool(r *http.Request, params json.RawMessage) (any, *rpcErr
 
 // pullRequestArgs is the argument every per-pull-request tool takes.
 //
-// One type and one reading of it, rather than one per tool: the two tools that
+// One type and one reading of it, rather than one per tool: the tools that
 // take these are asking about the same object with the same words, and a
 // second copy of the parse is a second answer to "is 0 a pull request" waiting
-// to be given.
+// to be given. The repository half of it is checked by watches, which is also
+// what qualifier calls for a tool that takes the qualifier and no number.
 type pullRequestArgs struct {
 	PullRequest int    `json:"pullRequest"`
 	Repository  string `json:"repository"`
@@ -307,16 +316,49 @@ func (s *Server) pullRequest(raw json.RawMessage) (int, error) {
 	if args.PullRequest < 1 {
 		return 0, fmt.Errorf("pullRequest must be the number of a pull request")
 	}
-	if args.Repository != "" && args.Repository != s.Repository {
-		// The caller's own string is deliberately not echoed back. It would
-		// travel through the redactor and the comment stripper like anything
-		// else, and there is still no reason to put text this process did not
-		// author into a message a client renders when it has nothing to say
-		// with it. Naming the install's own repository answers the question
-		// the caller was actually asking.
-		return 0, fmt.Errorf("this install watches %s and nothing else", s.Repository)
+	if err := s.watches(args.Repository); err != nil {
+		return 0, err
 	}
 	return args.PullRequest, nil
+}
+
+// repositoryArgs is the argument a tool that asks about the whole install
+// takes: the qualifier, and nothing else.
+//
+// Its own type rather than pullRequestArgs reused, because encoding/json
+// ignores a field a struct does not have and reusing that one would silently
+// accept a `pullRequest` these tools publish no schema for -- answering about
+// the whole install a caller that believed it had asked about one pull
+// request.
+type repositoryArgs struct {
+	Repository string `json:"repository"`
+}
+
+// qualifier reads the optional repository a whole-install tool takes, or the
+// refusal to hand back.
+func (s *Server) qualifier(raw json.RawMessage) error {
+	var args repositoryArgs
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &args); err != nil {
+			return fmt.Errorf("arguments are not an object with an optional repository")
+		}
+	}
+	return s.watches(args.Repository)
+}
+
+// watches refuses a caller that named a repository this install does not
+// watch, and is the one answer to that question on this surface.
+//
+// The caller's own string is deliberately not echoed back. It would travel
+// through the redactor and the comment stripper like anything else, and there
+// is still no reason to put text this process did not author into a message a
+// client renders when it has nothing to say with it. Naming the install's own
+// repository answers the question the caller was actually asking.
+func (s *Server) watches(repository string) error {
+	if repository == "" || repository == s.Repository {
+		return nil
+	}
+	return fmt.Errorf("this install watches %s and nothing else", s.Repository)
 }
 
 // remoteAddr is who asked, for the audit line.
