@@ -11,6 +11,30 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.34.3]
+
+**Prose only.** No values change, no template change, and `appVersion` does not
+move: the chart deploys the same image 0.34.0 does.
+
+### Changed
+
+- **The MCP surface's disclosure note names the facts each tool serves, rather
+  than the field they live in.** 0.34.2 gave the note one entry per tool and
+  deliberately kept the substance of the flat sentence it replaced, which ended
+  "the findings and their remedies" -- a pointer to the results rather than an
+  account of them. Each entry now names what that phrasing only implied: the
+  cluster names, the repository paths of manifests still declaring a dropped
+  version, and the values keys a bump stops reading, all behind a
+  `gate_verdict` finding; the namespaces a `pipeline_report` sweep examined,
+  and the namespace and Stage its remedy commands carry; and the head commits
+  `gate_status` stamps its queue with, beside what stopped a sweep that could
+  not list. Nothing the surface serves changed -- the list an operator weighs
+  before publishing the port stopped being coarser than the results it
+  describes.
+- **The status page's own note names the namespaces it prints.** The page has
+  rendered them in its "Checked" line for as long as the report has; the
+  sentence beside it had not said so.
+
 ## [0.34.1]
 
 **Prose only.** No values change, no template change, and `appVersion` does not

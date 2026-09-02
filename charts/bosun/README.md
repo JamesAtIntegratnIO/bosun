@@ -372,10 +372,11 @@ it.
 
 **Neither route adds authentication, and the page has none of its own.** What
 it reveals is operational state: the repository's name, the titles of open pull
-requests, your Stage and Warehouse names, and the findings with their remedies.
-No credential, no prompt, no rendered diff. Treat it as read access to your
-pipeline's status, because that is what it is, and put your gateway's
-authentication in front of it if that is more than you want published.
+requests, your Stage and Warehouse names, the namespaces the sweep examined,
+and the findings with their remedies. No credential, no prompt, no rendered
+diff. Treat it as read access to your pipeline's status, because that is what
+it is, and put your gateway's authentication in front of it if that is more
+than you want published.
 
 `web.theme` picks which of the two treatments it renders in: `auto` (the
 default) follows the reader's own system preference, `dark` and `light` stamp
@@ -513,13 +514,18 @@ namespace. A NetworkPolicy and a gateway both draw their lines at the port.
 result names the repository; past that, one entry per tool, and together they
 are the list to weigh before you publish the port:
 
-- `pipeline_report` -- your Stage and Warehouse names, and the findings with
-  their remedies.
-- `gate_status` -- the titles of the open pull requests, and the blocker counts
-  standing against them.
-- `gate_verdict` -- the same for the one asked about, plus your Application and
-  rendered-object names, the chart versions on either side of the bump, and the
-  helm and schema error strings.
+- `pipeline_report` -- your Stage and Warehouse names, the namespaces the sweep
+  examined, and the findings with their remedies: the evidence quotes Kargo's
+  own error strings, and a remedy command names the namespace and the Stage it
+  acts on.
+- `gate_status` -- the titles of the open pull requests, the head commits they
+  stand against, the blocker counts standing on them, and what stopped a sweep
+  that could not list.
+- `gate_verdict` -- the same for the one asked about, plus your Application,
+  rendered-object and cluster names, the chart versions on either side of the
+  bump, the helm and schema error strings, the repository paths of the
+  manifests still declaring a dropped version, and the values keys the bump
+  stops reading.
 - `triage_status` -- the labels standing on a pull request, and the attempts it
   has spent against the cap.
 

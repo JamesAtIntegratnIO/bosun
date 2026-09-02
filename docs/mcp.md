@@ -228,13 +228,18 @@ start-up log says what it is doing, in those words, every time.
 Every result names the repository; past that, one entry per tool, and together
 they are the list to weigh before publishing the port:
 
-- `pipeline_report` — your Stage and Warehouse names, and the findings with
-  their remedies.
-- `gate_status` — the titles of the open pull requests, and the blocker counts
-  standing against them.
-- `gate_verdict` — the same for the one asked about, plus your Application and
-  rendered-object names, the chart versions on either side of the bump, and the
-  helm and schema error strings.
+- `pipeline_report` — your Stage and Warehouse names, the namespaces the sweep
+  examined, and the findings with their remedies: the evidence quotes Kargo's
+  own error strings, and a remedy command names the namespace and the Stage it
+  acts on.
+- `gate_status` — the titles of the open pull requests, the head commits they
+  stand against, the blocker counts standing on them, and what stopped a sweep
+  that could not list.
+- `gate_verdict` — the same for the one asked about, plus your Application,
+  rendered-object and cluster names, the chart versions on either side of the
+  bump, the helm and schema error strings, the repository paths of the
+  manifests still declaring a dropped version, and the values keys the bump
+  stops reading.
 - `triage_status` — the labels standing on a pull request, and the attempts it
   has spent against the cap.
 
@@ -246,10 +251,12 @@ than a filter, described in
 What it does serve is **operational metadata**: the same class of org-internal
 fact a cluster-wide read of Applications exposes.
 [The status page](../charts/bosun/README.md#the-status-page) carries the same
-disclosure over a narrower list — this surface adds the chart versions, the
-rendered-object names, and the helm and schema error strings — and on both it is
-what to weigh before publishing beyond the cluster. Treat the token as read
-access to your pipeline's status handed to a program.
+kind of disclosure over a shorter list — the repository, the open pull
+requests, your Stage and Warehouse names, the namespaces, and the findings with
+their remedies — and it stops there: the gate-side detail behind a verdict, and
+the labels and attempt counts beside it, appear only here. On both it is what
+to weigh before publishing beyond the cluster. Treat the token as read access
+to your pipeline's status handed to a program.
 
 The difference between the two surfaces is who reads them and what they hold.
 These answers land in somebody's coding agent, which usually has a shell, a

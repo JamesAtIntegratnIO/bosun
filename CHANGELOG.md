@@ -52,11 +52,13 @@ All notable changes to `bosun`. Format follows
 
   The disclosure is stated where somebody deciding whether to publish the port
   will read it, beside the status page's own note and saying the same thing over
-  a wider list: operational metadata is served -- Stage and Application names,
-  chart versions, findings and their remedies, pull-request titles and labels,
-  and the helm and schema error strings the page does not carry -- and no
-  credential is. The difference between the two surfaces is who reads them and
-  what they hold.
+  a wider list, one entry per tool: operational metadata is served -- Stage,
+  Warehouse, Application, rendered-object and cluster names, the namespaces a
+  sweep examined, chart versions, findings with their remedies, pull-request
+  titles, head commits and labels, the repository paths and values keys behind a
+  gate finding, and the helm and schema error strings the page does not
+  carry -- and no credential is. The difference between the two surfaces is who
+  reads them and what they hold.
 
   The safety model's section for this surface now separates what is enforced --
   no mutation, no live read, no configuration reach, redaction, composed
