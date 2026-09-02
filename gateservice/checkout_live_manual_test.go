@@ -34,7 +34,7 @@ func TestLiveMergeBase(t *testing.T) {
 		base = "main"
 	}
 
-	gs := &Service{RepoURL: repo, Log: t.Logf}
+	gs := &Service{Remote: gitprovider.NewRemote(repo), Log: t.Logf}
 	cmp, err := gs.checkout(context.Background(), &gitprovider.PullRequest{
 		Branch: branch, BaseBranch: base, HeadSHA: os.Getenv("PROBE_HEAD"),
 	})

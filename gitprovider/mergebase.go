@@ -3,6 +3,7 @@ package gitprovider
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -51,7 +52,7 @@ var deepenTo = []int{64, 1024}
 // Both refs reach git's argv and both arrive in a git host's JSON, so both are
 // checked first: a value beginning with "-" is read as an option, and
 // `--upload-pack=...` is a command.
-func MergeBase(ctx context.Context, dir, headRef, baseRef string) (string, error) {
+func MergeBase(ctx context.Context, r Remote, dir, headRef, baseRef string) (string, error) {
 	for name, ref := range map[string]string{"head": headRef, "base": baseRef} {
 		if ref == "" {
 			return "", fmt.Errorf("no %s revision to find a merge base from", name)
@@ -65,7 +66,7 @@ func MergeBase(ctx context.Context, dir, headRef, baseRef string) (string, error
 	// not shallow -- the agent's own worktree is one on some paths -- this is
 	// the whole job, and the ladder below would fetch a thousand commits to
 	// learn what git already knew.
-	if err := fetchBase(ctx, dir, baseRef, "--depth", "1"); err != nil {
+	if err := fetchBase(ctx, r, dir, baseRef, "--depth", "1"); err != nil {
 		return "", err
 	}
 	if sha, err := gitLine(ctx, dir, "merge-base", mergeBaseRef, "HEAD"); err == nil {
@@ -81,10 +82,10 @@ func MergeBase(ctx context.Context, dir, headRef, baseRef string) (string, error
 		// question unanswerable, because deepening the base alone reaches the
 		// branch point from the other direction. Giving up here would turn a
 		// host's reticence into a refusal to gate.
-		if err := gitFetch(ctx, dir, "--depth", depthArg, "origin", headRef); err != nil {
+		if err := gitFetch(ctx, r, dir, "--depth", depthArg, "origin", headRef); err != nil {
 			headErr = err
 		}
-		if err := fetchBase(ctx, dir, baseRef, "--depth", depthArg); err != nil {
+		if err := fetchBase(ctx, r, dir, baseRef, "--depth", depthArg); err != nil {
 			return "", err
 		}
 		sha, err := gitLine(ctx, dir, "merge-base", mergeBaseRef, "HEAD")
@@ -98,14 +99,14 @@ func MergeBase(ctx context.Context, dir, headRef, baseRef string) (string, error
 	// Rare enough to be worth the cost when it happens: a branch more than a
 	// thousand commits behind its base is one somebody has forgotten, and the
 	// wrong answer on it is a report claiming it removes the last year of work.
-	if err := gitFetch(ctx, dir, "--unshallow", "origin"); err != nil {
+	if err := gitFetch(ctx, r, dir, "--unshallow", "origin"); err != nil {
 		// A repository that is already complete refuses --unshallow, which is
 		// not a failure to fetch: the history is there either way.
 		if !strings.Contains(err.Error(), "does not make sense") {
 			return "", err
 		}
 	}
-	if err := fetchBase(ctx, dir, baseRef); err != nil {
+	if err := fetchBase(ctx, r, dir, baseRef); err != nil {
 		return "", err
 	}
 	sha, err := gitLine(ctx, dir, "merge-base", mergeBaseRef, "HEAD")
@@ -131,11 +132,11 @@ func MergeBase(ctx context.Context, dir, headRef, baseRef string) (string, error
 // branch, and `<sha>:refs/…` is the form a server is entitled to refuse.
 // Fetching by name and naming the result afterwards asks nothing of the host
 // that EnsureHead does not already ask.
-func fetchBase(ctx context.Context, dir, baseRef string, args ...string) error {
+func fetchBase(ctx context.Context, r Remote, dir, baseRef string, args ...string) error {
 	// A fresh slice rather than appending to args, which is the caller's and
 	// would be written through on any call that had spare capacity.
 	fetch := append(append([]string{}, args...), "origin", baseRef)
-	if err := gitFetch(ctx, dir, fetch...); err != nil {
+	if err := gitFetch(ctx, r, dir, fetch...); err != nil {
 		return err
 	}
 	return gitRun(ctx, dir, "update-ref", mergeBaseRef, "FETCH_HEAD")
@@ -144,8 +145,23 @@ func fetchBase(ctx context.Context, dir, baseRef string, args ...string) error {
 // gitRun runs one git command in dir, with its stderr in the error, because
 // "exit status 128" is the same sentence for every way this can fail.
 func gitRun(ctx context.Context, dir string, args ...string) error {
+	return gitEnvRun(ctx, nil, dir, args...)
+}
+
+// gitEnvRun is gitRun with an environment, for the commands that contact a
+// remote and therefore need a credential.
+//
+// Separate rather than a variadic on gitRun, so that the local commands --
+// merge-base, update-ref, rev-parse -- keep running with nothing added to
+// their environment. A credential in the environment of a process that has no
+// use for it is readable from /proc/<pid>/environ for as long as it runs, and
+// the cheapest way not to leak one is not to hand it over.
+func gitEnvRun(ctx context.Context, env []string, dir string, args ...string) error {
 	full := withoutBackgroundMaintenance(append([]string{"-C", dir}, args...)...)
 	cmd := exec.CommandContext(ctx, "git", full...)
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {

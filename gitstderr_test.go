@@ -21,14 +21,17 @@ import (
 // ever given a secret to echo".
 //
 // That last clause was wrong, and the thing that makes it wrong is one
-// environment variable. Every one of those commands runs against `origin`, and
-// origin's URL is GIT_REPO_URL verbatim -- agent/triage.go and
-// gateservice/checkout.go and supervisor/supervisor.go each clone from it, and
-// gitprovider strips the userinfo out of the push remote precisely because an
-// operator may have put a credential in it. An install configured that way has
-// handed a secret to every git command here, not through pushAuthEnv and not
-// in argv, but in the conversation with the remote -- which is the channel the
-// original reasoning was always about. git repeats what the server says.
+// environment variable. Every one of those commands runs against `origin`,
+// whose URL was GIT_REPO_URL verbatim, credential and all -- gitprovider had
+// always stripped the userinfo out of the push remote precisely because an
+// operator may have put one there. An install configured that way had handed a
+// secret to every git command here: not through the push path and not in argv,
+// but in the conversation with the remote, which is the channel the original
+// reasoning was always about. git repeats what the server says.
+//
+// The credential no longer travels in origin -- gitprovider.Remote moved it
+// into the environment, per command -- but a host that echoes one back is
+// echoing what it was sent either way, so this rule is unchanged by that.
 //
 // So the rule is now the mechanism with nothing left of the list: a function
 // that starts `git` and then reads the buffer it gave that subprocess for its
@@ -87,12 +90,23 @@ func TestEveryGitSubprocessRedactsItsStderr(t *testing.T) {
 		}
 	}
 
-	// The self-check, and not optional. Nine call sites start git and read its
-	// stderr, across four packages; anything less means the walk has stopped
-	// seeing what it reads -- a command built some other way, a stderr buffer
-	// captured some other way -- and a test that checked nothing reports
-	// exactly like a test that passed.
-	if guarded < 9 || checked < 9 {
+	// The self-check, and not optional. Eight call sites start git and read its
+	// stderr; anything less means the walk has stopped seeing what it reads --
+	// a command built some other way, a stderr buffer captured some other way
+	// -- and a test that checked nothing reports exactly like a test that
+	// passed.
+	//
+	// It was nine, and it fell by exactly one when the clones were
+	// consolidated into gitprovider.Clone. Two of the three were counted units
+	// and are gone -- agent's own clone, and the supervisor's -- while the
+	// gate service's never was one: it spelled `gitRun(ctx, "clone", …)` and
+	// gitRun still runs the local `worktree add`, so it still counts. Two
+	// removed, one added. Doing that arithmetic as "three became one" gives
+	// seven and makes this figure look falsified, which is the reading a
+	// reviewer should have: a floor lowered to make a blind walk pass is
+	// indistinguishable from a floor lowered because a call site went away,
+	// and only checking the walk against the code tells them apart.
+	if guarded < 8 || checked < 8 {
 		t.Fatalf("found %d git commands and %d stderr reads among them; this process runs "+
 			"more git than that, so this walk is no longer seeing them. Fix the walk -- "+
 			"do not lower these numbers.", guarded, checked)

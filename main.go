@@ -80,6 +80,12 @@ func main() {
 	// reach a log or a pull-request comment by being printed on purpose; it
 	// reaches one by being echoed back inside somebody else's error string.
 	redact.Prime(cfg.Secrets()...)
+	// One remote for everything that clones or fetches. Built here rather than
+	// at each call site because it is what splits the configured URL into the
+	// address git is given and the credential it is given separately, and a
+	// second place to do that is a second place to get it wrong -- which, on
+	// this particular split, means a token back in argv.
+	remote := gitprovider.NewRemote(cfg.GitRepoURL)
 	if cfg.NormaliseLegacyAuthor() {
 		logger.Print("ignoring the legacy author bosun <bosun@users.noreply.github.com>: " +
 			"that is the noreply address of an unrelated GitHub account; deriving the commit identity instead")
@@ -191,7 +197,7 @@ func main() {
 		Upstream:        upstreamResolver(cfg, upstreamToken, egressPolicy),
 		Egress:          egressPolicy,
 		CloneRoot:       cfg.CloneRoot,
-		RepoURL:         cfg.GitRepoURL,
+		Remote:          remote,
 		Log:             func(f string, a ...any) { logger.Printf(f, a...) },
 	}
 
@@ -274,7 +280,7 @@ func main() {
 		// inventory, plus `applications, get` and `applicationsets, get`.
 		Derive:      argo.Derive,
 		CheckName:   cfg.CheckName,
-		RepoURL:     cfg.GitRepoURL,
+		Remote:      remote,
 		CloneRoot:   cfg.CloneRoot,
 		ForkPRs:     cfg.GateForkPRs,
 		Poll:        cfg.GatePoll,
@@ -344,7 +350,7 @@ func main() {
 			Log:       func(f string, a ...any) { logger.Printf(f, a...) },
 			// The default branch, because a pin that writes nowhere is a
 			// property of what is merged.
-			Checkout: supervisor.ShallowCheckout(cfg.GitRepoURL, "", cfg.CloneRoot),
+			Checkout: supervisor.ShallowCheckout(remote, "", cfg.CloneRoot),
 		}
 	}
 
@@ -364,7 +370,7 @@ func main() {
 		}(),
 		Version:    cfg.Version,
 		Repo:       cfg.GitOwner + "/" + cfg.GitRepo,
-		RepoLink:   repoLink(cfg.GitRepoURL),
+		RepoLink:   repoLink(remote.URL()),
 		CheckName:  cfg.CheckName,
 		Model:      model.Name(),
 		GatePoll:   cfg.GatePoll,
@@ -631,7 +637,17 @@ func egressLine(cfg *Config) string {
 // link, and the page then names the repository without one, rather than
 // guessing at a web root that may not exist.
 func repoLink(cloneURL string) string {
-	u := strings.TrimSuffix(strings.TrimSpace(cloneURL), ".git")
+	// Through Remote first, because this string is rendered into a page a
+	// browser loads. An operator who wrote a credential into GIT_REPO_URL had
+	// it published as the repository link on the status page -- the one
+	// surface built for a person to look at -- and nothing about that link
+	// said it carried a token.
+	//
+	// The caller already passes a cleaned URL, so this is the second of two.
+	// Kept because this function is what produces the href: a later caller
+	// reaching for it with the configured string is the likely mistake, and it
+	// is the one that would publish. This is the copy the test drives.
+	u := strings.TrimSuffix(strings.TrimSpace(gitprovider.NewRemote(cloneURL).URL()), ".git")
 	if strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
 		return u
 	}

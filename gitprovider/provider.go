@@ -15,8 +15,8 @@ package gitprovider
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -233,8 +233,13 @@ type gitStep struct {
 	env  []string
 }
 
-// pushAuthEnv hands git the push credential through the environment rather
-// than the command line.
+// authHeaderEnv hands git a credential through the environment rather than the
+// command line.
+//
+// Named for the push because that is where it started, and shared with the
+// clone path since: a credential an operator wrote into GIT_REPO_URL reached
+// argv exactly the way the push token used to. See Remote, which is what the
+// clone side holds.
 //
 // Both providers used to spell the credential into the remote URL,
 // https://x-access-token:<token>@host/owner/repo.git, and pass that to
@@ -254,12 +259,11 @@ type gitStep struct {
 // and this header is a bearer credential for exactly one of them. A redirect
 // away from that host does not carry it either: curl drops an Authorization
 // header when the origin changes.
-func pushAuthEnv(remote, user, token string) []string {
-	cred := base64.StdEncoding.EncodeToString([]byte(user + ":" + token))
+func authHeaderEnv(remote, user, token string) []string {
 	return []string{
 		"GIT_CONFIG_COUNT=1",
 		"GIT_CONFIG_KEY_0=http." + remote + ".extraHeader",
-		"GIT_CONFIG_VALUE_0=Authorization: Basic " + cred,
+		"GIT_CONFIG_VALUE_0=Authorization: Basic " + basicAuth(user+":"+token),
 	}
 }
 
@@ -293,7 +297,7 @@ var gitRefName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)
 //
 // An empty want is not an error. Some hosts, and every fake, hand back a pull
 // request with no head SHA; there is nothing to pin to and nothing to betray.
-func EnsureHead(ctx context.Context, dir, want string) error {
+func EnsureHead(ctx context.Context, r Remote, dir, want string) error {
 	if want == "" {
 		return nil
 	}
@@ -311,11 +315,17 @@ func EnsureHead(ctx context.Context, dir, want string) error {
 	// several into the same checkout: MergeBase's deepening ladder follows it
 	// within milliseconds, and a background pass left running here is the one
 	// that rewrites .git/shallow underneath it.
-	for _, args := range [][]string{
-		{"-C", dir, "fetch", "--quiet", "--depth", "1", "origin", want},
-		{"-C", dir, "checkout", "--quiet", "--detach", "FETCH_HEAD"},
+	// The fetch talks to the host and the checkout does not, so only the
+	// fetch is given the credential: see gitEnvRun for why a process that has
+	// no use for one is not handed it.
+	for _, step := range []gitStep{
+		{args: []string{"-C", dir, "fetch", "--quiet", "--depth", "1", "origin", want}, env: r.Env()},
+		{args: []string{"-C", dir, "checkout", "--quiet", "--detach", "FETCH_HEAD"}},
 	} {
-		cmd := exec.CommandContext(ctx, "git", withoutBackgroundMaintenance(args...)...)
+		cmd := exec.CommandContext(ctx, "git", withoutBackgroundMaintenance(step.args...)...)
+		if len(step.env) > 0 {
+			cmd.Env = append(os.Environ(), step.env...)
+		}
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {

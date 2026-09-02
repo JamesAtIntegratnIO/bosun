@@ -83,7 +83,7 @@ func (t *Triage) repairValues(ctx context.Context, pr *gitprovider.PullRequest,
 	// this pull request actually holds, read from git, rather than the file
 	// list the promotion body claims. It is the wider of the two candidate
 	// lists below and the one a caller could otherwise inflate.
-	scope, err := scopeFor(ctx, root, pr)
+	scope, err := t.scopeFor(ctx, root, pr)
 	if err != nil {
 		t.say(ctx, pr, "escalated: could not establish which files this pull request changes")
 		return t.escalate(ctx, pr, fmt.Sprintf(

@@ -371,7 +371,7 @@ func (g *GitHub) AddLabel(ctx context.Context, number int, label string) error {
 // Uses git over HTTPS rather than the API's blob/tree endpoints: it is a
 // handful of commands, it produces an ordinary commit, and it works
 // identically for any host once the URL changes. The token authenticates the
-// push through the environment, see pushAuthEnv, and appears in no argument.
+// push through the environment, see authHeaderEnv, and appears in no argument.
 //
 // The push target is always the pull request's own branch. There is no code
 // path here that writes to the default branch.
@@ -413,7 +413,7 @@ func (g *GitHub) PushFix(ctx context.Context, pr *PullRequest, root, message str
 		// token; the token is the password.
 		{
 			args: []string{"git", "-C", root, "push", remote, "HEAD:" + pr.Branch},
-			env:  pushAuthEnv(remote, "x-access-token", tok),
+			env:  authHeaderEnv(remote, "x-access-token", tok),
 		},
 	}
 	for _, s := range steps {
@@ -444,7 +444,7 @@ func (g *GitHub) PushFix(ctx context.Context, pr *PullRequest, root, message str
 }
 
 // pushRemote is where the fix is pushed. No credential in it: the token
-// travels in the environment, see pushAuthEnv.
+// travels in the environment, see authHeaderEnv.
 //
 // Built from the configured repository URL, not from github.com. APIBase has
 // supported GitHub Enterprise since this provider was written, so an

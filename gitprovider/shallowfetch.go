@@ -68,11 +68,17 @@ const staleShallowRead = "shallow file has changed since we read it"
 // window. Since the error means nothing was written, a second attempt reads
 // the file afresh and proceeds -- a better answer than a merge gate that
 // abstains because an inode moved.
-func gitFetch(ctx context.Context, dir string, args ...string) error {
+// The remote is threaded in because a fetch is one of the commands that talks
+// to a host, and since the clone stopped embedding the credential in origin's
+// URL there is nothing in the checkout for git to authenticate with. This is
+// ArgoCD's arrangement and its reason: the stored remote is clean, and the
+// credential is attached per-command, to the commands that contact a remote
+// and to no others.
+func gitFetch(ctx context.Context, r Remote, dir string, args ...string) error {
 	full := append([]string{"fetch", "--quiet"}, args...)
-	err := gitRun(ctx, dir, full...)
+	err := gitEnvRun(ctx, r.Env(), dir, full...)
 	if err == nil || !strings.Contains(err.Error(), staleShallowRead) {
 		return err
 	}
-	return gitRun(ctx, dir, full...)
+	return gitEnvRun(ctx, r.Env(), dir, full...)
 }

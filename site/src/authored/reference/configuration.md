@@ -62,7 +62,7 @@ wrong surfaces as a rejected token, the symptom of a dozen unrelated mistakes.
 | `git.provider` | `GIT_PROVIDER` | `github` | `github`, `gitea` implemented; `gitlab`, `bitbucket` are extension points |
 | `git.owner` | `GIT_OWNER` | n/a | **REQUIRED** |
 | `git.repo` | `GIT_REPO` | n/a | **REQUIRED** |
-| `git.repoURL` | `GIT_REPO_URL` | n/a | **REQUIRED**. Clone URL, reachable from the cluster |
+| `git.repoURL` | `GIT_REPO_URL` | n/a | **REQUIRED**. Clone URL, reachable from the cluster. A credential embedded in it is taken out before git is run and supplied through the environment, so it reaches neither a command line nor the status page's repository link |
 | `git.existingSecret` | n/a | n/a | **REQUIRED**. Existing Secret holding the credential; the chart creates none |
 | `git.tokenKey` | → `GIT_TOKEN` | `token` | Key within that Secret. Its **value** becomes `GIT_TOKEN`, which is the name the startup error uses |
 | `git.apiBase` | `GIT_API_BASE` | *(unset)* | See below; it means different things per host |

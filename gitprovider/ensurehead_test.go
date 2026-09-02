@@ -43,12 +43,12 @@ func commitRepo(t *testing.T) (dir, sha string) {
 // against commit A, a green verdict standing over a commit nothing inspected.
 func TestEnsureHeadAcceptsTheCommitItWasPromised(t *testing.T) {
 	dir, sha := commitRepo(t)
-	if err := EnsureHead(context.Background(), dir, sha); err != nil {
+	if err := EnsureHead(context.Background(), Remote{}, dir, sha); err != nil {
 		t.Fatalf("the checkout is at %s: %v", sha, err)
 	}
 	// Abbreviated SHAs are what a host's short form gives, and they are the
 	// same commit.
-	if err := EnsureHead(context.Background(), dir, sha[:10]); err != nil {
+	if err := EnsureHead(context.Background(), Remote{}, dir, sha[:10]); err != nil {
 		t.Fatalf("abbreviated SHA: %v", err)
 	}
 }
@@ -58,7 +58,7 @@ func TestEnsureHeadRefusesADifferentCommit(t *testing.T) {
 	// A real, well-formed object name that this checkout is not at, and that
 	// no origin can serve, the branch-moved-and-cannot-be-fetched case.
 	other := "0123456789abcdef0123456789abcdef01234567"
-	err := EnsureHead(context.Background(), dir, other)
+	err := EnsureHead(context.Background(), Remote{}, dir, other)
 	if err == nil {
 		t.Fatal("want a refusal for a commit the checkout is not at")
 	}
@@ -71,7 +71,7 @@ func TestEnsureHeadRefusesADifferentCommit(t *testing.T) {
 // not an error; it is the absence of a promise.
 func TestEnsureHeadIsANoOpWithoutASHA(t *testing.T) {
 	dir, _ := commitRepo(t)
-	if err := EnsureHead(context.Background(), dir, ""); err != nil {
+	if err := EnsureHead(context.Background(), Remote{}, dir, ""); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -81,7 +81,7 @@ func TestEnsureHeadIsANoOpWithoutASHA(t *testing.T) {
 func TestEnsureHeadRefusesSomethingThatIsNotAnObjectName(t *testing.T) {
 	dir, _ := commitRepo(t)
 	for _, bad := range []string{"--upload-pack=touch /tmp/pwned", "main", "-x", "refs/heads/main"} {
-		if err := EnsureHead(context.Background(), dir, bad); err == nil ||
+		if err := EnsureHead(context.Background(), Remote{}, dir, bad); err == nil ||
 			!strings.Contains(err.Error(), "not a git object name") {
 			t.Errorf("%q: want the object-name refusal, got %v", bad, err)
 		}

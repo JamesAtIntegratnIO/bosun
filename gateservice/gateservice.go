@@ -62,7 +62,7 @@ type Service struct {
 	// the same name the gate reported under when it ran in CI, so moving it
 	// in-cluster changed nothing about protection rules.
 	CheckName string
-	RepoURL   string
+	Remote    gitprovider.Remote
 	CloneRoot string
 	// ForkPRs renders pull requests whose head branch lives in another
 	// repository. Off by default: the render runs helm over the pull
@@ -419,7 +419,7 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 	// and a smaller scope reports no change with total confidence.
 	var derived *gate.Derivation
 	if g.Derive != nil {
-		derived, err = g.Derive(ctx, g.RepoURL)
+		derived, err = g.Derive(ctx, g.Remote.URL())
 		if err != nil {
 			return g.broke(ctx, pr, fmt.Errorf("deriving what this repository deploys: %w", err))
 		}

@@ -45,7 +45,7 @@ func TestEnsureHeadRedactsWhatGitPrintsAboutTheRemote(t *testing.T) {
 	t.Cleanup(func() { redact.Prime() })
 	redact.Prime(sentinel)
 
-	err := EnsureHead(context.Background(), dir, "0123456789abcdef0123456789abcdef01234567")
+	err := EnsureHead(context.Background(), Remote{}, dir, "0123456789abcdef0123456789abcdef01234567")
 	if err == nil {
 		t.Fatal("want a refusal: the checkout is not at that commit and no origin can serve it")
 	}

@@ -63,7 +63,7 @@ func TestTwoRevisionCheckout(t *testing.T) {
 	o.git("checkout", "--quiet", "-b", "kargo/bump")
 	o.commit("pin.yaml", "version: 2\n", "bump")
 
-	gs := &Service{RepoURL: o.dir, Log: t.Logf}
+	gs := &Service{Remote: gitprovider.NewRemote(o.dir), Log: t.Logf}
 	cmp, err := gs.checkout(context.Background(),
 		&gitprovider.PullRequest{Branch: "kargo/bump", BaseBranch: "main"})
 	if err != nil {
@@ -108,7 +108,7 @@ func TestTheBaseIsTheMergeBaseNotTheBaseBranchTip(t *testing.T) {
 	o.git("checkout", "--quiet", "main")
 	o.commit("other.yaml", "landed: true\n", "another pull request")
 
-	gs := &Service{RepoURL: o.dir, Log: t.Logf}
+	gs := &Service{Remote: gitprovider.NewRemote(o.dir), Log: t.Logf}
 	cmp, err := gs.checkout(context.Background(),
 		&gitprovider.PullRequest{Branch: "kargo/bump", BaseBranch: "main"})
 	if err != nil {
