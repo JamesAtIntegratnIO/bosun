@@ -75,7 +75,7 @@ func TestAHostileNameYieldsAFindingWithNoRemedy(t *testing.T) {
 // one is the property, and it is the half that covers a detector written next
 // year by someone who composed its command the obvious way.
 //
-// The kinds it must reach come from allKinds, which TestEveryKindHasAMetricSeries
+// The kinds it must reach come from allKinds, which TestEveryKindIsEmittedEvenAtZero
 // already pins to the const block. So a new detector is a new kind, a new kind
 // is a row this fixture does not produce, and the self-check below fails with
 // the kind named rather than passing over a detector nobody tested.
