@@ -12,6 +12,7 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/egress"
 	"github.com/JamesAtIntegratnIO/bosun/gate"
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
+	"github.com/JamesAtIntegratnIO/bosun/redact"
 	"github.com/JamesAtIntegratnIO/bosun/structural"
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
@@ -175,7 +176,11 @@ func (t *Triage) renderTargetCRDs(ctx context.Context, root string, p Promotion)
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Sprintf("could not render %s %s (%s)", ref, p.To,
-			firstLineOf(strings.TrimSpace(errb.String())))
+			// Redaction before firstLineOf, which keeps one line and caps it
+			// at 200 bytes: a secret cut by either would no longer match the
+			// rule that removes it, and the fragment left behind would sit in
+			// text now carrying no marker to say so.
+			firstLineOf(strings.TrimSpace(redact.Text(errb.String()))))
 	}
 	return crdSchemasFromStream(out.String()), ""
 }

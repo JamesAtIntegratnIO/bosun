@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"sigs.k8s.io/yaml"
+
+	"github.com/JamesAtIntegratnIO/bosun/redact"
 )
 
 // SchemaFailure is one rendered manifest the target cluster's schemas reject.
@@ -156,7 +158,7 @@ func runKubeconform(ctx context.Context, cfg *Config, doc []byte) ([]kubeconform
 		} `json:"resources"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
-		return nil, fmt.Errorf("%w (stderr: %s)", err, stderr.String())
+		return nil, fmt.Errorf("%w (stderr: %s)", err, redact.Text(stderr.String()))
 	}
 
 	var bad []kubeconformResult

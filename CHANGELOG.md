@@ -357,6 +357,36 @@ All notable changes to `bosun`. Format follows
   github inlined two `ReplaceAll` calls, and only one of the two was reviewed
   when the rules last changed.
 
+- **`helm`, `kustomize` and `kubeconform` redact their stderr too.** The rule
+  that every subprocess's stderr goes through the redactor arrived narrow twice
+  and was widened twice, and both corrections were the same correction. It
+  first qualified a function only if it handed git a push credential; then, on
+  the command being git. The binary was never the reason.
+
+  What makes a subprocess's stderr dangerous is that this process starts it
+  while holding credentials. `cmd.Env` is nil at nearly every call site, and a
+  nil `Env` means the child gets `os.Environ()` -- so a chart render runs with
+  `GIT_TOKEN`, `ARGOCD_TOKEN` and the model key in its environment, and so does
+  `kubeconform`. A plugin, a debug flag or a chart hook that prints its
+  environment puts them on stderr, and stderr is what these three quoted into
+  an error that reaches a log and the gate's published report. The other half
+  is the one git already demonstrated: a chart render pulls from a registry
+  over somebody else's network, and a host that echoes a request header back
+  inside an error body is echoing a credential it was sent.
+
+  The rule is simpler for losing the binary, not more complicated: one
+  condition where there were two, and `gitstderr_test.go` is now
+  `subprocess_stderr_test.go` because the old name had stopped being true. Its
+  self-check went from eight call sites to eleven -- the CRD read, the
+  kubeconform run, and `gate/sources.go`'s runner, which is one function that
+  is `helm`, `kustomize build` or `kubectl kustomize` depending on which
+  binary its caller handed it.
+
+  **Redaction is the second line here and not the first.** The first would be
+  to stop handing every subprocess every credential this process loaded, which
+  is a change to what `helm` runs with rather than to what bosun prints, and it
+  is #122 for that reason.
+
 - **A credential in `GIT_REPO_URL` no longer reaches argv, or the status page.**
   The redaction above stopped a configured credential being published in an
   error. It did not stop it being *handed out*: three clones passed that URL to

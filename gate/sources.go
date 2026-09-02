@@ -14,6 +14,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
+	"github.com/JamesAtIntegratnIO/bosun/redact"
 	"github.com/JamesAtIntegratnIO/bosun/safepath"
 )
 
@@ -299,7 +300,11 @@ func run(ctx context.Context, dir, name string, args ...string) ([]byte, error) 
 		case ctx.Err() != nil:
 			return nil, fmt.Errorf("%s was stopped before it finished: %w", name, ctx.Err())
 		}
-		return nil, fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+		// Redacted before it is quoted: this renders from a registry over
+		// somebody else's network, and the child inherited every credential
+		// this process loaded. See subprocess_stderr_test.go, which is the
+		// rule, and #122, which is the half this does not fix.
+		return nil, fmt.Errorf("%w: %s", err, strings.TrimSpace(redact.Text(stderr.String())))
 	}
 	return stdout.Bytes(), nil
 }
