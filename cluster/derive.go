@@ -41,6 +41,15 @@ func DeriveFrom(apps []Application, sets []ApplicationSet, repoURL string) *gate
 
 	seen := map[string]bool{}
 	for _, app := range apps {
+		// The fleet is filled first and unconditionally, which is the whole
+		// difference between it and the render plan below: every Application
+		// this reading served runs on this control plane, including the ones
+		// pointing at repositories this install does not gate.
+		d.Fleet = append(d.Fleet, gate.FleetApp{
+			Name:        app.Name,
+			Namespace:   app.Namespace,
+			Destination: app.Destination,
+		})
 		if !app.PointsAt(repoURL) {
 			continue
 		}
@@ -74,6 +83,17 @@ func DeriveFrom(apps []Application, sets []ApplicationSet, repoURL string) *gate
 		})
 	}
 
+	// Sorted for the reason the sources and the roots are: this is published
+	// through the MCP surface into a golden file, so a reading whose order
+	// followed whatever the ArgoCD API happened to serve would produce a diff
+	// per run and teach a reviewer to ignore it. Namespace first, because that
+	// is the half that disambiguates two Applications of one name.
+	sort.Slice(d.Fleet, func(i, j int) bool {
+		if d.Fleet[i].Namespace != d.Fleet[j].Namespace {
+			return d.Fleet[i].Namespace < d.Fleet[j].Namespace
+		}
+		return d.Fleet[i].Name < d.Fleet[j].Name
+	})
 	sort.Slice(d.Sources, func(i, j int) bool { return d.Sources[i].Name < d.Sources[j].Name })
 	sort.Slice(d.Roots, func(i, j int) bool { return d.Roots[i].Identity() < d.Roots[j].Identity() })
 	sort.Slice(d.Warnings, func(i, j int) bool { return d.Warnings[i] < d.Warnings[j] })

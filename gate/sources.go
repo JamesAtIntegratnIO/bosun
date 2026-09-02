@@ -14,6 +14,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
+	"github.com/JamesAtIntegratnIO/bosun/childenv"
 	"github.com/JamesAtIntegratnIO/bosun/redact"
 	"github.com/JamesAtIntegratnIO/bosun/safepath"
 )
@@ -287,6 +288,11 @@ func run(ctx context.Context, dir, name string, args ...string) ([]byte, error) 
 
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
+	// helm, kustomize or kubectl, and none of them has any use for a
+	// credential this process loaded. cmd.Env was nil here, which is
+	// os.Environ(), so a chart's own helm plugin ran with GIT_TOKEN,
+	// ARGOCD_TOKEN and the model key in its environment.
+	cmd.Env = childenv.Environ()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -301,9 +307,11 @@ func run(ctx context.Context, dir, name string, args ...string) ([]byte, error) 
 			return nil, fmt.Errorf("%s was stopped before it finished: %w", name, ctx.Err())
 		}
 		// Redacted before it is quoted: this renders from a registry over
-		// somebody else's network, and the child inherited every credential
-		// this process loaded. See subprocess_stderr_test.go, which is the
-		// rule, and #122, which is the half this does not fix.
+		// somebody else's network, and a host that echoes a request header
+		// back inside an error body is echoing whatever it was sent. See
+		// subprocess_stderr_test.go, which is the rule. The other half -- that
+		// the child is not handed this process's credentials in the first
+		// place -- is cmd.Env above.
 		return nil, fmt.Errorf("%w: %s", err, strings.TrimSpace(redact.Text(stderr.String())))
 	}
 	return stdout.Bytes(), nil

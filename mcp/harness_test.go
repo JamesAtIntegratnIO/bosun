@@ -35,6 +35,11 @@ const testToken = "sekrit"
 var (
 	sweptAt     = time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
 	requestedAt = sweptAt.Add(90 * time.Second)
+	// observedAt is when the fleet's live reading was made. Deliberately
+	// EARLIER than the sweep: the reading happens on a gate run, and a sweep
+	// with nothing to render makes none, so a fixture where the two are equal
+	// would never exercise the two clocks a caller has to tell apart.
+	observedAt = sweptAt.Add(-5 * time.Minute)
 )
 
 // fixture is a server under test and the world behind it.
@@ -201,6 +206,16 @@ func (f *fixture) triageStatus(t *testing.T, number int) Triage {
 	raw := f.callWith(t, "triage_status", fmt.Sprintf(`{"pullRequest":%d}`, number))
 	if err := json.Unmarshal(raw, &out); err != nil {
 		t.Fatalf("the result does not decode as a Triage: %v", err)
+	}
+	return out
+}
+
+// inventory decodes an inventory result.
+func (f *fixture) inventory(t *testing.T) Fleet {
+	t.Helper()
+	var out Fleet
+	if err := json.Unmarshal(f.call(t, "inventory"), &out); err != nil {
+		t.Fatalf("the result does not decode as a Fleet: %v", err)
 	}
 	return out
 }
@@ -497,6 +512,37 @@ func green() GateStatus {
 	}
 }
 
+// fleet is a blocked pull request and a live reading beside it.
+//
+// The reading is the subject; the pull request is there because a sweep that
+// has produced neither is a different fixture, and every inventory assertion
+// wants a swept install underneath it.
+func fleet() GateStatus { return withFleet(blocked()) }
+
+// withFleet hangs a live reading on whatever situation a test is already
+// about: three Applications on two clusters, read five minutes before the
+// sweep that publishes them.
+//
+// Composable rather than a second whole fixture, because the reading is
+// orthogonal to what the pull requests are doing -- a test about escalation
+// that also wants rows should not have to choose between two worlds.
+//
+// The rows are deliberately not one per cluster and not one per repository.
+// They are every Application this install's ArgoCD credentials can see, which
+// is what makes the third -- an Application of a repository this install does
+// not gate -- the interesting one rather than a filler.
+func withFleet(g GateStatus) GateStatus {
+	g.Fleet = &GateFleet{
+		ObservedAt: observedAt,
+		Apps: []GateFleetApp{
+			{Name: "argo-cd", Namespace: "argocd", Cluster: "prod-eu"},
+			{Name: "external-secrets", Namespace: "argocd", Cluster: "prod-eu"},
+			{Name: "tenant-billing", Namespace: "argocd", Cluster: "prod-us"},
+		},
+	}
+	return g
+}
+
 // history decodes a verdict_history result for one pull request.
 func (f *fixture) history(t *testing.T, number int) History {
 	t.Helper()
@@ -533,6 +579,7 @@ func everyToolCall(t *testing.T) []toolCall {
 		"triage_status":   `{"pullRequest":264}`,
 		"handoff_queue":   `{}`,
 		"verdict_history": `{"pullRequest":264}`,
+		"inventory":       `{}`,
 	}
 
 	tools := Tools()

@@ -240,6 +240,16 @@ type Config struct {
 	PromotionToken string
 	// MaxConcurrentTriage bounds simultaneous triages.
 	MaxConcurrentTriage int
+
+	// secretEnv is the name of every environment variable LoadConfig read a
+	// credential from, recorded as it read them. See SecretEnv.
+	//
+	// Unexported and set only by LoadConfig, because a Config assembled by
+	// hand -- which most tests do -- read nothing from the environment and has
+	// nothing to declare. The zero value is an empty list, and an empty list
+	// strips nothing, which is the same answer os.Environ() gave before any of
+	// this existed.
+	secretEnv []string
 }
 
 func LoadConfig() (*Config, error) {
@@ -255,8 +265,18 @@ func LoadConfig() (*Config, error) {
 	}
 	// Same trick for the credentials, which can fail on a file that is not
 	// there.
+	//
+	// It is also where the names are recorded, and that is the point of the
+	// closure being the only way this function reads a credential: the list of
+	// variables to keep out of every subprocess's environment is the list of
+	// calls made here, so a credential added below is stripped by the same
+	// line that reads it rather than by somebody remembering. See SecretEnv.
 	var secretErr error
+	var secretEnv []string
 	secret := func(k string) string {
+		// Both spellings, because envSecret reads both: K_FILE names a path,
+		// and a child that can read the path can read the credential.
+		secretEnv = append(secretEnv, k, k+"_FILE")
 		v, err := envSecret(k)
 		if err != nil && secretErr == nil {
 			secretErr = err
@@ -393,6 +413,20 @@ func LoadConfig() (*Config, error) {
 	if boolErr != nil {
 		return nil, boolErr
 	}
+	// After every read, so that it is the whole list. A credential read below
+	// this line would not be in it, which is what the derived test in
+	// subprocess_env_test.go is for: it walks this file for every envSecret
+	// call and fails if what LoadConfig reports back is missing one.
+	//
+	// GIT_REPO_URL is the entry no walk of envSecret can find, and it is here
+	// for the same reason Secrets returns what is inside it. It is read with a
+	// bare os.Getenv because it is not a credential -- it is the repository,
+	// and it is in the chart and half the log lines -- but an operator may
+	// have written one into it, and a child handed the URL is handed whatever
+	// is in the URL. Nothing this process starts needs it: every git command
+	// here is given the remote explicitly, with the credential split out into
+	// a scoped header.
+	c.secretEnv = append(secretEnv, "GIT_REPO_URL")
 	return c, c.validate()
 }
 
@@ -532,6 +566,24 @@ func (c *Config) Secrets() []string {
 	return append(secrets, gitprovider.NewRemote(c.GitRepoURL).Secrets()...)
 }
 
+// SecretEnv is every environment variable this configuration read a credential
+// from, for keeping them out of the environment of every subprocess this
+// process starts.
+//
+// The names, where Secrets is the values, and the two answer different
+// questions. Secrets is what must not appear in text bosun publishes;
+// SecretEnv is what must not be in the environment of `helm template`, of
+// `kubeconform`, or of a chart's own helm plugin -- which is this process's
+// child, with this process's environment, and which redaction cannot reach at
+// all. A child that writes its environment to a file has published a
+// credential without printing a byte.
+//
+// Both spellings of each, and GIT_REPO_URL, which no walk of envSecret can
+// find. LoadConfig assembles it as it reads, so this is a list of the calls
+// that were made rather than a list somebody maintains; a Config built by hand
+// read nothing and returns nothing, which strips nothing.
+func (c *Config) SecretEnv() []string { return c.secretEnv }
+
 // NormaliseLegacyAuthor clears the author identity this project shipped as
 // its chart default for its whole early life, `bosun
 // <bosun@users.noreply.github.com>`, which by now sits copied into consumers'
@@ -567,12 +619,16 @@ func env(k, def string) string {
 // nowhere else; none of them is ever part of a prompt.
 //
 // The file form exists because an environment variable is not a private place.
-// `kubectl exec -- env` prints it, /proc/<pid>/environ holds it, a crash dump
-// carries it, and every child process inherits the whole environment: this
-// service shells out to git and to helm, so a GitHub App private key delivered
-// as GITHUB_APP_PRIVATE_KEY is in the environment of binaries that have no
-// business seeing it. A path is not a secret, so a child handed
-// GITHUB_APP_PRIVATE_KEY_FILE inherits nothing worth having.
+// `kubectl exec -- env` prints it, /proc/<pid>/environ holds it, and a crash
+// dump carries it. Every child process used to inherit the whole environment
+// too -- this service shells out to git and to helm, so a GitHub App private
+// key delivered as GITHUB_APP_PRIVATE_KEY was in the environment of binaries
+// with no business seeing it -- and that half is closed: childenv strips both
+// spellings of every variable read here out of every subprocess this process
+// starts, `_FILE` included, because a path is not a secret only to something
+// that cannot read the file at the end of it. The readers this cannot reach
+// are the ones that were always the file form's real argument: this process's
+// own /proc entry, and anybody who can exec into the pod.
 //
 // _FILE is a convention rather than a platform feature, which is worth knowing
 // when the chart moves ahead of the image: the kubelet mounts the file and

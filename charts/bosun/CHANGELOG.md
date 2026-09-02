@@ -11,10 +11,10 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
-## [0.36.1]
+## [0.37.1]
 
 **Prose only.** No values change, no template change, and `appVersion` does not
-move: the chart deploys the same image 0.36.0 does.
+move: the chart deploys the same image 0.37.0 does.
 
 ### Changed
 
@@ -37,6 +37,30 @@ move: the chart deploys the same image 0.36.0 does.
   glossary drops its AI tells.** Em dashes, "not X but Y" contrasts, passive
   constructions with no actor, and adverbs doing no work, run against
   [stop-slop](https://github.com/hardikpandya/stop-slop). No claim changed.
+## [0.37.0]
+
+**No values change, and no template change.** `appVersion` moves, which is what
+this release is: the agent it deploys serves a seventh MCP tool. An install that
+has `mcp.enabled: false`, which is every install that has not said otherwise, is
+unaffected in every respect.
+
+### Added
+
+- **`inventory` on the MCP surface.** Every Application the last live reading of
+  ArgoCD served, with the cluster each one lands on -- the answer to "where does
+  this run" that otherwise needs a cluster credential of its own. Names and
+  clusters only: no manifest, no values file and no rendered object crosses that
+  boundary.
+
+  Its age is not the sweep's. The reading is made when the gate renders a pull
+  request, so an install with none open makes none, and every row carries when
+  it was observed rather than borrowing the sweep's stamp.
+
+  The disclosure notes gain their entry, and it is the one worth reading twice
+  before publishing the port: unlike every other tool this one is not scoped to
+  the gated repository, so it lists every Application the ArgoCD account you
+  gave bosun can see.
+
 ## [0.36.0]
 
 **No values change, and no template change.** `appVersion` moves, which is what

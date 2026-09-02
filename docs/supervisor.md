@@ -143,12 +143,12 @@ findings can prove it looked; `clean` is true only when it did. It costs no API
 call anywhere, because it answers from the same snapshot the page renders.
 
 The other tools answer the questions either side of a finding: `gate_status`,
-`gate_verdict`, `triage_status`, `handoff_queue` and `verdict_history`. Like
-the page, the surface is read-only and reveals operational metadata and no
-credential. It is off by default and refuses to start without a bearer token,
-because somebody built it to be reached from outside the cluster.
-[The MCP surface](mcp.md) covers the tools, the token, and what publishing it
-discloses.
+`gate_verdict`, `triage_status`, `handoff_queue` and `verdict_history`, plus
+`inventory` for what the fleet runs and where. Like the page, the surface is
+read-only and reveals operational metadata and no credential. It is off by
+default and refuses to start without a bearer token, because somebody built it
+to be reached from outside the cluster. [The MCP surface](mcp.md) covers the
+tools, the token, and what publishing it discloses.
 
 ## Alerting
 
