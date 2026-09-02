@@ -509,14 +509,24 @@ here.** `service.port` answers the endpoint that spends money and writes to
 your repository; this is the surface you are most likely to publish beyond the
 namespace. A NetworkPolicy and a gateway both draw their lines at the port.
 
-**What it reveals is what the page and the report comment reveal**: the
-repository's name, your Stage and Warehouse names, your Application and
-rendered-object names, chart versions, helm and schema error strings,
-pull-request titles and labels, the findings and their remedies. No credential,
-no prompt, no rendered diff. The difference is who reads it and what they hold -- these
-answers land in somebody's coding agent, which usually has a shell and a
-checkout -- so treat the token as read access to your pipeline's status handed
-to a program.
+**What it reveals is what the page and the report comment reveal.** Every
+result names the repository; past that, one entry per tool, and together they
+are the list to weigh before you publish the port:
+
+- `pipeline_report` -- your Stage and Warehouse names, and the findings with
+  their remedies.
+- `gate_status` -- the titles of the open pull requests, and the blocker counts
+  standing against them.
+- `gate_verdict` -- the same for the one asked about, plus your Application and
+  rendered-object names, the chart versions on either side of the bump, and the
+  helm and schema error strings.
+- `triage_status` -- the labels standing on a pull request, and the attempts it
+  has spent against the cap.
+
+No credential, no prompt, no rendered diff. The difference is who reads it and
+what they hold -- these answers land in somebody's coding agent, which usually
+has a shell and a checkout -- so treat the token as read access to your
+pipeline's status handed to a program.
 
 **Text bosun did not write travels tagged.** A verdict quotes names a chart
 chose and errors a tool produced, and a client of this surface usually holds
@@ -526,7 +536,7 @@ contract is that instructions in a result are bosun's own or absent. It is not
 an offer of sanitised text -- there is no such thing -- it is the labelling a
 careful client needs to fence the rest. See
 [the safety model](../../docs/safety-model.md#what-the-mcp-surface-may-reveal-and-what-it-cannot),
-and [the MCP surface](../../docs/mcp.md) for the four tools, the token, and the
+and [the MCP surface](../../docs/mcp.md) for the tools, the token, and the
 trust model the answers are served under.
 
 One value is refused rather than rendered:
