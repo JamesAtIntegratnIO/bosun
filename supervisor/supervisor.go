@@ -13,16 +13,14 @@ package supervisor
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/pipeline"
-	"github.com/JamesAtIntegratnIO/bosun/redact"
 )
 
 // Supervisor runs the pipeline sweep on an interval and holds the last report
@@ -183,25 +181,16 @@ func (s *Supervisor) Handler(format string) http.HandlerFunc {
 // history. On the repository this was built against that is a two-second clone,
 // which is why the sweep can afford to do it every time rather than hold a
 // working copy that would drift from the branch it claims to describe.
-func ShallowCheckout(repoURL, branch, root string) func(context.Context) (string, func(), error) {
+func ShallowCheckout(remote gitprovider.Remote, branch, root string) func(context.Context) (string, func(), error) {
 	return func(ctx context.Context) (string, func(), error) {
 		dir, err := os.MkdirTemp(root, "pipeline")
 		if err != nil {
 			return "", func() {}, err
 		}
 		cleanup := func() { _ = os.RemoveAll(dir) }
-		args := []string{"clone", "--quiet", "--depth", "1"}
-		if branch != "" {
-			args = append(args, "--branch", branch)
-		}
-		args = append(args, repoURL, dir)
-		c := exec.CommandContext(ctx, "git", args...)
-		var errb strings.Builder
-		c.Stderr = &errb
-		if err := c.Run(); err != nil {
+		if err := gitprovider.Clone(ctx, remote, branch, dir); err != nil {
 			cleanup()
-			return "", func() {}, fmt.Errorf("git clone: %w: %s", err,
-				strings.TrimSpace(redact.Text(errb.String())))
+			return "", func() {}, err
 		}
 		return dir, cleanup, nil
 	}

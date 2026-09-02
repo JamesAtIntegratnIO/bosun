@@ -208,7 +208,7 @@ func TestChangedFilesReadsTheBranchAgainstItsBase(t *testing.T) {
 	root := checkoutOfAPullRequest(t)
 	pr := &gitprovider.PullRequest{Branch: "kargo/metallb", BaseBranch: "main"}
 
-	got, err := changedFiles(context.Background(), root, pr)
+	got, err := changedFiles(context.Background(), gitprovider.Remote{}, root, pr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func TestChangedFilesReadsTheBranchAgainstItsBase(t *testing.T) {
 	// EnsureHead checks a SHA: a value beginning with "-" is read as an
 	// option, and this one arrives in a git host's JSON.
 	pr.BaseBranch = "--upload-pack=touch /tmp/pwned"
-	if _, err := changedFiles(context.Background(), root, pr); err == nil {
+	if _, err := changedFiles(context.Background(), gitprovider.Remote{}, root, pr); err == nil {
 		t.Error("a base that is not a ref name must be refused before git sees it")
 	}
 }
@@ -244,7 +244,7 @@ func TestTheScopeIsWhatThisPullRequestChangedNotWhatMainGained(t *testing.T) {
 	runGit(t, origin, "add", "-A")
 	runGit(t, origin, "commit", "--quiet", "-m", "another pull request")
 
-	got, err := changedFiles(context.Background(),
+	got, err := changedFiles(context.Background(), gitprovider.Remote{},
 		root, &gitprovider.PullRequest{Branch: "kargo/metallb", BaseBranch: "main"})
 	if err != nil {
 		t.Fatal(err)

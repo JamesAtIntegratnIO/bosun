@@ -167,7 +167,7 @@ type Triage struct {
 	// remainder are named and escalated rather than attempted.
 	MaxRestructured int
 	CloneRoot       string
-	RepoURL         string
+	Remote          gitprovider.Remote
 	Log             func(string, ...any)
 
 	// Checkout produces a working copy of the pull request's branch and a
@@ -428,7 +428,7 @@ func (t *Triage) run(ctx context.Context, p Promotion, pr *gitprovider.PullReque
 	// request. An edit to anything else is refused, however well the standing
 	// allowlist would have permitted it, and a promotion body that names a
 	// wider set than the branch actually holds now buys nothing.
-	scope, err := scopeFor(ctx, root, pr)
+	scope, err := t.scopeFor(ctx, root, pr)
 	if err != nil {
 		// Fail closed. The alternative on this path is an unscoped applier,
 		// which is the state this replaced.
@@ -717,15 +717,9 @@ func (t *Triage) clone(ctx context.Context, pr *gitprovider.PullRequest) (string
 	}
 	cleanup := func() { _ = os.RemoveAll(root) }
 
-	cmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1", "--branch", pr.Branch, t.RepoURL, root)
-	var out strings.Builder
-	cmd.Stderr = &out
-	if err := cmd.Run(); err != nil {
+	if err := gitprovider.Clone(ctx, t.Remote, pr.Branch, root); err != nil {
 		cleanup()
-		// The clone is pointed straight at RepoURL, so this is the one place
-		// where a credential an operator embedded in it is both in argv and
-		// in whatever the host says back.
-		return "", func() {}, fmt.Errorf("%w: %s", err, redact.Text(out.String()))
+		return "", func() {}, err
 	}
 	// The clone asked for a branch; everything downstream is about a commit.
 	// The gate's verdict, the report this reads, the status this writes and
@@ -733,7 +727,7 @@ func (t *Triage) clone(ctx context.Context, pr *gitprovider.PullRequest) (string
 	// that landed between reading the pull request and cloning it would have
 	// this agent repair a commit it never triaged and report the result
 	// against one it never saw.
-	if err := gitprovider.EnsureHead(ctx, root, pr.HeadSHA); err != nil {
+	if err := gitprovider.EnsureHead(ctx, t.Remote, root, pr.HeadSHA); err != nil {
 		cleanup()
 		return "", func() {}, err
 	}
@@ -973,8 +967,8 @@ func (t *Triage) checkout(ctx context.Context, pr *gitprovider.PullRequest) (str
 // Only the path that writes asks for this. The escalations and the
 // deterministic migration have nothing to scope, and fetching the base branch
 // is not free.
-func scopeFor(ctx context.Context, root string, pr *gitprovider.PullRequest) ([]string, error) {
-	paths, err := changedFiles(ctx, root, pr)
+func (t *Triage) scopeFor(ctx context.Context, root string, pr *gitprovider.PullRequest) ([]string, error) {
+	paths, err := changedFiles(ctx, t.Remote, root, pr)
 	if err != nil {
 		return nil, err
 	}
@@ -1080,7 +1074,7 @@ const maxSearchedBytes = 1 << 20
 //
 // `-z` because git quotes a path with a space in it, and a quoted path is one
 // that silently matches nothing when the applier compares it.
-func changedFiles(ctx context.Context, root string, pr *gitprovider.PullRequest) ([]string, error) {
+func changedFiles(ctx context.Context, r gitprovider.Remote, root string, pr *gitprovider.PullRequest) ([]string, error) {
 	base := pr.BaseBranch
 	if base == "" {
 		base = pr.BaseSHA
@@ -1093,7 +1087,7 @@ func changedFiles(ctx context.Context, root string, pr *gitprovider.PullRequest)
 		head = pr.Branch
 	}
 
-	mergeBase, err := gitprovider.MergeBase(ctx, root, head, base)
+	mergeBase, err := gitprovider.MergeBase(ctx, r, root, head, base)
 	if err != nil {
 		return nil, fmt.Errorf("finding what %s and this branch last shared, to see what this pull request changes: %w", base, err)
 	}

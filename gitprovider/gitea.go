@@ -402,7 +402,7 @@ func (g *Gitea) AddLabel(ctx context.Context, number int, label string) error {
 //
 // Same shape as the GitHub implementation and for the same reason: git over
 // HTTPS produces an ordinary commit and needs no blob/tree API. The token
-// authenticates through the environment, see pushAuthEnv, and appears in no
+// authenticates through the environment, see authHeaderEnv, and appears in no
 // argument. The push target is always the pull request's own branch; nothing
 // here writes to the default branch.
 func (g *Gitea) PushFix(ctx context.Context, pr *PullRequest, root, message string) error {
@@ -450,7 +450,7 @@ func (g *Gitea) PushFix(ctx context.Context, pr *PullRequest, root, message stri
 		// front of it.
 		gitStep{
 			args: []string{"git", "-C", root, "push", remote, "HEAD:" + pr.Branch},
-			env:  pushAuthEnv(remote, user, g.Token),
+			env:  authHeaderEnv(remote, user, g.Token),
 		},
 	)
 
@@ -481,7 +481,7 @@ func (g *Gitea) PushFix(ctx context.Context, pr *PullRequest, root, message stri
 }
 
 // pushRemote is where the fix is pushed. No credential in it: the token
-// travels in the environment, see pushAuthEnv.
+// travels in the environment, see authHeaderEnv.
 //
 // Built from BaseURL, the same value the API calls and the clone use, so the
 // push cannot end up at a different instance from the one whose pull request

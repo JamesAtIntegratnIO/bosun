@@ -357,6 +357,59 @@ All notable changes to `bosun`. Format follows
   github inlined two `ReplaceAll` calls, and only one of the two was reviewed
   when the rules last changed.
 
+- **A credential in `GIT_REPO_URL` no longer reaches argv, or the status page.**
+  The redaction above stopped a configured credential being published in an
+  error. It did not stop it being *handed out*: three clones passed that URL to
+  git as an argument, and `/proc/<pid>/cmdline` is world-readable, so for the
+  length of each clone the token was there for `ps` and for anything that logs
+  a command line. This is the same exposure `pushAuthEnv` was written to close
+  on the push path, and `pushRemote`'s own comment had already named it.
+
+  **The shape is ArgoCD's**, because it solved this for the same reason and its
+  answer is worth copying: the URL it stores as `origin` is the raw one with no
+  credentials in it, and the credential is attached per-command through the
+  environment, by the commands that actually contact a host and by no others.
+  Nothing is written into the checkout's `.git/config`, so a checkout that
+  leaks is not a checkout that carries a token. What is not copied is the
+  transport -- ArgoCD supplies the credential through `GIT_ASKPASS` and a
+  helper script on disk, and this process already has a way to hand git a
+  credential through the environment, the `http.<remote>.extraHeader` the push
+  has used since it stopped putting tokens in argv.
+
+  So `gitprovider.Remote`: a configured URL split into the address git is given
+  and the environment that authenticates it, and a type rather than two strings
+  because a call site that took one and forgot the other is a clone that
+  silently stops authenticating. `agent`, `gateservice` and `supervisor` hold
+  one of these now instead of a URL string, so there is no longer a repository
+  URL in those packages for anything to pass to git by accident.
+
+  **Three clones became one.** No two agreed -- the agent's was not quiet, the
+  supervisor's passed `--branch` only when it had one -- and each was a
+  separate place to get this wrong; `gitprovider.Clone`
+  is the only one now. `EnsureHead` and `MergeBase` take the remote too, because
+  a clone that no longer embeds the credential in `origin` leaves nothing in the
+  checkout for the fetches that follow to authenticate with -- which is exactly
+  why ArgoCD attaches credentials per command rather than once.
+
+  **The status page published it too**, and that was worse: `GIT_REPO_URL` went
+  to the page verbatim, so an install with a token in that URL rendered it as
+  the repository link, on the listener whose whole design is that it is safe to
+  expose. Nothing about the link said so. Found while doing the work above,
+  fixed with it.
+
+  **Two derived guards.** One is the rule this needed: a git command that names
+  a remote-facing subcommand may only live in `gitprovider`, the package that
+  owns the credential. The subcommands are a list about git rather than about
+  our call sites, which is the distinction that matters, but it is still a list
+  and the test says so. It
+  is keyed on the mechanism rather than on the three call sites, and
+  deliberately does not require the function to call `exec` itself, because the
+  shape it has to catch is the one that was here: `gitRun(ctx, "clone", …)`,
+  with a helper three lines away starting the subprocess. The other is the
+  argv guarantee checked against reality, with a shim standing in for git that
+  records what the kernel was actually asked to run -- the same test the push
+  path has had since it moved its own token out of argv.
+
 - **Every git command redacts what git printed, not only the two that push.**
   The rule that landed with the redactor above qualified a function only if it
   called `pushAuthEnv`, on the reasoning that a push is where a credential

@@ -61,9 +61,10 @@ Enterprise deployment pushes where it read. Deriving the remote from
 `owner/repo` against `github.com` sends the fix, and a live installation token
 with it, to whatever repository happens to hold that name on the public host.
 
-**The push credential never reaches git's argv.** Both providers used to spell
-it into the remote URL, `https://x-access-token:<token>@host/...`, and hand
-that to `git push` as an argument. Nothing persisted it and the error text was
+**No credential reaches git's argv**, the push token's or the operator's.
+Both providers used to spell it into the remote URL,
+`https://x-access-token:<token>@host/...`, and hand that to `git push` as an
+argument. Nothing persisted it and the error text was
 redacted, but `/proc/<pid>/cmdline` is world-readable, so for the length of the
 push a live token was there for `ps` and for every other process in the
 namespace. `git -c http.<url>.extraHeader=…` is the obvious repair and is the
@@ -72,6 +73,15 @@ same mistake, because `-c` is argv too; the credential goes through
 readable only by the process owner. The key is scoped to the remote's own URL
 and never the bare `http.extraHeader`, which would attach a bearer credential
 for one host to whatever host git ended up talking to.
+
+The same applies to a credential an operator writes into `GIT_REPO_URL`, which
+used to be handed to git as part of the URL on every clone. `gitprovider.Remote`
+splits it the same way, and the remote stored as `origin` is clean -- so the
+credential is attached per command, to the ones that contact a host, which is
+also why `EnsureHead` and `MergeBase` are given the remote rather than finding
+it in the checkout. Only `gitprovider` may run a git command that contacts a
+remote, and a test derives that from git's own remote-facing subcommands
+rather than from a list of call sites.
 
 ## Things a new implementation has to get right
 

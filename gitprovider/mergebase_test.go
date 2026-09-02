@@ -98,7 +98,7 @@ func TestMergeBaseFindsTheBranchPoint(t *testing.T) {
 			}
 
 			dir := shallowClone(t, o.dir, "topic")
-			got, err := MergeBase(context.Background(), dir, "topic", "main")
+			got, err := MergeBase(context.Background(), Remote{}, dir, "topic", "main")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -120,7 +120,7 @@ func TestMergeBaseSaysWhenThereIsNone(t *testing.T) {
 	o.commit("b.yaml", "b\n")
 
 	dir := shallowClone(t, o.dir, "unrelated")
-	if _, err := MergeBase(context.Background(), dir, "unrelated", "main"); err == nil {
+	if _, err := MergeBase(context.Background(), Remote{}, dir, "unrelated", "main"); err == nil {
 		t.Fatal("two unrelated histories must not produce a merge base")
 	}
 }
@@ -135,7 +135,7 @@ func TestMergeBaseRefusesAFlagShapedRef(t *testing.T) {
 		{"topic", ""},
 		{"", "main"},
 	} {
-		if _, err := MergeBase(context.Background(), t.TempDir(), tc.head, tc.base); err == nil {
+		if _, err := MergeBase(context.Background(), Remote{}, t.TempDir(), tc.head, tc.base); err == nil {
 			t.Errorf("MergeBase(%q, %q) was accepted", tc.head, tc.base)
 		}
 	}

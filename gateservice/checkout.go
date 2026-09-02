@@ -85,7 +85,7 @@ func (g *Service) checkout(ctx context.Context, pr *gitprovider.PullRequest) (*C
 		baseRef = pr.BaseSHA
 	}
 
-	if err := gitClone(ctx, pr.Branch, g.RepoURL, head); err != nil {
+	if err := gitprovider.Clone(ctx, g.Remote, pr.Branch, head); err != nil {
 		cleanup()
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func (g *Service) checkout(ctx context.Context, pr *gitprovider.PullRequest) (*C
 	// pr.HeadSHA, the status is written to pr.HeadSHA, and a push landing in
 	// this window would cache commit B's render as commit A's verdict,
 	// green, published, and about something nobody rendered.
-	if err := gitprovider.EnsureHead(ctx, head, pr.HeadSHA); err != nil {
+	if err := gitprovider.EnsureHead(ctx, g.Remote, head, pr.HeadSHA); err != nil {
 		cleanup()
 		return nil, err
 	}
@@ -110,7 +110,7 @@ func (g *Service) checkout(ctx context.Context, pr *gitprovider.PullRequest) (*C
 		headRef = pr.Branch
 	}
 
-	mergeBase, err := gitprovider.MergeBase(ctx, head, headRef, baseRef)
+	mergeBase, err := gitprovider.MergeBase(ctx, g.Remote, head, headRef, baseRef)
 	if err != nil {
 		cleanup()
 		return nil, err
@@ -126,11 +126,6 @@ func (g *Service) checkout(ctx context.Context, pr *gitprovider.PullRequest) (*C
 		HeadRev:   gitprovider.HeadRevision(ctx, head),
 		Cleanup:   cleanup,
 	}, nil
-}
-
-// gitClone is the shallow clone of the branch under judgement.
-func gitClone(ctx context.Context, branch, url, dir string) error {
-	return gitRun(ctx, "clone", "--quiet", "--depth", "1", "--branch", branch, url, dir)
 }
 
 // gitWorktree adds the base side beside the head clone, sharing its object
