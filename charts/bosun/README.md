@@ -531,6 +531,8 @@ are the list to weigh before you publish the port:
   helm and schema error strings.
 - `triage_status` -- the labels standing on a pull request, and the attempts it
   has spent against the cap.
+- `handoff_queue` -- which pull requests the agent gave up on, and everything
+  `gate_verdict` reveals about each of them.
 - `verdict_history` -- the verdicts the gate reached on that pull request's
   earlier head commits, with their commits and the gate's headlines, which name
   blocker counts and kinds.

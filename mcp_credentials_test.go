@@ -127,24 +127,28 @@ func TestNoToolResultCanReachACredential(t *testing.T) {
 				"this guarantee covers a tool at all.", tool.Name)
 			continue
 		}
+		// Per tool, and asserted rather than assumed. The subject comes from
+		// mcp.Tools(), so a tool registered tomorrow is covered here with no
+		// edit -- which is exactly the property that fails silently if it ever
+		// stops holding, because a guard that has quietly stopped reading one
+		// result type reports the same clean pass as one that read them all.
+		// The total below cannot see that: five richly-walked types and a
+		// sixth reached by nothing would clear it comfortably.
 		before := fields
 		walk(reflect.TypeOf(tool.Result), tool.Name, map[reflect.Type]bool{})
-		// Per tool, and not only in total. The enumeration means a new tool is
-		// covered the moment it is registered, and the failure mode of that is
-		// silence: a result type this walk stops descending into -- because it
-		// became an alias of one already seen, say -- leaves the total healthy
-		// while one tool goes unread. A guard that quietly stops covering a
-		// tool is worse than no guard, because it is still cited.
 		if fields == before {
-			t.Errorf("walking %s's result read no fields at all, so nothing above checked "+
-				"it. This guarantee is cited per tool; fix the walk rather than trusting "+
-				"the total.", tool.Name)
+			t.Errorf("the tool %s returns a %s, from which this walk visited no field at "+
+				"all.\nEither the result carries nothing, or the walk stops before it -- and "+
+				"a structural guarantee covering every tool but one is not one anybody can "+
+				"read off its own pass.", tool.Name, reflect.TypeOf(tool.Result))
 		}
 	}
 
 	// The self-check, and not optional. A walk that stops descending -- a
 	// result type replaced by a map[string]any, say -- would visit almost
-	// nothing and report a clean pass over a surface it never read.
+	// nothing and report a clean pass over a surface it never read. The
+	// per-tool check above is what says WHICH types were read; this is the
+	// floor that says the walk still descends into them at all.
 	if fields < 15 {
 		t.Fatalf("this walk saw only %d fields across %d tool result types. The results are "+
 			"shaped differently now and it is no longer reading them. Fix the walk rather "+

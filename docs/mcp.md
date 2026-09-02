@@ -82,6 +82,26 @@ It is the one answer with two clocks: the phase is this process's own current
 state, while the labels and the attempt count are as old as the sweep the
 result names.
 
+### `handoff_queue`
+
+**Answers** which open pull requests are waiting on a human: the ones the last
+gate sweep saw carrying the `needs-human` label, which is what the agent
+applies when it stops short of a mechanical fix and will not act again on its
+own. Each one carries the verdict standing against its head commit — the state,
+the blocker breakdown and every finding behind it — and how many automatic fix
+attempts it has already spent against its cap.
+
+**Takes** an optional `repository`.
+
+The findings travel with each entry, unlike in `gate_status`, because the two
+lists are read by different people. A queue is scanned to choose what to ask
+about next, so multiplying every rendered object's name across rows the caller
+is about to discard would be spending their context for nothing. This list is
+the work itself: every entry on it is a job somebody has already been asked to
+do, and the files and settings a repair would have touched are what the handoff
+is about. What stays on `gate_verdict` is the coverage the run lost, which
+qualifies a verdict rather than describing the job.
+
 ### `verdict_history`
 
 **Answers** what the gate said about one pull request on each of its earlier
@@ -165,6 +185,15 @@ Then one entry per tool, because what there is to be absent differs:
   the three ways of not knowing: `unswept` (nothing has looked), `unknown` (the
   sweep could not list) and `absent` (the sweep looked and did not see this one
   open).
+- `handoff_queue` publishes `waiting` under `gate_status`'s rule, held-over
+  queue included, and the stakes are higher: absent when nothing has listed pull
+  requests, empty only when a sweep listed them and none carried the label. An
+  empty queue from a gate that could not reach the git host would say "nobody is
+  waiting on you" to the one caller who acts on that by going home — so where an
+  earlier sweep's listing survives it is published beside the error, and the
+  sentence beside it says the queue is older than the sweep time above it. The
+  attempt cap is published either way, because it is what an operator configured
+  rather than something read from the world.
 - `verdict_history` publishes `entries` only under the state `recorded`, which
   means a comment was read: **empty** then says the comment recorded no earlier
   verdict, and **absent** says there was no comment to read a history from.
@@ -281,6 +310,8 @@ they are the list to weigh before publishing the port:
   helm and schema error strings.
 - `triage_status` — the labels standing on a pull request, and the attempts it
   has spent against the cap.
+- `handoff_queue` — which pull requests the agent gave up on, and everything
+  `gate_verdict` reveals about each of them.
 - `verdict_history` — the verdicts the gate reached on that pull request's
   earlier head commits, with their commits and the gate's headlines, which name
   blocker counts and kinds.

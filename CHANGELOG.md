@@ -43,7 +43,43 @@ All notable changes to `bosun`. Format follows
 
 ### Added
 
-- **`verdict_history`: what the gate said before now, as data.** A fifth MCP
+- **`handoff_queue`: the pull requests waiting on a human.** When the agent
+  gives up on a mechanical fix it labels the pull request `needs-human` and
+  stops. Until now the only way to read that queue was to list pull requests by
+  label against the git host and then fetch each verdict back -- a round trip
+  bosun makes once a sweep and threw away. This answers it from the snapshot
+  the gate already holds, so it costs no git-host call and reaches no cluster
+  and no model.
+
+  Each entry carries the pull request's identity, the verdict standing against
+  its head commit, the blocker breakdown, and **every finding behind it** --
+  which is the difference between this list and `gate_status`'s. A queue is
+  scanned to choose what to ask about next; this one is the work itself, and
+  the fields a repair would have used are the fields the person picking it up
+  needs. Beside them travels how many automatic fix attempts the agent has
+  already spent against its cap, so a pull request that ran out of attempts can
+  be told from one the agent refused on the first look. That count is the
+  agent's own, taken where `triage_status` takes it rather than recounted from
+  the labels: the cap's memory is a label under a prefix that follows the
+  brand, and a second count would disagree with the first exactly on a renamed
+  install.
+
+  The absence rule is `gate_status`'s, and it matters more here. The queue is
+  **absent** before the first sweep and after a sweep that could not list pull
+  requests, and **empty** only when a sweep listed them and none carried the
+  label -- because "nobody is waiting on you" is the one answer a caller acts
+  on by going home. A sweep that could not list says so in a field of its own,
+  and a queue held over from an earlier sweep is published beside that error
+  rather than dropped.
+
+  The result is repository-stamped and takes the optional `repository`
+  qualifier the other tools take. `docs/mcp.md` and the chart's disclosure
+  notes gain their entries, and the label the agent writes is now held to the
+  label this surface selects on by a test that reads the first from the agent's
+  own source -- neither package can import the other, and a rename on either
+  side would otherwise be a queue that is empty forever.
+
+- **`verdict_history`: what the gate said before now, as data.** A sixth MCP
   tool, answering what the gate's verdict was on each of one pull request's
   earlier head commits -- the commit, whether that verdict blocked, and the
   gate's own headline for it, newest first. It is the difference between "my

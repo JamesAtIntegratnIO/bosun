@@ -100,11 +100,24 @@ func TestATokenWithATrailingNewlineStillMatches(t *testing.T) {
 func TestAnUnauthenticatedCallerLearnsNothing(t *testing.T) {
 	f := newFixture(t, sweep(t, wedged()))
 
-	for _, body := range []string{
-		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"pipeline_report"}}`,
+	// Every registered tool, derived rather than listed, because a tool
+	// reachable without a token would be reachable for the same reason
+	// whatever it answers: the check is in front of the whole surface or it
+	// is in front of the tools somebody remembered to add here.
+	bodies := []string{
 		`{"jsonrpc":"2.0","id":1,"method":"there/is/no/such/method"}`,
 		`not json at all`,
-	} {
+	}
+	for _, tool := range Tools() {
+		bodies = append(bodies, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":`+
+			`{"name":"`+tool.Name+`"}}`)
+	}
+	if len(bodies) < 3 {
+		t.Fatal("no tools are registered, so the loop below checks only the two malformed " +
+			"calls and reads exactly like a pass")
+	}
+
+	for _, body := range bodies {
 		code, out := f.postWith(t, body, "")
 		if code != http.StatusUnauthorized {
 			t.Errorf("%s: want 401 before anything is parsed, got %d: %s", body, code, out)
@@ -260,10 +273,18 @@ func TestServingARequestReachesNothing(t *testing.T) {
 	w.kargo.stageErr = errors.New("a tool call read the cluster")
 	w.prs.ListErr = errors.New("a tool call read the git host")
 
-	// Every registered tool, and the list is derived: the claim is about the
-	// surface rather than about the tools somebody remembered to name here,
-	// and a tool that reached a client would be exactly the one nobody drove.
-	f := newFixture(t, report).withGate(flapping())
+	// Every registered tool, and the list is derived: "this surface reads
+	// nothing" is a claim about the surface rather than about the tools
+	// somebody remembered to name here, and a tool that reached a client would
+	// be exactly the one nobody drove.
+	//
+	// The world is one every tool takes the long way through: the blocked pull
+	// request, handed over to a human and carrying a verdict history, with the
+	// attempts it has spent. A tool that refused early would answer without
+	// reading anything and would pass this while the path a real caller takes
+	// went undriven.
+	f := newFixture(t, report).withGate(handedOver(flapping())).
+		withTriage(TriageStatus{MaxAttempts: 2, Attempts: map[int]int{264: 2}})
 	calls := everyToolCall(t)
 	requests := 0
 	for i := 0; i < 5; i++ {
@@ -335,6 +356,27 @@ func TestEveryToolCallIsLoggedOnceWithItsCaller(t *testing.T) {
 	f.post(t, `{"jsonrpc":"2.0","id":3,"method":"tools/list"}`)
 	if len(f.logged) != 2 {
 		t.Fatalf("tools/list is not a tool call and must not appear in the audit log: %v", f.logged)
+	}
+
+	// Every registered tool, derived rather than listed, because a tool whose
+	// calls are unlogged is a hole in the record an operator is relying on and
+	// nothing else in this repository would notice one. The arguments are
+	// empty for every call, so the tools that need some answer with an error:
+	// the line is written before the tool runs, which is the whole point of
+	// writing it there.
+	each := newFixture(t, nil)
+	for _, tool := range Tools() {
+		each.post(t, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":`+
+			`{"name":"`+tool.Name+`","arguments":{}}}`)
+	}
+	if len(each.logged) != len(Tools()) {
+		t.Fatalf("want one line per registered tool (%d), got %d: %v",
+			len(Tools()), len(each.logged), each.logged)
+	}
+	for i, tool := range Tools() {
+		if !strings.Contains(each.logged[i], tool.Name) {
+			t.Errorf("the call to %s was logged as %q", tool.Name, each.logged[i])
+		}
 	}
 }
 
@@ -448,6 +490,14 @@ func TestHostileTextSurfacesOnlyWhereAClientCanFenceIt(t *testing.T) {
 	broken := newFixture(t, nil).withGate(brokenRun()).
 		callWith(t, "gate_verdict", `{"pullRequest":264}`)
 
+	// And the same verdict through the handoff queue, which republishes every
+	// one of these fields to a caller who is about to act on them. The queue
+	// is the friendlier delivery of the two: an on-call agent asks it for work
+	// and is handed a list, where gate_verdict is asked about a pull request
+	// somebody already had a reason to name.
+	handoff := newFixture(t, nil).withGate(handedOver(injected())).
+		callWith(t, "handoff_queue", `{}`)
+
 	// And verdict_history over the same hostile world. It is expected to carry
 	// NONE of the corpus, because every string it publishes is bosun's own or
 	// a vetted commit hash -- so its contribution to the walk below is that a
@@ -493,7 +543,7 @@ func TestHostileTextSurfacesOnlyWhereAClientCanFenceIt(t *testing.T) {
 	for _, answer := range []struct {
 		name string
 		raw  json.RawMessage
-	}{{"verdict", raw}, {"brokenRun", broken}, {"history", history}} {
+	}{{"verdict", raw}, {"brokenRun", broken}, {"handoff", handoff}, {"history", history}} {
 		var tree any
 		if err := json.Unmarshal(answer.raw, &tree); err != nil {
 			t.Fatal(err)
@@ -515,8 +565,14 @@ func TestHostileTextSurfacesOnlyWhereAClientCanFenceIt(t *testing.T) {
 	// walk above would catch this too -- status is tagged bosun, so a probe in
 	// it is unfenced by definition -- but it is the assertion the whole
 	// provenance rule reduces to, and it is worth failing by name.
-	for _, answer := range []json.RawMessage{raw, broken} {
-		var v Verdict
+	//
+	// Read off the field rather than off a result type, because every result
+	// on this surface carries it under the same name and the claim is about
+	// the field rather than about one tool's shape.
+	for _, answer := range []json.RawMessage{raw, broken, handoff} {
+		var v struct {
+			Status Text `json:"status"`
+		}
 		if err := json.Unmarshal(answer, &v); err != nil {
 			t.Fatal(err)
 		}
@@ -533,10 +589,14 @@ func TestHostileTextSurfacesOnlyWhereAClientCanFenceIt(t *testing.T) {
 	}
 
 	// The destination of a migration is not tagged text and cannot be fenced,
-	// so the promise about it is absence rather than a label.
-	if bytes.Contains(raw, []byte(forgedVersion)) {
-		t.Errorf("a forged migration destination reached the wire, where a client has "+
-			"nothing to fence it by:\n%s", raw)
+	// so the promise about it is absence rather than a label. Both tools that
+	// carry a finding, because the refusal is in the mapping and a tool that
+	// published its own copy of the block would be the one nobody drove.
+	for _, answer := range []json.RawMessage{raw, handoff} {
+		if bytes.Contains(answer, []byte(forgedVersion)) {
+			t.Errorf("a forged migration destination reached the wire, where a client has "+
+				"nothing to fence it by:\n%s", answer)
+		}
 	}
 
 	// And not in the field a client hands its model as instructions. That one

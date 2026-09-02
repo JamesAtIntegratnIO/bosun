@@ -1,0 +1,210 @@
+{
+  "ageSeconds": 90,
+  "attemptCap": 2,
+  "repository": "example/platform",
+  "status": {
+    "origin": "bosun",
+    "text": "The last gate sweep could not list open pull requests, so this queue is what an earlier sweep saw and is older than the sweep time above. A pull request may have been picked up, merged or handed over since. The sweepError field says what stopped the last one."
+  },
+  "sweepError": {
+    "origin": "bosun-quoting-cluster",
+    "text": "the host said 401"
+  },
+  "swept": true,
+  "sweptAt": "2026-08-30T12:00:00Z",
+  "waiting": [
+    {
+      "attempts": 2,
+      "attemptsExhausted": true,
+      "blockers": {
+        "apiVersion": 1,
+        "consumers": 4,
+        "schema": 1,
+        "source": 0,
+        "targeting": 0,
+        "unrenderable": 1,
+        "unscanned": 0,
+        "valuesDropped": 2
+      },
+      "blocking": true,
+      "findings": [
+        {
+          "blocking": true,
+          "cluster": {
+            "origin": "bosun-quoting-cluster",
+            "text": "prod-eu"
+          },
+          "count": 1,
+          "from": {
+            "origin": "bosun-quoting-chart",
+            "text": "2024.2.0"
+          },
+          "kind": "unrenderable",
+          "reason": {
+            "origin": "bosun-quoting-helm",
+            "text": "execution error at (authentik/templates/server.yaml:12): .Values.postgresql.host is required"
+          },
+          "repositorySideRemedy": true,
+          "subject": {
+            "origin": "bosun-quoting-chart",
+            "text": "authentik"
+          },
+          "summary": {
+            "origin": "bosun-quoting-chart",
+            "text": "the chart will not render at the version this change moves it to, so there is nothing to diff and nothing that will sync"
+          },
+          "to": {
+            "origin": "bosun-quoting-chart",
+            "text": "2024.6.0"
+          }
+        },
+        {
+          "blocking": true,
+          "cluster": {
+            "origin": "bosun-quoting-cluster",
+            "text": "prod-eu"
+          },
+          "consumerFiles": [
+            {
+              "origin": "bosun-quoting-repository",
+              "text": "addons/argo-cd/externalsecret.yaml"
+            },
+            {
+              "origin": "bosun-quoting-repository",
+              "text": "addons/grafana/externalsecret.yaml"
+            },
+            {
+              "origin": "bosun-quoting-repository",
+              "text": "addons/harbor/externalsecret.yaml"
+            },
+            {
+              "origin": "bosun-quoting-repository",
+              "text": "addons/vault/externalsecret.yaml"
+            }
+          ],
+          "consumersScanned": true,
+          "count": 4,
+          "dropped": {
+            "consumerKind": "ExternalSecret",
+            "definition": "externalsecrets.external-secrets.io",
+            "group": "external-secrets.io",
+            "surviving": "v1",
+            "versions": [
+              "v1beta1"
+            ]
+          },
+          "from": {
+            "origin": "bosun-quoting-chart",
+            "text": "v1beta1"
+          },
+          "kind": "droppedVersion",
+          "repositorySideRemedy": true,
+          "subject": {
+            "origin": "bosun-quoting-chart",
+            "text": "CustomResourceDefinition/externalsecrets.external-secrets.io in external-secrets"
+          },
+          "summary": {
+            "origin": "bosun-quoting-chart",
+            "text": "1 version no longer served; 4 manifests in this repository still declare a dropped version"
+          },
+          "to": {
+            "origin": "bosun-quoting-chart",
+            "text": "v1"
+          }
+        },
+        {
+          "blocking": true,
+          "cluster": {
+            "origin": "bosun-quoting-cluster",
+            "text": "prod-eu"
+          },
+          "count": 1,
+          "from": {
+            "origin": "bosun-quoting-chart",
+            "text": "networking.k8s.io/v1beta1"
+          },
+          "kind": "apiVersion",
+          "repositorySideRemedy": false,
+          "subject": {
+            "origin": "bosun-quoting-chart",
+            "text": "Ingress/authentik in authentik"
+          },
+          "summary": {
+            "origin": "bosun-quoting-chart",
+            "text": "this object's own apiVersion moved, which renders cleanly and can break at apply"
+          },
+          "to": {
+            "origin": "bosun-quoting-chart",
+            "text": "networking.k8s.io/v1"
+          }
+        },
+        {
+          "blocking": true,
+          "cluster": {
+            "origin": "bosun-quoting-cluster",
+            "text": "prod-eu"
+          },
+          "count": 2,
+          "from": {
+            "origin": "bosun-quoting-chart",
+            "text": "7.3.0"
+          },
+          "keys": [
+            {
+              "origin": "bosun-quoting-chart",
+              "text": "grafana.ini.auth.oauth_auto_login"
+            },
+            {
+              "origin": "bosun-quoting-chart",
+              "text": "sidecar.dashboards.searchNamespace"
+            }
+          ],
+          "kind": "valuesDropped",
+          "repositorySideRemedy": true,
+          "subject": {
+            "origin": "bosun-quoting-chart",
+            "text": "grafana"
+          },
+          "summary": {
+            "origin": "bosun-quoting-chart",
+            "text": "2 settings set here that the new chart version no longer declares; helm ignores an unknown value rather than failing on it, so they stop applying while the render stays green"
+          },
+          "to": {
+            "origin": "bosun-quoting-chart",
+            "text": "8.0.0"
+          }
+        },
+        {
+          "blocking": true,
+          "count": 1,
+          "kind": "schema",
+          "reason": {
+            "origin": "bosun-quoting-validator",
+            "text": "problem validating schema. Check JSON formatting: spec.replicas: got string, want integer"
+          },
+          "repositorySideRemedy": false,
+          "source": {
+            "origin": "bosun-quoting-chart",
+            "text": "addons/harbor on prod-eu"
+          },
+          "subject": {
+            "origin": "bosun-quoting-chart",
+            "text": "Deployment/harbor-core"
+          },
+          "summary": {
+            "origin": "bosun-quoting-chart",
+            "text": "the target cluster's schemas reject this manifest"
+          }
+        }
+      ],
+      "headCommit": "9f2c1a4b8e6d0c3f5a7b9d1e3f5a7b9d1e3f5a7b",
+      "number": 264,
+      "state": "failing",
+      "title": {
+        "origin": "bosun-quoting-pull-request-author",
+        "text": "chore(deps): bump external-secrets to 0.10.0"
+      },
+      "url": "https://example.invalid/example/platform/pull/264"
+    }
+  ]
+}

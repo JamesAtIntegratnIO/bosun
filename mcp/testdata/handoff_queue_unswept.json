@@ -1,0 +1,9 @@
+{
+  "attemptCap": 2,
+  "repository": "example/platform",
+  "status": {
+    "origin": "bosun",
+    "text": "No gate sweep has completed yet, so it is not known whether anything is waiting on a human. This is not an empty queue: nothing has looked. Ask again after the next sweep."
+  },
+  "swept": false
+}
