@@ -147,7 +147,7 @@ Three more tools answer the questions either side of a finding: `gate_status`,
 reveals operational metadata and no credential; unlike the page it is off by
 default and refuses to start without a bearer token, because it is built to be
 reached from outside the cluster. [The MCP surface](mcp.md) is the whole of it:
-the four tools, the token, and what publishing it discloses.
+the tools, the token, and what publishing it discloses.
 
 ## Alerting
 
