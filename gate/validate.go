@@ -12,6 +12,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
+	"github.com/JamesAtIntegratnIO/bosun/childenv"
 	"github.com/JamesAtIntegratnIO/bosun/redact"
 )
 
@@ -136,6 +137,9 @@ func runKubeconform(ctx context.Context, cfg *Config, doc []byte) ([]kubeconform
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "kubeconform", args...)
+	// Like every other subprocess the gate starts: a document on stdin and
+	// none of this process's credentials in its environment.
+	cmd.Env = childenv.Environ()
 	cmd.Stdin = bytes.NewReader(doc)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

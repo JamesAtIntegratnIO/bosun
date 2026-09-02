@@ -52,6 +52,7 @@ import (
 	"time"
 
 	"github.com/JamesAtIntegratnIO/bosun/agent"
+	"github.com/JamesAtIntegratnIO/bosun/childenv"
 	"github.com/JamesAtIntegratnIO/bosun/cluster"
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/egress"
@@ -80,6 +81,13 @@ func main() {
 	// reach a log or a pull-request comment by being printed on purpose; it
 	// reaches one by being echoed back inside somebody else's error string.
 	redact.Prime(cfg.Secrets()...)
+	// And the first line, beside the second. Redaction filters what a child's
+	// output may publish; this stops the child being handed the credential at
+	// all. Neither subsumes the other: a chart's helm plugin runs as this
+	// process's child with this process's environment, and a child that writes
+	// that environment to a file has published a credential without printing a
+	// byte.
+	childenv.Prime(cfg.SecretEnv()...)
 	// One remote for everything that clones or fetches. Built here rather than
 	// at each call site because it is what splits the configured URL into the
 	// address git is given and the credential it is given separately, and a

@@ -17,11 +17,13 @@ import (
 // primed secret. The two say different things and the syntactic one is the
 // weaker: it would pass on an implementation that redacted the wrong string.
 //
-// The shape is not hypothetical. cmd.Env is nil at this call site, so the
-// child renders with every credential this process loaded in its environment
+// The shape is not hypothetical. cmd.Env was nil at this call site, so the
+// child rendered with every credential this process loaded in its environment
 // -- a helm plugin, a debug flag, or a chart hook that prints its environment
 // puts them on stderr, and stderr is what run() quotes into the error the gate
-// publishes. Stopping the inheritance is #122; this is the second line.
+// publishes. That inheritance is closed now, by childenv, and this is still
+// the second line: what a child prints is whatever the registry it talked to
+// said, and none of that was chosen here.
 func TestASubprocessCannotPublishACredentialItPrinted(t *testing.T) {
 	const secret = "argocd-token-must-not-be-published"
 

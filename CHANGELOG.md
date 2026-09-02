@@ -5,6 +5,71 @@ All notable changes to `bosun`. Format follows
 
 ## [Unreleased]
 
+### Security
+
+- **No subprocess is handed a credential this process loaded.** `cmd.Env` was
+  nil at every `exec.Command` in the shipped code but five, and a nil `Env`
+  means the child gets `os.Environ()` verbatim. So `helm template`,
+  `kustomize build` and `kubeconform` each ran holding `GIT_TOKEN`,
+  `ARGOCD_TOKEN`, `LLM_API_KEY`, `PROMOTION_TOKEN`, `MCP_TOKEN`, the GitHub App
+  private key and a `GIT_REPO_URL` an operator may have written a credential
+  into. None of them has any use for one, and a chart's own `helm` plugin runs
+  as this process's child with this process's environment.
+
+  The five that did set it made it worse rather than better, because every one
+  of them spelled `append(os.Environ(), …)`: one scoped credential added on top
+  of all of them. They also set it conditionally, so the *local* git commands
+  in a push, a fetch or a merge-base ladder -- the ones with nothing to add --
+  fell back to inheriting the whole set.
+
+  Every `cmd.Env` now comes from the new `childenv` package: `os.Environ()`
+  with this process's own credentials removed, and `childenv.With(…)` for the
+  commands that do need one, which lands the same scoped `http.<remote>.extraHeader`
+  on top of a base that no longer carries anything else. A private repository
+  still clones, fetches and pushes; #121's argv tests, which check that the
+  credential is in the environment of the command that needs it and in no
+  argv anywhere, are unchanged and still pass.
+
+  **This is the first line and redaction is the second.** Redaction filters
+  what a child's output may publish. It does nothing about a child that writes
+  its environment to a file, sends it somewhere, or is itself hostile -- which
+  is why `envSecret`'s comment about "what an environment variable is visible
+  to and who inherits it" was already the argument for this change.
+
+  **A denylist, not an allowlist**, and that is the load-bearing choice. `helm`
+  needs `HOME`, `PATH`, `XDG_*`, `HELM_*`, `SSL_CERT_FILE`, the proxy
+  variables, `TMPDIR`, and whatever a self-hosted install has configured for
+  its registry. An allowlist that missed one would break a chart render in a
+  deployment nobody here can see, and the symptom would be a gate abstaining
+  for a reason no log explains. Removing exactly this process's own credentials
+  has no such failure mode: nothing downstream wants them.
+
+  The list is derived rather than written. `LoadConfig` records each variable
+  as it reads a credential from it, in both spellings -- `GIT_TOKEN_FILE` names
+  a path, and a child that can read the path can read the credential -- so a
+  credential added later is stripped by the same line that reads it, not by
+  somebody remembering. That holds only while every credential is read in
+  straight-line code: one read behind an `if` would be absent from the list on
+  any install that did not take the branch, stripped in CI and inherited in
+  production, so the shape is asserted rather than assumed. `GIT_REPO_URL` is
+  the one named by hand, exactly as it is in `Config.Secrets`, because it is
+  read with a bare `os.Getenv`: it is not a credential, it is the repository,
+  and it is the one that may contain one.
+
+  Held by `subprocess_env_test.go`, which derives from the mechanism the way
+  the stderr rule does -- a function that builds an `exec.Cmd` must assign its
+  `Env`, and from `childenv` rather than `os.Environ()`, because a check that
+  only asked whether `Env` was set is one those five call sites already passed,
+  and which reads `main`'s own priming call out of its syntax tree, because
+  deleting that one line puts every child back to inheriting everything and no
+  other test in the repository would notice -- and by
+  `gitprovider/childenv_test.go` and `gate/childenv_test.go`, which
+  put a shim in front of git, of the renderer and of `kubeconform` and read a
+  real child's environment back out of it, rather than asserting against a
+  slice.
+
+  Nothing an operator configures changes, and no chart value moves.
+
 ### Fixed
 
 - **A merge gate that abstained because a file's inode moved.** `git fetch`
@@ -455,10 +520,12 @@ All notable changes to `bosun`. Format follows
   is `helm`, `kustomize build` or `kubectl kustomize` depending on which
   binary its caller handed it.
 
-  **Redaction is the second line here and not the first.** The first would be
-  to stop handing every subprocess every credential this process loaded, which
-  is a change to what `helm` runs with rather than to what bosun prints, and it
-  is #122 for that reason.
+  **Redaction is the second line here and not the first.** The first is to
+  stop handing every subprocess every credential this process loaded, which is
+  a change to what `helm` runs with rather than to what bosun prints. That is
+  the Security entry below, and neither subsumes the other: this one is about
+  text a host said, which arrives on a child's stderr however clean that
+  child's environment was.
 
 - **A credential in `GIT_REPO_URL` no longer reaches argv, or the status page.**
   The redaction above stopped a configured credential being published in an

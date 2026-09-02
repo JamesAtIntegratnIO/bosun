@@ -16,12 +16,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/JamesAtIntegratnIO/bosun/childenv"
 	"github.com/JamesAtIntegratnIO/bosun/redact"
 )
 
@@ -214,7 +214,11 @@ type Provider interface {
 // commit, rather than an empty SHA, which every provider rejects outright and
 // which would turn a recoverable mis-target into a hard failure.
 func headSHA(ctx context.Context, root, fallback string) string {
-	out, err := exec.CommandContext(ctx, "git", "-C", root, "rev-parse", "HEAD").Output()
+	cmd := exec.CommandContext(ctx, "git", "-C", root, "rev-parse", "HEAD")
+	// Local, and given nothing: reading HEAD of a checkout on this disk needs
+	// no credential of this process's, so it is not handed one.
+	cmd.Env = childenv.Environ()
+	out, err := cmd.Output()
 	if err != nil {
 		return fallback
 	}
@@ -323,9 +327,10 @@ func EnsureHead(ctx context.Context, r Remote, dir, want string) error {
 		{args: []string{"-C", dir, "checkout", "--quiet", "--detach", "FETCH_HEAD"}},
 	} {
 		cmd := exec.CommandContext(ctx, "git", withoutBackgroundMaintenance(step.args...)...)
-		if len(step.env) > 0 {
-			cmd.Env = append(os.Environ(), step.env...)
-		}
+		// Unconditionally, on a base with this process's own credentials
+		// removed: the checkout step wants nothing added, and before this that
+		// meant it inherited everything.
+		cmd.Env = childenv.With(step.env...)
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {

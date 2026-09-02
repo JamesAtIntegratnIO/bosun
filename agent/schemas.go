@@ -9,6 +9,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
+	"github.com/JamesAtIntegratnIO/bosun/childenv"
 	"github.com/JamesAtIntegratnIO/bosun/egress"
 	"github.com/JamesAtIntegratnIO/bosun/gate"
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
@@ -172,6 +173,11 @@ func (t *Triage) renderTargetCRDs(ctx context.Context, root string, p Promotion)
 	ctx, cancel := context.WithTimeout(ctx, helmTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "helm", args...)
+	// helm follows the index to whatever host serves the archive, so this is
+	// the child most worth not handing a credential to. It needs none of
+	// them: the chart is public or the operator configured helm's own
+	// registry credentials, which are not this process's.
+	cmd.Env = childenv.Environ()
 	var out, errb strings.Builder
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {

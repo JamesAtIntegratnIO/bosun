@@ -8,11 +8,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
 
+	"github.com/JamesAtIntegratnIO/bosun/childenv"
 	"github.com/JamesAtIntegratnIO/bosun/redact"
 )
 
@@ -418,9 +418,10 @@ func (g *GitHub) PushFix(ctx context.Context, pr *PullRequest, root, message str
 	}
 	for _, s := range steps {
 		cmd := exec.CommandContext(ctx, s.args[0], s.args[1:]...)
-		if s.env != nil {
-			cmd.Env = append(os.Environ(), s.env...)
-		}
+		// See gitea.go's copy of this loop: the base is the environment with
+		// this process's own credentials taken out, and every step gets it,
+		// including the local ones that used to inherit the whole set.
+		cmd.Env = childenv.With(s.env...)
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {

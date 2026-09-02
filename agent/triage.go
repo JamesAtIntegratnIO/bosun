@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/JamesAtIntegratnIO/bosun/childenv"
 	"github.com/JamesAtIntegratnIO/bosun/cluster"
 	"github.com/JamesAtIntegratnIO/bosun/edits"
 	"github.com/JamesAtIntegratnIO/bosun/egress"
@@ -1093,6 +1094,9 @@ func changedFiles(ctx context.Context, r gitprovider.Remote, root string, pr *gi
 	}
 
 	diff := exec.CommandContext(ctx, "git", "-C", root, "diff", "--name-only", "-z", mergeBase, "HEAD")
+	// Reads a checkout already on this disk and contacts nobody, so it is
+	// given none of this process's credentials.
+	diff.Env = childenv.Environ()
 	var stderr strings.Builder
 	diff.Stderr = &stderr
 	out, err := diff.Output()
