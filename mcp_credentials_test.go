@@ -127,12 +127,28 @@ func TestNoToolResultCanReachACredential(t *testing.T) {
 				"this guarantee covers a tool at all.", tool.Name)
 			continue
 		}
+		// Per tool, and asserted rather than assumed. The subject comes from
+		// mcp.Tools(), so a tool registered tomorrow is covered here with no
+		// edit -- which is exactly the property that fails silently if it ever
+		// stops holding, because a guard that has quietly stopped reading one
+		// result type reports the same clean pass as one that read them all.
+		// The total below cannot see that: four richly-walked types and a
+		// fifth reached by nothing would clear it comfortably.
+		before := fields
 		walk(reflect.TypeOf(tool.Result), tool.Name, map[reflect.Type]bool{})
+		if fields == before {
+			t.Errorf("the tool %s returns a %s, from which this walk visited no field at "+
+				"all.\nEither the result carries nothing, or the walk stops before it -- and "+
+				"a structural guarantee covering every tool but one is not one anybody can "+
+				"read off its own pass.", tool.Name, reflect.TypeOf(tool.Result))
+		}
 	}
 
 	// The self-check, and not optional. A walk that stops descending -- a
 	// result type replaced by a map[string]any, say -- would visit almost
-	// nothing and report a clean pass over a surface it never read.
+	// nothing and report a clean pass over a surface it never read. The
+	// per-tool check above is what says WHICH types were read; this is the
+	// floor that says the walk still descends into them at all.
 	if fields < 15 {
 		t.Fatalf("this walk saw only %d fields across %d tool result types. The results are "+
 			"shaped differently now and it is no longer reading them. Fix the walk rather "+

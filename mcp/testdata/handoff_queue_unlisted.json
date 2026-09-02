@@ -1,0 +1,15 @@
+{
+  "ageSeconds": 90,
+  "attemptCap": 2,
+  "repository": "example/platform",
+  "status": {
+    "origin": "bosun",
+    "text": "The last gate sweep could not list open pull requests at all, and no earlier sweep left a queue to fall back on, so nothing is claimed about what is waiting on a human. This is not an empty queue. The sweepError field says what stopped it."
+  },
+  "sweepError": {
+    "origin": "bosun-quoting-cluster",
+    "text": "the host said 401"
+  },
+  "swept": true,
+  "sweptAt": "2026-08-30T12:00:00Z"
+}
