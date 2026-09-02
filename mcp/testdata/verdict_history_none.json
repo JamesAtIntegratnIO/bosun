@@ -1,0 +1,14 @@
+{
+  "ageSeconds": 90,
+  "headCommit": "3c1d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d",
+  "pullRequest": 41,
+  "repository": "example/platform",
+  "state": "unknown",
+  "status": {
+    "origin": "bosun",
+    "text": "The last gate sweep saw this pull request open and no verdict history has been read for it: the gate has published no comment on it that this process has read, so there is nowhere to have read one from. This is not a claim that the gate has never blocked this pull request."
+  },
+  "swept": true,
+  "sweptAt": "2026-08-30T12:00:00Z",
+  "url": "https://example.invalid/example/platform/pull/41"
+}

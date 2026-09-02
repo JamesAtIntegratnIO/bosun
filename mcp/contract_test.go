@@ -61,6 +61,19 @@ func TestTheResultShapeIsWhatItWas(t *testing.T) {
 		{"a queue before the first gate sweep", "gate_status_unswept.json", func(t *testing.T) any {
 			return newFixture(t, nil).call(t, "gate_status")
 		}},
+		{"a gate that has flipped", "verdict_history_flapping.json", func(t *testing.T) any {
+			return newFixture(t, nil).withGate(flapping()).
+				callWith(t, "verdict_history", `{"pullRequest":264}`)
+		}},
+		{"a pull request no history has been read for", "verdict_history_none.json",
+			func(t *testing.T) any {
+				return newFixture(t, nil).withGate(green()).
+					callWith(t, "verdict_history", `{"pullRequest":41}`)
+			}},
+		{"a history before the first gate sweep", "verdict_history_unswept.json",
+			func(t *testing.T) any {
+				return newFixture(t, nil).callWith(t, "verdict_history", `{"pullRequest":264}`)
+			}},
 		{"a pull request being triaged", "triage_status_running.json", func(t *testing.T) any {
 			return newFixture(t, nil).withGate(blocked()).
 				withTriage(TriageStatus{InFlight: []int{264}, MaxAttempts: 2,

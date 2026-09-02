@@ -127,7 +127,19 @@ func TestNoToolResultCanReachACredential(t *testing.T) {
 				"this guarantee covers a tool at all.", tool.Name)
 			continue
 		}
+		before := fields
 		walk(reflect.TypeOf(tool.Result), tool.Name, map[reflect.Type]bool{})
+		// Per tool, and not only in total. The enumeration means a new tool is
+		// covered the moment it is registered, and the failure mode of that is
+		// silence: a result type this walk stops descending into -- because it
+		// became an alias of one already seen, say -- leaves the total healthy
+		// while one tool goes unread. A guard that quietly stops covering a
+		// tool is worse than no guard, because it is still cited.
+		if fields == before {
+			t.Errorf("walking %s's result read no fields at all, so nothing above checked "+
+				"it. This guarantee is cited per tool; fix the walk rather than trusting "+
+				"the total.", tool.Name)
+		}
 	}
 
 	// The self-check, and not optional. A walk that stops descending -- a

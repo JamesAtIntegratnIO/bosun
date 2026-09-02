@@ -56,6 +56,7 @@ func TestNoStampTheGatePublishesSurvivesTheToolSurface(t *testing.T) {
 				`{"name":"gate_verdict","arguments":{"pullRequest":264}}`,
 				`{"name":"gate_status","arguments":{}}`,
 				`{"name":"triage_status","arguments":{"pullRequest":264}}`,
+				`{"name":"verdict_history","arguments":{"pullRequest":264}}`,
 			} {
 				body := throughTheWire(t, forged, call)
 				if bytes.Contains(body, []byte(stamp)) {
@@ -102,11 +103,18 @@ func throughTheWire(t *testing.T, text, call string) []byte {
 		},
 		Now: func() time.Time { return time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC) },
 		Gate: func() mcp.GateStatus {
+			// The verdict history is the sharpest case here and the reason
+			// this fixture carries one: its rows are parsed out of the very
+			// comment the stamps live in, so a stamp that survives the trip
+			// goes back into the comment it came from and the next gate run
+			// reads it as its own memory.
+			history := []mcp.GateVerdictRow{{SHA: "1f0e2d3c", Blocking: true, Headline: text}}
 			return mcp.GateStatus{
-				SweptAt: time.Date(2026, 8, 30, 11, 59, 0, 0, time.UTC),
+				SweptAt:    time.Date(2026, 8, 30, 11, 59, 0, 0, time.UTC),
+				HistoryCap: 10,
 				Open: []mcp.GatePR{{
 					Number: 264, Title: text, HeadSHA: "9f2c1a4b", State: mcp.StateFailing,
-					Labels: []string{text},
+					Labels: []string{text}, History: &history,
 					Verdict: &mcp.GateVerdict{
 						Blocking: true, Headline: "Blocking — 1 setting this bump stops reading",
 						Blockers: mcp.GateBlockers{ValuesDropped: 1},

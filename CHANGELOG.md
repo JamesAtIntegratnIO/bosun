@@ -43,6 +43,43 @@ All notable changes to `bosun`. Format follows
 
 ### Added
 
+- **`verdict_history`: what the gate said before now, as data.** A fifth MCP
+  tool, answering what the gate's verdict was on each of one pull request's
+  earlier head commits -- the commit, whether that verdict blocked, and the
+  gate's own headline for it, newest first. It is the difference between "my
+  last push fixed it" and "the gate changed its mind", two readings of the same
+  green that want opposite next moves, and until now telling them apart meant a
+  person expanding a collapsed table in a pull-request comment.
+
+  Nothing new is computed or fetched for it. A gate with no database keeps its
+  memory as HTML stamps inside its own comment, because that is the only
+  per-pull-request storage a git host offers, and the publish path already
+  parses those stamps on every run to carry them forward. It kept the parse
+  instead of dropping it: the sweep carries the rows onto its snapshot and the
+  tool publishes them, so a tool call still reaches no cluster, no git host and
+  no model.
+
+  Which makes this the one answer on the surface read off the git host rather
+  than composed in the pod, and the result says so. The rows name the
+  pull-request comment as their source, because the people who can edit that
+  comment are the people who can write to the gated repository -- a set nothing
+  else here is exposed to. The cap on how many verdicts the comment remembers
+  is published beside the entries, so as many entries as the cap reads as
+  "older ones were dropped" rather than as a short life; the order is stated
+  rather than left to be inferred; and a recorded commit that is not written
+  the way a commit is loses its commit rather than being published as one.
+
+  Three absences stay distinct, in the words `gate_verdict` already uses: no
+  sweep has completed (`unswept`), a sweep completed and did not see this pull
+  request open (`absent`), and a sweep saw it and there was no gate comment to
+  read a history from (`unknown`). None of them is a claim that the gate has
+  never blocked it. A history that was read and recorded nothing is an *empty*
+  list under `recorded`, which is a fourth answer again.
+
+  [`docs/mcp.md`](docs/mcp.md) gains its section, the safety model gains the
+  note about the one answer with a comment editor in its trust picture, and the
+  chart README's disclosure notes gain its entry.
+
 - **A documentation page for the MCP surface.** The tools and what each
   answers, what a caller gets before the first sweep and why an absence there is
   not an empty result, turning it on, and the token -- one page, beside the

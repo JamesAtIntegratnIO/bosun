@@ -356,6 +356,18 @@ newline, and a finding whose fields do not hold their shape is published
 without them rather than with them labelled. Absence there means bosun would
 not vouch for the detail, never that there is none.
 
+**One answer is read off the git host rather than computed here, and it says
+so.** `verdict_history` publishes the verdicts the gate reached on a pull
+request's earlier head commits, and those rows are the parse of the stamps in
+the gate's own comment on it -- which is bosun's sentence, written by bosun,
+sitting somewhere any repository writer can edit before bosun reads it back.
+The headlines are tagged `bosun` because bosun composed them, and the result
+carries the source of the rows for exactly that reason: a client that needs to
+know who could have touched a string is told, in a field, that this one came
+out of a pull-request comment. It is the only place on this surface where the
+set of people who can choose the bytes is the set of people who can write to
+the gated repository.
+
 **The gate's own stamp grammar is stripped from every response.** The gate
 keeps its memory inside its pull-request comment, because a gate with no
 database has nowhere else to put it: the last verdict, the head it judged and

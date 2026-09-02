@@ -1,0 +1,43 @@
+{
+  "ageSeconds": 90,
+  "entries": [
+    {
+      "blocking": true,
+      "headCommit": "3b5d7f9a",
+      "headline": {
+        "origin": "bosun",
+        "text": "Blocking — 1 Application whose chart will not render at the new version"
+      }
+    },
+    {
+      "blocking": false,
+      "headCommit": "2a4b6c8d",
+      "headline": {
+        "origin": "bosun",
+        "text": "No blocking findings — 1 version changed, nothing else"
+      }
+    },
+    {
+      "blocking": true,
+      "headCommit": "1f0e2d3c",
+      "headline": {
+        "origin": "bosun",
+        "text": "Blocking — 4 manifests still declaring a dropped API version"
+      }
+    }
+  ],
+  "headCommit": "9f2c1a4b8e6d0c3f5a7b9d1e3f5a7b9d1e3f5a7b",
+  "historyCap": 10,
+  "order": "newest-first",
+  "pullRequest": 264,
+  "repository": "example/platform",
+  "source": "pull-request-comment",
+  "state": "recorded",
+  "status": {
+    "origin": "bosun",
+    "text": "The verdicts the gate reached on this pull request's earlier head commits, newest first, as the last run that published onto it read them out of its own comment -- where a gate with no database keeps its memory, and which any repository writer can edit. It is what that comment recorded, not every head this pull request has had: neither the verdict standing now nor one the gate never published is among them. As many entries as the cap means older ones were dropped."
+  },
+  "swept": true,
+  "sweptAt": "2026-08-30T12:00:00Z",
+  "url": "https://example.invalid/example/platform/pull/264"
+}

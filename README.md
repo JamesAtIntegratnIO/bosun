@@ -111,9 +111,11 @@ error that stopped the sweep from listing them, because a gate that cannot
 reach the git host otherwise reads as a quiet week. Ask `triage_status` what
 the agent is doing about one, and the phase, the attempts it has spent against
 its cap and the labels standing on it say whether it is still working or has
-finished and will not try again. Nothing is
-computed: every answer comes from the snapshot the last sweep already holds, so
-a request reaches no git host, no cluster and no model. Nothing mutates,
+finished and will not try again. Ask `verdict_history` what the gate said on
+the pull request's earlier head commits, and a gate that has been flapping is
+data rather than somebody's impression of a comment. Nothing is computed:
+every answer comes from the snapshot the last sweep already holds, so a
+request reaches no git host, no cluster and no model. Nothing mutates,
 because no tool does. Text bosun did not write travels tagged with whose it is,
 because these answers land in agents holding tools bosun refuses for itself.
 Off by default, and it refuses to start without a token. See

@@ -92,11 +92,11 @@ func (s *Server) now() time.Time {
 // stamp is when a sweep finished and how long ago, for the three fields every
 // result carries: swept, sweptAt, ageSeconds.
 //
-// One copy of it, because there is one clock guard and four handlers. A
+// One copy of it, because there is one clock guard and a handler per tool. A
 // negative age is answered as zero rather than published: a clock that went
 // backwards between the sweep and the request is a machine's problem, and
 // "-3 seconds old" is a number every client would have to write the same
-// special case for. Four copies of that decision is how three of them keep it.
+// special case for. A copy per handler is how all but one of them keep it.
 //
 // The zero time is the before-the-first-sweep case and reports false, which is
 // what makes every caller's absent fields absent for the same reason.
@@ -135,9 +135,11 @@ type Tool struct {
 
 // tools is the registered tool set, bound to this server.
 //
-// One list, built here, rather than a registry a tool adds itself to: with
-// four tools coming, the value of being able to read the whole surface in one
-// place is higher than the value of letting a file register itself.
+// One list, built here, rather than a registry a tool adds itself to: the
+// value of being able to read the whole surface in one place is higher than
+// the value of letting a file register itself, and it goes up rather than down
+// as tools are added -- what an operator publishing this port is deciding
+// about is this list.
 func (s *Server) tools() []Tool {
 	return []Tool{{
 		Name:        "pipeline_report",
@@ -163,6 +165,12 @@ func (s *Server) tools() []Tool {
 		Params:      triageStatusParams,
 		Result:      Triage{},
 		Call:        s.triageStatus,
+	}, {
+		Name:        "verdict_history",
+		Description: verdictHistoryDescription,
+		Params:      verdictHistoryParams,
+		Result:      History{},
+		Call:        s.verdictHistory,
 	}}
 }
 
