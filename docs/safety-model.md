@@ -296,7 +296,7 @@ log at every start-up.
 The read-only MCP listener serves the sweep's own findings to programmatic
 callers. It is off by default, it refuses to start without a bearer token, and
 it is on a port of its own so that admitting a client to it never admits one to
-the endpoint that spends money and writes to the repository. The four tools it
+the endpoint that spends money and writes to the repository. The tools it
 serves, and how to turn it on, are in [the MCP surface](mcp.md).
 
 **No tool mutates anything, and none reads anything live.** There is no

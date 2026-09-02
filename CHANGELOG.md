@@ -43,7 +43,7 @@ All notable changes to `bosun`. Format follows
 
 ### Added
 
-- **A documentation page for the MCP surface.** The four tools and what each
+- **A documentation page for the MCP surface.** The tools and what each
   answers, what a caller gets before the first sweep and why an absence there is
   not an empty result, turning it on, and the token -- one page, beside the
   supervisor's and the status page's, rather than the paragraphs it had been

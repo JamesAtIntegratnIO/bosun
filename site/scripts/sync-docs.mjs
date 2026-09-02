@@ -83,7 +83,7 @@ const PAGES = [
     out: 'concepts/mcp',
     title: 'The MCP surface',
     description:
-      'The read-only tool surface: the four tools, what a caller gets before the first sweep, the token, and what it discloses to whoever you publish it to.',
+      'The read-only tool surface: the tools, what a caller gets before the first sweep, the token, and what it discloses to whoever you publish it to.',
   },
 
   // --- The gate -----------------------------------------------------------
