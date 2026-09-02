@@ -34,6 +34,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/JamesAtIntegratnIO/bosun/childenv"
 	"github.com/JamesAtIntegratnIO/bosun/internal/charttest"
 )
 
@@ -135,7 +136,13 @@ func command(t *testing.T, chart string, opts ...Option) *exec.Cmd {
 	for _, s := range a.showOnly {
 		argv = append(argv, "--show-only", s)
 	}
-	return exec.Command("helm", argv...)
+	cmd := exec.Command("helm", argv...)
+	// Test support, and the same rule anyway. childenv is unprimed in a test
+	// binary, so this is os.Environ() -- but writing it here means the rule in
+	// subprocess_env_test.go needs no exception, and an exception is what a
+	// rule gets weakened through.
+	cmd.Env = childenv.Environ()
+	return cmd
 }
 
 // Render runs `helm template` and returns every document it produced, failing

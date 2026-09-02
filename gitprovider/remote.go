@@ -5,10 +5,10 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/url"
-	"os"
 	"os/exec"
 	"strings"
 
+	"github.com/JamesAtIntegratnIO/bosun/childenv"
 	"github.com/JamesAtIntegratnIO/bosun/redact"
 )
 
@@ -98,11 +98,16 @@ func NewRemote(raw string) Remote {
 // URL is the address git is given, with no credential in it.
 func (r Remote) URL() string { return r.url }
 
-// Env is the environment that authenticates the URL, to be appended to
-// os.Environ() by whoever runs a git command that contacts the remote.
+// Env is the environment that authenticates the URL, to be passed to
+// childenv.With by whoever runs a git command that contacts the remote.
+//
+// childenv.With and not os.Environ(), which is what this said and what every
+// caller did: appending to os.Environ() adds this one scoped credential on top
+// of every credential the process loaded, and hands the whole set to git. See
+// the childenv package comment.
 //
 // Empty for a remote that carries no credential, and for ssh, so a caller can
-// append it unconditionally.
+// pass it unconditionally.
 func (r Remote) Env() []string { return r.auth }
 
 // Secrets is every spelling of the credential this URL carries, for priming
@@ -197,9 +202,12 @@ func Clone(ctx context.Context, r Remote, branch, dir string) error {
 	args = append(args, r.URL(), dir)
 
 	cmd := exec.CommandContext(ctx, "git", withoutBackgroundMaintenance(args...)...)
-	// The credential travels here and not in args. os.Environ() first so the
-	// auth entries win over anything an operator set in the pod.
-	cmd.Env = append(os.Environ(), r.Env()...)
+	// The credential travels here and not in args. The base comes first so the
+	// auth entries win over anything an operator set in the pod, and it is
+	// childenv's rather than os.Environ() so that this remote's credential is
+	// the only one git is given -- it used to be that one on top of all of
+	// them.
+	cmd.Env = childenv.With(r.Env()...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {

@@ -24,15 +24,21 @@ import (
 // the answer was the same both times: the binary was never the reason.
 //
 // What makes a subprocess's stderr dangerous is that this process starts it
-// while holding credentials. cmd.Env is nil at nearly every call site here,
-// and a nil Env means the child gets os.Environ() -- so helm renders a chart
-// with GIT_TOKEN, ARGOCD_TOKEN and the model key in its environment, and so
-// does kubeconform. A plugin, a debug flag or a chart hook that prints its
-// environment puts them on stderr, and stderr is what these functions quote
-// into an error that reaches a log and the gate's published report. The other
-// half is the one git already demonstrated: a chart render pulls from a
-// registry over somebody else's network, and a host that echoes a request
-// header back inside an error body is echoing a credential it was sent.
+// after talking to hosts it authenticated to. The half that was about the
+// child's own environment is closed: cmd.Env was nil at nearly every call site
+// here, and a nil Env means the child gets os.Environ(), so helm rendered a
+// chart with GIT_TOKEN, ARGOCD_TOKEN and the model key in its environment and
+// so did kubeconform. Every call site now builds its environment from
+// childenv, and TestEverySubprocessRunsWithoutThisProcessesCredentials is the
+// rule that keeps it that way.
+//
+// What that does not close is the half git already demonstrated, and it is why
+// this rule is unchanged: a chart render pulls from a registry over somebody
+// else's network, and a host that echoes a request header back inside an error
+// body is echoing a credential it was sent. That text is on the child's stderr
+// however clean the child's environment was, and stderr is what these
+// functions quote into an error that reaches a log and the gate's published
+// report.
 //
 // So the rule is the mechanism with the binary removed as well as the call
 // sites: a function that starts a subprocess and reads the buffer it gave that
@@ -60,10 +66,11 @@ import (
 // All three are review's job, the way a credential read with a bare os.Getenv
 // is.
 //
-// Redaction is the second line and not the first. The first would be to stop
-// handing every subprocess every credential this process loaded -- an explicit
-// cmd.Env rather than an inherited one -- which is a change to what helm runs
-// with rather than to what bosun prints, and is issue #122.
+// Redaction is the second line and not the first. The first is that no
+// subprocess is handed a credential this process loaded -- an explicit cmd.Env
+// rather than an inherited one -- which is childenv, and a change to what helm
+// runs with rather than to what bosun prints. Neither subsumes the other:
+// this one is about text the child was told by somebody else.
 func TestEverySubprocessRedactsItsStderr(t *testing.T) {
 	guarded, checked := 0, 0
 	for _, path := range goFiles(t, helmtest.Root(t)) {
@@ -171,11 +178,10 @@ func goFiles(t *testing.T, root string) []string {
 //
 // Dropping the binary from the rule dropped the awkwardness with it. What is
 // dangerous about a subprocess's stderr is not that the subprocess is git; it
-// is that the process was started by something holding credentials, and every
-// child here inherits them, because cmd.Env is nil at nearly every call site
-// and a nil Env means os.Environ(). helm renders charts from a registry over
-// somebody else's network, kubeconform is handed a document, and both of them
-// -- like git -- repeat what they were told.
+// is that it repeats what it was told by a host this process authenticated to.
+// helm renders charts from a registry over somebody else's network,
+// kubeconform is handed a document, and both of them -- like git -- quote back
+// what came the other way.
 func startsSubprocess(n ast.Node) bool {
 	found := false
 	ast.Inspect(n, func(n ast.Node) bool {

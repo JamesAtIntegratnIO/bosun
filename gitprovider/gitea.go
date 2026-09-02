@@ -9,11 +9,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
 
+	"github.com/JamesAtIntegratnIO/bosun/childenv"
 	"github.com/JamesAtIntegratnIO/bosun/redact"
 )
 
@@ -456,9 +456,13 @@ func (g *Gitea) PushFix(ctx context.Context, pr *PullRequest, root, message stri
 
 	for _, s := range steps {
 		cmd := exec.CommandContext(ctx, s.args[0], s.args[1:]...)
-		if s.env != nil {
-			cmd.Env = append(os.Environ(), s.env...)
-		}
+		// On childenv.Environ rather than os.Environ, and unconditionally.
+		// This used to append one scoped credential on top of every credential
+		// this process loaded, and to skip even that for the local steps --
+		// which then inherited the whole set for nothing. The base is now the
+		// environment with this process's own credentials taken out, so a step
+		// with no env of its own is a step carrying none.
+		cmd.Env = childenv.With(s.env...)
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {

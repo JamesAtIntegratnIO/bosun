@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/JamesAtIntegratnIO/bosun/childenv"
 	"github.com/JamesAtIntegratnIO/bosun/gate"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
 	"github.com/JamesAtIntegratnIO/bosun/redact"
@@ -138,6 +139,9 @@ func gitWorktree(ctx context.Context, repo, dir, rev string) error {
 // status 128" is the same sentence for every way this can fail.
 func gitRun(ctx context.Context, args ...string) error {
 	c := exec.CommandContext(ctx, "git", args...)
+	// Local -- the worktree add shares an object store already on this disk --
+	// so it is given nothing this process loaded.
+	c.Env = childenv.Environ()
 	var out strings.Builder
 	c.Stderr = &out
 	if err := c.Run(); err != nil {

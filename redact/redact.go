@@ -45,6 +45,11 @@
 // and a compile-time rule that a package cannot reach a credential at all is
 // worth more than this is -- see adr/0014 and docs/safety-model.md. This is
 // the second line, for the text whose contents nobody chose.
+//
+// Nor is it the control on what a subprocess holds. That is childenv, and it
+// is a different failure: this filters what a child's output may publish,
+// while a child that writes its environment to a file has published a
+// credential without printing a byte.
 package redact
 
 import (

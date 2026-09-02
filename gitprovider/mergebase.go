@@ -3,10 +3,10 @@ package gitprovider
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 
+	"github.com/JamesAtIntegratnIO/bosun/childenv"
 	"github.com/JamesAtIntegratnIO/bosun/redact"
 )
 
@@ -159,9 +159,11 @@ func gitRun(ctx context.Context, dir string, args ...string) error {
 func gitEnvRun(ctx context.Context, env []string, dir string, args ...string) error {
 	full := withoutBackgroundMaintenance(append([]string{"-C", dir}, args...)...)
 	cmd := exec.CommandContext(ctx, "git", full...)
-	if len(env) > 0 {
-		cmd.Env = append(os.Environ(), env...)
-	}
+	// Unconditionally, and on childenv.Environ. The conditional here used to
+	// mean the local commands ran with a nil Env, which is os.Environ() and so
+	// every credential this process loaded; the credential-free base makes
+	// "add nothing" and "inherit nothing" the same thing.
+	cmd.Env = childenv.With(env...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -178,6 +180,7 @@ func gitEnvRun(ctx context.Context, env []string, dir string, args ...string) er
 func gitLine(ctx context.Context, dir string, args ...string) (string, error) {
 	full := withoutBackgroundMaintenance(append([]string{"-C", dir}, args...)...)
 	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd.Env = childenv.Environ()
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
