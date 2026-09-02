@@ -45,98 +45,97 @@ All notable changes to `bosun`. Format follows
 
 - **A documentation page for the MCP surface.** The tools and what each
   answers, what a caller gets before the first sweep and why an absence there is
-  not an empty result, turning it on, and the token -- one page, beside the
-  supervisor's and the status page's, rather than the paragraphs it had been
+  not an empty result, turning it on, and the token. One page, beside the
+  supervisor's and the status page's, replacing the paragraphs it had been
   spread across. [`docs/mcp.md`](docs/mcp.md), on the site as *The MCP surface*,
   and in the README's component table so a reader finds it from the front page.
 
-  The disclosure is stated where somebody deciding whether to publish the port
-  will read it, beside the status page's own note and saying the same thing over
-  a wider list, one entry per tool: operational metadata is served -- Stage,
-  Warehouse, Application, rendered-object and cluster names, the namespaces a
-  sweep examined, chart versions, findings with their remedies, pull-request
-  titles, head commits and labels, the repository paths and values keys behind a
-  gate finding, and the helm and schema error strings the page does not
-  carry -- and no credential is. The difference between the two surfaces is who
-  reads them and what they hold.
+  The page states the disclosure where somebody deciding whether to publish the
+  port will read it, beside the status page's own note, over a wider list and
+  one entry per tool. It serves operational metadata: Stage, Warehouse,
+  Application, rendered-object and cluster names, the namespaces a sweep
+  examined, chart versions, findings with their remedies, pull-request titles,
+  head commits and labels, the repository paths and values keys behind a gate
+  finding, and the helm and schema error strings the page does not carry. It
+  serves no credential. The two surfaces differ in who reads them and what they
+  hold.
 
-  The safety model's section for this surface now separates what is enforced --
-  no mutation, no live read, no configuration reach, redaction, composed
-  remedies, origin tagging, stamp stripping -- from the risk that remains, which
-  is stated in words rather than implied: bosun cannot make a careless client
-  safe, because text sanitised to harmlessness does not exist. What it
-  guarantees is provenance labelling and instructions that are bosun's own or
+  The safety model's section for this surface separates the enforced controls
+  (no mutation, no live read, no configuration reach, redaction, composed
+  remedies, origin tagging, stamp stripping) from the risk that remains, and
+  states that risk in words instead of implying it: bosun cannot make a
+  careless client safe, because text sanitised to harmlessness does not exist.
+  It guarantees provenance labelling, and instructions that are bosun's own or
   absent. The trust model cites
-  [ADR 0014](adr/0014-an-install-serves-one-trust-domain.md) rather than
-  restating its argument: the pages say only that an install's view is served
-  flat and whole, with no per-project or per-caller filtering anywhere, and
-  point at the record for why.
+  [ADR 0014](adr/0014-an-install-serves-one-trust-domain.md) instead of
+  restating its argument. The pages say an install's view is served flat and
+  whole, with no per-project or per-caller filtering anywhere, and point at the
+  record for why.
 
 - **`gate_status` and `triage_status`: the queue, and what the agent is doing
   about one of it.** `gate_status` answers what bosun's last gate sweep saw
   across every open pull request: each one with the state standing against its
   head commit, whether it blocks, and the blocker breakdown as counts per kind.
   `gate_verdict` is still where the findings behind one of those counts live,
-  and this is the call before it -- the one that says which pull request to ask
+  and this is the call before it, the one that says which pull request to ask
   about.
 
-  Beside the queue travels the sweep's own failure. A gate that cannot reach
+  The sweep's own failure rides alongside the queue. A gate that cannot reach
   the git host has two symptoms: a line in a log nobody is reading, and a queue
   that says nothing is open, forever, which is the reading a caller will take.
-  So an empty queue is published only by a sweep that actually listed, and a
-  sweep that could not says so in a field of its own. A queue held over from an
-  earlier sweep is published rather than dropped -- it is evidence, and a
-  caller with stale evidence is better off than one with none -- with the error
-  beside it saying it is older than the sweep time above it.
+  So only a sweep that listed publishes an empty queue, and a sweep that could
+  not says so in a field of its own. Bosun publishes a queue held over from an
+  earlier sweep instead of dropping it, because it is evidence and a caller
+  with stale evidence beats one with none. The error beside it says the queue
+  is older than the sweep time above it.
 
   `triage_status` answers what the agent is doing on one pull request right
   now: the phase it is in, how many automatic fix attempts it has spent against
   its cap, and the labels standing on the pull request. That is the difference
   between an agent still working and one that has finished and will not try
-  again, which is the same distinction its commit status exists to draw for a
-  person. A pull request the agent is not working is answered as such and never
-  as an error: not working one is the resting state, and the attempt count is
-  what says whether it ever did.
+  again, the same distinction its commit status draws for a person. A pull
+  request the agent is not working gets that answer instead of an error.
+  Working nothing is the resting state, and the attempt count says whether the
+  agent ever did.
 
   The phase and the labels come from two different clocks, and the result says
-  so. What is running is this process's own state, current to the microsecond;
-  the labels and therefore the attempt count are as old as the last gate sweep,
-  because a tool call may reach no git host at all. So the labels now ride
-  along in the sweep's snapshot rather than being fetched on request, and the
-  attempt count is made with the agent's own arithmetic rather than a second
-  reading of the same label prefix -- the cap remembers under a name that
-  follows the brand, and two counts of it would disagree exactly on a renamed
-  install, where one says an attempt remains and the other has already
-  escalated.
+  so. The running phase is this process's own state, current to the
+  microsecond. The labels, and therefore the attempt count, are as old as the
+  last gate sweep, because a tool call may reach no git host. So the labels ride
+  along in the sweep's snapshot instead of getting fetched on request, and the
+  attempt count uses the agent's own arithmetic instead of a second reading of
+  the same label prefix. The cap remembers under a name that follows the brand,
+  and two counts of it would disagree on a renamed install, where one says an
+  attempt remains and the other has already escalated.
 
   Labels are the first text on this surface that anybody with write access to
-  the repository chooses, so they carry an origin of their own rather than
-  being folded into the pull-request author's. Bosun writes some of them, and
-  that is not a reason to publish any of them as bosun's own: a per-label guess
-  is one a hostile label imitates by choosing bosun's prefix.
+  the repository chooses, so they carry an origin of their own instead of
+  folding into the pull-request author's. Bosun writes some of them, which is
+  no reason to publish any of them as bosun's own: a hostile label imitates a
+  per-label guess by choosing bosun's prefix.
 
 - **`gate_verdict`: why a pull request is blocked, as data.** A platform
   engineer whose pull request is red asks their coding agent why, and the agent
   asks bosun. What comes back is the verdict standing against the head commit:
   the blocker breakdown as counts per kind, every finding behind those counts,
-  and the dropped API versions as fields -- which definition, which versions it
+  and the dropped API versions as fields: which definition, which versions it
   stopped serving, which one survives, and the kind of manifest that has to
   move. Each finding says whether an edit in the repository could clear it, so
-  an agent stops hunting for one that does not exist, and the list of what the
-  gate could not render travels beside them, because a clean verdict over a
-  partial render is a narrower claim than a clean verdict over a whole one.
+  an agent stops hunting for one that does not exist. The gate also lists what
+  it could not render, because a clean verdict over a partial render is a
+  narrower claim than a clean verdict over a whole one.
 
   Answering this used to mean scraping the pull-request comment and parsing
   `<!-- gitops-gate:… -->` stamps out of it, which made an internal wire format
-  into a public contract and got the reader nothing that was typed. Nothing new
-  is computed: the answer comes from the snapshot the last gate sweep already
-  holds, so a request reaches no git host, no cluster and no model.
+  into a public contract and got the reader nothing that was typed. Bosun
+  computes nothing new: the answer comes from the snapshot the last gate sweep
+  already holds, so a request reaches no git host, no cluster and no model.
 
   **A pull request with no verdict standing is answered as such, and never as a
-  passing one.** There are six ways to have no verdict -- no sweep has run, the
+  passing one.** There are six ways to have no verdict: no sweep has run, the
   sweep could not list pull requests, the sweep ran and this pull request was
   not open, a render is in flight, a verdict already stood on the git host and
-  was not re-litigated, the gate could not run -- and each has its own state
+  bosun did not re-litigate it, the gate could not run. Each has its own state
   and its own sentence, so a client never has to read two fields to tell them
   apart. The findings field is *absent* in all of them, and *empty* only when
   the gate looked and found nothing.
@@ -145,9 +144,9 @@ All notable changes to `bosun`. Format follows
   text bosun did not write first enters an MCP result, and that is most of its
   weight: a verdict carries chart-rendered object names, helm and schema error
   strings, and pull-request titles. All of it lands in another model's context,
-  and that model usually holds tools bosun refuses for itself -- so a hostile
-  release note does not need to jailbreak bosun's model, only to be delivered
-  by it to a better-armed one.
+  and that model holds tools bosun refuses for itself. A hostile release note
+  does not need to jailbreak bosun's model, only to reach a better-armed one
+  through it.
 
   Facts travel in typed fields a string cannot forge, and free text travels
   tagged with where it came from: a rendered chart, helm, the schema validator,
@@ -155,71 +154,71 @@ All notable changes to `bosun`. Format follows
   or bosun itself. The contract a client can rely on is that instructions in a
   result are bosun's own or absent. The dropped-version detail is the one block
   that carries no tag, because it is what a repair acts on with no person in
-  between: every field of it is matched against the repair contract's own
-  grammars first, and a finding whose fields do not hold their shape is
-  published without them rather than with them labelled.
+  between. Bosun matches every field of it against the repair contract's own
+  grammars first, and a finding whose fields do not hold their shape loses the
+  block instead of getting it labelled.
 
-  What is not on offer is sanitised text. It does not exist, and claiming it
+  The surface does not offer sanitised text. It does not exist, and claiming it
   would be the more dangerous lie.
 
-- **The gate's stamp grammar is stripped from every MCP response.** The gate
-  keeps its memory inside its own pull-request comment -- the last verdict, the
-  head it judged, the migration a repair performs -- because a gate with no
-  database has nowhere else to put it. A client of this surface reads a verdict
-  and writes prose onto a pull request, so a stamp smuggled through a
-  chart-rendered object name would make that client a forgery relay,
-  republishing a verdict the gate never reached against a commit it never
-  judged. The HTML comment delimiters are broken where a byte reaches the wire,
-  visibly rather than silently: an object whose name contains an HTML comment
-  is worth somebody looking at the chart that produced it.
+- **Bosun strips the gate's stamp grammar from every MCP response.** The gate
+  keeps its memory inside its own pull-request comment: the last verdict, the
+  head it judged, the migration a repair performs. A gate with no database has
+  nowhere else to put it. A client of this surface reads a verdict and writes
+  prose onto a pull request, so a stamp smuggled through a chart-rendered
+  object name would make that client a forgery relay, republishing a verdict
+  the gate never reached against a commit it never judged. Bosun breaks the
+  HTML comment delimiters where a byte reaches the wire, and breaks them
+  visibly: an object whose name contains an HTML comment is worth somebody
+  looking at the chart that produced it.
 
 - **A read-only MCP server, on a listener of its own, with its first tool.**
-  Bosun computes the most expensive facts in the promotion loop -- why a Stage
-  silently stopped promoting, and the exact command that unsticks it -- and
-  until now published them only as prose: a comment on a pull request, a page
-  behind a port-forward, a metrics endpoint. That is right for a person reading
-  a page and useless to the agents people actually work through, which were
-  left scraping markdown written for somebody else.
+  Bosun computes the most expensive facts in the promotion loop, such as why a
+  Stage stopped promoting and the command that unsticks it, and until now
+  published them as prose: a comment on a pull request, a page behind a
+  port-forward, a metrics endpoint. A person reading a page gets what they need
+  from that. The agents people work through were left scraping markdown written
+  for somebody else.
 
   `pipeline_report` answers with the last sweep's findings as typed values:
   kind, severity, subject, the evidence with its numbers, how long the
   situation has held, and where one exists the paste-ready command that
-  recovers it, worst first. Beside them travels the sweep's own accounting of
-  what it examined, so a report with no findings can prove it looked.
+  recovers it, worst first. Alongside them the sweep gives its own accounting
+  of what it examined, so a report with no findings can prove it looked.
 
-  Nothing is computed. Every answer comes from the snapshot the sweep already
+  It computes nothing. Every answer comes from the snapshot the sweep already
   holds, so a request reaches no git host, no cluster and no model, and a
   chatty client cannot spend an install's rate limit. Nothing mutates, because
-  no tool does and none is planned: the ClusterRole has no write verb and the
+  no tool does and none is planned: the ClusterRole has no write verb, and the
   reason is written down.
 
-  Three rules land here rather than being retrofitted onto the three tools
+  Three rules land here instead of getting retrofitted onto the three tools
   that follow. **Honest absence is structural**: before the first sweep the
-  `findings` field is ABSENT rather than empty, and the result says in words
-  that nothing has looked -- the same distinction the HTTP surfaces make with
-  a 503, in the one shape JSON can carry it. **Every result is
+  `findings` field is ABSENT instead of empty, and the result says in words
+  that nothing has looked, the same distinction the HTTP surfaces make with a
+  503, in the one shape JSON can carry it. **Every result is
   repository-stamped** and carries the sweep timestamp and the answer's age.
   **Facts are typed and text is tagged**: severities, kinds, counts and
   durations are fields a string cannot forge, and every free-text field says
   whether bosun wrote all of it or quoted a cluster inside it, because these
   answers land in agents holding tools bosun refuses for itself.
 
-  Two controls keep credentials off the surface, in that order. The primary
-  one is a compile-time rule -- the `mcp` package imports the result types and
-  the redactor and nothing else, so no field path from any tool result reaches
-  a credential, and a reflection walk over the registered result types keeps
-  it true on paths no request exercises. The secondary one is the process
-  redactor from the prefactor before this, applied at the single point where
-  a byte reaches the wire rather than by each handler.
+  Two controls keep credentials off the surface, in that order. The compiler
+  enforces the primary one: the `mcp` package imports the result types and the
+  redactor and nothing else, so no field path from any tool result reaches a
+  credential, and a reflection walk over the registered result types keeps that
+  true on paths no request exercises. The process redactor from the prefactor
+  before this is the second, applied at the single point where a byte reaches
+  the wire instead of by each handler.
 
-  The transport is a hand-written JSON-RPC handler rather than the official Go
-  SDK, and that was the SDK's dependency graph rather than its API: it adds
-  eight modules to a `go.mod` with four direct requirements, among them
+  The transport is a hand-written JSON-RPC handler instead of the official Go
+  SDK, and the SDK's dependency graph decided that, not its API. It adds eight
+  modules to a `go.mod` with four direct requirements, among them
   `golang.org/x/oauth2` and through it a client for the cloud metadata service
-  at 169.254.169.254 -- which answers instance credentials to anything that
-  asks, and which this project's own NetworkPolicy excepts by name for exactly
-  that reason. The auth check sits behind an interface either way, so the
-  verifier rung after the static token is additive.
+  at 169.254.169.254, which answers instance credentials to anything that asks,
+  and which this project's own NetworkPolicy excepts by name for that reason.
+  The auth check sits behind an interface either way, so the verifier rung
+  after the static token is additive.
 
 - **Every remedy is now composed from pieces bosun validated.** A remedy is
   the highest-stakes string this project emits, because it is built to be run,
@@ -227,17 +226,16 @@ All notable changes to `bosun`. Format follows
   deliberately does not vendor. Every command builder now checks its object
   names against the RFC1123 subdomain grammar, its repository paths and yq
   keys against grammars of their own, and emits the finding WITHOUT a remedy
-  rather than a suspect one when a piece fails. Kubernetes validates these
-  names itself, so this is expected never to fire -- which is exactly why it
-  is cheap to enforce and loud when an upstream assumption stops holding. It
-  applies to the status page and the markdown report too, not only to MCP:
-  there is one place remedies are composed, so there is one place they are
-  checked.
+  instead of a suspect one when a piece fails. Kubernetes validates these names
+  itself, so nobody expects this to fire, which is why it is cheap to enforce
+  and loud when an upstream assumption stops holding. It applies to the status
+  page and the markdown report as well as to MCP: bosun composes remedies in
+  one place, so it checks them in one place.
 
 - **`web.theme`, so the page's treatment is a deployment decision.** `auto`
   (the default) follows the reader's system preference, which is what the page
-  did before; `dark` and `light` stamp `data-theme` on the document -- the same
-  attribute the site's own toggle writes -- and beat that preference in both
+  did before. `dark` and `light` stamp `data-theme` on the document, the same
+  attribute the site's own toggle writes, and beat that preference in both
   directions.
 
   **There is no toggle on the page, and this is what replaces one.** A toggle
@@ -303,22 +301,22 @@ All notable changes to `bosun`. Format follows
 ### Changed
 
 - **The gate's verdict is enumerable, and its breakdown is that list added
-  up.** `DiffResult.Findings` names every reason the gate has an opinion --
-  what it is about, its contribution to the breakdown, whether it blocks, and
-  whether an edit in the repository could clear it -- and `Blockers` now folds
-  over it rather than walking the result a second time. Two walks over the same
+  up.** `DiffResult.Findings` names every reason the gate has an opinion: what
+  it is about, its contribution to the breakdown, whether it blocks, and
+  whether an edit in the repository could clear it. `Blockers` folds over that
+  list instead of walking the result a second time. Two walks over the same
   findings is how a caller ends up holding a count of three and a list of two,
   with no way to tell which half is lying.
 
-- **Schema validation returns the failures, not a count of them.** The report
-  comment always named the rejected manifests; the structured verdict could
-  only say `schema=3`, which reads exactly like a bug in whatever produced the
+- **Schema validation returns the failures themselves.** The report comment
+  always named the rejected manifests; the structured verdict could say
+  `schema=3` and nothing more, which reads like a bug in whatever produced the
   number. `gate.ValidateManifests` now returns one `SchemaFailure` per
   rejection, and the prose and the slice are two renderings of one pass.
 
-- **Redaction is one thing the process owns, not a helper each git provider
-  reaches for.** A credential is taken out of text by `redact`: primed once at
-  start-up with every secret `config.go` loaded, and read through
+- **The process owns redaction, and each git provider no longer keeps a helper
+  for it.** `redact` takes a credential out of text: primed once at start-up
+  with every secret `config.go` loaded, and read through
   `redact.Text` by any surface holding text it is about to log, post, or wrap
   into an error.
 
@@ -337,12 +335,12 @@ All notable changes to `bosun`. Format follows
   whether or not anything primed the process, and GitHub still names the
   installation token minted for that one push, which start-up never saw.
 
-  Two rules the package exists to hold, and the second is the exception. An
-  unset credential -- and most installs configure only some of the five -- is
-  dropped rather than used, because `strings.ReplaceAll(s, "", m)` is a rule
-  that matches everywhere and turns every string in the process into confetti.
-  And a credential containing another is replaced whole, longest first. That
-  one is a real change: the old `redactErr(redactErr(s, tok), g.Token)` ran
+  Two rules the package exists to hold, and the second is the exception.
+  `redact` drops an unset credential instead of using it, because
+  `strings.ReplaceAll(s, "", m)` matches everywhere and turns every string in
+  the process into confetti. Most installs configure only some of the five. And
+  it replaces a credential containing another whole, longest first. That one is
+  a real change: the old `redactErr(redactErr(s, tok), g.Token)` ran
   the two in argument order, so where an installation token and the static one
   shared a prefix the shorter went first and left the longer one's tail
   standing in text now carrying a marker that claimed it was handled.
@@ -355,9 +353,9 @@ All notable changes to `bosun`. Format follows
   And a second walk in the same file derives from the mechanism instead of the
   call sites: a function that starts `git` and then quotes what git wrote to
   stderr must pass that text through `redact.Text`. That last one is the
-  incident the deleted helper's own comment described -- gitea called it,
-  github inlined two `ReplaceAll` calls, and only one of the two was reviewed
-  when the rules last changed.
+  incident the deleted helper's own comment described: gitea called it, github
+  inlined two `ReplaceAll` calls, and a reviewer saw only one of the two when
+  the rules last changed.
 
 - **`helm`, `kustomize` and `kubeconform` redact their stderr too.** The rule
   that every subprocess's stderr goes through the redactor arrived narrow twice
@@ -365,9 +363,9 @@ All notable changes to `bosun`. Format follows
   first qualified a function only if it handed git a push credential; then, on
   the command being git. The binary was never the reason.
 
-  What makes a subprocess's stderr dangerous is that this process starts it
-  while holding credentials. `cmd.Env` is nil at nearly every call site, and a
-  nil `Env` means the child gets `os.Environ()` -- so a chart render runs with
+  A subprocess's stderr is dangerous because this process starts it while
+  holding credentials. `cmd.Env` is nil at nearly every call site, and a nil
+  `Env` gives the child `os.Environ()`. So a chart render runs with
   `GIT_TOKEN`, `ARGOCD_TOKEN` and the model key in its environment, and so does
   `kubeconform`. A plugin, a debug flag or a chart hook that prints its
   environment puts them on stderr, and stderr is what these three quoted into
@@ -376,13 +374,12 @@ All notable changes to `bosun`. Format follows
   over somebody else's network, and a host that echoes a request header back
   inside an error body is echoing a credential it was sent.
 
-  The rule is simpler for losing the binary, not more complicated: one
-  condition where there were two, and `gitstderr_test.go` is now
-  `subprocess_stderr_test.go` because the old name had stopped being true. Its
-  self-check went from eight call sites to eleven -- the CRD read, the
-  kubeconform run, and `gate/sources.go`'s runner, which is one function that
-  is `helm`, `kustomize build` or `kubectl kustomize` depending on which
-  binary its caller handed it.
+  Dropping the binary made the rule simpler: one condition where there were
+  two. `gitstderr_test.go` is now `subprocess_stderr_test.go`, because the old
+  name had stopped being true. Its self-check went from eight call sites to
+  eleven, adding the CRD read, the kubeconform run, and `gate/sources.go`'s
+  runner, one function that is `helm`, `kustomize build` or `kubectl
+  kustomize` depending on which binary its caller handed it.
 
   **Redaction is the second line here and not the first.** The first would be
   to stop handing every subprocess every credential this process loaded, which
@@ -399,29 +396,29 @@ All notable changes to `bosun`. Format follows
 
   **The shape is ArgoCD's**, because it solved this for the same reason and its
   answer is worth copying: the URL it stores as `origin` is the raw one with no
-  credentials in it, and the credential is attached per-command through the
-  environment, by the commands that actually contact a host and by no others.
-  Nothing is written into the checkout's `.git/config`, so a checkout that
-  leaks is not a checkout that carries a token. What is not copied is the
-  transport -- ArgoCD supplies the credential through `GIT_ASKPASS` and a
-  helper script on disk, and this process already has a way to hand git a
-  credential through the environment, the `http.<remote>.extraHeader` the push
-  has used since it stopped putting tokens in argv.
+  credentials in it, and ArgoCD attaches the credential per command through the
+  environment, on the commands that contact a host and no others. It writes
+  nothing into the checkout's `.git/config`, so a checkout that leaks carries
+  no token. The transport is the part bosun does not copy: ArgoCD supplies the
+  credential through `GIT_ASKPASS` and a helper script on disk, while this
+  process already has a way to hand git a credential through the environment,
+  the `http.<remote>.extraHeader` the push has used since it stopped putting
+  tokens in argv.
 
   So `gitprovider.Remote`: a configured URL split into the address git is given
-  and the environment that authenticates it, and a type rather than two strings
-  because a call site that took one and forgot the other is a clone that
-  silently stops authenticating. `agent`, `gateservice` and `supervisor` hold
+  and the environment that authenticates it. A type, and not two strings,
+  because a call site that took one and forgot the other is a clone that stops
+  authenticating with no symptom. `agent`, `gateservice` and `supervisor` hold
   one of these now instead of a URL string, so there is no longer a repository
   URL in those packages for anything to pass to git by accident.
 
-  **Three clones became one.** No two agreed -- the agent's was not quiet, the
-  supervisor's passed `--branch` only when it had one -- and each was a
-  separate place to get this wrong; `gitprovider.Clone`
-  is the only one now. `EnsureHead` and `MergeBase` take the remote too, because
-  a clone that no longer embeds the credential in `origin` leaves nothing in the
-  checkout for the fetches that follow to authenticate with -- which is exactly
-  why ArgoCD attaches credentials per command rather than once.
+  **Three clones became one.** No two agreed: the agent's was not quiet, and
+  the supervisor's passed `--branch` only when it had one. Each was a separate
+  place to get this wrong, and `gitprovider.Clone` is the only one now.
+  `EnsureHead` and `MergeBase` take the remote too, because a clone that no
+  longer embeds the credential in `origin` leaves nothing in the checkout for
+  the fetches that follow to authenticate with. That is why ArgoCD attaches
+  credentials per command instead of once.
 
   **The status page published it too**, and that was worse: `GIT_REPO_URL` went
   to the page verbatim, so an install with a token in that URL rendered it as
@@ -439,8 +436,8 @@ All notable changes to `bosun`. Format follows
   shape it has to catch is the one that was here: `gitRun(ctx, "clone", …)`,
   with a helper three lines away starting the subprocess. The other is the
   argv guarantee checked against reality, with a shim standing in for git that
-  records what the kernel was actually asked to run -- the same test the push
-  path has had since it moved its own token out of argv.
+  records what the kernel was asked to run. It is the same test the push path
+  has had since it moved its own token out of argv.
 
 - **Every git command redacts what git printed, not only the two that push.**
   The rule that landed with the redactor above qualified a function only if it
@@ -451,27 +448,27 @@ All notable changes to `bosun`. Format follows
 
   That last clause was wrong, and one environment variable is what makes it
   wrong. Those commands run against `origin`, and origin's URL is
-  `GIT_REPO_URL` verbatim -- the agent, the gate service and the supervisor
-  each clone from it, and `gitprovider` strips the userinfo out of the push
-  remote precisely because an operator may have put a credential in it. An
-  install configured that way has handed a secret to every git command here:
-  not through `pushAuthEnv`, not in argv, but in the conversation with the
-  remote, which is the channel the original reasoning was always about. git
+  `GIT_REPO_URL` verbatim. The agent, the gate service and the supervisor each
+  clone from it, and `gitprovider` strips the userinfo out of the push remote
+  because an operator may have put a credential in it. An install configured
+  that way has handed a secret to every git command here, through the
+  conversation with the remote rather than through `pushAuthEnv` or argv. That
+  conversation is the channel the original reasoning was always about, and git
   repeats what the server says.
 
-  So seven more call sites redact their stderr -- `EnsureHead`, `gitRun` and
+  So seven more call sites redact their stderr: `EnsureHead`, `gitRun` and
   `gitLine` in `gitprovider`, the two clones in `agent` and `gateservice`, the
-  supervisor's clone, and the diff that reads a pull request's changed files
-  -- and **a credential embedded in `GIT_REPO_URL` now primes the redactor**.
+  supervisor's clone, and the diff that reads a pull request's changed files.
+  And **a credential embedded in `GIT_REPO_URL` now primes the redactor**.
   The credential and never the URL: a repository URL is in the chart, the logs
   and half the error messages, and priming the whole string would leave an
   operator reading `unable to access "***"`, which does not say which
   repository failed. With a password the username is a placeholder the host
   ignores; with no password the username is the whole credential, which is how
   a forge writes a token into a clone URL. `ssh://` primes nothing, and that
-  guard is load-bearing rather than tidy -- an ssh remote's username is `git`
-  on every forge in existence, and priming it would replace that substring in
-  every sentence this process logs.
+  guard carries weight rather than tidying: an ssh remote's username is `git`
+  on every forge, and priming it would replace that substring in every sentence
+  this process logs.
 
   The derived guard moved up to the root package as `gitstderr_test.go` and
   lost its qualifier, so it now walks every package rather than `gitprovider`

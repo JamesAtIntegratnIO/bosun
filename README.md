@@ -43,7 +43,7 @@ piece doing its one job.
 | [`agent/`](agent) | **The rounds and the repair.** Acts on the verdict: migrates manifests off dropped API versions deterministically, reshapes the documents that swap alone would break, migrates the values a chart version has stopped accepting, fixes what the rendered diff *proves* is mechanical, explains what a green gate cannot show, and escalates the rest as a handoff. |
 | [`gateservice/`](gateservice) | Runs the gate in-process for every open pull request, on a timer, and publishes the verdict, so the agent reads it as a value instead of scraping its own comment. |
 | [`supervisor/`](supervisor) | Sweeps the Kargo pipeline for the promotions that *never happened*. Nothing about one produces an event, so a timer is the only way to see it. |
-| [`mcp/`](mcp) | **The read-only tool surface.** Serves what the sweeps already found to the readers who are not people: read-only MCP tools answering what has stopped promoting, what is in the gate's queue, why one pull request is blocked, and what the agent is doing about it -- as typed fields rather than markdown to parse. It computes nothing, mutates nothing, and reaches no cluster, git host or model. Off by default, on a port of its own, and it refuses to start without a token. See [`docs/mcp.md`](docs/mcp.md). |
+| [`mcp/`](mcp) | **The read-only tool surface.** Serves what the sweeps already found to the readers who are not people: MCP tools answering what has stopped promoting, what is in the gate's queue, why one pull request is blocked, and what the agent is doing about it, as typed fields instead of markdown to parse. It computes nothing, mutates nothing, and reaches no cluster, git host or model. Off by default, on a port of its own, and it refuses to start without a token. See [`docs/mcp.md`](docs/mcp.md). |
 | [`prompt/`](prompt) | What the model is told, and the constant the eval suite scores. |
 | [`charts/kargo-pipelines`](charts/kargo-pipelines) | Warehouses and Stages from one target list, with multi-stage promotion chains, verification gating and the triage hook that calls the agent. |
 | [`charts/bosun`](charts/bosun) | Runs the agent in-cluster, triggered by Kargo rather than polled. |
@@ -99,24 +99,23 @@ refuses, or any fix needing a file outside the addon's own tree.
 
 It comments, labels, and stops. **It never closes a pull request.**
 
-**Answers an agent, read-only**, on a listener of its own. The same facts the
-status page and the report comment carry -- what has stopped promoting, why,
-how long it has held, the exact command that recovers it, and why a given pull
-request is blocked -- served over MCP as typed values a coding agent can branch
-on, rather than markdown written for a person. Ask `gate_verdict` about a pull
-request and the blocker breakdown comes back as counts per kind, with the
-findings behind them and the dropped API versions as fields. Ask `gate_status`
-for the queue -- every open pull request and the verdict standing on it, or the
-error that stopped the sweep from listing them, because a gate that cannot
-reach the git host otherwise reads as a quiet week. Ask `triage_status` what
-the agent is doing about one, and the phase, the attempts it has spent against
-its cap and the labels standing on it say whether it is still working or has
-finished and will not try again. Nothing is
-computed: every answer comes from the snapshot the last sweep already holds, so
-a request reaches no git host, no cluster and no model. Nothing mutates,
-because no tool does. Text bosun did not write travels tagged with whose it is,
-because these answers land in agents holding tools bosun refuses for itself.
-Off by default, and it refuses to start without a token. See
+**Answers an agent, read-only**, on a listener of its own. It serves the facts
+the status page and the report comment carry, over MCP, as typed values a
+coding agent can branch on: what has stopped promoting, why, how long it has
+held, the command that recovers it, and why a given pull request is blocked.
+Ask `gate_verdict` about a pull request and the blocker breakdown comes back as
+counts per kind, with the findings behind them and the dropped API versions as
+fields. Ask `gate_status` for the queue and you get every open pull request
+with the verdict standing on it, or the error that stopped the sweep from
+listing them, because a gate that cannot reach the git host otherwise reads as
+a quiet week. Ask `triage_status` what the agent is doing about one, and the
+phase, the attempts it has spent against its cap and the labels standing on it
+say whether it is still working or has finished and will not try again. It
+computes nothing: every answer comes from the snapshot the last sweep already
+holds, so a request reaches no git host, no cluster and no model. Nothing
+mutates, because no tool does. Text bosun did not write travels tagged with
+whose it is, because these answers land in agents holding tools bosun refuses
+for itself. Off by default, and it refuses to start without a token. See
 [`docs/mcp.md`](docs/mcp.md) for the surface, and
 [the chart README](charts/bosun/README.md#the-mcp-surface) for the values.
 

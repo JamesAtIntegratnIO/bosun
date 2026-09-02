@@ -18,22 +18,25 @@ move: the chart deploys the same image 0.34.0 does.
 
 ### Changed
 
-- **The MCP surface's disclosure note names the facts each tool serves, rather
-  than the field they live in.** 0.34.2 gave the note one entry per tool and
-  deliberately kept the substance of the flat sentence it replaced, which ended
-  "the findings and their remedies" -- a pointer to the results rather than an
-  account of them. Each entry now names what that phrasing only implied: the
-  cluster names, the repository paths of manifests still declaring a dropped
-  version, and the values keys a bump stops reading, all behind a
-  `gate_verdict` finding; the namespaces a `pipeline_report` sweep examined,
-  and the namespace and Stage its remedy commands carry; and the head commits
-  `gate_status` stamps its queue with, beside what stopped a sweep that could
-  not list. Nothing the surface serves changed -- the list an operator weighs
-  before publishing the port stopped being coarser than the results it
-  describes.
+- **The MCP surface's disclosure note names the facts each tool serves.**
+  0.34.2 gave the note one entry per tool and kept the substance of the flat
+  sentence it replaced, which ended "the findings and their remedies". That
+  phrasing points at the results instead of accounting for them. Each entry now
+  names what it left implied: the cluster names, the repository paths of
+  manifests still declaring a dropped version, and the values keys a bump stops
+  reading, all behind a `gate_verdict` finding; the namespaces a
+  `pipeline_report` sweep examined, and the namespace and Stage its remedy
+  commands carry; and the head commits `gate_status` stamps its queue with,
+  beside what stopped a sweep that could not list. Nothing the surface serves
+  changed. The list an operator weighs before publishing the port stopped being
+  coarser than the results it describes.
 - **The status page's own note names the namespaces it prints.** The page has
-  rendered them in its "Checked" line for as long as the report has; the
+  rendered them in its "Checked" line for as long as the report has, and the
   sentence beside it had not said so.
+- **The prose in this README, `docs/mcp.md`, the safety model, ADR 0014 and the
+  glossary drops its AI tells.** Em dashes, "not X but Y" contrasts, passive
+  constructions with no actor, and adverbs doing no work, run against
+  [stop-slop](https://github.com/hardikpandya/stop-slop). No claim changed.
 
 ## [0.34.1]
 

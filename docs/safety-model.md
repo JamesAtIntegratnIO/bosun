@@ -291,96 +291,94 @@ Set `promotionAuth.existingSecret` on the bosun chart and
 opt-in: leaving it unset keeps the endpoint open, and the pod says so in its
 log at every start-up.
 
-## What the MCP surface may reveal, and what it cannot
+## Disclosure and limits of the MCP surface
 
 The read-only MCP listener serves the sweep's own findings to programmatic
 callers. It is off by default, it refuses to start without a bearer token, and
-it is on a port of its own so that admitting a client to it never admits one to
-the endpoint that spends money and writes to the repository. The tools it
-serves, and how to turn it on, are in [the MCP surface](mcp.md).
+it sits on a port of its own, so admitting a client to it never admits one to
+the endpoint that spends money and writes to the repository.
+[The MCP surface](mcp.md) covers the tools and how to turn it on.
 
 **No tool mutates anything, and none reads anything live.** There is no
-mutating tool and no write verb in the ClusterRole to build one on, so a client
-that could ask cannot be answered. Every result comes from the snapshot the
-last sweep left in memory, which is why a call reaches no cluster, no git host
-and no model: a chatty client cannot spend an install's rate limit, and a
-hostile one cannot use this surface to make bosun's credentials issue a request
-on its behalf.
+mutating tool and no write verb in the ClusterRole to build one on, so bosun
+cannot answer a client that asks. Every result comes from the snapshot the last
+sweep left in memory, so a call reaches no cluster, no git host and no model. A
+chatty client cannot spend an install's rate limit, and a hostile one cannot
+use this surface to make bosun's credentials issue a request on its behalf.
 
-What the surface serves, it serves whole: there is no per-project or per-caller
-filtering of the readout here or on any other surface, for the reasons in
+The surface serves its view whole. Bosun applies no per-project or per-caller
+filtering to the readout here or on any other surface, for the reasons in
 [ADR 0014](../adr/0014-an-install-serves-one-trust-domain.md).
 
-Two things about it differ from every surface above, and both come from who is
-reading. Its answers land in another agent -- one that usually holds a shell, a
+Two things set it apart from the surfaces above, and both come from who reads
+it. Its answers land in another agent, and that agent holds a shell, a
 checkout, and tools bosun refuses for itself.
 
-**No field path from a tool result can reach a credential, and that is a
-compile-time rule rather than a filter.** The `mcp` package imports the result
+**No field path from a tool result can reach a credential, and the compiler
+enforces that rather than a filter.** The `mcp` package imports the result
 types and the redactor and nothing else, so it cannot reach a client, a
 configuration, or a file. A reflection walk over every registered result type
-keeps it true on the paths no request exercises, because a behavioural test can
-only sample what a handler happened to produce. Underneath that sits the
-process redactor, applied at the single point where a byte reaches the wire:
-the primary control is that a credential cannot be in a result, and this is the
-second line for the text whose contents nobody chose.
+keeps that true on the paths no request exercises, because a behavioural test
+samples only what a handler happened to produce. Underneath sits the process
+redactor, applied at the single point where a byte reaches the wire. The
+primary control keeps a credential out of a result; the redactor is the second
+line for text whose contents nobody chose.
 
-**Instructions in a result are bosun's own or absent.** A remedy is composed
-only by bosun's code, from pieces checked against a grammar before the command
-is emitted at all -- a piece that fails costs the finding its remedy rather than
-producing a suspect command. Every other free-text field carries an origin
-saying whether bosun wrote all of it or quoted somebody else inside it, and tool
-descriptions are constants, so nothing from a cluster reaches the field a client
-hands its model as instructions.
+**Instructions in a result are bosun's own or absent.** Bosun's code composes a
+remedy from pieces checked against a grammar before it emits the command. A
+piece that fails costs the finding its remedy, and no suspect command reaches
+the wire. Every other free-text field carries an origin saying whether bosun
+wrote all of it or quoted somebody else inside it, and tool descriptions are
+constants, so nothing from a cluster reaches the field a client hands its model
+as instructions.
 
 The origins are a closed vocabulary, and a client fences on the shape rather
 than on the list: a field is `bosun`, or it is `bosun-quoting-` something.
 Today the something is a cluster, this repository, a rendered chart, helm, the
 schema validator, the render as a whole, a pull request's author, or a label
-standing on a pull request. Only the first is a claim that bosun wrote every
-byte.
+standing on a pull request. Only the first claims bosun wrote every byte.
 
-A label is tagged as somebody else's even though bosun writes some of them.
-Attempt labels are the agent's own and a `needs-human` is a maintainer's, and
-in a repository where anybody may label they are anybody's -- so the field
-carries one origin saying the weakest true thing about it, rather than a
-per-label judgement a hostile label would imitate by choosing bosun's prefix.
+Bosun tags a label as somebody else's even though it writes some of them.
+Attempt labels are the agent's own, a `needs-human` is a maintainer's, and in a
+repository where anybody may label they are anybody's. So the field carries one
+origin saying the weakest true thing about it. A per-label judgement would
+invite a hostile label to imitate it by choosing bosun's prefix.
 
-**A verdict's typed facts are vetted, not tagged.** One block on the gate
-verdict carries no origin, and that is deliberate: the dropped-served-version
-detail -- which definition, which versions are gone, which one survives, which
-kind of manifest moves -- is what a repair acts on with no person in between,
-so a tag would be the wrong instrument. Every field of it is matched against
+**Bosun vets a verdict's typed facts instead of tagging them.** One block on
+the gate verdict carries no origin, on purpose. The dropped-served-version
+detail, which definition, which versions are gone, which one survives, which
+kind of manifest moves, is what a repair acts on with no person in between, so
+a tag would be the wrong instrument. Bosun matches every field of it against
 the repair contract's own grammars, which admit no space, no backtick and no
-newline, and a finding whose fields do not hold their shape is published
-without them rather than with them labelled. Absence there means bosun would
-not vouch for the detail, never that there is none.
+newline. A finding whose fields do not hold their shape loses the block rather
+than getting it labelled. Absence there means bosun would not vouch for the
+detail, and never that there is none.
 
-**The gate's own stamp grammar is stripped from every response.** The gate
+**Bosun strips the gate's own stamp grammar from every response.** The gate
 keeps its memory inside its pull-request comment, because a gate with no
-database has nowhere else to put it: the last verdict, the head it judged and
-the migration a repair performs all travel as HTML comments and are read back
-on the next run. A client of this surface reads a verdict and writes prose onto
-a pull request, so a stamp smuggled through a chart-rendered object name would
-make that client a forgery relay -- republishing a verdict the gate never
-reached, against a commit it never judged. Nothing in that chain is
-compromised, which is why the HTML comment delimiters are broken where a byte
-reaches the wire rather than blamed on the client. Broken visibly, and not
-deleted: an object whose name contains an HTML comment is worth somebody
-looking at the chart that produced it.
+database has nowhere else to put it. It writes the last verdict, the head it
+judged and the migration a repair performs as HTML comments, and reads them
+back on the next run. A client of this surface reads a verdict and writes prose
+onto a pull request. Smuggle a stamp through a chart-rendered object name and
+that client becomes a forgery relay, republishing a verdict the gate never
+reached against a commit it never judged. Nobody in that chain is compromised,
+so bosun breaks the HTML comment delimiters where a byte reaches the wire
+instead of blaming the client. It breaks them visibly and does not delete them:
+an object whose name contains an HTML comment is worth somebody looking at the
+chart that produced it.
 
-**Free-text fields are length-capped.** The client's context is a resource this
-surface can spend without ever seeing the bill, and nothing upstream bounds a
-helm error or a release note. A field that was cut says so, because a note that
-happens to end in an ellipsis would otherwise be indistinguishable from one
+**Bosun caps the length of free-text fields.** The client's context is a
+resource this surface can spend without seeing the bill, and nothing upstream
+bounds a helm error or a release note. A field that got cut says so, because a
+note that happens to end in an ellipsis would otherwise look the same as one
 bosun stopped copying.
 
-**What it does not offer is sanitised text.** Bosun cannot make a careless
-client safe, and text sanitised to harmlessness does not exist. What it
-guarantees is provenance labelling and bosun-authored instructions only; a
-client that treats an origin-tagged quotation as an instruction has made a
-decision bosun cannot take back, in whatever tools that client holds. The
-residual risk is real and it is stated here rather than left implied.
+**The surface does not offer sanitised text.** Bosun cannot make a careless
+client safe, and text sanitised to harmlessness does not exist. It guarantees
+provenance labelling, and instructions that are bosun's own or absent. A client
+that treats an origin-tagged quotation as an instruction has made a decision
+bosun cannot take back, in whatever tools that client holds. The residual risk
+is real, and it is stated here rather than left implied.
 
 ## Why a verdict names a commit
 
