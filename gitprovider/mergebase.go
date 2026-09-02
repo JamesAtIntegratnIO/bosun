@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/JamesAtIntegratnIO/bosun/redact"
 )
 
 // The last commit a pull request's branch and its base branch share, found in
@@ -147,7 +149,11 @@ func gitRun(ctx context.Context, dir string, args ...string) error {
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, snippet([]byte(stderr.String())))
+		// Redacted before it is quoted, and before snippet truncates it: the
+		// ladder deepens a clone of origin, and a credential in that remote's
+		// URL is one this host can echo back. See redact's package comment.
+		return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err,
+			snippet([]byte(redact.Text(stderr.String()))))
 	}
 	return nil
 }
@@ -160,7 +166,8 @@ func gitLine(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, snippet([]byte(stderr.String())))
+		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err,
+			snippet([]byte(redact.Text(stderr.String()))))
 	}
 	sha := strings.TrimSpace(string(out))
 	if sha == "" {

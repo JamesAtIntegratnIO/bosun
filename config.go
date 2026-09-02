@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -507,8 +508,16 @@ func (c *Config) validate() error {
 // redactor drops them, because an empty secret used as a rule matches
 // everywhere. See redaction_test.go, which derives this list from config.go's
 // own syntax tree rather than trusting it.
+//
+// The last entry is the one that walk cannot find. GitRepoURL is read with a
+// bare os.Getenv because it is not a credential -- it is the repository, it is
+// in the chart and in half the log lines -- but an operator may have written
+// one into it, and gitprovider already assumes they did: pushRemote strips the
+// userinfo out so it cannot reach argv. Every clone, fetch and merge-base in
+// this process is pointed at that URL, so what is in it is a credential this
+// process hands to a remote, whatever variable it arrived in.
 func (c *Config) Secrets() []string {
-	return []string{
+	secrets := []string{
 		c.GitToken,
 		c.AppPrivateKey,
 		c.LLMKey,
@@ -516,6 +525,88 @@ func (c *Config) Secrets() []string {
 		c.PromotionToken,
 		c.MCPToken,
 	}
+	return append(secrets, urlCredentials(c.GitRepoURL)...)
+}
+
+// urlCredentials is the credential an operator embedded in a repository URL,
+// in both the spellings it can appear in, or nothing when there is none.
+//
+// The credential and not the URL. Priming the whole string would satisfy any
+// test that asks whether the token survived and leave an operator reading
+// `unable to access "***"`, which does not say which repository, host or
+// branch a run was about.
+//
+// Which half of the userinfo is the secret depends on whether there are two.
+// With a password, the username is a placeholder the host ignores -- `oauth2`,
+// `x-access-token`, somebody's name -- and priming it would redact an ordinary
+// word. With no password the username is the whole credential, which is how a
+// forge writes a token into a clone URL. An *empty* password counts as no
+// password and not as a blank secret: `https://TOKEN:@host/o/r.git` is what
+// `git remote add` writes back, and reading it the other way returns "" and
+// primes nothing while looking like it worked.
+//
+// Both spellings, because the two differ and each reaches a different reader.
+// url.Parse percent-decodes the userinfo, so an operator who wrote `p%40ss`
+// has a git talking to the host about `p@ss` -- the decoded form is what a
+// host can echo back -- while every message that quotes GIT_REPO_URL as it was
+// configured carries the encoded one. Priming one and not the other leaves
+// whichever was missed readable.
+//
+// http(s) only, and that guard is load-bearing rather than tidy. An ssh
+// remote's username is a login name, it is `git` on every forge in existence,
+// and the credential is a key that never appears in the URL at all. Priming it
+// would replace that substring in every sentence this process logs, most of
+// which are about git. It is the same scheme test pushRemote makes, for a
+// version of the same reason: only an http(s) remote carries its credential in
+// the URL.
+func urlCredentials(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil {
+		return nil
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return nil
+	}
+
+	decoded := u.User.Username()
+	if password, ok := u.User.Password(); ok && password != "" {
+		decoded = password
+	}
+	// The redactor drops blanks itself, but returning one here would also mean
+	// returning the raw spelling of a credential that is not there.
+	if strings.TrimSpace(decoded) == "" {
+		return nil
+	}
+	return []string{decoded, rawURLCredential(raw)}
+}
+
+// rawURLCredential is the same credential spelled the way it was configured,
+// read out of the URL text rather than out of url.Parse's decoded fields.
+//
+// The authority is everything between the scheme and the first `/`, `?` or
+// `#`, and the userinfo is what precedes the last `@` in it -- last, because a
+// password may contain one unencoded and a host name may not.
+func rawURLCredential(raw string) string {
+	_, rest, ok := strings.Cut(raw, "://")
+	if !ok {
+		return ""
+	}
+	authority := rest
+	if i := strings.IndexAny(authority, "/?#"); i >= 0 {
+		authority = authority[:i]
+	}
+	at := strings.LastIndex(authority, "@")
+	if at < 0 {
+		return ""
+	}
+	userinfo := authority[:at]
+	if user, password, ok := strings.Cut(userinfo, ":"); ok && password != "" {
+		return password
+	} else if ok {
+		return user
+	}
+	return userinfo
 }
 
 // NormaliseLegacyAuthor clears the author identity this project shipped as

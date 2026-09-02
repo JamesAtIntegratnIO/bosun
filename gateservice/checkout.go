@@ -10,6 +10,7 @@ import (
 
 	"github.com/JamesAtIntegratnIO/bosun/gate"
 	"github.com/JamesAtIntegratnIO/bosun/gitprovider"
+	"github.com/JamesAtIntegratnIO/bosun/redact"
 )
 
 // The two working copies one gate run compares, and how they are obtained.
@@ -145,7 +146,10 @@ func gitRun(ctx context.Context, args ...string) error {
 	var out strings.Builder
 	c.Stderr = &out
 	if err := c.Run(); err != nil {
-		return fmt.Errorf("git %s: %w: %s", strings.Join(args[:2], " "), err, strings.TrimSpace(out.String()))
+		// Redacted because this runs the clone, and the URL it clones from is
+		// GIT_REPO_URL -- which an operator may have written a credential into.
+		return fmt.Errorf("git %s: %w: %s", strings.Join(args[:2], " "), err,
+			strings.TrimSpace(redact.Text(out.String())))
 	}
 	return nil
 }

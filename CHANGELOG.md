@@ -350,12 +350,56 @@ All notable changes to `bosun`. Format follows
   `envSecret`, loads a `Config` whose every credential is a distinct sentinel,
   and fails if the redactor lets one through; it also walks `main.go`, so
   deleting the one line that primes the process fails rather than passing.
-  `gitprovider/redaction_test.go` derives from the mechanism instead of the
-  call sites: `pushAuthEnv` is how a credential reaches git, so a function
-  that calls it and then quotes what git wrote to stderr must pass that text
-  through `redact.Text`. That last one is the incident the deleted helper's
-  own comment described -- gitea called it, github inlined two `ReplaceAll`
-  calls, and only one of the two was reviewed when the rules last changed.
+  And a second walk in the same file derives from the mechanism instead of the
+  call sites: a function that starts `git` and then quotes what git wrote to
+  stderr must pass that text through `redact.Text`. That last one is the
+  incident the deleted helper's own comment described -- gitea called it,
+  github inlined two `ReplaceAll` calls, and only one of the two was reviewed
+  when the rules last changed.
+
+- **Every git command redacts what git printed, not only the two that push.**
+  The rule that landed with the redactor above qualified a function only if it
+  called `pushAuthEnv`, on the reasoning that a push is where a credential
+  reaches git; it named `EnsureHead`'s fetch and the merge-base ladder as
+  deliberately out of scope, because "nothing in them was ever given a secret
+  to echo".
+
+  That last clause was wrong, and one environment variable is what makes it
+  wrong. Those commands run against `origin`, and origin's URL is
+  `GIT_REPO_URL` verbatim -- the agent, the gate service and the supervisor
+  each clone from it, and `gitprovider` strips the userinfo out of the push
+  remote precisely because an operator may have put a credential in it. An
+  install configured that way has handed a secret to every git command here:
+  not through `pushAuthEnv`, not in argv, but in the conversation with the
+  remote, which is the channel the original reasoning was always about. git
+  repeats what the server says.
+
+  So seven more call sites redact their stderr -- `EnsureHead`, `gitRun` and
+  `gitLine` in `gitprovider`, the two clones in `agent` and `gateservice`, the
+  supervisor's clone, and the diff that reads a pull request's changed files
+  -- and **a credential embedded in `GIT_REPO_URL` now primes the redactor**.
+  The credential and never the URL: a repository URL is in the chart, the logs
+  and half the error messages, and priming the whole string would leave an
+  operator reading `unable to access "***"`, which does not say which
+  repository failed. With a password the username is a placeholder the host
+  ignores; with no password the username is the whole credential, which is how
+  a forge writes a token into a clone URL. `ssh://` primes nothing, and that
+  guard is load-bearing rather than tidy -- an ssh remote's username is `git`
+  on every forge in existence, and priming it would replace that substring in
+  every sentence this process logs.
+
+  The derived guard moved up to the root package as `gitstderr_test.go` and
+  lost its qualifier, so it now walks every package rather than `gitprovider`
+  alone; that is what found the supervisor's clone, which no version of this
+  scoped to git providers would have seen. Its self-check went from two call
+  sites to nine.
+
+  **`GIT_REPO_URL` is still read with a bare `os.Getenv`**, so this one
+  credential is outside the walk that derives the rest from `envSecret`, and
+  `Config.Secrets` says so beside the line that adds it. Two things this does
+  not do: a clone still puts that URL in argv, where a credential is visible in
+  the process table (#118), and `helm`, `kustomize` and `kubeconform` still
+  quote their stderr unredacted.
 
 - **The status page wears the project's own colours.** It shipped in GitHub's
   palette -- `#0969da` links, `#0d1117` ground -- with an anchor emoji for a
