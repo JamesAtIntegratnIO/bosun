@@ -113,6 +113,22 @@ type Service struct {
 	sweptAt  time.Time
 	sweepErr string
 	lastOpen []PRStatus
+
+	// history is the verdicts each pull request's own comment recorded, as
+	// the last publish onto it read them. Keyed by pull-request number,
+	// oldest verdict first, dropped when the pull request stops being open.
+	//
+	// Kept rather than recomputed, because the publish path already parses
+	// exactly this out of the existing comment on every run and then throws
+	// the parse away. Recomputing it would mean a second read of the git host
+	// on a path that is not allowed to make one.
+	//
+	// A key with no rows behind it is a comment that was read and recorded no
+	// earlier verdict; no key at all is a pull request whose comment this
+	// process has not read. The two are different answers and the read
+	// surfaces publish them as different answers, so the map's own
+	// key-present is the distinction rather than a length.
+	history map[int][]VerdictRow
 }
 
 // ValidatePolicy is the host's schema-validation settings, each optional.
@@ -255,6 +271,11 @@ func (g *Service) sweep(ctx context.Context) {
 	}
 
 	open := map[string]bool{}
+	// The same question asked of the pull request rather than of its head
+	// commit, because the verdict history is a pull request's memory and
+	// survives every push to it. A commit key would drop the history on the
+	// push that most wants it read back.
+	openNumbers := map[int]bool{}
 	// Verdicts already standing on the host, kept so the status snapshot can
 	// say what they were rather than shrugging about the commits this sweep
 	// deliberately did not re-litigate.
@@ -262,6 +283,7 @@ func (g *Service) sweep(ctx context.Context) {
 	for i := range prs {
 		pr := &prs[i]
 		open[pr.HeadSHA] = true
+		openNumbers[pr.Number] = true
 
 		if g.known(pr.HeadSHA) {
 			continue
@@ -292,6 +314,14 @@ func (g *Service) sweep(ctx context.Context) {
 			delete(g.results, sha)
 		}
 	}
+	// And the same for the histories, which are a slow leak in the same way:
+	// a merged pull request's memory is on the git host, in the comment it was
+	// read from, and nothing here will ever be asked about it again.
+	for number := range g.history {
+		if !openNumbers[number] {
+			delete(g.history, number)
+		}
+	}
 	g.sweptAt, g.sweepErr = time.Now(), ""
 	g.lastOpen = g.snapshotLocked(prs, posted)
 	g.mu.Unlock()
@@ -305,6 +335,30 @@ func (g *Service) known(sha string) bool {
 	}
 	out, done := g.results[sha]
 	return done && !out.spent()
+}
+
+// rememberHistory records what one pull request's comment said before this
+// run rewrote it, or forgets what an earlier run recorded when this one could
+// not read the comment at all.
+//
+// One writer for both, so the refused-read case cannot be the one somebody
+// forgets: a stale history kept across a failed read says "these are the
+// earlier verdicts" while the verdict being published right now is missing
+// from it.
+//
+// Called from the publish path, which does not hold the lock, so it takes it
+// like every other writer of the snapshot's inputs does.
+func (g *Service) rememberHistory(number int, rows []VerdictRow, read bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !read {
+		delete(g.history, number)
+		return
+	}
+	if g.history == nil {
+		g.history = map[int][]VerdictRow{}
+	}
+	g.history[number] = append([]VerdictRow(nil), rows...)
 }
 
 func (g *Service) store(sha string, out *Outcome) {
@@ -564,7 +618,7 @@ func (g *Service) comment(ctx context.Context, pr *gitprovider.PullRequest, repo
 	// edit only its own comments, so that one is filtered by author, and the two
 	// must not be collapsed into one loop however similar they look.
 	var existing *gitprovider.Comment
-	var history []verdictRow
+	var history []VerdictRow
 	comments, err := g.Git.ListComments(ctx, pr.Number)
 	if err != nil {
 		// Both scans below are how "never comment twice for one commit" and
@@ -593,10 +647,22 @@ func (g *Service) comment(ctx context.Context, pr *gitprovider.PullRequest, repo
 	}
 	if existing != nil {
 		history = append(parseHistory(existing.Body), currentAsRow(existing.Body)...)
-		if len(history) > maxHistory {
-			history = history[len(history)-maxHistory:]
+		if len(history) > MaxHistory {
+			history = history[len(history)-MaxHistory:]
 		}
 	}
+	// Kept, not dropped. This parse is the only account anything in this
+	// process has of what the gate said before now, and until this line it was
+	// computed on every run and discarded at the end of the function.
+	//
+	// Whether the read succeeded travels with it rather than being inferred
+	// from the rows, because a listing that failed produces the same empty
+	// parse a pull request with no gate comment produces. Recording the first
+	// as the second would publish "no earlier verdicts" for a pull request
+	// whose comment nothing managed to open -- and a refused read also
+	// invalidates whatever an earlier one saw, since the verdict this run is
+	// about to publish is now one of the earlier ones.
+	g.rememberHistory(pr.Number, history, err == nil)
 
 	var stamps strings.Builder
 	fmt.Fprintf(&stamps, "%s%s -->\n", StampHead, pr.HeadSHA)

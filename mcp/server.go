@@ -138,8 +138,10 @@ type Tool struct {
 //
 // One list, built here, rather than a registry a tool adds itself to: the
 // value of being able to read the whole surface in one place is higher than
-// the value of letting a file register itself, and "what does this disclose"
-// is the question an operator asks before routing anything to this port.
+// the value of letting a file register itself, and that value goes up rather
+// than down as tools are added -- "what does this disclose" is the question an
+// operator asks before routing anything to this port, and this list is the
+// answer.
 func (s *Server) tools() []Tool {
 	return []Tool{{
 		Name:        "pipeline_report",
@@ -171,6 +173,12 @@ func (s *Server) tools() []Tool {
 		Params:      handoffQueueParams,
 		Result:      Handoff{},
 		Call:        s.handoffQueue,
+	}, {
+		Name:        "verdict_history",
+		Description: verdictHistoryDescription,
+		Params:      verdictHistoryParams,
+		Result:      History{},
+		Call:        s.verdictHistory,
 	}}
 }
 

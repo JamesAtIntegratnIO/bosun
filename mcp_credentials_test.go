@@ -132,8 +132,8 @@ func TestNoToolResultCanReachACredential(t *testing.T) {
 		// edit -- which is exactly the property that fails silently if it ever
 		// stops holding, because a guard that has quietly stopped reading one
 		// result type reports the same clean pass as one that read them all.
-		// The total below cannot see that: four richly-walked types and a
-		// fifth reached by nothing would clear it comfortably.
+		// The total below cannot see that: five richly-walked types and a
+		// sixth reached by nothing would clear it comfortably.
 		before := fields
 		walk(reflect.TypeOf(tool.Result), tool.Name, map[reflect.Type]bool{})
 		if fields == before {

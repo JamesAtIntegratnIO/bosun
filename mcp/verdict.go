@@ -79,6 +79,14 @@ type GateStatus struct {
 	// numbers.
 	Held    int
 	Running int
+	// HistoryCap is how many earlier verdicts one pull request's gate comment
+	// remembers, which is what makes a short history readable: a history
+	// exactly this long has had older entries dropped from it.
+	//
+	// Carried across rather than declared here, because the cap is applied by
+	// the gate and this package cannot import it. Zero is "the snapshot did
+	// not say", and verdict_history publishes no cap rather than a zero.
+	HistoryCap int
 }
 
 // GatePR is one open pull request as the gate last saw it.
@@ -104,6 +112,57 @@ type GatePR struct {
 	// produce one -- a verdict already standing on the git host is not
 	// re-litigated, and a run in flight has nothing yet.
 	Verdict *GateVerdict
+	// History is what the gate said on each earlier head commit, oldest
+	// first, as the last publish onto this pull request read the stamps back
+	// out of its own comment.
+	//
+	// A POINTER to a slice, because absent and empty are different answers:
+	// nil is "no comment has been read for this pull request", and present
+	// and empty is "one was read and recorded no earlier verdict".
+	// verdict_history publishes the two as different states.
+	//
+	// Oldest first here and newest first on the wire. The order is reversed
+	// where it is published rather than where it is produced, because this is
+	// the order the gate's own comment records and its renderer reads, and a
+	// snapshot that quietly disagreed with the comment it was parsed from
+	// would be the harder of the two to notice.
+	History *[]GateVerdictRow
+}
+
+// GateVerdictRow is one verdict the gate reached on an earlier head commit, as
+// its own comment recorded it.
+//
+// The gate has no database, so this is its memory: HTML stamps inside the
+// comment it rewrites on every run. These rows are the parse of those stamps,
+// which means they came off the git host rather than out of this process, and
+// whoever can edit that comment can write them. verdict_history says so where
+// it publishes them.
+type GateVerdictRow struct {
+	// SHA is the head commit that verdict was reached against, in whatever
+	// form the stamp recorded -- abbreviated, on a gate that abbreviates.
+	SHA string
+	// Blocking is whether that verdict stopped the merge, which is the field
+	// a flip is counted from.
+	Blocking bool
+	// Headline is the gate's own one line for that verdict, composed from
+	// counts and fixed words the same way the current verdict's is.
+	Headline string
+}
+
+// open is the pull request the sweep saw with this number, or nil.
+//
+// One copy of it, on the snapshot rather than on each handler, because three
+// tools now ask the same question of the same slice and the loop is the shape
+// a fourth would copy again. Returning a pointer INTO Open rather than a value
+// is deliberate: every caller only reads, and a copy per call would duplicate
+// a verdict's whole findings list to answer "is it there".
+func (g GateStatus) open(number int) *GatePR {
+	for i := range g.Open {
+		if g.Open[i].Number == number {
+			return &g.Open[i]
+		}
+	}
+	return nil
 }
 
 // GateVerdict is one head commit's verdict as the gate computed it.
@@ -432,13 +491,7 @@ func (s *Server) gateVerdict(raw json.RawMessage) (any, error) {
 		out.SweepError = ptr(say(g.Err, OriginCluster, maxNote))
 	}
 
-	var pr *GatePR
-	for i := range g.Open {
-		if g.Open[i].Number == number {
-			pr = &g.Open[i]
-			break
-		}
-	}
+	pr := g.open(number)
 	if pr == nil {
 		// Two different nothings. A sweep that ran and did not see this pull
 		// request open is evidence; a sweep that could not list them is the

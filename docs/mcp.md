@@ -102,6 +102,40 @@ do, and the files and settings a repair would have touched are what the handoff
 is about. What stays on `gate_verdict` is the coverage the run lost, which
 qualifies a verdict rather than describing the job.
 
+### `verdict_history`
+
+**Answers** what the gate said about one pull request on each of its earlier
+head commits: the commit, whether that verdict blocked, and the gate's own
+headline for it. Newest first, and the result says so rather than leaving a
+client to infer it. Use it to tell a push that fixed something from a gate that
+changed its mind, and to count flips rather than read headlines.
+
+**Takes** a `pullRequest` number, and an optional `repository`.
+
+It is the one answer read off the git host rather than computed here. A gate
+with no database keeps its memory as HTML comments inside its own comment on
+the pull request, because that is the only per-pull-request storage a git host
+offers; the publish path parses those stamps on every run, and this tool
+publishes the parse instead of dropping it. So the result names that comment as
+its source — anybody who can write to the repository can edit it — and the cap
+on how many verdicts the comment remembers is published beside the entries: as
+many entries as the cap means older ones have been dropped, and the history on
+the wire is not the pull request's whole life.
+
+Two things follow from where the entries come from, and neither is hidden:
+
+- **The entries are what that comment recorded, not every head the pull
+  request has had.** They are refreshed when the gate publishes onto it, so a
+  head commit whose run was short-circuited — a verdict already standing on the
+  git host that this process did not re-litigate — is missing from them, as is
+  the verdict standing now.
+- **An entry's `headCommit` is absent when what the comment held is not
+  written the way a commit is.** It is the field a caller lines up against its
+  own git log and it carries no origin to fence it by, so it is held to a
+  hash's alphabet; the entry itself is still published, because losing it would
+  lose the flip. Absence there means bosun would not vouch for the value, never
+  that the verdict had no commit.
+
 ## No resources, and no sampling
 
 The surface offers tools and nothing else. No resources — the tempting one is
@@ -160,6 +194,16 @@ Then one entry per tool, because what there is to be absent differs:
   sentence beside it says the queue is older than the sweep time above it. The
   attempt cap is published either way, because it is what an operator configured
   rather than something read from the world.
+- `verdict_history` publishes `entries` only under the state `recorded`, which
+  means a comment was read: **empty** then says the comment recorded no earlier
+  verdict, and **absent** says there was no comment to read a history from.
+  Neither is a claim that the gate has never blocked the pull request. Its
+  `unswept` and `absent` are `gate_verdict`'s, meaning what they mean there.
+  Its `unknown` is wider than `gate_verdict`'s: there it is only "the sweep
+  could not list", here it is that **and** the ordinary "the sweep saw this
+  pull request and no comment has been read for it", which is the common answer
+  rather than the broken one. `sweepError` is what separates the two, and the
+  `status` sentence says which is which.
 
 One consequence worth knowing before it surprises anybody: with
 `supervise.enabled: false` there is no sweep to read, so `pipeline_report`
@@ -268,6 +312,9 @@ they are the list to weigh before publishing the port:
   has spent against the cap.
 - `handoff_queue` — which pull requests the agent gave up on, and everything
   `gate_verdict` reveals about each of them.
+- `verdict_history` — the verdicts the gate reached on that pull request's
+  earlier head commits, with their commits and the gate's headlines, which name
+  blocker counts and kinds.
 
 It serves **no credential**, no prompt, and no rendered diff — no field path
 from any tool result can reach one, and that is a compile-time property rather
