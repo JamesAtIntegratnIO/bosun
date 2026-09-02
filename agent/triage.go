@@ -33,6 +33,7 @@ import (
 	"github.com/JamesAtIntegratnIO/bosun/llm"
 	"github.com/JamesAtIntegratnIO/bosun/migrate"
 	"github.com/JamesAtIntegratnIO/bosun/prompt"
+	"github.com/JamesAtIntegratnIO/bosun/redact"
 	"github.com/JamesAtIntegratnIO/bosun/safepath"
 	"github.com/JamesAtIntegratnIO/bosun/upstream"
 )
@@ -721,7 +722,10 @@ func (t *Triage) clone(ctx context.Context, pr *gitprovider.PullRequest) (string
 	cmd.Stderr = &out
 	if err := cmd.Run(); err != nil {
 		cleanup()
-		return "", func() {}, fmt.Errorf("%w: %s", err, out.String())
+		// The clone is pointed straight at RepoURL, so this is the one place
+		// where a credential an operator embedded in it is both in argv and
+		// in whatever the host says back.
+		return "", func() {}, fmt.Errorf("%w: %s", err, redact.Text(out.String()))
 	}
 	// The clone asked for a branch; everything downstream is about a commit.
 	// The gate's verdict, the report this reads, the status this writes and
@@ -1100,7 +1104,7 @@ func changedFiles(ctx context.Context, root string, pr *gitprovider.PullRequest)
 	out, err := diff.Output()
 	if err != nil {
 		return nil, fmt.Errorf("diffing %s against this branch: %w: %s",
-			base, err, strings.TrimSpace(stderr.String()))
+			base, err, strings.TrimSpace(redact.Text(stderr.String())))
 	}
 
 	var paths []string

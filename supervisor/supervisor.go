@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/JamesAtIntegratnIO/bosun/pipeline"
+	"github.com/JamesAtIntegratnIO/bosun/redact"
 )
 
 // Supervisor runs the pipeline sweep on an interval and holds the last report
@@ -199,7 +200,8 @@ func ShallowCheckout(repoURL, branch, root string) func(context.Context) (string
 		c.Stderr = &errb
 		if err := c.Run(); err != nil {
 			cleanup()
-			return "", func() {}, fmt.Errorf("git clone: %w: %s", err, strings.TrimSpace(errb.String()))
+			return "", func() {}, fmt.Errorf("git clone: %w: %s", err,
+				strings.TrimSpace(redact.Text(errb.String())))
 		}
 		return dir, cleanup, nil
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -206,4 +207,197 @@ func firstCollaborator(t *testing.T, body *ast.BlockStmt) token.Pos {
 			"moved and this walk no longer sees what it orders the priming against")
 	}
 	return first
+}
+
+// A credential an operator wrote into GIT_REPO_URL primes the redactor too.
+//
+// This is the gap the walk above cannot see, and its own comment says so: the
+// repository URL is read with a bare os.Getenv, so no amount of deriving from
+// envSecret will ever find the token inside it. It is a credential all the
+// same -- gitprovider already treats it as one, stripping it out of the push
+// remote so it does not end up in argv -- and every clone, fetch and
+// merge-base in this process is pointed at that URL.
+//
+// What is primed is the credential, never the URL. A repository URL is not a
+// secret, it is in the chart, the logs and half the error messages, and
+// priming the whole string would replace the one piece of context that says
+// which repository a failure was about.
+func TestACredentialInTheRepositoryURLPrimesTheRedactor(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		repoURL string
+		want    string
+	}{
+		{
+			name:    "a password in the userinfo is the credential",
+			repoURL: "https://someone:hunter2@git.example.com/o/r.git",
+			want:    "hunter2",
+		},
+		{
+			// The form a token actually takes. GitHub, Gitea and GitLab all
+			// accept the token as the whole userinfo, and an operator copying
+			// a clone URL out of a UI gets this one.
+			repoURL: "https://ghp_0123456789abcdef@github.com/o/r.git",
+			name:    "a lone username is the credential, because that is how a token is written",
+			want:    "ghp_0123456789abcdef",
+		},
+		{
+			// And the username beside a password is not. It is `oauth2`,
+			// `x-access-token` or somebody's name -- a placeholder the host
+			// ignores -- and priming it would redact an ordinary word.
+			name:    "the username beside a password is not primed",
+			repoURL: "https://x-access-token:hunter2@github.com/o/r.git",
+			want:    "hunter2",
+		},
+		{
+			name:    "no userinfo, nothing to prime",
+			repoURL: "https://github.com/o/r.git",
+			want:    "",
+		},
+		{
+			name:    "unset, nothing to prime",
+			repoURL: "",
+			want:    "",
+		},
+		{
+			// What `git remote add origin https://TOKEN@host/...` writes back
+			// into .git/config, and the form that reads as "there is a
+			// password" while the password is empty.
+			name:    "an empty password leaves the username as the credential",
+			repoURL: "https://ghp_0123456789abcdef:@github.com/o/r.git",
+			want:    "ghp_0123456789abcdef",
+		},
+		{
+			// url.Parse decodes the userinfo, so the credential git uses and
+			// the credential an error message quotes are two different
+			// strings. Both are primed; this asserts the encoded one, which is
+			// the spelling every message quoting GIT_REPO_URL carries.
+			name:    "a percent-encoded password is primed as it was written",
+			repoURL: "https://someone:p%40ss%2Fword@git.example.com/o/r.git",
+			want:    "p%40ss%2Fword",
+		},
+		{
+			// The one that has to be right. An ssh remote's username is a
+			// login name and it is `git` on every forge in existence; the
+			// credential is a key that never appears in the URL at all.
+			// Priming `git` would replace that substring in every sentence
+			// this process logs, most of which are about git.
+			name:    "an ssh remote primes nothing, whatever its username",
+			repoURL: "ssh://git@github.com/o/r.git",
+			want:    "",
+		},
+		{
+			name:    "an scp-style remote primes nothing either",
+			repoURL: "git@github.com:o/r.git",
+			want:    "",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Cleanup(func() { redact.Prime() })
+			redact.Prime((&Config{GitRepoURL: tc.repoURL}).Secrets()...)
+
+			// Through the redactor rather than against the slice, because
+			// what is being asserted is what reaches a log line, and an entry
+			// the redactor drops as blank is indistinguishable from one that
+			// was never added.
+			const sentence = "fatal: unable to access %q: the server said no"
+			got := redact.Text(fmt.Sprintf(sentence, tc.repoURL))
+
+			if tc.want == "" {
+				if want := fmt.Sprintf(sentence, tc.repoURL); got != want {
+					t.Fatalf("nothing in %q is a credential, and the redactor rewrote the "+
+						"text anyway:\n got %q\nwant %q", tc.repoURL, got, want)
+				}
+				return
+			}
+			if strings.Contains(got, tc.want) {
+				t.Errorf("the credential in %q survived: %q\n"+
+					"Config.Secrets does not name it, so every error quoting this URL -- and "+
+					"every clone, fetch and merge-base in this process is pointed at it -- "+
+					"is published with the token still in it.", tc.repoURL, got)
+			}
+			if !strings.Contains(got, redact.Marker) {
+				t.Errorf("nothing was redacted at all in %q", got)
+			}
+		})
+	}
+}
+
+// And both spellings are primed, not just the one a message happens to carry.
+//
+// The table above asserts the encoded form, because that is what a message
+// quoting GIT_REPO_URL carries. This is the other direction and the one the
+// redactor exists for: git talks to the host about the *decoded* credential,
+// so a host echoing it back echoes that spelling, and it has to go too.
+func TestBothSpellingsOfAnEncodedCredentialArePrimed(t *testing.T) {
+	t.Cleanup(func() { redact.Prime() })
+	redact.Prime((&Config{
+		GitRepoURL: "https://someone:p%40ss%2Fword@git.example.com/o/r.git",
+	}).Secrets()...)
+
+	for _, spelling := range []string{"p%40ss%2Fword", "p@ss/word"} {
+		got := redact.Text("error: the host reported " + spelling + " was rejected")
+		if strings.Contains(got, spelling) {
+			t.Errorf("the %s spelling survived: %q", spelling, got)
+		}
+	}
+}
+
+// And the credential reaches Secrets from the environment, not just from a
+// struct literal.
+//
+// The table above builds a Config by hand, which proves what Secrets does with
+// a field and nothing about how that field is filled. GIT_REPO_URL is read
+// with a bare os.Getenv, outside the envSecret walk that derives every other
+// credential, so the wiring from variable to field to redactor is exactly the
+// part no other test in this file is watching.
+func TestTheRepositoryURLCredentialIsPrimedFromTheEnvironment(t *testing.T) {
+	_, credentials := configEnv(t)
+	env := map[string]string{
+		"GIT_OWNER": "o", "GIT_REPO": "r",
+		"GIT_REPO_URL": "https://x-access-token:sentinel-in-the-repo-url@git.example.com/o/r.git",
+		"LLM_PROVIDER": "openai", "LLM_MODEL": "m",
+		"LLM_BASE_URL":    "http://model.invalid/v1",
+		"ALLOW_PATHS":     "addons/**",
+		"ARGOCD_BASE_URL": "https://argocd-server.argocd.svc",
+	}
+	for _, k := range sortedKeys(credentials) {
+		env[k] = "sentinel-" + k
+	}
+	withOnly(t, env)
+
+	c, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("a config with a credential in its repository URL must load: %v", err)
+	}
+	t.Cleanup(func() { redact.Prime() })
+	redact.Prime(c.Secrets()...)
+
+	got := redact.Text("fatal: the host reported sentinel-in-the-repo-url was rejected")
+	if strings.Contains(got, "sentinel-in-the-repo-url") {
+		t.Errorf("the credential in GIT_REPO_URL never reached the redactor: %q\n"+
+			"LoadConfig reads that variable with a bare os.Getenv, so nothing derived from "+
+			"envSecret will catch this if the wiring through Config.Secrets is broken.", got)
+	}
+}
+
+// And the URL around the credential survives.
+//
+// Separate from the table because it is the other half of the same decision:
+// redacting the whole of GIT_REPO_URL would satisfy every assertion above and
+// leave an operator reading `unable to access "***"`, which does not say which
+// repository, host or branch the run was about.
+func TestTheRepositoryURLItselfIsNotRedacted(t *testing.T) {
+	t.Cleanup(func() { redact.Prime() })
+	redact.Prime((&Config{
+		GitRepoURL: "https://someone:hunter2@git.example.com/o/r.git",
+	}).Secrets()...)
+
+	got := redact.Text("fatal: unable to access 'https://git.example.com/o/r.git/'")
+	for _, keep := range []string{"git.example.com", "o/r.git"} {
+		if !strings.Contains(got, keep) {
+			t.Errorf("%q was redacted out of %q; the host and path are not the credential "+
+				"and they are what says which repository failed", keep, got)
+		}
+	}
 }

@@ -21,6 +21,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/JamesAtIntegratnIO/bosun/redact"
 )
 
 // PullRequest is the subset of a pull request the agent reasons about.
@@ -320,7 +322,12 @@ func EnsureHead(ctx context.Context, dir, want string) error {
 			return fmt.Errorf(
 				"the branch moved to %s while it was being checked out, and %s could not be fetched: "+
 					"refusing to answer for a commit that was not inspected: %w: %s",
-				shortSHA(got), shortSHA(want), err, snippet(stderr.Bytes()))
+				shortSHA(got), shortSHA(want), err,
+				// Through the process redactor first, and before snippet's
+				// truncation so a secret cannot survive by being cut in half.
+				// This fetch is pointed at origin, whose URL is GIT_REPO_URL,
+				// and git repeats what that host says back.
+				snippet([]byte(redact.Text(stderr.String()))))
 		}
 	}
 	return nil
