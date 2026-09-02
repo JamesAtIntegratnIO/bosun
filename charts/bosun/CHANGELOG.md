@@ -11,10 +11,10 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
-## [0.34.3]
+## [0.36.1]
 
 **Prose only.** No values change, no template change, and `appVersion` does not
-move: the chart deploys the same image 0.34.0 does.
+move: the chart deploys the same image 0.36.0 does.
 
 ### Changed
 
@@ -37,6 +37,59 @@ move: the chart deploys the same image 0.34.0 does.
   glossary drops its AI tells.** Em dashes, "not X but Y" contrasts, passive
   constructions with no actor, and adverbs doing no work, run against
   [stop-slop](https://github.com/hardikpandya/stop-slop). No claim changed.
+## [0.36.0]
+
+**No values change, and no template change.** `appVersion` moves, which is what
+this release is: the agent it deploys serves a sixth MCP tool. An install that
+has `mcp.enabled: false`, which is every install that has not said otherwise,
+is unaffected in every respect.
+
+### Added
+
+- **`verdict_history` on the MCP surface.** What the gate said about one pull
+  request on each of its earlier head commits -- the commit, whether that
+  verdict blocked, and the gate's own headline for it, newest first. It is how
+  a push that fixed something is told from a gate that changed its mind, and
+  until now telling them apart meant a person expanding a collapsed table in a
+  pull-request comment.
+
+  It computes nothing and fetches nothing. A gate with no database keeps its
+  memory as HTML stamps inside its own comment on the pull request, and the
+  publish path already parses those stamps on every run to carry them forward;
+  it keeps the parse instead of dropping it, so the answer costs no git API
+  call, no cluster read and no model call.
+
+  **It reveals what the report comment already reveals**, to whoever holds the
+  token: the verdicts the gate reached on that pull request's earlier head
+  commits, with their commits and the gate's headlines, which name blocker
+  counts and kinds. It is also the one answer on the surface read off your git
+  host rather than composed in the pod, so the result names the pull-request
+  comment as its source -- the people who can edit that comment are the people
+  who can write to the gated repository, and a client is told rather than left
+  to assume.
+
+## [0.35.0]
+
+**No values change, and no template change.** `appVersion` moves, which is what
+this release is: the agent it deploys serves one more MCP tool. An install that
+has `mcp.enabled: false`, which is every install that has not said otherwise, is
+unaffected in every respect.
+
+### Added
+
+- **`handoff_queue` on the MCP surface.** Every open pull request the last gate
+  sweep saw carrying the `needs-human` label -- the label the agent applies when
+  it stops short of a mechanical fix -- each with the verdict standing against
+  its head commit, every finding behind it, and the automatic fix attempts it
+  has already spent against its cap. It answers from the sweep's snapshot like
+  every other tool here, so it reaches no cluster, no git host and no model.
+
+  An empty queue is published only by a sweep that actually listed pull
+  requests. A sweep that could not says so in a field of its own, because
+  "nobody is waiting on you" is the one answer somebody acts on by going home.
+
+  The disclosure notes gain their entry: what this tool reveals is what
+  `gate_verdict` reveals, about the pull requests the agent gave up on.
 
 ## [0.34.1]
 

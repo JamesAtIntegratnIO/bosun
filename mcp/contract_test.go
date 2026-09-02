@@ -61,6 +61,19 @@ func TestTheResultShapeIsWhatItWas(t *testing.T) {
 		{"a queue before the first gate sweep", "gate_status_unswept.json", func(t *testing.T) any {
 			return newFixture(t, nil).call(t, "gate_status")
 		}},
+		{"a gate that has flipped", "verdict_history_flapping.json", func(t *testing.T) any {
+			return newFixture(t, nil).withGate(flapping()).
+				callWith(t, "verdict_history", `{"pullRequest":264}`)
+		}},
+		{"a pull request no history has been read for", "verdict_history_none.json",
+			func(t *testing.T) any {
+				return newFixture(t, nil).withGate(green()).
+					callWith(t, "verdict_history", `{"pullRequest":41}`)
+			}},
+		{"a history before the first gate sweep", "verdict_history_unswept.json",
+			func(t *testing.T) any {
+				return newFixture(t, nil).callWith(t, "verdict_history", `{"pullRequest":264}`)
+			}},
 		{"a pull request being triaged", "triage_status_running.json", func(t *testing.T) any {
 			return newFixture(t, nil).withGate(blocked()).
 				withTriage(TriageStatus{InFlight: []int{264}, MaxAttempts: 2,
@@ -72,6 +85,36 @@ func TestTheResultShapeIsWhatItWas(t *testing.T) {
 				withTriage(TriageStatus{MaxAttempts: 2, Attempts: map[int]int{41: 0}}).
 				callWith(t, "triage_status", `{"pullRequest":41}`)
 		}},
+		{"a pull request waiting on a human", "handoff_queue_waiting.json", func(t *testing.T) any {
+			return newFixture(t, nil).withGate(escalated()).
+				withTriage(TriageStatus{MaxAttempts: 2, Attempts: map[int]int{264: 2, 41: 0}}).
+				callWith(t, "handoff_queue", `{}`)
+		}},
+		{"a queue nobody is waiting on", "handoff_queue_empty.json", func(t *testing.T) any {
+			return newFixture(t, nil).withGate(green()).
+				withTriage(TriageStatus{MaxAttempts: 2, Attempts: map[int]int{41: 0}}).
+				callWith(t, "handoff_queue", `{}`)
+		}},
+		{"a handoff queue after a sweep that could not list", "handoff_queue_unlisted.json",
+			func(t *testing.T) any {
+				return newFixture(t, nil).
+					withGate(GateStatus{SweptAt: sweptAt, Err: "the host said 401"}).
+					withTriage(TriageStatus{MaxAttempts: 2}).
+					callWith(t, "handoff_queue", `{}`)
+			}},
+		{"a handoff queue held over from an earlier sweep", "handoff_queue_held_over.json",
+			func(t *testing.T) any {
+				g := escalated()
+				g.Err = "the host said 401"
+				return newFixture(t, nil).withGate(g).
+					withTriage(TriageStatus{MaxAttempts: 2, Attempts: map[int]int{264: 2, 41: 0}}).
+					callWith(t, "handoff_queue", `{}`)
+			}},
+		{"a handoff queue before the first gate sweep", "handoff_queue_unswept.json",
+			func(t *testing.T) any {
+				return newFixture(t, nil).withTriage(TriageStatus{MaxAttempts: 2}).
+					callWith(t, "handoff_queue", `{}`)
+			}},
 		{"the tool set", "tools_list.json", func(t *testing.T) any {
 			f := newFixture(t, nil)
 			_, body := f.post(t, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)

@@ -64,6 +64,42 @@
           "type": "object"
         },
         "name": "triage_status"
+      },
+      {
+        "description": "Every open pull request waiting on a human: the ones bosun's last gate sweep saw carrying the needs-human label, which is what the agent applies when it stops short of a mechanical fix and will not try again on its own. Each one carries the verdict standing against its head commit -- the state, the blocker breakdown and every finding behind it, with the files and settings a repair would have touched -- and how many automatic fix attempts it has already spent against its cap. Use it to work the queue that is blocked rather than the queue that is merely open. If the sweep could not list pull requests at all, the result says so in its own field, so an empty queue is never confused with a gate that could not look. Answers from the last sweep's snapshot: it reaches no cluster, no git host and no model, and it can change nothing.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "description": "The repository, owner/repo. Optional: an install watches exactly one, and omitting this asks about that one.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "name": "handoff_queue"
+      },
+      {
+        "description": "What the gate said about one pull request on each of its earlier head commits: the commit, whether that verdict blocked the merge, and the gate's own headline for it. Newest first. Use it to tell a push that fixed something from a gate that changed its mind, and to count how often a verdict has flipped. The entries are read out of the gate's own comment on the pull request, which is where a gate with no database keeps its memory, so the result names that comment as the source and publishes the cap on how many verdicts it remembers -- a history exactly that long has had older ones dropped. A pull request no history has been read for is answered as such rather than as one that has never been red. Answers from the last sweep's snapshot: it reaches no cluster, no git host and no model, and it can change nothing.",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "pullRequest": {
+              "description": "The pull request number to report the earlier verdicts for.",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "repository": {
+              "description": "The repository, owner/repo. Optional: an install watches exactly one, and omitting this asks about that one.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "pullRequest"
+          ],
+          "type": "object"
+        },
+        "name": "verdict_history"
       }
     ]
   }

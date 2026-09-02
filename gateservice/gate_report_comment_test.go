@@ -94,7 +94,7 @@ func TestHistoryIsBounded(t *testing.T) {
 			reportFor(i%2 == 0, "Blocking — "+sha, "body"))
 	}
 	body := f.Comments[0].Body
-	if strings.Count(body, StampWas) > maxHistory {
+	if strings.Count(body, StampWas) > MaxHistory {
 		t.Fatalf("history is unbounded: %d rows", strings.Count(body, StampWas))
 	}
 	if strings.Contains(body, "a0000000") {

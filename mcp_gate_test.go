@@ -4,13 +4,16 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JamesAtIntegratnIO/bosun/gate"
+	"github.com/JamesAtIntegratnIO/bosun/gateservice"
 	"github.com/JamesAtIntegratnIO/bosun/internal/helmtest"
 	"github.com/JamesAtIntegratnIO/bosun/mcp"
 )
@@ -261,7 +264,11 @@ func TestNoVerdictCrossesAsNoVerdict(t *testing.T) {
 func TestTheStateVocabularyIsOneVocabulary(t *testing.T) {
 	root := helmtest.Root(t)
 	gateStates := stateConstants(t, filepath.Join(root, "gateservice", "status.go"))
-	toolStates := stateConstants(t, filepath.Join(root, "mcp", "verdict.go"))
+	// The whole package rather than the file the first states were declared
+	// in. A tool that adds a state declares it beside itself, and a walk
+	// pointed at one file would report agreement about a vocabulary it had
+	// stopped reading half of.
+	toolStates := statesInPackage(t, filepath.Join(root, "mcp"))
 
 	published := map[string]string{}
 	for name, value := range toolStates {
@@ -290,7 +297,12 @@ func TestTheStateVocabularyIsOneVocabulary(t *testing.T) {
 			extra[value] = true
 		}
 	}
-	for _, want := range []string{mcp.StateAbsent, mcp.StateUnswept} {
+	//
+	// `absent` and `unswept` answer a pull request the gate's snapshot does not
+	// contain, which it has no word for because a page only renders what it
+	// has. `recorded` answers a question about a history rather than about a
+	// verdict, which none of the gate's five words is about at all.
+	for _, want := range []string{mcp.StateAbsent, mcp.StateUnswept, mcp.StateRecorded} {
 		if !extra[want] {
 			t.Errorf("%q is no longer a state the tool surface adds; a pull request the "+
 				"gate's snapshot does not contain has to be answerable as something, and "+
@@ -306,11 +318,42 @@ func TestTheStateVocabularyIsOneVocabulary(t *testing.T) {
 
 	// The self-check, and not optional: two walks that found nothing would
 	// compare two empty sets and report agreement.
-	if len(gateStates) < 5 || len(toolStates) < 7 {
+	if len(gateStates) < 5 || len(toolStates) < 8 {
 		t.Fatalf("found %d gate states and %d tool states; they are written differently now "+
 			"and these walks no longer read them. Fix the walks rather than lowering these "+
 			"numbers.", len(gateStates), len(toolStates))
 	}
+}
+
+// statesInPackage reads every `State*` string constant a package declares,
+// across every file of it that is not a test.
+//
+// Derived rather than pointed at a file, for the reason every derivation here
+// is: a state declared in a file this walk does not open is a word that reaches
+// the wire with nothing checking it belongs to a vocabulary.
+func statesInPackage(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]string{}
+	files := 0
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		files++
+		for k, v := range stateConstants(t, filepath.Join(dir, name)) {
+			out[k] = v
+		}
+	}
+	if files < 4 {
+		t.Fatalf("read only %d non-test files in %s; this walk is looking at the wrong "+
+			"directory and is proving nothing", files, dir)
+	}
+	return out
 }
 
 // stateConstants reads every `State*` string constant in one file.
@@ -352,4 +395,106 @@ func stateConstants(t *testing.T, path string) map[string]string {
 		}
 	}
 	return out
+}
+
+// The verdict history crosses whole, and its absence crosses as absence.
+//
+// The other half of the same contract the verdict crosses under, and a
+// sharper one: this side of it is a POINTER, and the two things it
+// distinguishes -- "no comment has been read for this pull request" and "one
+// was read and recorded no earlier verdict" -- are exactly what a helpful
+// copy collapses. A collapse here publishes "the gate has never blocked this"
+// for a pull request nothing has looked at the history of, on a tool whose
+// whole purpose is telling a flapping gate from a fixed one.
+func TestTheVerdictHistoryCrossesIntoTheToolSurface(t *testing.T) {
+	rows := []gateservice.VerdictRow{
+		{SHA: "1f0e2d3c", Blocking: true, Headline: "Blocking — 4 manifests"},
+		{SHA: "2a4b6c8d", Blocking: false, Headline: "No blocking findings — 1 version changed"},
+	}
+	got := mcpGateStatus(gateservice.Status{
+		SweptAt:    time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC),
+		HistoryCap: gateservice.MaxHistory,
+		Open: []gateservice.PRStatus{
+			{Number: 264, HeadSHA: "9f2c1a4b", History: &rows},
+			{Number: 41, HeadSHA: "3c1d5e7f"},
+		},
+	})
+
+	if got.HistoryCap != gateservice.MaxHistory {
+		t.Errorf("the cap the gate applied crossed as %d, not %d; a client cannot tell a "+
+			"truncated history from a short one without it", got.HistoryCap, gateservice.MaxHistory)
+	}
+	if len(got.Open) != 2 {
+		t.Fatalf("%d pull requests crossed, want 2", len(got.Open))
+	}
+
+	crossed := got.Open[0].History
+	if crossed == nil {
+		t.Fatal("a history that was read crossed as no history, which a client reads as " +
+			"'nothing has looked'")
+	}
+	if len(*crossed) != len(rows) {
+		t.Fatalf("%d rows crossed as %d", len(rows), len(*crossed))
+	}
+	// Field by field, off the gate service's own type rather than off a list
+	// here: SHA and Headline are both strings, and a copy that transposed them
+	// compiles, publishes, and names every verdict after the wrong commit.
+	compared := 0
+	for i, want := range rows {
+		from := reflect.ValueOf(want)
+		to := reflect.ValueOf((*crossed)[i])
+		for j := 0; j < from.NumField(); j++ {
+			name := from.Type().Field(j).Name
+			mirror := to.FieldByName(name)
+			if !mirror.IsValid() {
+				t.Errorf("gateservice.VerdictRow.%s has no counterpart on the tool surface, "+
+					"so it cannot cross at all", name)
+				continue
+			}
+			compared++
+			if !reflect.DeepEqual(from.Field(j).Interface(), mirror.Interface()) {
+				t.Errorf("row %d: %s crossed as %#v, not %#v",
+					i, name, mirror.Interface(), from.Field(j).Interface())
+			}
+		}
+	}
+	// The self-check, and not optional: a walk over a row that lost its fields
+	// compares nothing and reports a clean crossing, which is the failure this
+	// whole test exists to catch spelled one level up.
+	if compared < 3*len(rows) {
+		t.Fatalf("compared only %d fields across %d rows; gateservice.VerdictRow is shaped "+
+			"differently now and this walk no longer reads it. Fix the walk rather than "+
+			"lowering this number.", compared, len(rows))
+	}
+
+	// And a pull request nothing has read a comment for crosses as nothing,
+	// rather than as a pull request the gate has never blocked.
+	if h := got.Open[1].History; h != nil {
+		t.Errorf("an unread history crossed as %v, which is the one thing it must not be", *h)
+	}
+
+	// Empty crosses as empty, which is the third answer and the one a nil
+	// check written the easy way turns into the second.
+	none := []gateservice.VerdictRow{}
+	empty := mcpGateStatus(gateservice.Status{
+		SweptAt: time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC),
+		Open:    []gateservice.PRStatus{{Number: 264, History: &none}},
+	})
+	if empty.Open[0].History == nil {
+		t.Error("a comment that was read and recorded no earlier verdict crossed as a " +
+			"comment nothing read")
+	}
+
+	// And nothing on the published side is filled by nobody: a field added to
+	// the tool surface's row that the crossing never writes is a zero on every
+	// answer, forever.
+	published := reflect.TypeOf(mcp.GateVerdictRow{})
+	source := reflect.TypeOf(gateservice.VerdictRow{})
+	for i := 0; i < published.NumField(); i++ {
+		name := published.Field(i).Name
+		if _, ok := source.FieldByName(name); !ok {
+			t.Errorf("mcp.GateVerdictRow.%s comes from no field of gateservice.VerdictRow, "+
+				"so nothing fills it", name)
+		}
+	}
 }

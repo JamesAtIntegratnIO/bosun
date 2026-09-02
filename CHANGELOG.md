@@ -43,6 +43,79 @@ All notable changes to `bosun`. Format follows
 
 ### Added
 
+- **`handoff_queue`: the pull requests waiting on a human.** When the agent
+  gives up on a mechanical fix it labels the pull request `needs-human` and
+  stops. Until now the only way to read that queue was to list pull requests by
+  label against the git host and then fetch each verdict back -- a round trip
+  bosun makes once a sweep and threw away. This answers it from the snapshot
+  the gate already holds, so it costs no git-host call and reaches no cluster
+  and no model.
+
+  Each entry carries the pull request's identity, the verdict standing against
+  its head commit, the blocker breakdown, and **every finding behind it** --
+  which is the difference between this list and `gate_status`'s. A queue is
+  scanned to choose what to ask about next; this one is the work itself, and
+  the fields a repair would have used are the fields the person picking it up
+  needs. Beside them travels how many automatic fix attempts the agent has
+  already spent against its cap, so a pull request that ran out of attempts can
+  be told from one the agent refused on the first look. That count is the
+  agent's own, taken where `triage_status` takes it rather than recounted from
+  the labels: the cap's memory is a label under a prefix that follows the
+  brand, and a second count would disagree with the first exactly on a renamed
+  install.
+
+  The absence rule is `gate_status`'s, and it matters more here. The queue is
+  **absent** before the first sweep and after a sweep that could not list pull
+  requests, and **empty** only when a sweep listed them and none carried the
+  label -- because "nobody is waiting on you" is the one answer a caller acts
+  on by going home. A sweep that could not list says so in a field of its own,
+  and a queue held over from an earlier sweep is published beside that error
+  rather than dropped.
+
+  The result is repository-stamped and takes the optional `repository`
+  qualifier the other tools take. `docs/mcp.md` and the chart's disclosure
+  notes gain their entries, and the label the agent writes is now held to the
+  label this surface selects on by a test that reads the first from the agent's
+  own source -- neither package can import the other, and a rename on either
+  side would otherwise be a queue that is empty forever.
+
+- **`verdict_history`: what the gate said before now, as data.** A sixth MCP
+  tool, answering what the gate's verdict was on each of one pull request's
+  earlier head commits -- the commit, whether that verdict blocked, and the
+  gate's own headline for it, newest first. It is the difference between "my
+  last push fixed it" and "the gate changed its mind", two readings of the same
+  green that want opposite next moves, and until now telling them apart meant a
+  person expanding a collapsed table in a pull-request comment.
+
+  Nothing new is computed or fetched for it. A gate with no database keeps its
+  memory as HTML stamps inside its own comment, because that is the only
+  per-pull-request storage a git host offers, and the publish path already
+  parses those stamps on every run to carry them forward. It kept the parse
+  instead of dropping it: the sweep carries the rows onto its snapshot and the
+  tool publishes them, so a tool call still reaches no cluster, no git host and
+  no model.
+
+  Which makes this the one answer on the surface read off the git host rather
+  than composed in the pod, and the result says so. The rows name the
+  pull-request comment as their source, because the people who can edit that
+  comment are the people who can write to the gated repository -- a set nothing
+  else here is exposed to. The cap on how many verdicts the comment remembers
+  is published beside the entries, so as many entries as the cap reads as
+  "older ones were dropped" rather than as a short life; the order is stated
+  rather than left to be inferred; and a recorded commit that is not written
+  the way a commit is loses its commit rather than being published as one.
+
+  Three absences stay distinct, in the words `gate_verdict` already uses: no
+  sweep has completed (`unswept`), a sweep completed and did not see this pull
+  request open (`absent`), and a sweep saw it and there was no gate comment to
+  read a history from (`unknown`). None of them is a claim that the gate has
+  never blocked it. A history that was read and recorded nothing is an *empty*
+  list under `recorded`, which is a fourth answer again.
+
+  [`docs/mcp.md`](docs/mcp.md) gains its section, the safety model gains the
+  note about the one answer with a comment editor in its trust picture, and the
+  chart README's disclosure notes gain its entry.
+
 - **A documentation page for the MCP surface.** The tools and what each
   answers, what a caller gets before the first sweep and why an absence there is
   not an empty result, turning it on, and the token. One page, beside the

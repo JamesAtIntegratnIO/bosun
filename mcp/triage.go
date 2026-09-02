@@ -192,12 +192,7 @@ func (s *Server) triageStatus(raw json.RawMessage) (any, error) {
 		if g.Err != "" {
 			out.SweepError = ptr(say(g.Err, OriginCluster, maxNote))
 		}
-		for i := range g.Open {
-			if g.Open[i].Number == number {
-				pr = &g.Open[i]
-				break
-			}
-		}
+		pr = g.open(number)
 	}
 
 	if pr != nil {

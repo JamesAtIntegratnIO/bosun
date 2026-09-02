@@ -77,6 +77,60 @@ This is the one answer with two clocks. The phase is this process's current
 state. The labels and the attempt count are as old as the sweep the result
 names.
 
+### `handoff_queue`
+
+**Answers** which open pull requests are waiting on a human: the ones the last
+gate sweep saw carrying the `needs-human` label, which is what the agent
+applies when it stops short of a mechanical fix and will not act again on its
+own. Each one carries the verdict standing against its head commit, meaning the
+state, the blocker breakdown and every finding behind it, plus how many
+automatic fix attempts it has already spent against its cap.
+
+**Takes** an optional `repository`.
+
+The findings ride with each entry here, and not in `gate_status`, because
+different people read the two lists. You scan a queue to choose what to ask
+about next, so multiplying every rendered object's name across rows you are
+about to discard spends your context for nothing. This list is the work itself.
+Every entry on it is a job somebody has already been asked to do, and the files
+and settings a repair would have touched are what the handoff is about. The
+coverage the run lost stays on `gate_verdict`, because it qualifies a verdict
+instead of describing the job.
+
+### `verdict_history`
+
+**Answers** what the gate said about one pull request on each of its earlier
+head commits: the commit, whether that verdict blocked, and the gate's own
+headline for it. Newest first, and the result says so instead of leaving a
+client to infer it. Use it to tell a push that fixed something from a gate that
+changed its mind, and to count flips instead of reading headlines.
+
+**Takes** a `pullRequest` number, and an optional `repository`.
+
+This is the one answer bosun reads off the git host instead of computing here.
+A gate with no database keeps its memory as HTML comments inside its own
+comment on the pull request, the only per-pull-request storage a git host
+offers. The publish path parses those stamps on every run, and this tool
+publishes the parse instead of dropping it. So the result names that comment as
+its source, which anybody who can write to the repository can edit, and
+publishes the cap on how many verdicts the comment remembers beside the
+entries. As many entries as the cap means bosun dropped older ones, and the
+history on the wire is not the pull request's whole life.
+
+Two things follow from where the entries come from, and neither is hidden:
+
+- **The entries are what that comment recorded, not every head the pull
+  request has had.** The gate refreshes them when it publishes onto the
+  comment. A head commit whose run was short-circuited, meaning a verdict
+  already stood on the git host and this process did not re-litigate it, is
+  missing from them, as is the verdict standing now.
+- **An entry's `headCommit` is absent when what the comment held is not
+  written the way a commit is.** It is the field a caller lines up against its
+  own git log, and it carries no origin to fence it by, so bosun holds it to a
+  hash's alphabet. The entry itself still gets published, because losing it
+  would lose the flip. Absence there means bosun would not vouch for the value,
+  and never that the verdict had no commit.
+
 ## No resources, and no sampling
 
 The surface offers tools and nothing else. The tempting resource is the
@@ -125,6 +179,25 @@ Then one entry per tool, because what there is to be absent differs:
   the three ways of not knowing: `unswept` (nothing has looked), `unknown` (the
   sweep could not list) and `absent` (the sweep looked and did not see this one
   open).
+- `handoff_queue` publishes `waiting` under `gate_status`'s rule, held-over
+  queue included, and the stakes are higher: absent when nothing has listed pull
+  requests, empty only when a sweep listed them and none carried the label. An
+  empty queue from a gate that could not reach the git host would say "nobody is
+  waiting on you" to the one caller who acts on that by going home. So where an
+  earlier sweep's listing survives, bosun publishes it beside the error, and the
+  sentence beside it says the queue is older than the sweep time above it. The
+  attempt cap gets published either way, because an operator configured it
+  instead of the sweep reading it from the world.
+- `verdict_history` publishes `entries` only under the state `recorded`, which
+  means a comment was read: **empty** then says the comment recorded no earlier
+  verdict, and **absent** says there was no comment to read a history from.
+  Neither is a claim that the gate has never blocked the pull request. Its
+  `unswept` and `absent` are `gate_verdict`'s, meaning what they mean there.
+  Its `unknown` is wider than `gate_verdict`'s: there it is only "the sweep
+  could not list", here it is that **and** the ordinary "the sweep saw this
+  pull request and no comment has been read for it", which is the common answer
+  rather than the broken one. `sweepError` is what separates the two, and the
+  `status` sentence says which is which.
 
 One consequence worth knowing before it surprises you: with
 `supervise.enabled: false` there is no sweep to read, so `pipeline_report`
@@ -236,6 +309,11 @@ they are the list to weigh before publishing the port:
   stops reading.
 - `triage_status`: the labels standing on a pull request, and the attempts it
   has spent against the cap.
+- `handoff_queue`: which pull requests the agent gave up on, and everything
+  `gate_verdict` reveals about each of them.
+- `verdict_history`: the verdicts the gate reached on that pull request's
+  earlier head commits, with their commits and the gate's headlines, which name
+  blocker counts and kinds.
 
 It serves **no credential**, no prompt, and no rendered diff. No field path
 from any tool result can reach one, and the compiler enforces that rather than
