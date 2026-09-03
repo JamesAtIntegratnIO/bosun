@@ -71,6 +71,28 @@ type TriageStatus struct {
 	// A pull request the last sweep did not see has no entry, and this
 	// surface publishes no attempt count for it rather than a zero.
 	Attempts map[int]int
+
+	// Reasons is what the model said when it asked for a human about a pull
+	// request, keyed by pull-request number.
+	//
+	// It rides here rather than arriving through a provider of its own
+	// because it is the same kind of fact as the two above: the agent's
+	// account of what the agent did about one pull request. One snapshot
+	// carries all three, and the surface gains no reach it did not have.
+	//
+	// Held only where the MODEL is what decided. An escalation bosun made on
+	// a process fact -- the push failed, the model could not be reached, the
+	// attempt cap is spent -- has a reason too, and it is not this one: it is
+	// bosun's own sentence, already on the pull request under bosun's name.
+	// So a pull request with no entry here is one this process holds no
+	// model-written reason for, and never one the agent stopped on for no
+	// reason at all.
+	//
+	// Published by handoff_queue, where the handoff is the subject. Not by
+	// triage_status, which answers what the agent is doing NOW: a sentence
+	// about a stop that already happened would be the one field on that
+	// result that is not about the present.
+	Reasons map[int]string
 }
 
 // Triage is what triage_status returns.

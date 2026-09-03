@@ -100,7 +100,13 @@ func throughTheWire(t *testing.T, text, call string) []byte {
 		Report:     func() *pipeline.Report { return nil },
 		Auth:       mcp.Unauthenticated{},
 		Triage: func() mcp.TriageStatus {
-			return mcp.TriageStatus{MaxAttempts: 2, Attempts: map[int]int{264: 1}}
+			// The escalation reason too, because it is the newest free-text
+			// field on the surface and the one a model wrote: a stamp reaching
+			// a client inside a sentence bosun's own model produced is the
+			// same forgery as one inside a chart's object name, arriving
+			// somewhere a reader is even less likely to look twice at.
+			return mcp.TriageStatus{MaxAttempts: 2, Attempts: map[int]int{264: 1},
+				Reasons: map[int]string{264: text}}
 		},
 		Now: func() time.Time { return time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC) },
 		Gate: func() mcp.GateStatus {

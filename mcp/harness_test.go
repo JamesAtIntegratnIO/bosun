@@ -605,6 +605,43 @@ func everyToolCall(t *testing.T) []toolCall {
 	return out
 }
 
+// walkText visits every string in a decoded result, saying where it is and
+// what a client would fence it by.
+//
+// One visitor rather than one per assertion, because the two questions asked
+// of a string on this surface are the same two every time: which field is it
+// in, and whose words does the result say they are. `key` is the enclosing
+// field name -- carried down through `text` and `command`, so a string inside
+// a Text or a Remedy is attributed to the field that holds it rather than to
+// the word "text". `origin` is the sibling origin of that Text, and "" where
+// there is none, which is what an untagged field looks like.
+func walkText(tree any, visit func(path, key, origin, text string)) {
+	var walk func(v any, path, key, origin string)
+	walk = func(v any, path, key, origin string) {
+		switch node := v.(type) {
+		case string:
+			visit(path, key, origin, node)
+		case []any:
+			for i := range node {
+				walk(node[i], path+"[]", key, origin)
+			}
+		case map[string]any:
+			here, _ := node["origin"].(string)
+			for k, val := range node {
+				// A Text and a Remedy both put their content under a fixed
+				// key beside the origin. Everywhere else the key IS the
+				// field, so it replaces what was carried in.
+				next, tag := k, ""
+				if k == "text" || k == "command" {
+					next, tag = key, here
+				}
+				walk(val, path+"."+k, next, tag)
+			}
+		}
+	}
+	walk(tree, "", "", "")
+}
+
 // flapping is the world this tool was argued for: a pull request whose verdict
 // has gone red, green and red again across three head commits.
 //
