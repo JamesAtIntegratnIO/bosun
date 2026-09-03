@@ -1,13 +1,25 @@
 package main
 
 import (
+	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
+	"sort"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/JamesAtIntegratnIO/bosun/gate"
 	"github.com/JamesAtIntegratnIO/bosun/gateservice"
+	"github.com/JamesAtIntegratnIO/bosun/internal/helmtest"
 	"github.com/JamesAtIntegratnIO/bosun/mcp"
+	"github.com/JamesAtIntegratnIO/bosun/pipeline"
 )
 
 // The crossing from the gate's fleet reading into the tool surface's
@@ -154,29 +166,156 @@ func TestTheExpansionCrossesIntoTheToolSurfaceWhole(t *testing.T) {
 	}
 }
 
-// The two spellings of a source type are one vocabulary.
+// The two spellings of a source type are one vocabulary, and the list is read
+// out of the gate rather than written here.
 //
 // `mcp` may not import `gate`, so the words a client branches on are declared
-// twice. A rename on either side leaves a surface publishing a word no client
-// recognises, and nothing else in the module can see both constants at once.
-func TestTheSourceTypesAreSpelledTheSameOnBothSides(t *testing.T) {
-	for _, tc := range []struct{ gate, published string }{
-		{string(gate.RowHelm), mcp.RenderHelm},
-		{string(gate.RowPath), mcp.RenderPath},
-	} {
-		if tc.gate != tc.published {
-			t.Errorf("the gate renders %q and the tool surface publishes %q", tc.gate, tc.published)
-		}
+// twice, and the tool surface refuses to publish one it has not declared. That
+// refusal is right and it is silent: a source type the gate grows and the
+// surface has never heard of reaches a client as an absent field, which reads
+// exactly like a row with no chart detail.
+//
+// So the subject is every `RowSource` constant in the gate's own source, and
+// each one is driven through the real crossing and the real handler. A third
+// one fails here on the day it is added, which is the only day anybody can
+// still choose what a client should see.
+func TestEverySourceTypeTheGateRendersIsOneTheToolSurfacePublishes(t *testing.T) {
+	sources := rowSources(t)
+	if len(sources) < 2 {
+		t.Fatalf("found %d RowSource constants in gate's source; this walk is reading the "+
+			"wrong package and would report agreement over nothing", len(sources))
 	}
 
-	// The self-check: a source type the gate grows and this list does not
-	// mention is one the surface publishes untranslated, so the count is
-	// derived rather than trusted. There is no enumeration of RowSource in
-	// Go, so the sources are the constants, and this is the assertion that
-	// somebody adding a third has to come here and think about it.
-	if got := len([]gate.RowSource{gate.RowHelm, gate.RowPath}); got != 2 {
-		t.Fatalf("this test knows of %d source types", got)
+	for _, source := range sources {
+		t.Run(source, func(t *testing.T) {
+			got := publishedSourceType(t, gate.RowSource(source))
+			if got != source {
+				t.Errorf("the gate renders the source type %q and a client is told %q.\n"+
+					"mcp cannot import gate, so the word is declared twice: add it to the "+
+					"constants beside mcp.RenderHelm and to the vetting that decides what "+
+					"may be published, or a client branching on this field gets an absent "+
+					"one and no way to find out why.", source, got)
+			}
+		})
 	}
+}
+
+// rowSources is every value of gate.RowSource, read out of gate's own syntax
+// tree.
+//
+// Derived rather than listed, per CONTRIBUTING: a list of two with nothing
+// forcing a third is how the ClusterRole stayed broken. Go has no enumeration
+// of a string type's constants at runtime, so the source is the source.
+func rowSources(t *testing.T) []string {
+	t.Helper()
+	dir := filepath.Join(helmtest.Root(t), "gate")
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, dir, func(fi os.FileInfo) bool {
+		return !strings.HasSuffix(fi.Name(), "_test.go")
+	}, 0)
+	if err != nil {
+		t.Fatalf("could not parse %s: %v", dir, err)
+	}
+	pkg, ok := pkgs["gate"]
+	if !ok {
+		t.Fatalf("no package gate under %s; this walk is reading the wrong directory", dir)
+	}
+
+	var out []string
+	for _, file := range pkg.Files {
+		for _, decl := range file.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.CONST {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				// The declared type is what identifies these, rather than a
+				// name prefix: a third one called something else is exactly
+				// the one a prefix would miss.
+				if !ok || len(vs.Values) == 0 {
+					continue
+				}
+				if id, ok := vs.Type.(*ast.Ident); !ok || id.Name != "RowSource" {
+					continue
+				}
+				for _, v := range vs.Values {
+					lit, ok := v.(*ast.BasicLit)
+					if !ok || lit.Kind != token.STRING {
+						continue
+					}
+					s, err := strconv.Unquote(lit.Value)
+					if err != nil {
+						t.Fatalf("unreadable RowSource constant %s: %v", lit.Value, err)
+					}
+					out = append(out, s)
+				}
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// publishedSourceType is what a client is told about an Application the gate
+// rendered from one source type, through the real adapter and the real
+// handler.
+//
+// The whole crossing rather than the constants side by side, because the
+// declaration is only half of it: the surface also vets the word before
+// publishing it, and a constant declared but left out of that check would
+// still reach a client as nothing.
+func publishedSourceType(t *testing.T, source gate.RowSource) string {
+	t.Helper()
+	observed := time.Date(2026, 9, 1, 9, 0, 0, 0, time.UTC)
+	status := mcpGateStatus(gateservice.Status{
+		SweptAt: observed.Add(time.Hour),
+		Fleet: &gateservice.Fleet{ObservedAt: observed, Apps: []gateservice.FleetApp{
+			{Name: "argo-cd", Namespace: "argocd", Cluster: "prod-eu"}}},
+		Expansion: &gateservice.Expansion{ObservedAt: observed, Apps: []gateservice.ExpansionApp{
+			{Name: "argo-cd", Cluster: "prod-eu", SourceType: source}}},
+	})
+
+	srv := &mcp.Server{
+		Repository: "example/platform",
+		Report:     func() *pipeline.Report { return nil },
+		Triage:     func() mcp.TriageStatus { return mcp.TriageStatus{} },
+		Gate:       func() mcp.GateStatus { return status },
+		Auth:       mcp.Unauthenticated{},
+		Now:        func() time.Time { return observed.Add(2 * time.Hour) },
+	}
+	h, err := srv.Handler()
+	if err != nil {
+		t.Fatalf("the handler would not build: %v", err)
+	}
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+
+	resp, err := ts.Client().Post(ts.URL+mcp.EndpointPath, "application/json", strings.NewReader(
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":`+
+			`{"name":"inventory","arguments":{}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	var out struct {
+		Result struct {
+			StructuredContent mcp.Fleet `json:"structuredContent"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	apps := out.Result.StructuredContent.Applications
+	if apps == nil || len(*apps) != 1 {
+		t.Fatalf("the fixture published %v rows, so nothing was read", apps)
+	}
+	if (*apps)[0].Renders == nil {
+		t.Fatal("the row carries no chart detail, so the join this reads through did not " +
+			"happen and the assertion would be about the wrong absence")
+	}
+	return (*apps)[0].Renders.SourceType
 }
 
 // No values reach the tool surface, asserted where both sides are visible.

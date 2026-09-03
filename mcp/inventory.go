@@ -184,9 +184,12 @@ type FleetRender struct {
 	// SourceType is how this Application gets its manifests: "helm" for a
 	// chart at a pinned version, "path" for a directory in the repository.
 	//
-	// bosun's own vocabulary rather than a chart's word, which is why it is a
-	// plain string next to fields that are tagged text: the gate chooses it
-	// from what the rendered source carries.
+	// A typed fact rather than tagged text, and therefore VETTED rather than
+	// labelled, which is the rule mcp.go states for the one other field of
+	// this kind. A client branches on this word, so it is published only when
+	// it is one of the two below and absent otherwise: a third the gate grows
+	// would reach a client as a word this surface never declared, and a
+	// client's default branch is the wrong place to find that out.
 	SourceType string `json:"sourceType,omitempty"`
 	// Chart, ChartRepository and Version are the chart, where it is served
 	// from, and the version pinned to it. All three are absent for a source
@@ -299,7 +302,7 @@ func (s *Server) inventory(json.RawMessage) (any, error) {
 	matched := 0
 	for _, a := range g.Fleet.Apps {
 		row := s.fleetApp(a, ObservedLive, g.Fleet.ObservedAt)
-		if from, ok := renders[fleetKey(a.Name, a.Cluster)]; ok && from != nil {
+		if from, ok := renders[identity{a.Name, a.Cluster}]; ok {
 			row.Renders = ptr(s.fleetRender(*from, ObservedExpansion, g.Expansion.ObservedAt))
 			matched++
 		}
@@ -341,14 +344,16 @@ func (s *Server) chartDetail(e *GateExpansion, matched int) *ChartDetail {
 	}
 }
 
-// fleetKey is the identity the two readings are joined on: an Application's
-// name and the cluster it lands on.
+// identity is what the two readings are joined on: an Application's name and
+// the cluster it lands on.
+//
+// A comparable struct rather than the two halves spliced into one string,
+// because a separator is a byte an Application name could contain and this map
+// key is the whole of the guarantee that a row gets its own chart.
 //
 // Both halves, because one ArgoCD serves many clusters and one Application
 // name generated for each of them is the ordinary shape rather than a
-// collision. It is the gate's own key for an Application across renders, which
-// is what makes the two sides agree by construction rather than by this file
-// inventing a third spelling.
+// collision.
 //
 // The Application object's own namespace is deliberately NOT in it, and cannot
 // be: the expansion knows the namespace an Application deploys INTO, and the
@@ -356,44 +361,49 @@ func (s *Server) chartDetail(e *GateExpansion, matched int) *ChartDetail {
 // namespaces under one word, and joining on either would be joining on
 // something the other side does not have. joinable is where the ambiguity that
 // leaves is answered.
-func fleetKey(name, cluster string) string { return name + "\x00" + cluster }
+type identity struct{ Name, Cluster string }
 
-// joinable indexes the expansion by identity, with every ambiguous identity
-// poisoned to nil.
+// joinable indexes the expansion by identity, leaving out every identity
+// either reading holds twice.
 //
-// A key that appears twice on either side is one this process cannot resolve.
+// Left out rather than marked, so there is no entry a caller has to remember
+// to distrust: an identity this process cannot resolve and one the expansion
+// never had are the same answer, which is no chart detail.
+//
 // Two Applications of one name on one cluster is what apps-in-any-namespace
 // permits, and the namespace that would tell them apart is not a field both
 // readings have -- so there is nothing here that can say which of them a chart
-// belongs to. A present key with a nil value is that answer, and the caller
-// publishes no chart detail for it: an absent chart is asked about, and a
-// wrong one is acted on.
+// belongs to. An absent chart is asked about, and a wrong one is acted on.
 //
 // nil when there is no expansion, which reads as an index that matches
 // nothing, which is what it is.
-func joinable(live []GateFleetApp, e *GateExpansion) map[string]*GateExpansionApp {
+func joinable(live []GateFleetApp, e *GateExpansion) map[identity]*GateExpansionApp {
 	if e == nil {
 		return nil
 	}
-	out := make(map[string]*GateExpansionApp, len(e.Apps))
+	// Counted first, and on both sides, because an identity's second
+	// occurrence can arrive after the entry has been indexed. A pass that
+	// removed a key as it found the duplicate would put a third occurrence
+	// back.
+	expanded := map[identity]int{}
+	for _, a := range e.Apps {
+		expanded[identity{a.Name, a.Cluster}]++
+	}
+	served := map[identity]int{}
+	for _, a := range live {
+		served[identity{a.Name, a.Cluster}]++
+	}
+
+	out := make(map[identity]*GateExpansionApp, len(e.Apps))
 	for i := range e.Apps {
-		k := fleetKey(e.Apps[i].Name, e.Apps[i].Cluster)
-		if _, seen := out[k]; seen {
-			out[k] = nil
+		// One entry for an identity the reading holds twice belongs to at
+		// most one of those rows, and giving it to both hands a reader
+		// somebody else's chart.
+		k := identity{e.Apps[i].Name, e.Apps[i].Cluster}
+		if expanded[k] > 1 || served[k] > 1 {
 			continue
 		}
 		out[k] = &e.Apps[i]
-	}
-	// And the same over the rows being enriched. An expansion with one entry
-	// for a key the reading has twice is one entry that belongs to at most one
-	// of them, and giving it to both hands a reader somebody else's chart.
-	seen := make(map[string]int, len(live))
-	for _, a := range live {
-		k := fleetKey(a.Name, a.Cluster)
-		seen[k]++
-		if seen[k] > 1 {
-			out[k] = nil
-		}
 	}
 	return out
 }
@@ -437,7 +447,7 @@ func (s *Server) fleetApp(a GateFleetApp, observedIn string, at time.Time) Fleet
 func (s *Server) fleetRender(a GateExpansionApp, observedIn string, at time.Time) FleetRender {
 	origin := originOf(observedIn)
 	out := FleetRender{
-		SourceType:         a.SourceType,
+		SourceType:         vetSourceType(a.SourceType),
 		ObservedIn:         observedIn,
 		ObservedAt:         at,
 		ObservedAgeSeconds: s.since(at),
@@ -455,6 +465,26 @@ func (s *Server) fleetRender(a GateExpansionApp, observedIn string, at time.Time
 		out.ApplicationSet = ptr(say(a.AppSet, origin, maxName))
 	}
 	return out
+}
+
+// vetSourceType is the source type if this surface has declared it, and ""
+// otherwise.
+//
+// The check a typed fact gets instead of a tag. Everything else out of the
+// expansion is text somebody's template chose and travels labelled as such;
+// this one is bosun's own vocabulary and a client branches on the word, so
+// publishing one that is not in the vocabulary would be handing a client a
+// case it has no branch for, in the field it trusts to be closed.
+//
+// Absent is the refusal, for the reason a forgeable migration is absent rather
+// than labelled: a client can see a missing field, and cannot see that a word
+// it did not recognise was ever meant to mean something.
+func vetSourceType(s string) string {
+	switch s {
+	case RenderHelm, RenderPath:
+		return s
+	}
+	return ""
 }
 
 // originOf is where a row's strings came from, decided by where the row was

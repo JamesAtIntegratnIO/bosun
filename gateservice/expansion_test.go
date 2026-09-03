@@ -163,23 +163,32 @@ func TestNoFieldOfTheRenderedRowIsDroppedWithoutAReason(t *testing.T) {
 	// from carries no ApplicationSet, and publishing one would name an object
 	// nothing serves.
 	consumed := map[string]bool{"FromAppSet": true}
-	// Renamed: the row calls an Application's name App, and everything else
-	// in this package calls it Name.
-	renamed := map[string]string{"App": "Name"}
+	// Renamed: the row calls an Application's name App, and everything else in
+	// this package calls it Name. Stated once and read in both directions,
+	// because two spellings of one rename are two places for it to go stale.
+	renamedTo := map[string]string{"App": "Name"}
+	rowName := func(field string) string {
+		for row, snapshot := range renamedTo {
+			if snapshot == field {
+				return row
+			}
+		}
+		return field
+	}
 
-	from := reflect.TypeOf(gate.Row{})
-	to := reflect.TypeOf(ExpansionApp{})
+	rendered := reflect.TypeOf(gate.Row{})
+	kept := reflect.TypeOf(ExpansionApp{})
 	checked := 0
-	for i := 0; i < from.NumField(); i++ {
-		name := from.Field(i).Name
+	for i := 0; i < rendered.NumField(); i++ {
+		name := rendered.Field(i).Name
 		if refused[name] || notCarried[name] || consumed[name] {
 			continue
 		}
-		if to, ok := renamed[name]; ok {
-			name = to
+		if renamed, ok := renamedTo[name]; ok {
+			name = renamed
 		}
 		checked++
-		if _, ok := to.FieldByName(name); !ok {
+		if _, ok := kept.FieldByName(name); !ok {
 			t.Errorf("gate.Row.%s has no counterpart on the snapshot and is not one of the "+
 				"fields this retention refuses or leaves behind, so nothing carries it", name)
 		}
@@ -187,15 +196,12 @@ func TestNoFieldOfTheRenderedRowIsDroppedWithoutAReason(t *testing.T) {
 
 	// And the other direction: a field on the snapshot that comes from nowhere
 	// is a zero on every answer, forever.
-	for i := 0; i < to.NumField(); i++ {
-		name := to.Field(i).Name
-		if name == "Name" {
-			name = "App"
-		}
+	for i := 0; i < kept.NumField(); i++ {
+		name := rowName(kept.Field(i).Name)
 		checked++
-		if _, ok := from.FieldByName(name); !ok {
+		if _, ok := rendered.FieldByName(name); !ok {
 			t.Errorf("ExpansionApp.%s comes from no field of a rendered row, so nothing "+
-				"fills it", name)
+				"fills it", kept.Field(i).Name)
 		}
 	}
 
@@ -204,7 +210,7 @@ func TestNoFieldOfTheRenderedRowIsDroppedWithoutAReason(t *testing.T) {
 	// would report that no values cross while carrying them under their new
 	// name.
 	for name := range refused {
-		if _, ok := from.FieldByName(name); !ok {
+		if _, ok := rendered.FieldByName(name); !ok {
 			t.Errorf("gate.Row has no field %s, so refusing it proves nothing. Find what "+
 				"carries the values now and refuse that.", name)
 		}
@@ -213,5 +219,73 @@ func TestNoFieldOfTheRenderedRowIsDroppedWithoutAReason(t *testing.T) {
 		t.Fatalf("compared only %d fields across the two rows; they are shaped differently "+
 			"now and these walks no longer read them. Fix the walks rather than lowering "+
 			"this number.", checked)
+	}
+}
+
+// A source that is not a chart carries no chart version.
+//
+// `gate.Row.Version` holds two different things: the version a chart is pinned
+// at, and the git ref a directory source is read at. The gate's diff reports
+// either as a version change and is right to; a listing that publishes them
+// under one field beside an absent chart says an Application is on version
+// "main", which is not a version of anything a reader can look up.
+//
+// So the field crosses only for a chart, and the row this is read off is the
+// one the field is honest for.
+func TestAPathSourceCarriesNoChartVersion(t *testing.T) {
+	const app = `apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observability
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  source:
+    repoURL: https://git.example/platform
+    path: addons/observability
+    targetRevision: main
+`
+	files := map[string]string{"apps/observability.yaml": app}
+	h := newGateHarness(t, files, files)
+	h.gs.Derive = func(context.Context, string) (*gate.Derivation, error) { return oneReading(), nil }
+
+	if out := h.gs.Ensure(context.Background(), gatePR("expand06")); out.Err != nil {
+		t.Fatal(out.Err)
+	}
+
+	got := h.gs.Status().Expansion
+	if got == nil || len(got.Apps) != 1 {
+		t.Fatalf("want the one expanded Application, got %+v", got)
+	}
+	row := got.Apps[0]
+	if row.SourceType != gate.RowPath {
+		t.Fatalf("this fixture renders a directory and the row says %q, so the assertion "+
+			"below is about the wrong shape", row.SourceType)
+	}
+	if row.Chart != "" || row.ChartRepo != "" || row.Version != "" {
+		t.Errorf("a directory source crossed carrying chart detail %+v; the version there is "+
+			"the git ref it is read at, and beside an absent chart it reads as a chart "+
+			"version nothing can look up", row)
+	}
+
+	// The self-check on the fixture rather than on the code: a rendered row
+	// that never carried the ref would leave the assertion above passing over
+	// a value nothing had to drop.
+	root := t.TempDir()
+	writeGateRepo(t, root, files)
+	table, err := gate.Render(context.Background(), root, &gate.Config{
+		Concurrency: 1,
+		Sources: []gate.Source{{
+			Name: "apps", Type: gate.SourceManifests, Paths: []string{"apps/*.yaml"}}},
+	}, testInventory())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(table.Rows) != 1 || table.Rows[0].Version == "" {
+		t.Fatalf("the rendered row carries no version, so nothing above was dropped: %+v",
+			table.Rows)
 	}
 }

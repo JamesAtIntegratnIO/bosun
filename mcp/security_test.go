@@ -284,11 +284,13 @@ func TestServingARequestReachesNothing(t *testing.T) {
 	// be exactly the one nobody drove.
 	//
 	// The world is one every tool takes the long way through: the blocked pull
-	// request, handed over to a human, carrying a verdict history and a live
-	// reading of the fleet, with the attempts it has spent. A tool that refused
-	// early would answer without reading anything and would pass this while the
-	// path a real caller takes went undriven.
-	f := newFixture(t, report).withGate(withFleet(handedOver(flapping()))).
+	// request, handed over to a human, carrying a verdict history, a live
+	// reading of the fleet and the render expansion joined onto it, with the
+	// attempts it has spent. A tool that refused early would answer without
+	// reading anything and would pass this while the path a real caller takes
+	// went undriven -- and the join is the newest such path: it is the one
+	// place a tool could be tempted to go and look up what a row renders from.
+	f := newFixture(t, report).withGate(withExpansion(withFleet(handedOver(flapping())))).
 		withTriage(TriageStatus{MaxAttempts: 2, Attempts: map[int]int{264: 2}})
 	calls := everyToolCall(t)
 	requests := 0

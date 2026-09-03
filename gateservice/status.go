@@ -308,10 +308,16 @@ func (g *Service) retainExpansion(t *gate.Table, at time.Time) {
 	}
 	apps := make([]ExpansionApp, 0, len(t.Rows))
 	for _, r := range t.Rows {
-		app := ExpansionApp{
-			Name: r.App, Cluster: r.Cluster,
-			SourceType: r.SourceType,
-			Chart:      r.Chart, ChartRepo: r.ChartRepo, Version: r.Version,
+		app := ExpansionApp{Name: r.App, Cluster: r.Cluster, SourceType: r.SourceType}
+		// The chart, and only for a source that has one. `gate.Row.Version`
+		// holds two different things -- the version a chart is pinned at, and
+		// the git ref a directory source is read at -- and the diff is right
+		// not to care, because either moving is a change worth reporting. A
+		// listing that published them under one field would say an
+		// Application is on version "main" beside no chart at all, which is
+		// not a version of anything a reader can look up.
+		if r.SourceType == gate.RowHelm {
+			app.Chart, app.ChartRepo, app.Version = r.Chart, r.ChartRepo, r.Version
 		}
 		// Only when it names one. A row read from a committed Application
 		// carries the config source it came from in the same field, and

@@ -221,6 +221,16 @@ All notable changes to `bosun`. Format follows
   retained rather than the head, because the head is the change under judgement
   and nothing has deployed it.
 
+  Two fields are held to a shape rather than a tag, because a client branches
+  on them. `sourceType` is published only when it is one of the two words this
+  surface declares, so a third the gate grows reaches a client as an absent
+  field rather than as a case nobody wrote a branch for. And a source that is
+  not a chart carries no chart, no chart repository and no version: the gate's
+  own row holds the git ref a directory source is read at in the same field as
+  a chart's pinned version, and publishing that beside an absent chart would
+  say an Application is on version "main", which is not a version of anything a
+  reader can look up.
+
   **Still names and versions.** The expansion carries the values files and the
   values leaves behind every Application, and none of them cross: they are
   dropped in the one function where the whole rendered row is in scope, and
@@ -243,6 +253,7 @@ All notable changes to `bosun`. Format follows
   by it either way and never cared; a surface publishing "the ApplicationSet
   this was generated from" cares, and without the flag half those answers would
   name an object nothing serves.
+
 - **`inventory`, the fleet as the live reading saw it.** The gate reads what
   ArgoCD says this control plane runs on every run it makes, uses a fraction of
   it to decide what to render, and used to throw the rest away. A platform

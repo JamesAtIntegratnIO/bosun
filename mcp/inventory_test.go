@@ -636,3 +636,39 @@ func TestTheInventoryResultTypeCarriesOnlyNamesClustersAndVersions(t *testing.T)
 		}
 	}
 }
+
+// A source type this surface has not declared is absent rather than published.
+//
+// The one typed fact on this result: a client branches on the word, so it gets
+// the treatment a typed fact gets rather than the tag free text gets. The gate
+// growing a third source type must not reach a client's default branch as a
+// word nobody wrote a case for; absence is a shape every client already
+// handles, because a row with no chart detail has no source type either.
+func TestASourceTypeThisSurfaceHasNotDeclaredIsNotPublished(t *testing.T) {
+	g := withExpansion(fleet())
+	g.Expansion.Apps[0].SourceType = "oci-with-a-registry-login"
+	inv := newFixture(t, nil).withGate(g).inventory(t)
+
+	var checked int
+	for _, row := range *inv.Applications {
+		if row.Name.Text != "argo-cd" {
+			continue
+		}
+		checked++
+		if row.Renders == nil {
+			t.Fatal("the row lost its chart detail; the refusal is one field's, not the row's")
+		}
+		if row.Renders.SourceType != "" {
+			t.Errorf("a source type this surface never declared reached a client as %q",
+				row.Renders.SourceType)
+		}
+		// And the rest of the detail still travels: it is tagged text, which
+		// is a different promise from this one.
+		if row.Renders.Chart == nil {
+			t.Error("refusing the word cost the row the chart beside it")
+		}
+	}
+	if checked == 0 {
+		t.Fatal("the fixture published no row for the doctored expansion, so nothing ran")
+	}
+}

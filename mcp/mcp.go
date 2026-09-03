@@ -65,14 +65,20 @@
 // better-armed one. The contract a client can rely on: instructions in a
 // result are bosun's own or absent.
 //
-// Two corollaries, both of which land with gate_verdict because that is where
-// text bosun did not write first enters a result.
+// Two corollaries. Both landed with gate_verdict, because that is where text
+// bosun did not write first enters a result, and both now bind every tool that
+// carries any.
 //
 // A field published as fact rather than as tagged text has to be vetted rather
-// than labelled. There is exactly one -- the migration a dropped-version
-// finding demands, which is what a repair acts on with no person in between --
-// and it is published only when every piece of it holds an identifier's shape.
-// A finding that fails keeps its prose and loses the fields.
+// than labelled, and both of them are. The migration a dropped-version finding
+// demands is what a repair acts on with no person in between, and it is
+// published only when every piece of it holds an identifier's shape; a finding
+// that fails keeps its prose and loses the fields. The source type a fleet row
+// renders from is a word a client branches on, and it is published only when
+// it is one this surface has declared; a row carrying any other keeps its
+// chart detail and loses the word. Both refusals are absence rather than a
+// label, because a client can see a missing field and cannot see that a value
+// it did not recognise was meant to mean something.
 //
 // And the gate's own stamp grammar is stripped from every response, in
 // declaw below. The gate keeps its memory inside its pull-request comment, so

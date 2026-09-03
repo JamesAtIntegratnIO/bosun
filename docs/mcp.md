@@ -211,9 +211,9 @@ reading's.
 
 **`chartDetail` is a claim about the expansion, not about the rows.**
 `expanded: false` means no run has rendered one, so the charts are not
-unpinned and nothing has read what they render from. `expanded: true` with no row carrying
-`renders` is its own answer: a render was read and knew none of the
-Applications ArgoCD is serving.
+unpinned and nothing has read what they render from. `expanded: true` with no
+row carrying `renders` is its own answer: a render was read and knew none of
+the Applications ArgoCD is serving.
 
 ## No resources, and no sampling
 
