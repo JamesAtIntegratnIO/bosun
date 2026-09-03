@@ -301,6 +301,12 @@ func main() {
 		},
 		Log:    func(f string, a ...any) { logger.Printf(f, a...) },
 		Egress: egressPolicy,
+		// The agent holds one piece of per-pull-request memory the gate does
+		// not: the reason its model gave for handing a pull request over. This
+		// is what releases it, on the sweep's own rhythm rather than on a
+		// reader's, so an install with the MCP surface switched off does not
+		// accumulate one sentence per escalation for the life of the pod.
+		Listed: t.ForgetEscalationsExcept,
 	}
 	t.Gate = gs
 	go gs.Run(runCtx)
@@ -767,6 +773,12 @@ func mcpHistory(rows *[]gateservice.VerdictRow) *[]mcp.GateVerdictRow {
 // nothing on the far side has to know how either was arrived at. mcp cannot
 // import agent, which is the point: the tool surface holds no client of
 // anything, and this file is where the two vocabularies are allowed to meet.
+//
+// The third thing that crosses is the reason the model gave for a handoff.
+// Reading it changes nothing: what releases a reason whose pull request has
+// gone is the gate's sweep, through gateservice.Service.Listed, wired where
+// this file builds the service. A read surface that is switched off must not
+// be the difference between memory that is released and memory that is not.
 func mcpTriageStatus(st web.TriageStatus, tr *agent.Triage, g gateservice.Status) mcp.TriageStatus {
 	out := mcp.TriageStatus{
 		InFlight: append([]int(nil), st.InFlight...),
@@ -780,12 +792,21 @@ func mcpTriageStatus(st web.TriageStatus, tr *agent.Triage, g gateservice.Status
 	}
 	out.MaxAttempts = tr.MaxAttempts
 	out.Attempts = map[int]int{}
+	out.Reasons = map[int]string{}
 	for _, pr := range g.Open {
 		// Every pull request the sweep saw gets an entry, including the zero:
 		// "the sweep looked and this one has spent nothing" is a different
 		// answer from "the sweep never saw it", and the tool surface
 		// publishes a count only for the first.
 		out.Attempts[pr.Number] = tr.AttemptsUsed(pr.Labels)
+		// The reason crosses under the same condition and for the same
+		// reason: a sentence about a pull request nothing has listed has
+		// nothing to attach itself to. A pull request with no entry is one
+		// this process holds no model sentence for, which the surface
+		// publishes as an absent field rather than as an empty one.
+		if reason := tr.EscalationReason(pr.Number); reason != "" {
+			out.Reasons[pr.Number] = reason
+		}
 	}
 	return out
 }

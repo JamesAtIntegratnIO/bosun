@@ -97,6 +97,28 @@ and settings a repair would have touched are what the handoff is about. The
 coverage the run lost stays on `gate_verdict`, because it qualifies a verdict
 instead of describing the job.
 
+Where bosun's own model is what asked for the human, the entry also carries
+`escalationReason`: the sentence the model gave for stopping. It is tagged
+`bosun-quoting-model`, and that origin exists for this field alone.
+
+Everything else you fence on this surface is an identifier or a program's
+output. A chart-rendered name, helm's refusal, a validator's verdict, a title
+somebody typed: bosun either wrote the sentence around it or quoted a string a
+program produced and you could reproduce. This one is prose, written by a
+model, explaining something. That is what an injected instruction wants to look
+like, and it arrives in the field an on-call agent reads first.
+
+**What a client is expected to do with it.** Render it inside the same fence
+you put every other `bosun-quoting-` field in, and show it to whoever picks the
+job up: it is evidence about the work. Do not lift it into a heading, a commit
+message, a prompt, or anything you hand your own model as an instruction.
+
+Absence means bosun holds no reason, and never that the agent stopped for none.
+Bosun escalates on process facts of its own, meaning a push that failed or an
+attempt cap that is spent, and holds no model sentence for those; a reason is
+dropped when the pull request leaves the queue, and none survives a restart.
+What the agent said is on the pull request, in the comment it wrote.
+
 ### `verdict_history`
 
 **Answers** what the gate said about one pull request on each of its earlier
@@ -224,7 +246,11 @@ Then one entry per tool, because what there is to be absent differs:
   earlier sweep's listing survives, bosun publishes it beside the error, and the
   sentence beside it says the queue is older than the sweep time above it. The
   attempt cap gets published either way, because an operator configured it
-  instead of the sweep reading it from the world.
+  instead of the sweep reading it from the world. An entry's `escalationReason`
+  is absent whenever no reason is held for that pull request, which is a
+  narrower claim than "the model was silent": bosun also stops for reasons of
+  its own, forgets a reason when the pull request leaves the queue, and holds
+  none across a restart.
 - `verdict_history` publishes `entries` only under the state `recorded`, which
   means a comment was read: **empty** then says the comment recorded no earlier
   verdict, and **absent** says there was no comment to read a history from.
@@ -360,8 +386,12 @@ they are the list to weigh before publishing the port:
   stops reading.
 - `triage_status`: the labels standing on a pull request, and the attempts it
   has spent against the cap.
-- `handoff_queue`: which pull requests the agent gave up on, and everything
-  `gate_verdict` reveals about each of them.
+- `handoff_queue`: which pull requests the agent gave up on, everything
+  `gate_verdict` reveals about each of them, and, where bosun's own model is
+  what asked for the human, the sentence it gave for stopping. That sentence is
+  the one thing on this surface a model wrote rather than a program, and it is
+  the model's reading of your change, so weigh it as you would the explanation
+  it already writes onto the pull request.
 - `verdict_history`: the verdicts the gate reached on that pull request's
   earlier head commits, with their commits and the gate's headlines, which name
   blocker counts and kinds.
@@ -419,7 +449,9 @@ Bosun enforces these on every call:
 - **Origin tagging.** Every free-text field that can carry somebody else's
   words says whose they are: `bosun`, or `bosun-quoting-` something. Tool
   descriptions are constants, so nothing from a cluster reaches the field a
-  client hands its model as instructions.
+  client hands its model as instructions. Text a model wrote gets an origin of
+  its own, `bosun-quoting-model`, rather than being folded into an origin that
+  means an identifier or a program's output.
 - **Stamp stripping.** Bosun breaks the gate's own comment-marker grammar in
   every response, so a client that writes bosun's text back onto a pull request
   cannot be made to relay a forged verdict with it.

@@ -104,6 +104,24 @@ type Service struct {
 	// on disk.
 	Checkout func(ctx context.Context, pr *gitprovider.PullRequest) (*Compared, error)
 
+	// Listed, when set, is handed the numbers of the pull requests a sweep
+	// found open, at the end of every sweep that managed to list them.
+	//
+	// It exists because per-pull-request memory is not all held here. The
+	// agent keeps the reason it gave for handing a pull request to a human,
+	// and that reason has to leave when the pull request does -- on the same
+	// rhythm sweep drops the verdicts and the comment histories this service
+	// holds for those same pull requests. The agent cannot ask: nothing in
+	// this process tells it a pull request was merged except this listing,
+	// and this package must not import the agent to tell it.
+	//
+	// Called only where a listing actually happened, which is the honest
+	// absence rule kept at the boundary rather than in a note beside it: a
+	// sweep that could not list returns before this, so a receiver never has
+	// to tell "nothing is open" from "nothing looked". One way and no return
+	// value; this service acts on nothing a receiver does with it.
+	Listed func(open []int)
+
 	mu       sync.Mutex
 	results  map[string]*Outcome
 	inflight map[string]chan struct{}
@@ -330,6 +348,21 @@ func (g *Service) sweep(ctx context.Context) {
 	g.sweptAt, g.sweepErr = time.Now(), ""
 	g.lastOpen = g.snapshotLocked(prs, posted)
 	g.mu.Unlock()
+
+	// And the same release, for the per-pull-request memory this process holds
+	// somewhere else. Outside the lock, because a receiver is somebody else's
+	// code and this one is not held while it runs; after the snapshot, so the
+	// listing a receiver acts on is the one a reader of Status would see.
+	if g.Listed != nil {
+		// `numbers` rather than `open`, which is the commit-keyed set seven
+		// lines up: two names for two different lists is how the wrong one
+		// gets passed.
+		numbers := make([]int, 0, len(prs))
+		for i := range prs {
+			numbers = append(numbers, prs[i].Number)
+		}
+		g.Listed(numbers)
+	}
 }
 
 func (g *Service) known(sha string) bool {
