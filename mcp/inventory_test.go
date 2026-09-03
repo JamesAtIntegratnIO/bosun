@@ -23,8 +23,8 @@ func TestTheInventoryIsEveryApplicationTheLiveReadingSaw(t *testing.T) {
 		t.Fatal("a live reading that ran publishes its rows, even to say there were none")
 	}
 	apps := *inv.Applications
-	if len(apps) != 3 {
-		t.Fatalf("the live reading served three Applications; the inventory holds %d", len(apps))
+	if len(apps) != 4 {
+		t.Fatalf("the live reading served four Applications; the inventory holds %d", len(apps))
 	}
 	first := apps[0]
 	if first.Name.Text != "argo-cd" {
@@ -307,5 +307,332 @@ func TestAReadingHeldBeforeTheFirstSweepIsStillPublished(t *testing.T) {
 	if inv.Status.Text != fleetRead {
 		t.Errorf("the sentence must describe the reading rather than the sweep, got %q",
 			inv.Status.Text)
+	}
+}
+
+// The join, which is the substance of this tool's second half: the live
+// reading decides which rows exist, and the expansion says what they render
+// from.
+
+func TestARowSaysWhatItRendersFrom(t *testing.T) {
+	inv := newFixture(t, nil).withGate(expanded()).inventory(t)
+
+	rows := map[string]FleetApp{}
+	for _, row := range *inv.Applications {
+		rows[row.Name.Text] = row
+	}
+	argo, ok := rows["argo-cd"]
+	if !ok {
+		t.Fatal("the fixture published no argo-cd row, so this test read nothing")
+	}
+	if argo.Renders == nil {
+		t.Fatal("the expansion knows what argo-cd renders and the row does not say so, which " +
+			"is the whole of this ticket")
+	}
+	got := argo.Renders
+	if got.SourceType != RenderHelm {
+		t.Errorf("argo-cd renders a chart and the row says %q", got.SourceType)
+	}
+	for name, want := range map[string]struct {
+		text *Text
+		want string
+	}{
+		"chart":           {got.Chart, "argo-cd"},
+		"chartRepository": {got.ChartRepository, "https://argoproj.github.io/argo-helm"},
+		"version":         {got.Version, "7.7.0"},
+		"applicationSet":  {got.ApplicationSet, "addons"},
+	} {
+		if want.text == nil {
+			t.Errorf("%s is absent, and the expansion knows it", name)
+			continue
+		}
+		if want.text.Text != want.want {
+			t.Errorf("%s is %q, want %q", name, want.text.Text, want.want)
+		}
+		// Every one of these came out of `helm template`, which applies
+		// nothing, so `metadata.name` is whatever the template wrote. The
+		// chart origin is the weakest true thing to say about them.
+		if want.text.Origin != OriginChart {
+			t.Errorf("%s is tagged %q; nothing in the expansion reached an apiserver",
+				name, want.text.Origin)
+		}
+	}
+
+	// And a source that is not a chart says so with no chart beside it, rather
+	// than with an empty one.
+	obs, ok := rows["observability"]
+	if !ok || obs.Renders == nil {
+		t.Fatalf("the fixture published no expanded path source, so half the shape a client "+
+			"has to handle went unchecked: %+v", obs)
+	}
+	if obs.Renders.SourceType != RenderPath {
+		t.Errorf("observability renders a directory and the row says %q", obs.Renders.SourceType)
+	}
+	if obs.Renders.Chart != nil || obs.Renders.Version != nil {
+		t.Errorf("a source with no chart published one: %+v", obs.Renders)
+	}
+}
+
+// An Application the live reading has and the expansion does not know carries
+// no chart detail, and never somebody else's.
+//
+// The common case rather than the corner: the reading is every Application the
+// install's ArgoCD serves, and the expansion covers only what the gated
+// repository defines.
+func TestARowTheExpansionDoesNotKnowCarriesNoChartDetail(t *testing.T) {
+	inv := newFixture(t, nil).withGate(expanded()).inventory(t)
+
+	var found bool
+	for _, row := range *inv.Applications {
+		if row.Name.Text != "tenant-billing" {
+			continue
+		}
+		found = true
+		if row.Renders != nil {
+			t.Errorf("a row the expansion never saw was given chart detail: %+v", row.Renders)
+		}
+	}
+	if !found {
+		t.Fatal("the fixture published no row outside the expansion, so nothing above ran")
+	}
+	// And the row is still there, which is the other half: the reading decides
+	// which rows exist and the expansion adds none and removes none.
+	if len(*inv.Applications) != 4 {
+		t.Errorf("the live reading served four Applications and the result holds %d",
+			len(*inv.Applications))
+	}
+}
+
+// An Application the expansion knows and the live reading does not have is not
+// a fleet member at all.
+//
+// The expansion describes the revision the last run started from, which is a
+// claim about what the repository defines rather than about what is running.
+// Publishing a row for it would say "this is deployed on prod-eu" about
+// something ArgoCD does not serve, and a fleet member that is not there is the
+// worse of the two errors.
+func TestAnApplicationOnlyTheExpansionKnowsIsNoRowAtAll(t *testing.T) {
+	inv := newFixture(t, nil).withGate(expanded()).inventory(t)
+
+	for _, row := range *inv.Applications {
+		if row.Name.Text == "loki" {
+			t.Fatalf("the expansion added a row the live reading never served: %+v", row)
+		}
+	}
+	// The self-check: an expansion that carried no such Application would
+	// leave the assertion above passing over a fixture that never tested it.
+	var offered bool
+	for _, app := range expanded().Expansion.Apps {
+		offered = offered || app.Name == "loki"
+	}
+	if !offered {
+		t.Fatal("the fixture's expansion knows of no Application the reading lacks, so " +
+			"nothing above was checked")
+	}
+}
+
+// A row whose identity and chart detail came from different observations
+// reports both, with their own stamps.
+//
+// Two clocks on one row, which is what makes "most recent and relevant"
+// something a client reads instead of a merge rule it has to trust. The
+// identity is the live reading's; the chart detail is a render that may be
+// hours older, and a row that published one time for both would be claiming
+// the fresher one for the staler half.
+func TestARowsIdentityAndItsChartDetailCarryTheirOwnStamps(t *testing.T) {
+	inv := newFixture(t, nil).withGate(expanded()).inventory(t)
+
+	var checked int
+	for _, row := range *inv.Applications {
+		if row.ObservedIn != ObservedLive || !row.ObservedAt.Equal(observedAt) {
+			t.Errorf("%s says its identity came from %q at %s", row.Name.Text,
+				row.ObservedIn, row.ObservedAt)
+		}
+		if row.Renders == nil {
+			continue
+		}
+		checked++
+		if row.Renders.ObservedIn != ObservedExpansion {
+			t.Errorf("%s says its chart detail came from %q", row.Name.Text,
+				row.Renders.ObservedIn)
+		}
+		if !row.Renders.ObservedAt.Equal(expandedAt) {
+			t.Errorf("%s stamps its chart detail %s, want %s", row.Name.Text,
+				row.Renders.ObservedAt, expandedAt)
+		}
+		if row.Renders.ObservedAgeSeconds != 990 || row.ObservedAgeSeconds != 390 {
+			t.Errorf("%s reports ages %d and %d; the two halves of this row were observed "+
+				"ten minutes apart and a client reading one number would trust the fresher "+
+				"one for the staler half", row.Name.Text,
+				row.ObservedAgeSeconds, row.Renders.ObservedAgeSeconds)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no row carried chart detail, so the second stamp went unchecked")
+	}
+
+	// And the result's own claim about the expansion carries the same stamp,
+	// because a reading that matched no row leaves no per-row stamp to read it
+	// off.
+	if inv.ChartDetail == nil || !inv.ChartDetail.Expanded {
+		t.Fatalf("the expansion has run and the result does not say so: %+v", inv.ChartDetail)
+	}
+	if inv.ChartDetail.ObservedAt == nil || !inv.ChartDetail.ObservedAt.Equal(expandedAt) {
+		t.Errorf("the chart-detail claim is stamped %v, want %s",
+			inv.ChartDetail.ObservedAt, expandedAt)
+	}
+	if inv.ChartDetail.ObservedAgeSeconds == nil || *inv.ChartDetail.ObservedAgeSeconds != 990 {
+		t.Errorf("the chart-detail claim carries the age %v", inv.ChartDetail.ObservedAgeSeconds)
+	}
+}
+
+// An expansion that has run and matched nothing is its own answer, and it is
+// not an expansion that has not run.
+func TestAnExpansionThatMatchedNoRowSaysSo(t *testing.T) {
+	g := withExpansion(fleet())
+	g.Expansion.Apps = []GateExpansionApp{{
+		Name: "nothing-that-runs", Cluster: "prod-eu", SourceType: "helm", Chart: "x"}}
+	inv := newFixture(t, nil).withGate(g).inventory(t)
+
+	for _, row := range *inv.Applications {
+		if row.Renders != nil {
+			t.Fatalf("%s matched an expansion that knows none of these rows: %+v",
+				row.Name.Text, row.Renders)
+		}
+	}
+	if inv.ChartDetail == nil || !inv.ChartDetail.Expanded {
+		t.Fatalf("an expansion was read, and a result that denies it reads as a build that "+
+			"cannot expand at all: %+v", inv.ChartDetail)
+	}
+	if !strings.Contains(inv.ChartDetail.Status.Text, "not unpinned") {
+		t.Errorf("the sentence has to deny the reading a client will otherwise take, got %q",
+			inv.ChartDetail.Status.Text)
+	}
+}
+
+// Two Applications of one name on one cluster leave both without chart detail,
+// rather than one of them with the other's.
+//
+// The identity the two readings can be joined on is a name and a cluster: the
+// expansion knows the namespace an Application deploys INTO, and the reading
+// knows the namespace the Application object lives in, which are different
+// namespaces under one word. So apps-in-any-namespace can put two Applications
+// of one name on one cluster, and there is nothing here that can tell which of
+// them a chart belongs to. Absent is the answer; a chart detail from the wrong
+// Application is one a reader acts on.
+func TestAnAmbiguousJoinPublishesNoChartDetail(t *testing.T) {
+	dup := func(g GateStatus) GateStatus {
+		g.Fleet.Apps = append(g.Fleet.Apps, GateFleetApp{
+			Name: "argo-cd", Namespace: "tenant-a", Cluster: "prod-eu"})
+		return g
+	}
+	for name, g := range map[string]GateStatus{
+		"two live rows of one name": dup(withExpansion(fleet())),
+		"two expanded rows of one name": func() GateStatus {
+			g := withExpansion(fleet())
+			g.Expansion.Apps = append(g.Expansion.Apps, GateExpansionApp{
+				Name: "argo-cd", Cluster: "prod-eu", SourceType: "helm",
+				Chart: "some-other-argo-cd", Version: "0.0.1"})
+			return g
+		}(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			inv := newFixture(t, nil).withGate(g).inventory(t)
+			var checked int
+			for _, row := range *inv.Applications {
+				if row.Name.Text != "argo-cd" {
+					continue
+				}
+				checked++
+				if row.Renders != nil {
+					t.Errorf("an ambiguous join published %+v, which belongs to whichever "+
+						"of two Applications this process cannot tell apart", row.Renders)
+				}
+			}
+			if checked == 0 {
+				t.Fatal("the fixture published no ambiguous row, so nothing above ran")
+			}
+			// And the unambiguous rows beside it are untouched: an ambiguity
+			// is one key's problem.
+			for _, row := range *inv.Applications {
+				if row.Name.Text == "external-secrets" && row.Renders == nil {
+					t.Error("an ambiguity on one key cost an unrelated row its chart detail")
+				}
+			}
+		})
+	}
+}
+
+// Names and versions only: the result type has nowhere to put what a chart is
+// rendered WITH.
+//
+// The expansion this joins from carries an Application's value files and its
+// inline values block, and neither may cross onto a surface published outside
+// the cluster. The shape guard above cannot see that one: a values file list
+// is a slice of strings, which is the same shape as anything else here.
+//
+// So the check is the whole set of field names, compared against the set
+// written here. It is deliberately not a list of banned words -- `inline`
+// would slip past a ban on `values` -- and the failure it exists for is a
+// field added to this result without a reviewer deciding it belongs. Adding
+// one means adding it below, which is the sentence the pull request has to
+// justify.
+func TestTheInventoryResultTypeCarriesOnlyNamesClustersAndVersions(t *testing.T) {
+	var result any
+	for _, tool := range Tools() {
+		if tool.Name == "inventory" {
+			result = tool.Result
+		}
+	}
+	if result == nil {
+		t.Fatal("no tool named inventory is registered, so this walk has nothing to read")
+	}
+
+	want := map[string]bool{
+		// The result and its two clocks.
+		"Repository": true, "Swept": true, "SweptAt": true, "AgeSeconds": true,
+		"Status": true, "Applications": true, "ChartDetail": true,
+		"Expanded": true, "ObservedAt": true, "ObservedAgeSeconds": true,
+		// One row: who it is, where it lands, and when it was seen.
+		"Name": true, "Namespace": true, "Cluster": true, "ObservedIn": true,
+		// What it renders from.
+		"Renders": true, "SourceType": true, "Chart": true,
+		"ChartRepository": true, "Version": true, "ApplicationSet": true,
+		// A tagged string, wherever one appears.
+		"Text": true, "Origin": true, "Truncated": true,
+	}
+
+	got := map[string]bool{}
+	var walk func(typ reflect.Type)
+	walk = func(typ reflect.Type) {
+		switch typ.Kind() {
+		case reflect.Pointer, reflect.Slice:
+			walk(typ.Elem())
+		case reflect.Struct:
+			if typ == reflect.TypeOf(time.Time{}) {
+				return
+			}
+			for i := 0; i < typ.NumField(); i++ {
+				got[typ.Field(i).Name] = true
+				walk(typ.Field(i).Type)
+			}
+		}
+	}
+	walk(reflect.TypeOf(result))
+
+	for name := range got {
+		if !want[name] {
+			t.Errorf("this result carries a field named %s that nothing here accounts for.\n"+
+				"inventory publishes names, clusters and versions. A values file, a values "+
+				"leaf, a manifest or a rendered object is content, and the expansion this "+
+				"joins from carries all of them. Add the field here with what it is, or do "+
+				"not add it.", name)
+		}
+	}
+	for name := range want {
+		if !got[name] {
+			t.Errorf("this result no longer carries %s, so the set above is describing a "+
+				"type that has moved on. Fix the set rather than leaving it stale.", name)
+		}
 	}
 }

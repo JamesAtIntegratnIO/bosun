@@ -42,6 +42,14 @@ type Status struct {
 	// way. A reader told only the sweep's time would be reading a number about
 	// something else.
 	Fleet *Fleet
+	// Expansion is what the last run's render expanded this repository into,
+	// or nil when no run has rendered one.
+	//
+	// A third clock, and the oldest of the three. The reading beside it says
+	// which Applications exist; this says what they render from, at the
+	// revision the last run started from. Neither answers the other's
+	// question, so both are kept and each says when it was made.
+	Expansion *Expansion
 	// HistoryCap is how many earlier verdicts one pull request's comment
 	// remembers, which is what makes a short history readable: a history
 	// exactly this long has had older entries dropped from it.
@@ -84,6 +92,53 @@ type FleetApp struct {
 	// unresolved address, because a wrong cluster name is acted on and a
 	// missing one is asked about.
 	Cluster string
+}
+
+// Expansion is one render of what this repository deploys, at the revision a
+// run started from.
+//
+// Retained for the reason the reading is: the run has already paid for it, and
+// it is the only thing in this process that knows which chart an Application
+// renders from. What it is NOT is a second reading of the fleet. It covers
+// what the gated repository defines rather than what ArgoCD serves, and it is
+// older than the reading by construction, so it enriches rows rather than
+// adding any.
+//
+// The BASE revision, not the head. The head is the change being asked about,
+// which by definition nothing has deployed; publishing its pinned versions as
+// what the fleet runs would be wrong in the direction a reader acts on.
+//
+// Nothing here is content either. A chart name and the version pinned to it,
+// and deliberately not the values the chart is rendered with: those are on the
+// row this is copied from, and they stop here.
+type Expansion struct {
+	// ObservedAt is when the render was made.
+	ObservedAt time.Time
+	// Apps is every Application the expansion produced, in the render's own
+	// order. Empty is a real answer: a repository that defines none.
+	Apps []ExpansionApp
+}
+
+// ExpansionApp is one expanded Application, and what it renders from.
+type ExpansionApp struct {
+	// Name and Cluster are the Application's identity across renders, which
+	// is also what a live reading's row is joined onto. Both halves, because
+	// one ArgoCD serves many clusters and an Application name repeats across
+	// them.
+	Name    string
+	Cluster string
+	// AppSet is the ApplicationSet this Application was generated from, and
+	// "" for one the repository commits directly.
+	AppSet string
+	// SourceType is how it gets its manifests: a chart at a pinned version,
+	// or a directory in the repository.
+	SourceType gate.RowSource
+	// Chart, ChartRepo and Version are the chart it renders, where that chart
+	// comes from, and the version pinned to it. All three are empty for a
+	// source that is not a chart.
+	Chart     string
+	ChartRepo string
+	Version   string
 }
 
 // The states a pull request's head commit can be in, as the sweep sees them.
@@ -191,6 +246,12 @@ func (g *Service) Status() Status {
 			Apps:       append([]FleetApp(nil), g.fleet.Apps...),
 		}
 	}
+	if g.expansion != nil {
+		out.Expansion = &Expansion{
+			ObservedAt: g.expansion.ObservedAt,
+			Apps:       append([]ExpansionApp(nil), g.expansion.Apps...),
+		}
+	}
 	return out
 }
 
@@ -225,6 +286,49 @@ func (g *Service) retainFleet(d *gate.Derivation, inv *gate.Inventory, at time.T
 		return
 	}
 	g.fleet = &Fleet{ObservedAt: at, Apps: apps}
+}
+
+// retainExpansion keeps what a run just rendered the repository into.
+//
+// The newest render wins, compared by time rather than by arrival, for the
+// reason retainFleet gives: runs are concurrent, two renders can land out of
+// order, and taking whichever finished last would occasionally publish the
+// older expansion with the newer stamp on it.
+//
+// A run that could not render does not reach here, so the last expansion
+// stays, stamped with when it was actually made. Stale evidence beats none as
+// long as it is labelled stale, and the label is the timestamp.
+//
+// The values each row carries are dropped here rather than at the surface that
+// publishes them. A field that never crosses cannot be published by mistake,
+// and this is the one line where the whole of `gate.Row` is in scope.
+func (g *Service) retainExpansion(t *gate.Table, at time.Time) {
+	if t == nil {
+		return
+	}
+	apps := make([]ExpansionApp, 0, len(t.Rows))
+	for _, r := range t.Rows {
+		app := ExpansionApp{
+			Name: r.App, Cluster: r.Cluster,
+			SourceType: r.SourceType,
+			Chart:      r.Chart, ChartRepo: r.ChartRepo, Version: r.Version,
+		}
+		// Only when it names one. A row read from a committed Application
+		// carries the config source it came from in the same field, and
+		// publishing that as the ApplicationSet it was generated from would
+		// name an object nothing serves.
+		if r.FromAppSet {
+			app.AppSet = r.AppSet
+		}
+		apps = append(apps, app)
+	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.expansion != nil && g.expansion.ObservedAt.After(at) {
+		return
+	}
+	g.expansion = &Expansion{ObservedAt: at, Apps: apps}
 }
 
 // snapshotLocked renders the sweep's view of its pull requests. Called with

@@ -1,0 +1,139 @@
+{
+  "ageSeconds": 90,
+  "applications": [
+    {
+      "cluster": {
+        "origin": "bosun-quoting-cluster",
+        "text": "prod-eu"
+      },
+      "name": {
+        "origin": "bosun-quoting-cluster",
+        "text": "argo-cd"
+      },
+      "namespace": {
+        "origin": "bosun-quoting-cluster",
+        "text": "argocd"
+      },
+      "observedAgeSeconds": 390,
+      "observedAt": "2026-08-30T11:55:00Z",
+      "observedIn": "live",
+      "renders": {
+        "applicationSet": {
+          "origin": "bosun-quoting-chart",
+          "text": "addons"
+        },
+        "chart": {
+          "origin": "bosun-quoting-chart",
+          "text": "argo-cd"
+        },
+        "chartRepository": {
+          "origin": "bosun-quoting-chart",
+          "text": "https://argoproj.github.io/argo-helm"
+        },
+        "observedAgeSeconds": 990,
+        "observedAt": "2026-08-30T11:45:00Z",
+        "observedIn": "expansion",
+        "sourceType": "helm",
+        "version": {
+          "origin": "bosun-quoting-chart",
+          "text": "7.7.0"
+        }
+      }
+    },
+    {
+      "cluster": {
+        "origin": "bosun-quoting-cluster",
+        "text": "prod-eu"
+      },
+      "name": {
+        "origin": "bosun-quoting-cluster",
+        "text": "external-secrets"
+      },
+      "namespace": {
+        "origin": "bosun-quoting-cluster",
+        "text": "argocd"
+      },
+      "observedAgeSeconds": 390,
+      "observedAt": "2026-08-30T11:55:00Z",
+      "observedIn": "live",
+      "renders": {
+        "applicationSet": {
+          "origin": "bosun-quoting-chart",
+          "text": "addons"
+        },
+        "chart": {
+          "origin": "bosun-quoting-chart",
+          "text": "external-secrets"
+        },
+        "chartRepository": {
+          "origin": "bosun-quoting-chart",
+          "text": "https://charts.external-secrets.io"
+        },
+        "observedAgeSeconds": 990,
+        "observedAt": "2026-08-30T11:45:00Z",
+        "observedIn": "expansion",
+        "sourceType": "helm",
+        "version": {
+          "origin": "bosun-quoting-chart",
+          "text": "0.9.20"
+        }
+      }
+    },
+    {
+      "cluster": {
+        "origin": "bosun-quoting-cluster",
+        "text": "prod-eu"
+      },
+      "name": {
+        "origin": "bosun-quoting-cluster",
+        "text": "observability"
+      },
+      "namespace": {
+        "origin": "bosun-quoting-cluster",
+        "text": "argocd"
+      },
+      "observedAgeSeconds": 390,
+      "observedAt": "2026-08-30T11:55:00Z",
+      "observedIn": "live",
+      "renders": {
+        "observedAgeSeconds": 990,
+        "observedAt": "2026-08-30T11:45:00Z",
+        "observedIn": "expansion",
+        "sourceType": "path"
+      }
+    },
+    {
+      "cluster": {
+        "origin": "bosun-quoting-cluster",
+        "text": "prod-us"
+      },
+      "name": {
+        "origin": "bosun-quoting-cluster",
+        "text": "tenant-billing"
+      },
+      "namespace": {
+        "origin": "bosun-quoting-cluster",
+        "text": "argocd"
+      },
+      "observedAgeSeconds": 390,
+      "observedAt": "2026-08-30T11:55:00Z",
+      "observedIn": "live"
+    }
+  ],
+  "chartDetail": {
+    "expanded": true,
+    "observedAgeSeconds": 990,
+    "observedAt": "2026-08-30T11:45:00Z",
+    "status": {
+      "origin": "bosun",
+      "text": "The rows the gate's last render knew of say what they render from, each stamped with when that render was made. It is a second observation, of the revision that render started from rather than of what ArgoCD serves, so read the two stamps on a row rather than the sweep time above. A row with no chart detail is one that render did not know of: it covers what this repository defines, and the rows are every Application the install's ArgoCD can see."
+    }
+  },
+  "repository": "example/platform",
+  "status": {
+    "origin": "bosun",
+    "text": "This is every Application bosun's last live reading of ArgoCD served, with the cluster each one lands on. They are not filtered by repository: this is what the install's ArgoCD credentials can see. Each row says when it was observed."
+  },
+  "swept": true,
+  "sweptAt": "2026-08-30T12:00:00Z"
+}

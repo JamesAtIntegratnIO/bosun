@@ -134,6 +134,11 @@ func Render(ctx context.Context, repoRoot string, cfg *Config, inv *Inventory) (
 // a cluster by `name` or by `server`; both are resolved against the inventory
 // so the row keys the same way an ApplicationSet-generated one does.
 func rowFromPlainApplication(source string, obj map[string]any, inv *Inventory) (Row, error) {
+	// The row's AppSet ends up holding the config SOURCE this Application was
+	// read from, because the diff groups by that field and a committed
+	// Application still has to group somewhere. Nothing generated it, so
+	// FromAppSet stays false and a surface that publishes the originating
+	// ApplicationSet publishes none for this row.
 	row, err := rowFromApp(source, "", obj)
 	if err != nil {
 		return Row{}, err
@@ -374,6 +379,7 @@ func bootstrapRow(bs map[string]any, p Param, appsetName, chartPath string) (Row
 
 	row := Row{
 		AppSet:     appsetName,
+		FromAppSet: true,
 		Cluster:    p.Cluster.Name,
 		App:        name,
 		SourceType: RowPath,

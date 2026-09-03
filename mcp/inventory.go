@@ -29,24 +29,53 @@ import (
 // about, the honest fix is a scheduled fleet read, which is a change to what
 // the sweep does rather than to what a tool call may do.
 //
+// # Two readings, and the rule for joining them
+//
+// What an Application renders from -- its chart, the repository that chart
+// comes from, the version pinned to it, and the ApplicationSet it was
+// generated from -- is not in the live reading at all. It is in the gate's
+// render expansion, which is a different observation of a different thing: the
+// repository at the revision the last run started from, rather than what
+// ArgoCD is serving. Neither source answers the other's question, so both are
+// kept and every row says which half came from where.
+//
+// The merge rule, which is the whole of it:
+//
+//   - The live reading is the spine. It decides which rows exist.
+//   - The expansion enriches, joined on an Application's identity.
+//   - An Application the reading has and the expansion does not know gets NO
+//     chart detail -- never somebody else's.
+//   - An Application the expansion knows and the reading does not have gets no
+//     row. The expansion describes an older revision, and publishing a fleet
+//     member that is not there is the worse of the two errors.
+//
+// Staleness is published rather than solved here too. A row's identity and its
+// chart detail carry their own stamps, so "most recent and relevant" is
+// something a client reads instead of a merge rule it has to trust, and no
+// request path may go and refresh either half.
+//
 // # What is absent here, and why it is not zero
 //
-// Chart, pinned version and originating ApplicationSet come from the gate's
-// render expansion, which this does not yet retain. They are absent rather
-// than empty, under a flag that says the expansion has not run, because "these
-// charts are unpinned" and "nothing has read what they render from" are
-// different answers and only one of them is true.
+// A row with no chart detail is absent rather than empty, under a flag that
+// says whether an expansion has been read at all, because "these charts are
+// unpinned", "nothing has read what they render from" and "what read it did
+// not know this Application" are three different answers and a missing key is
+// all three.
 
 // inventoryDescription is what a client hands its model as this tool's
 // purpose. A constant, and it has to stay one: see pipelineReportDescription.
 const inventoryDescription = "The fleet as bosun's last live reading of ArgoCD saw it: every " +
-	"Application that reading served, with the cluster each one lands on. Use it to answer " +
-	"\"where does this run\" without a cluster credential of your own. Names and clusters only " +
-	"-- no manifest, values file or rendered object is served here, by any argument. Every row " +
-	"says when it was observed, which is as old as the last gate run rather than the last " +
-	"sweep: an install with no open pull request renders nothing and therefore reads nothing. " +
-	"Answers from that snapshot: it reaches no cluster, no git host and no model, and it can " +
-	"change nothing."
+	"Application that reading served, with the cluster each one lands on, and what each one " +
+	"renders from -- chart, chart repository, pinned version and originating ApplicationSet. " +
+	"Use it to answer \"where does this run\" and \"what version is it on\" without a cluster " +
+	"credential of your own. Names and versions only -- no manifest, values file or rendered " +
+	"object is served here, by any argument. The two halves come from two observations: the " +
+	"reading decides which rows exist, the gate's last render says what they render from, and " +
+	"each half of a row carries its own timestamp. A row with no chart detail is one that " +
+	"render did not know of, and never another Application's chart. Both are as old as the " +
+	"last gate run rather than the last sweep: an install with no open pull request renders " +
+	"nothing and therefore reads nothing. Answers from that snapshot: it reaches no cluster, " +
+	"no git host and no model, and it can change nothing."
 
 // Fleet is what inventory returns.
 //
@@ -131,21 +160,94 @@ type FleetApp struct {
 	// surface is: a client comparing a server's timestamp against its own
 	// clock is comparing two clocks.
 	ObservedAgeSeconds int64 `json:"observedAgeSeconds"`
+
+	// Renders is what this Application renders from, joined from the gate's
+	// last render expansion.
+	//
+	// Absent when that expansion did not know this Application, which is the
+	// common case rather than the corner: the rows are every Application the
+	// install's ArgoCD can see, and the expansion covers what the gated
+	// repository defines. Absent rather than guessed at, and never another
+	// Application's chart -- see the merge rule at the top of this file.
+	Renders *FleetRender `json:"renders,omitempty"`
 }
 
-// ChartDetail is whether a row says what it renders from.
+// FleetRender is what one Application renders from, as the gate's last render
+// expanded it.
 //
-// A typed flag and a sentence, rather than an absent field a client has to
-// interpret. "The expansion has not run" and "these charts are unpinned" reach
-// a reader as the same missing key otherwise, and only one of them is a reason
-// to go looking.
+// Its own stamps rather than the row's, and that is the point of the type
+// rather than a detail of it. The identity above came from a live reading of
+// ArgoCD; this came from rendering a git revision, and the two are different
+// observations of different things. A row that published one time for both
+// would be claiming the fresher stamp for the staler half.
+type FleetRender struct {
+	// SourceType is how this Application gets its manifests: "helm" for a
+	// chart at a pinned version, "path" for a directory in the repository.
+	//
+	// bosun's own vocabulary rather than a chart's word, which is why it is a
+	// plain string next to fields that are tagged text: the gate chooses it
+	// from what the rendered source carries.
+	SourceType string `json:"sourceType,omitempty"`
+	// Chart, ChartRepository and Version are the chart, where it is served
+	// from, and the version pinned to it. All three are absent for a source
+	// that is not a chart, which is a real answer rather than a gap.
+	Chart           *Text `json:"chart,omitempty"`
+	ChartRepository *Text `json:"chartRepository,omitempty"`
+	Version         *Text `json:"version,omitempty"`
+	// ApplicationSet is what generated this Application, and is absent for
+	// one the repository commits directly. Absent rather than empty: nothing
+	// generated it, and naming the source it was read from instead would name
+	// an object nothing serves.
+	ApplicationSet *Text `json:"applicationSet,omitempty"`
+
+	// ObservedIn, ObservedAt and ObservedAgeSeconds are which observation this
+	// half of the row came from and when it was made. Read them against the
+	// row's own: two stamps that differ is the ordinary case, and it is what
+	// tells a client which half to trust for what.
+	ObservedIn         string    `json:"observedIn"`
+	ObservedAt         time.Time `json:"observedAt"`
+	ObservedAgeSeconds int64     `json:"observedAgeSeconds"`
+}
+
+// The source types a row can report, which are the gate's two.
+//
+// Constants because a client branches on them, and named here rather than
+// taken from the gate's own because this package cannot import it: the two
+// spellings agreeing is a contract, and mcp_fleet_test.go in the repository
+// root is what holds it.
+const (
+	// RenderHelm is a chart pulled at a pinned version.
+	RenderHelm = "helm"
+	// RenderPath is a directory in the repository, rendered as it stands.
+	RenderPath = "path"
+)
+
+// ChartDetail is what has been read about what these rows render from.
+//
+// A typed flag, a sentence and a stamp, rather than an absent field a client
+// has to interpret. "The expansion has not run", "it ran and knew none of
+// these Applications" and "these charts are unpinned" reach a reader as the
+// same missing key otherwise, and they are three different reasons to go
+// looking somewhere else.
 type ChartDetail struct {
 	// Expanded is whether the gate's render expansion -- the only source of a
 	// row's chart, pinned version and originating ApplicationSet -- has been
-	// retained for these rows.
+	// read at all.
+	//
+	// A claim about the expansion rather than about the rows. True with no
+	// row carrying chart detail is a real answer: a render that knew none of
+	// the Applications ArgoCD is serving.
 	Expanded bool `json:"expanded"`
 	// Status is what that means, in bosun's own words.
 	Status Text `json:"status"`
+	// ObservedAt and ObservedAgeSeconds are when that expansion was made,
+	// present exactly when Expanded is true.
+	//
+	// Here as well as on each row, because a render that matched no row
+	// leaves no per-row stamp to read its age off -- and that is precisely
+	// the case where a caller wants to know how old it is.
+	ObservedAt         *time.Time `json:"observedAt,omitempty"`
+	ObservedAgeSeconds *int64     `json:"observedAgeSeconds,omitempty"`
 }
 
 // ObservedLive marks a row whose identity came from the sweep's own read of
@@ -155,6 +257,14 @@ type ChartDetail struct {
 // not "not live": it is the gate's render expansion, whose Application names
 // came out of `helm template` and never reached an apiserver at all.
 const ObservedLive = "live"
+
+// ObservedExpansion marks a row's chart detail as the gate's render
+// expansion's: names that came out of `helm template` and never reached an
+// apiserver at all.
+//
+// The second value originOf was written for, and the reason it takes an
+// argument rather than assuming.
+const ObservedExpansion = "expansion"
 
 // inventory answers from the last live reading, and from nothing else.
 func (s *Server) inventory(json.RawMessage) (any, error) {
@@ -179,24 +289,113 @@ func (s *Server) inventory(json.RawMessage) (any, error) {
 		return out, nil
 	}
 
+	// The join is set up before the rows are built, and over the two readings
+	// together: an identity that appears twice on EITHER side is one this
+	// process cannot resolve, and a row must not be given a chart that may
+	// belong to the Application beside it.
+	renders := joinable(g.Fleet.Apps, g.Expansion)
+
 	apps := make([]FleetApp, 0, len(g.Fleet.Apps))
+	matched := 0
 	for _, a := range g.Fleet.Apps {
-		apps = append(apps, s.fleetApp(a, ObservedLive, g.Fleet.ObservedAt))
+		row := s.fleetApp(a, ObservedLive, g.Fleet.ObservedAt)
+		if from, ok := renders[fleetKey(a.Name, a.Cluster)]; ok && from != nil {
+			row.Renders = ptr(s.fleetRender(*from, ObservedExpansion, g.Expansion.ObservedAt))
+			matched++
+		}
+		apps = append(apps, row)
 	}
 	out.Applications = &apps
 	out.Status = say(fleetRead, OriginBosun, maxSummary)
 	if len(apps) == 0 {
 		out.Status = say(fleetEmpty, OriginBosun, maxSummary)
 	}
-	out.ChartDetail = &ChartDetail{
-		// False, and written here rather than plumbed: nothing retains the
-		// render expansion yet, so no row can carry a chart. The flag exists
-		// so that stays a fact a client reads instead of a key it has to
-		// notice is missing.
-		Expanded: false,
-		Status:   say(chartDetailUnexpanded, OriginBosun, maxSummary),
-	}
+	out.ChartDetail = s.chartDetail(g.Expansion, matched)
 	return out, nil
+}
+
+// chartDetail is the result's own claim about where a row's chart came from,
+// and there are three of them rather than a flag.
+//
+// "No expansion has been read", "one has and knew none of these Applications"
+// and "one has and enriched some of them" are different situations with
+// different next steps, and a client that could only see a boolean would treat
+// the middle one as the first.
+func (s *Server) chartDetail(e *GateExpansion, matched int) *ChartDetail {
+	if e == nil {
+		return &ChartDetail{
+			Expanded: false,
+			Status:   say(chartDetailUnexpanded, OriginBosun, maxSummary),
+		}
+	}
+	sentence := chartDetailExpanded
+	if matched == 0 {
+		sentence = chartDetailUnmatched
+	}
+	age := s.since(e.ObservedAt)
+	return &ChartDetail{
+		Expanded:           true,
+		Status:             say(sentence, OriginBosun, maxSummary),
+		ObservedAt:         &e.ObservedAt,
+		ObservedAgeSeconds: &age,
+	}
+}
+
+// fleetKey is the identity the two readings are joined on: an Application's
+// name and the cluster it lands on.
+//
+// Both halves, because one ArgoCD serves many clusters and one Application
+// name generated for each of them is the ordinary shape rather than a
+// collision. It is the gate's own key for an Application across renders, which
+// is what makes the two sides agree by construction rather than by this file
+// inventing a third spelling.
+//
+// The Application object's own namespace is deliberately NOT in it, and cannot
+// be: the expansion knows the namespace an Application deploys INTO, and the
+// reading knows the namespace the Application object lives in. Two different
+// namespaces under one word, and joining on either would be joining on
+// something the other side does not have. joinable is where the ambiguity that
+// leaves is answered.
+func fleetKey(name, cluster string) string { return name + "\x00" + cluster }
+
+// joinable indexes the expansion by identity, with every ambiguous identity
+// poisoned to nil.
+//
+// A key that appears twice on either side is one this process cannot resolve.
+// Two Applications of one name on one cluster is what apps-in-any-namespace
+// permits, and the namespace that would tell them apart is not a field both
+// readings have -- so there is nothing here that can say which of them a chart
+// belongs to. A present key with a nil value is that answer, and the caller
+// publishes no chart detail for it: an absent chart is asked about, and a
+// wrong one is acted on.
+//
+// nil when there is no expansion, which reads as an index that matches
+// nothing, which is what it is.
+func joinable(live []GateFleetApp, e *GateExpansion) map[string]*GateExpansionApp {
+	if e == nil {
+		return nil
+	}
+	out := make(map[string]*GateExpansionApp, len(e.Apps))
+	for i := range e.Apps {
+		k := fleetKey(e.Apps[i].Name, e.Apps[i].Cluster)
+		if _, seen := out[k]; seen {
+			out[k] = nil
+			continue
+		}
+		out[k] = &e.Apps[i]
+	}
+	// And the same over the rows being enriched. An expansion with one entry
+	// for a key the reading has twice is one entry that belongs to at most one
+	// of them, and giving it to both hands a reader somebody else's chart.
+	seen := make(map[string]int, len(live))
+	for _, a := range live {
+		k := fleetKey(a.Name, a.Cluster)
+		seen[k]++
+		if seen[k] > 1 {
+			out[k] = nil
+		}
+	}
+	return out
 }
 
 // fleetApp maps one Application onto the wire.
@@ -225,6 +424,39 @@ func (s *Server) fleetApp(a GateFleetApp, observedIn string, at time.Time) Fleet
 	return out
 }
 
+// fleetRender maps what one Application renders from onto the wire.
+//
+// As dull as fleetApp, and tagged the same way: the origin follows the
+// provenance argument rather than being written in here, because every string
+// on this path came out of `helm template` and the day one of them does not is
+// the day a hand-written tag is wrong.
+//
+// Absent rather than empty, field by field. A source that is not a chart has
+// no chart, and an Application nothing generated has no ApplicationSet; both
+// are answers rather than gaps, and an empty string on the wire is a gap.
+func (s *Server) fleetRender(a GateExpansionApp, observedIn string, at time.Time) FleetRender {
+	origin := originOf(observedIn)
+	out := FleetRender{
+		SourceType:         a.SourceType,
+		ObservedIn:         observedIn,
+		ObservedAt:         at,
+		ObservedAgeSeconds: s.since(at),
+	}
+	if a.Chart != "" {
+		out.Chart = ptr(say(a.Chart, origin, maxName))
+	}
+	if a.ChartRepo != "" {
+		out.ChartRepository = ptr(say(a.ChartRepo, origin, maxName))
+	}
+	if a.Version != "" {
+		out.Version = ptr(say(a.Version, origin, maxName))
+	}
+	if a.AppSet != "" {
+		out.ApplicationSet = ptr(say(a.AppSet, origin, maxName))
+	}
+	return out
+}
+
 // originOf is where a row's strings came from, decided by where the row was
 // observed rather than by whichever branch happened to build it.
 //
@@ -239,6 +471,8 @@ func originOf(observedIn string) Origin {
 	if observedIn == ObservedLive {
 		return OriginCluster
 	}
+	// ObservedExpansion, and anything a later reading is called.
+	//
 	// Anything that did not come off an apiserver is a string somebody's
 	// template chose, and the chart origin is the weakest true thing to say
 	// about it. A default that guessed the other way would be a claim this
@@ -270,6 +504,20 @@ const (
 
 	chartDetailUnexpanded = "No row says what it renders from. The chart, the pinned version " +
 		"and the ApplicationSet an Application was generated from come from the gate's render " +
-		"expansion, and this build does not retain it. These charts are not unpinned; nothing " +
-		"here has read what they render from."
+		"expansion, which is made when the gate renders a pull request, and no run has made " +
+		"one. These charts are not unpinned; nothing here has read what they render from."
+
+	chartDetailExpanded = "The rows the gate's last render knew of say what they render from, " +
+		"each stamped with when that render was made. It is a second observation, of the " +
+		"revision that render started from rather than of what ArgoCD serves, so read the two " +
+		"stamps on a row rather than the sweep time above. A row with no chart detail is one " +
+		"that render did not know of: it covers what this repository defines, and the rows " +
+		"are every Application the install's ArgoCD can see."
+
+	chartDetailUnmatched = "The gate's last render has been read and it knew none of the " +
+		"Applications this reading served, so no row says what it renders from. A render " +
+		"covers what this repository defines, at the revision it started from, and the rows " +
+		"are every Application the install's ArgoCD can see; the two can have nothing in " +
+		"common. These charts are not unpinned; nothing here has matched them to what " +
+		"renders them."
 )

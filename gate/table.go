@@ -10,11 +10,25 @@ import (
 // regardless of field ordering, whitespace, or where in the values layers a
 // setting came from.
 type Row struct {
-	AppSet    string `json:"appset"`
-	Cluster   string `json:"cluster"`
-	App       string `json:"app"`
-	Project   string `json:"project"`
-	Namespace string `json:"namespace"`
+	AppSet string `json:"appset"`
+	// FromAppSet is whether AppSet names an ApplicationSet.
+	//
+	// It does not always, and that is the reason this field exists. An
+	// expanded row carries the ApplicationSet's own `metadata.name`; a row
+	// read from an Application this repository commits directly carries the
+	// name of the config SOURCE it was read from, which is a label an
+	// operator chose rather than an object anything serves. The two are
+	// indistinguishable in the string.
+	//
+	// The diff groups by AppSet either way and has no use for the
+	// distinction. A surface that publishes "the ApplicationSet this
+	// Application was generated from" has every use for it: without this,
+	// half those answers name something that does not exist.
+	FromAppSet bool   `json:"fromAppSet,omitempty"`
+	Cluster    string `json:"cluster"`
+	App        string `json:"app"`
+	Project    string `json:"project"`
+	Namespace  string `json:"namespace"`
 	// SourceType is how this Application gets its manifests, which is a
 	// different vocabulary from the config's SourceType (manifests, rendered,
 	// helm, kustomize, argocd-bootstrap) despite the shared name; that one

@@ -40,6 +40,13 @@ var (
 	// with nothing to render makes none, so a fixture where the two are equal
 	// would never exercise the two clocks a caller has to tell apart.
 	observedAt = sweptAt.Add(-5 * time.Minute)
+	// expandedAt is when the gate's last render expansion was made.
+	// Deliberately earlier again: within one run the fleet is read and then
+	// the repository is rendered, so a fixture where the two stamps agree
+	// would never exercise the pair a row publishes. They come apart on a run
+	// whose render broke after its read succeeded, which leaves the last
+	// expansion standing under a reading made minutes ago.
+	expandedAt = observedAt.Add(-10 * time.Minute)
 )
 
 // fixture is a server under test and the world behind it.
@@ -529,16 +536,64 @@ func fleet() GateStatus { return withFleet(blocked()) }
 //
 // The rows are deliberately not one per cluster and not one per repository.
 // They are every Application this install's ArgoCD credentials can see, which
-// is what makes the third -- an Application of a repository this install does
-// not gate -- the interesting one rather than a filler.
+// is what makes the last one -- an Application of a repository this install
+// does not gate -- the interesting one rather than a filler.
 func withFleet(g GateStatus) GateStatus {
 	g.Fleet = &GateFleet{
 		ObservedAt: observedAt,
 		Apps: []GateFleetApp{
 			{Name: "argo-cd", Namespace: "argocd", Cluster: "prod-eu"},
 			{Name: "external-secrets", Namespace: "argocd", Cluster: "prod-eu"},
+			{Name: "observability", Namespace: "argocd", Cluster: "prod-eu"},
 			{Name: "tenant-billing", Namespace: "argocd", Cluster: "prod-us"},
 		},
+	}
+	return g
+}
+
+// expanded is the fleet with the gate's last render expansion behind it: the
+// world inventory answers in full.
+func expanded() GateStatus { return withExpansion(fleet()) }
+
+// withExpansion hangs a render expansion on whatever situation a test is
+// already about, composable for the reason withFleet is.
+//
+// It agrees with the reading on two Applications, disagrees with it in both
+// directions, and covers both source types, because every one of those is a
+// case the merge rule answers differently:
+//
+//   - argo-cd and external-secrets are in both, and are the rows that get
+//     chart detail.
+//   - observability is in both and renders a directory rather than a chart,
+//     which is a row with a source type and no chart at all.
+//   - tenant-billing is in the reading only -- an Application of a repository
+//     this install does not gate -- and gets no chart detail.
+//   - loki is in the expansion only. The repository defines it and ArgoCD is
+//     not serving it, and it must produce no row.
+//
+// Stamped ten minutes before the reading, so a row publishing one time for
+// both halves fails rather than passing by coincidence.
+func withExpansion(g GateStatus) GateStatus {
+	g.Expansion = &GateExpansion{
+		ObservedAt: expandedAt,
+		Apps: []GateExpansionApp{{
+			Name: "argo-cd", Cluster: "prod-eu", AppSet: "addons", SourceType: RenderHelm,
+			Chart: "argo-cd", ChartRepo: "https://argoproj.github.io/argo-helm",
+			Version: "7.7.0",
+		}, {
+			Name: "external-secrets", Cluster: "prod-eu", AppSet: "addons",
+			SourceType: RenderHelm, Chart: "external-secrets",
+			ChartRepo: "https://charts.external-secrets.io", Version: "0.9.20",
+		}, {
+			// Committed directly rather than generated, so it carries no
+			// ApplicationSet, and rendered from a directory, so it carries no
+			// chart. Both absences are answers.
+			Name: "observability", Cluster: "prod-eu", SourceType: RenderPath,
+		}, {
+			Name: "loki", Cluster: "prod-eu", AppSet: "addons", SourceType: RenderHelm,
+			Chart: "loki", ChartRepo: "https://grafana.github.io/helm-charts",
+			Version: "6.49.0",
+		}},
 	}
 	return g
 }

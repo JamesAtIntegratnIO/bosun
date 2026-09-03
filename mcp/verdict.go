@@ -92,6 +92,17 @@ type GateStatus struct {
 	// RUN renders a pull request, so a sweep that had nothing to render leaves
 	// this alone rather than emptying it.
 	Fleet *GateFleet
+	// Expansion is what the last gate run's render expanded this repository
+	// into, or nil when no run has rendered one.
+	//
+	// It rides here for the reason Fleet does, and it is a different claim
+	// from Fleet's: the reading says which Applications exist, and this says
+	// what they render from. Neither answers the other's question, so
+	// inventory joins them and every row says which half came from where.
+	//
+	// nil is a real answer and a common one on an install with no pull
+	// request open, which is the same reason Fleet's nil is.
+	Expansion *GateExpansion
 	// HistoryCap is how many earlier verdicts one pull request's gate comment
 	// remembers, which is what makes a short history readable: a history
 	// exactly this long has had older entries dropped from it.
@@ -126,6 +137,48 @@ type GateFleetApp struct {
 	// inventory the render expands generators over, and "" when the
 	// destination named no cluster that inventory knows.
 	Cluster string
+}
+
+// GateExpansion is one render of what this repository deploys, and when it was
+// made.
+//
+// The whole render rather than a set of rows, for the reason GateFleet is: the
+// timestamp belongs to the render, and rows produced together are stale
+// together.
+//
+// It describes the revision the last run STARTED from -- the merge base of a
+// pull request -- rather than the head under judgement, which nothing has
+// deployed. So it lags what ArgoCD serves whatever its own clock says, and
+// that is why it enriches rows rather than adding any.
+type GateExpansion struct {
+	// ObservedAt is when the render was made.
+	ObservedAt time.Time
+	// Apps is every Application the render produced. Empty is a real answer:
+	// a repository that defines none.
+	Apps []GateExpansionApp
+}
+
+// GateExpansionApp is one expanded Application, and what it renders from.
+//
+// Every string here came out of `helm template`, which applies nothing, so
+// none of them reached an apiserver and none of them has an object's grammar
+// to lean on. The tool that publishes them tags them accordingly.
+type GateExpansionApp struct {
+	// Name and Cluster are the identity a live reading's row is joined onto.
+	Name    string
+	Cluster string
+	// AppSet is the ApplicationSet this Application was generated from, and
+	// "" when nothing generated it -- an Application the repository commits
+	// directly, which is the common layout rather than the corner.
+	AppSet string
+	// SourceType is how it gets its manifests: "helm" for a chart at a pinned
+	// version, "path" for a directory in the repository.
+	SourceType string
+	// Chart, ChartRepo and Version are the chart, where it comes from and the
+	// version pinned to it, all empty for a source that is not a chart.
+	Chart     string
+	ChartRepo string
+	Version   string
 }
 
 // GatePR is one open pull request as the gate last saw it.

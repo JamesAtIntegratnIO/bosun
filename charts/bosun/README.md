@@ -550,12 +550,13 @@ are the list to weigh before you publish the port:
   earlier head commits, with their commits and the gate's headlines, which name
   blocker counts and kinds.
 - `inventory`: your fleet, meaning Application names, the namespaces those
-  objects live in, and the cluster names they land on. Every Application the ArgoCD
-  account you gave bosun can list, not only the ones belonging to the
-  repository it gates, so weigh this one against how broad that account is.
-  Chart names, the versions pinned to them and the ApplicationSet names they
-  were generated from are not served yet and will be, so read this entry as
-  the shorter half of what it will eventually disclose.
+  objects live in, the cluster names they land on, and what each one renders --
+  the chart, the chart repository serving it, the version pinned to it and the
+  ApplicationSet it was generated from. Every Application the ArgoCD account
+  you gave bosun can list, not only the ones belonging to the repository it
+  gates, so weigh this one against how broad that account is. It carries no
+  values file and no values leaf: the render those come from is where the chart
+  names are read, and they stop there.
 
 No credential, no prompt, no rendered diff. The two surfaces differ in who
 reads them and what they hold. These answers land in somebody's coding agent,
