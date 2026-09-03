@@ -22,6 +22,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/JamesAtIntegratnIO/bosun/childenv"
@@ -176,6 +177,15 @@ type Triage struct {
 	// it so the whole workflow can run against a directory on disk, with no
 	// remote to clone from.
 	Checkout func(ctx context.Context, pr *gitprovider.PullRequest) (string, func(), error)
+
+	// escalations is the model's own reason for each pull request this agent
+	// handed to a human, kept in memory only. escalation.go is where the
+	// lifetime is, and why there is no second write to the git host under it.
+	//
+	// The mutex is not decoration: the promotion endpoint triages pull
+	// requests concurrently, so two escalations can be decided at once.
+	escalationsMu sync.Mutex
+	escalations   map[int]string
 }
 
 const (
@@ -499,6 +509,9 @@ func (t *Triage) escalate(ctx context.Context, pr *gitprovider.PullRequest, reas
 // list every refused edit rather than summarising one of them, and what the
 // maintainers changed between the two versions.
 //
+// It is also where a handoff is recorded: see handOver, and escalation.go for
+// which sentence this process keeps and which it deliberately does not.
+//
 // A handoff is somebody's next twenty minutes. "The chart removed its
 // ClusterRole and no release note explains why" is an honest sentence and it
 // hands over a search; the same sentence with the commit that removed it hands
@@ -521,7 +534,7 @@ func (t *Triage) escalateInformed(ctx context.Context, pr *gitprovider.PullReque
 	if err := t.Git.Comment(ctx, pr.Number, body); err != nil {
 		return err
 	}
-	return t.Git.AddLabel(ctx, pr.Number, labelNeedsHuman)
+	return t.handOver(ctx, pr, v)
 }
 
 // repairDropped is the deterministic half of the crew's job: the gate proved
@@ -863,7 +876,12 @@ func (t *Triage) explainGreen(ctx context.Context, pr *gitprovider.PullRequest, 
 			renderExplanation(t.LLM.Name(), v, notes)+renderLive(live)+renderUpstream(notes)); err != nil {
 			return err
 		}
-		return t.Git.AddLabel(ctx, pr.Number, labelNeedsHuman)
+		// The same handover the failing path makes, through the same
+		// function: a green gate the model still wants eyes on puts a pull
+		// request in the same queue, and a reason held for one and not the
+		// other would be a queue whose entries differ by which path reached
+		// them.
+		return t.handOver(ctx, pr, v)
 	}
 
 	t.say(ctx, pr, "%s is green: %s", t.CheckName, v.Summary)

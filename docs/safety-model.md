@@ -336,14 +336,40 @@ as instructions.
 The origins are a closed vocabulary, and a client fences on the shape rather
 than on the list: a field is `bosun`, or it is `bosun-quoting-` something.
 Today the something is a cluster, this repository, a rendered chart, helm, the
-schema validator, the render as a whole, a pull request's author, or a label
-standing on a pull request. Only the first claims bosun wrote every byte.
+schema validator, the render as a whole, a pull request's author, a label
+standing on a pull request, or bosun's own model. Only the first claims bosun
+wrote every byte.
 
 Bosun tags a label as somebody else's even though it writes some of them.
 Attempt labels are the agent's own, a `needs-human` is a maintainer's, and in a
 repository where anybody may label they are anybody's. So the field carries one
 origin saying the weakest true thing about it. A per-label judgement would
 invite a hostile label to imitate it by choosing bosun's prefix.
+
+**One field carries prose a model wrote, and it is the one a careless client is
+most likely to mishandle.** A `handoff_queue` entry can carry the sentence
+bosun's model gave for stopping short of a mechanical fix, under
+`bosun-quoting-model`. Every other untrusted string on this surface is an
+identifier or a program's output, and both of those look like what they are. A
+model's account of its own reasoning does not. It reads like a colleague's
+note, it sits in the entry an on-call agent opens first, and it is the shape an
+injected instruction wants to wear.
+
+What bosun enforces about it is worth reading as the list of what it does not
+cover. Its origin is never `bosun`, so no client can read it as bosun's own
+words. It is length-capped through the same helper as every other tagged field,
+and the gate's comment-marker grammar is broken in it as it is everywhere else.
+It is held only where the model is what decided, so bosun's own reasons for
+stopping are never published under a model's name. And an injection-corpus case
+drives an escalation reason carrying an instruction through the whole surface
+and asserts it reaches that one field and no other: not a remedy, not a
+headline, not a status sentence.
+
+None of it makes a careless client safe. Render this unfenced and you have
+handed your own model a sentence bosun's model wrote, under influence bosun
+does not control, and whatever that sentence then causes happens in your tools
+rather than in bosun's. Absence carries the other half: no reason on an entry
+means bosun holds none, and never that the agent stopped for none.
 
 **Bosun vets a verdict's typed facts instead of tagging them.** One block on
 the gate verdict carries no origin, on purpose. The dropped-served-version

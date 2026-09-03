@@ -97,6 +97,28 @@ const (
 	// tempted to render as a heading. Anybody who can open a pull request
 	// against the gated repository can choose these bytes.
 	OriginAuthor Origin = "bosun-quoting-pull-request-author"
+
+	// OriginModel: a whole sentence bosun's own model wrote -- its account
+	// of why it stopped short of a mechanical fix and asked for a human.
+	//
+	// The sharpest edge on this surface, and its own origin for that reason.
+	// Every other untrusted string here is an identifier or a program's
+	// output: a name a chart rendered, helm's refusal, a validator's verdict,
+	// a title somebody typed. This one is prose, written by a model,
+	// explaining something -- the shape an injected instruction wants to
+	// wear, and the shape a client is most likely to render as though a
+	// colleague had written it.
+	//
+	// Not OriginBosun: bosun did not write it, and the origin claiming every
+	// byte is bosun's is the one a client is told it may treat as
+	// instructions. Not OriginCluster, OriginRepository or OriginChart: each
+	// of those is bosun's own sentence with somebody's identifier quoted
+	// inside it, and this is somebody else's sentence entire. Not OriginHelm
+	// or OriginValidator either, close as they look -- a program that refuses
+	// a chart produces the same string every time and a reader can go and
+	// reproduce it, where this was written once, by a model, under whatever
+	// influence reached its prompt.
+	OriginModel Origin = "bosun-quoting-model"
 )
 
 // There is deliberately no origin for an upstream release note.
@@ -168,6 +190,11 @@ const (
 	// maxTitle bounds a pull request's title, generously: every git host caps
 	// one far below this, and the cap is here because none of them promises to.
 	maxTitle = 500
+	// maxReason bounds a model's account of why it stopped. The real ones are a
+	// sentence or two, and the cap is here because nothing upstream makes them
+	// so: a model's output has no grammar bounding its length, and this is the
+	// one field on the surface whose bytes a model chose freely.
+	maxReason = 1000
 )
 
 // say builds a Text, capped and trimmed.

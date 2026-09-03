@@ -108,6 +108,53 @@ All notable changes to `bosun`. Format follows
 
 ### Added
 
+- **A handoff says why, under an origin that says a model wrote it.** A
+  `handoff_queue` entry now carries `escalationReason`: the sentence bosun's
+  own model gave for stopping short of a mechanical fix. Until now that
+  sentence reached a person on the commit status, went into the log, and was
+  gone -- so the queue could say a human was needed and not what for, which is
+  the first thing whoever picks it up wants to know.
+
+  It arrives under a **new origin, `bosun-quoting-model`**, which is the point
+  of the change. Every other untrusted string on this surface is an identifier
+  or a program's output: a name a chart rendered, helm's refusal, a validator's
+  verdict, a title somebody typed. This one is prose, written by a model,
+  explaining something, which is the shape an injected instruction wants to
+  wear and the shape a client is likeliest to render as though a colleague had
+  written it. Folding it into `bosun` would claim bosun wrote it; folding it
+  into the cluster or chart origins would claim it is bosun's own sentence
+  quoting somebody's identifier. It is neither.
+
+  Held only where the **model** is what decided. Bosun escalates on process
+  facts of its own -- a push that failed, a model it could not reach, an
+  attempt cap that is spent -- and those reasons are bosun's, already published
+  as bosun's on the pull request; publishing one under a model's origin would
+  be a false provenance claim in the one field built to carry a true one. So an
+  entry with no reason means **none is held**, which also covers a reason
+  dropped when the pull request left the queue and one lost to a restart. It
+  never means the agent stopped for no reason.
+
+  Nothing new is fetched or computed. The reason is captured where the handoff
+  is decided, kept in memory per pull request, and released by the gate's own
+  sweep, on the pass where it stops listing that pull request as open -- the
+  same pass that drops the verdicts and the comment histories it holds for the
+  same pull requests, and a rhythm that runs whether or not the read surface is
+  switched on. It crosses to that surface on the triage snapshot already
+  carrying the phase and the attempt count, so the server has no provider
+  function it did not have before, and a call still reaches no cluster, no git
+  host and no model. The field is capped through the
+  same helper every other tagged field uses, and the gate's stamp grammar is
+  broken in it where every other string's is. The injection corpus gained a
+  case that drives an escalation reason carrying an instruction through the
+  whole surface and asserts it reaches that field and no other: not a remedy,
+  not a headline, not a status sentence.
+
+  The residual is real and is written down. A client that renders this unfenced
+  has handed its own model a sentence bosun's model wrote, under influence
+  bosun does not control. `docs/safety-model.md` names it as the field a
+  careless client is most likely to mishandle, and `docs/mcp.md` says what a
+  client is expected to do with it.
+
 - **`handoff_queue`: the pull requests waiting on a human.** When the agent
   gives up on a mechanical fix it labels the pull request `needs-human` and
   stops. Until now the only way to read that queue was to list pull requests by

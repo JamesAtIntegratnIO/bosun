@@ -110,6 +110,22 @@ func TestTheResultShapeIsWhatItWas(t *testing.T) {
 					withTriage(TriageStatus{MaxAttempts: 2, Attempts: map[int]int{264: 2, 41: 0}}).
 					callWith(t, "handoff_queue", `{}`)
 			}},
+		{"a handoff queue where the model said why", "handoff_queue_reasons.json",
+			func(t *testing.T) any {
+				// Two handed-over pull requests, one reason. A client parses
+				// the presence of the field, so the shape has to be pinned in
+				// both states: an entry bosun holds a model sentence for, and
+				// an entry it does not -- where the absence means "not held"
+				// and never "the agent had no reason".
+				g := handedOver(blocked())
+				g.Open = append(g.Open, handedOver(green()).Open...)
+				return newFixture(t, nil).withGate(g).
+					withTriage(TriageStatus{MaxAttempts: 2,
+						Attempts: map[int]int{264: 2, 41: 0},
+						Reasons: map[int]string{264: "the chart stops serving a version four " +
+							"manifests here still declare, and moving them is not a values change"}}).
+					callWith(t, "handoff_queue", `{}`)
+			}},
 		{"a handoff queue before the first gate sweep", "handoff_queue_unswept.json",
 			func(t *testing.T) any {
 				return newFixture(t, nil).withTriage(TriageStatus{MaxAttempts: 2}).

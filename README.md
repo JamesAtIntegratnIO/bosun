@@ -112,7 +112,8 @@ a quiet week. Ask `triage_status` what the agent is doing about one, and the
 phase, the attempts it has spent against its cap and the labels standing on it
 say whether it is still working or has finished and will not try again. Ask
 `handoff_queue` for the ones it gave up on, and each comes back with the
-findings behind it and the attempts it spent before it stopped. Ask
+findings behind it, the attempts it spent before it stopped, and, where the
+model is what asked for the human, the sentence it gave for stopping. Ask
 `verdict_history` what the gate said on the pull request's earlier head
 commits, and a gate that has been flapping becomes data instead of somebody's
 impression of a comment. Ask `inventory` what the fleet runs, and every

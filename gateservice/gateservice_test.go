@@ -590,3 +590,72 @@ func TestASuppressedKindCannotWriteReportStructure(t *testing.T) {
 		}
 	}
 }
+
+// The sweep tells whoever is listening which pull requests it listed.
+//
+// The service prunes its own per-pull-request memory here -- the verdicts for
+// commits nothing open carries, and the comment histories -- and it is not the
+// only holder of such memory in the process. The agent keeps the reason its
+// model gave for handing a pull request to a human, and that reason has to go
+// when the pull request does. It cannot ask: nothing but this listing knows a
+// pull request was merged, and this package must not import the agent to say
+// so. So the listing goes out, and main.go joins the two.
+func TestASweepPublishesWhatItListed(t *testing.T) {
+	h := newGateHarness(t, map[string]string{".gitops-gate.yaml": gateConfig},
+		map[string]string{".gitops-gate.yaml": gateConfig})
+	// A verdict already standing, so the sweep lists and prunes without
+	// rendering: what is under test is the listing.
+	h.git.Check = gitprovider.CheckSuccess
+
+	var listed [][]int
+	h.gs.Listed = func(open []int) { listed = append(listed, append([]int(nil), open...)) }
+
+	h.git.OpenPRs = []gitprovider.PullRequest{*gatePR("c0ffee")}
+	h.gs.sweep(context.Background())
+	if len(listed) != 1 || len(listed[0]) != 1 {
+		t.Fatalf("a sweep that listed one pull request published %v", listed)
+	}
+	if listed[0][0] != h.git.OpenPRs[0].Number {
+		t.Errorf("the listing names %d, and the sweep saw %d",
+			listed[0][0], h.git.OpenPRs[0].Number)
+	}
+
+	// Everything merged. An EMPTY listing rather than none: a receiver
+	// releasing what it holds per pull request has to be told the queue is
+	// genuinely empty, or nothing it holds is ever released.
+	h.git.OpenPRs = nil
+	h.gs.sweep(context.Background())
+	if len(listed) != 2 || len(listed[1]) != 0 {
+		t.Fatalf("a sweep that listed and found nothing open must publish an empty listing, "+
+			"got %v", listed)
+	}
+}
+
+// A sweep that could not list publishes nothing.
+//
+// The honest-absence rule kept at the boundary rather than in a note beside
+// it. An empty listing from a revoked token would tell a receiver every pull
+// request had been merged, and a receiver handed only a slice of numbers has
+// no way to tell that from the truth.
+func TestASweepThatCouldNotListPublishesNoListing(t *testing.T) {
+	h := newGateHarness(t, map[string]string{".gitops-gate.yaml": gateConfig},
+		map[string]string{".gitops-gate.yaml": gateConfig})
+	h.git.ListErr = fmt.Errorf("the host said 401")
+
+	var calls int
+	h.gs.Listed = func([]int) { calls++ }
+
+	h.gs.sweep(context.Background())
+
+	if calls != 0 {
+		t.Errorf("a sweep that could not list published a listing %d time(s). Its empty list "+
+			"is the absence of evidence, and a receiver that acted on it would forget "+
+			"everything it holds the moment a token expired.", calls)
+	}
+	// The self-check: the sweep did run and did record the failure, so the
+	// zero above is a sweep that declined to publish rather than a sweep that
+	// never happened.
+	if got := h.gs.Status(); got.SweptAt.IsZero() || got.Err == "" {
+		t.Fatalf("no failed sweep was recorded, so nothing above was checked: %+v", got)
+	}
+}
