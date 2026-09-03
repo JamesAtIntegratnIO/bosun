@@ -370,11 +370,11 @@ maintenance mode. An HTTPRoute names the Gateway it attaches to, and the policy
 that gateway carries, TLS, authentication, rate limits, belongs to whoever runs
 it.
 
-**Neither route adds authentication, and the page has none of its own.** What
-it reveals is operational state: the repository's name, the titles of open pull
-requests, your Stage and Warehouse names, and the findings with their remedies.
-No credential, no prompt, no rendered diff. Treat it as read access to your
-pipeline's status, because that is what it is, and put your gateway's
+**Neither route adds authentication, and the page has none of its own.** It
+reveals operational state: the repository's name, the titles of open pull
+requests, your Stage and Warehouse names, the namespaces the sweep examined,
+and the findings with their remedies. No credential, no prompt, no rendered
+diff. Treat it as read access to your pipeline's status, and put your gateway's
 authentication in front of it if that is more than you want published.
 
 `web.theme` picks which of the two treatments it renders in: `auto` (the
@@ -423,70 +423,67 @@ An on-call engineer's coding agent asks `pipeline_report` what has stopped
 promoting and gets each finding as typed values: the kind to branch on, the
 severity, the subject, the evidence with its numbers, how long it has held,
 and where one exists the paste-ready command that recovers it, worst first.
-Beside them travels the sweep's own accounting of what it examined, so a
-report with no findings can prove it looked rather than merely returning
-nothing.
+Alongside them the sweep gives its own accounting of what it examined, so a
+report with no findings can prove it looked instead of returning nothing.
 
 A platform engineer whose pull request is blocked asks `gate_verdict` why, and
 gets the blocker breakdown as counts per kind, every finding behind those
-counts, and the dropped API versions as fields -- which definition, which
+counts, and the dropped API versions as fields: which definition, which
 versions it stopped serving, which one survives, and the kind of manifest that
 has to move. Each finding says whether an edit in the repository could clear
-it, so an agent stops hunting for one that does not exist, and the list of what
-the gate could not render travels beside them, because a clean verdict over a
-partial render is a narrower claim than a clean verdict over a whole one. The
-answer is stamped with the head commit it judged, so a stale one can be told
-from a current one.
+it, so an agent stops hunting for one that does not exist. The gate also lists
+what it could not render, because a clean verdict over a partial render is a
+narrower claim than a clean verdict over a whole one. Bosun stamps the answer
+with the head commit it judged, so you can tell a stale answer from a current
+one.
 
 An engineer asks `gate_status` for the queue and gets every open pull request
 the last sweep saw, each with the state standing against its head commit,
 whether it blocks, and the blocker breakdown as counts. **A sweep that could
-not list pull requests says so in a field of its own**, because the other
-symptom of a gate that cannot reach your git host is a queue that reads
-"nothing open" forever -- so an empty queue is published only by a sweep that
-actually listed, and one held over from an earlier sweep travels with the error
-that says it is stale.
+not list pull requests says so in a field of its own.** The other symptom of a
+gate that cannot reach your git host is a queue that reads "nothing open"
+forever, so only a sweep that listed publishes an empty queue, and a queue held
+over from an earlier sweep carries the error that says it is stale.
 
 An engineer asks `triage_status` what the agent is doing about one pull request
 and gets the phase, the automatic fix attempts spent against the cap, and the
 labels standing on it: still working, or finished and not trying again. A pull
-request the agent is not working is answered as such rather than as an error.
-The phase is current; the labels and the attempt count are as old as the sweep
-the answer names, because a tool call reaches no git host.
+request the agent is not working gets that answer instead of an error. The
+phase is current; the labels and the attempt count are as old as the sweep the
+answer names, because a tool call reaches no git host.
 
 An engineer whose merge would not go green asks `verdict_history` what the gate
 said on the pull request's earlier head commits and gets each one as data: the
 commit, whether that verdict blocked, and the gate's own headline for it,
-newest first. It is how a push that fixed something is told from a gate that
-changed its mind, and it is the one answer here read off your git host rather
-than computed in the pod -- a gate with no database keeps its memory as HTML
-comments inside its own comment on the pull request, so the result names that
-comment as its source and publishes the cap on how many verdicts it remembers.
+newest first. It tells a push that fixed something from a gate that changed its
+mind, and it is the one answer here read off your git host rather than computed
+in the pod. A gate with no database keeps its memory as HTML comments inside
+its own comment on the pull request, so the result names that comment as its
+source and publishes the cap on how many verdicts it remembers.
 
 A platform engineer's agent asks `inventory` what this fleet runs and gets
 every Application the last live reading of ArgoCD served, with the cluster each
-one lands on -- the answer that otherwise needs a cluster credential of its
-own, for a reading this pod already makes on every gate run and used to throw
-away. **Names and clusters only**: no manifest, no values file and no rendered
-object crosses that boundary, by any argument, and the result type has nowhere
-to put one. **Its age is not the sweep's**, and that is the sentence to read
-before trusting a row: the reading is made when the gate renders a pull
-request, so an install with none open makes none and the fleet stays as old as
-the last one. Every row carries when it was observed, so the staleness is
-readable rather than assumed, and no tool call is allowed to go and refresh it.
+one lands on. It answers what otherwise needs a cluster credential of its own,
+from a reading this pod already makes on every gate run and used to throw away.
+**Names and clusters only**: no manifest, no values file and no rendered object
+crosses that boundary, by any argument, and the result type has nowhere to put
+one. **Its age is not the sweep's**, and that is the sentence to read before
+trusting a row. The gate makes the reading when it renders a pull request, so
+an install with none open makes none and the fleet stays as old as the last
+one. Every row carries when it was observed, so you can read the staleness
+instead of assuming it, and no tool call may go and refresh it.
 
-**A pull request with no verdict standing is answered as such**, and never as a
-passing one. There are several ways to have no verdict -- a render in flight, a
+**A pull request with no verdict standing gets that answer**, and never a
+passing one. There are four ways to have no verdict: a render in flight, a
 verdict already standing on the git host that this process did not re-run, a
-gate that could not run at all, a sweep that could not list pull requests --
-and each gets its own state and its own sentence. The findings field is
-*absent* in every one of them, and *empty* only when the gate looked and found
-nothing.
+gate that could not run at all, a sweep that could not list pull requests. Each
+gets its own state and its own sentence. The findings field is *absent* in all
+four, and *empty* only when the gate looked and found nothing.
 
 It computes nothing. Every answer comes from the snapshot the last sweep left
 in memory, so a request reaches no git host, no cluster and no model, and a
 chatty client cannot spend your rate limit. Nothing it serves can change
-anything: there is no mutating tool, and there is not going to be one -- the
+anything. There is no mutating tool and there is not going to be one: the
 ClusterRole this chart writes has no write verb anywhere, and a feature that
 seems to need one is a signal to reconsider the feature.
 
@@ -512,17 +509,16 @@ upgrade` from a release before this one changes nothing: no port on the
 Service, no peer in the NetworkPolicy, no variable in the Deployment.
 
 **Without a token the listener does not start.** The chart refuses to render,
-and the binary refuses to start the listener on top of that, which is the half
-that covers a Deployment somebody edits by hand. That is deliberately unlike
-`promotionAuth`, whose caller is Kargo inside the cluster and whose
-unauthenticated form predates the setting; this is the one listener built to be
-reached from outside the cluster, where "a token nobody set" and "an open API"
-are the same thing.
+and the binary refuses to start the listener on top of that, which covers a
+Deployment somebody edits by hand. `promotionAuth` works differently on
+purpose: its caller is Kargo inside the cluster, and its unauthenticated form
+predates the setting. This is the one listener built to be reached from outside
+the cluster, where "a token nobody set" and "an open API" are the same thing.
 
 `mcp.dangerouslyServeWithoutAuthentication` is the way past that, and it is
 spelled to be uncomfortable to type and impossible to skim past. There are real
-reasons to want it -- a gateway in front that already authenticates every
-request, or a laptop-bound experiment -- and it exists so those people say so on
+reasons to want it, such as a gateway in front that already authenticates every
+request, or a laptop-bound experiment. It exists so those people say so on
 purpose rather than discovering that leaving the token empty works.
 
 **It is on its own port, for the same reason the page is, and it matters more
@@ -530,45 +526,50 @@ here.** `service.port` answers the endpoint that spends money and writes to
 your repository; this is the surface you are most likely to publish beyond the
 namespace. A NetworkPolicy and a gateway both draw their lines at the port.
 
-**What it reveals is what the page and the report comment reveal.** Every
+**This surface reveals what the page and the report comment reveal.** Every
 result names the repository; past that, one entry per tool, and together they
 are the list to weigh before you publish the port:
 
-- `pipeline_report` -- your Stage and Warehouse names, and the findings with
-  their remedies.
-- `gate_status` -- the titles of the open pull requests, and the blocker counts
-  standing against them.
-- `gate_verdict` -- the same for the one asked about, plus your Application and
-  rendered-object names, the chart versions on either side of the bump, and the
-  helm and schema error strings.
-- `triage_status` -- the labels standing on a pull request, and the attempts it
+- `pipeline_report`: your Stage and Warehouse names, the namespaces the sweep
+  examined, and the findings with their remedies. The evidence quotes Kargo's
+  own error strings, and a remedy command names the namespace and the Stage it
+  acts on.
+- `gate_status`: the titles of the open pull requests, the head commits they
+  stand against, the blocker counts standing on them, and what stopped a sweep
+  that could not list.
+- `gate_verdict`: the same for the one asked about, plus your Application,
+  rendered-object and cluster names, the chart versions on either side of the
+  bump, the helm and schema error strings, the repository paths of the
+  manifests still declaring a dropped version, and the values keys the bump
+  stops reading.
+- `triage_status`: the labels standing on a pull request, and the attempts it
   has spent against the cap.
-- `handoff_queue` -- which pull requests the agent gave up on, and everything
+- `handoff_queue`: which pull requests the agent gave up on, and everything
   `gate_verdict` reveals about each of them.
-- `verdict_history` -- the verdicts the gate reached on that pull request's
+- `verdict_history`: the verdicts the gate reached on that pull request's
   earlier head commits, with their commits and the gate's headlines, which name
   blocker counts and kinds.
-- `inventory` -- your fleet: Application names, the namespaces those objects
-  live in, and the cluster names they land on. Every Application the ArgoCD
+- `inventory`: your fleet, meaning Application names, the namespaces those
+  objects live in, and the cluster names they land on. Every Application the ArgoCD
   account you gave bosun can list, not only the ones belonging to the
   repository it gates, so weigh this one against how broad that account is.
   Chart names, the versions pinned to them and the ApplicationSet names they
   were generated from are not served yet and will be, so read this entry as
   the shorter half of what it will eventually disclose.
 
-No credential, no prompt, no rendered diff. The difference is who reads it and
-what they hold -- these answers land in somebody's coding agent, which usually
-has a shell and a checkout -- so treat the token as read access to your
-pipeline's status handed to a program.
+No credential, no prompt, no rendered diff. The two surfaces differ in who
+reads them and what they hold. These answers land in somebody's coding agent,
+and that agent holds a shell and a checkout, so treat the token as read access
+to your pipeline's status handed to a program.
 
 **Text bosun did not write travels tagged.** A verdict quotes names a chart
-chose and errors a tool produced, and a client of this surface usually holds
-tools bosun refuses for itself, so every free-text field carries an origin
-saying whose words they are: `bosun`, or `bosun-quoting-` something. The
-contract is that instructions in a result are bosun's own or absent. It is not
-an offer of sanitised text -- there is no such thing -- it is the labelling a
-careful client needs to fence the rest. See
-[the safety model](../../docs/safety-model.md#what-the-mcp-surface-may-reveal-and-what-it-cannot),
+chose and errors a tool produced, and a client of this surface holds tools
+bosun refuses for itself, so every free-text field carries an origin saying
+whose words they are: `bosun`, or `bosun-quoting-` something. The contract is
+that instructions in a result are bosun's own or absent. The tag is not an
+offer of sanitised text, which does not exist. It is the labelling a careful
+client needs to fence the rest. See
+[the safety model](../../docs/safety-model.md#disclosure-and-limits-of-the-mcp-surface),
 and [the MCP surface](../../docs/mcp.md) for the tools, the token, and the
 trust model the answers are served under.
 
@@ -578,10 +579,10 @@ One value is refused rather than rendered:
 |---|---|
 | `mcp.enabled` with no `existingSecret` and no explicit hatch | the listener would not start; the pod runs, the Service publishes a port, and the only symptom is one WARNING in a log nobody is reading |
 
-`allowFrom` is deliberately not a second row. Empty admits nobody, and that is
-a working configuration rather than a mistake: a port-forward reaches the pod
-through the kubelet, which NetworkPolicy does not govern, so the paragraph
-below is exactly how to look at this surface before naming anyone.
+`allowFrom` is not a second row, on purpose. Empty admits nobody, and that is a
+working configuration: a port-forward reaches the pod through the kubelet,
+which NetworkPolicy does not govern, so the paragraph below is how to look at
+this surface before you name anyone.
 
 Point a client at `http://<host>:8082/mcp` over streamable HTTP, with the token
 as a bearer credential. Before deciding whether to publish it, look at it over

@@ -75,13 +75,14 @@ and never the bare `http.extraHeader`, which would attach a bearer credential
 for one host to whatever host git ended up talking to.
 
 The same applies to a credential an operator writes into `GIT_REPO_URL`, which
-used to be handed to git as part of the URL on every clone. `gitprovider.Remote`
-splits it the same way, and the remote stored as `origin` is clean -- so the
-credential is attached per command, to the ones that contact a host, which is
-also why `EnsureHead` and `MergeBase` are given the remote rather than finding
-it in the checkout. Only `gitprovider` may run a git command that contacts a
-remote, and a test derives that from git's own remote-facing subcommands
-rather than from a list of call sites.
+bosun used to hand git as part of the URL on every clone. `gitprovider.Remote`
+splits it the same way, and the remote stored as `origin` carries no
+credential. Bosun attaches the credential per command, to the commands that
+contact a host, which is also why it passes the remote to `EnsureHead` and
+`MergeBase` instead of letting them find it in the checkout. Only
+`gitprovider` may run a git command that contacts a remote, and a test derives
+that from git's own remote-facing subcommands instead of from a list of call
+sites.
 
 ## Things a new implementation has to get right
 

@@ -121,10 +121,10 @@ Ingress; see the chart README.
 
 The same findings again, typed, for the reader who is not a person. An on-call
 engineer's coding agent asks `pipeline_report` over MCP and gets each finding
-as fields it can branch on -- the kind, the severity, the subject, the evidence
+as fields it can branch on: the kind, the severity, the subject, the evidence
 with its numbers, how long it has held, and where one exists the paste-ready
-command -- worst first, rather than the markdown above, which it would have to
-parse.
+command. Worst first, and as fields instead of the markdown above, which the
+agent would have to parse.
 
 ```yaml
 mcp:
@@ -133,22 +133,22 @@ mcp:
 ```
 
 The 503 rule survives this move too, in the shape JSON can carry it: before the
-first sweep the `findings` field is **absent** rather than empty, and the
-result says in words that nothing has looked. An empty list would be read as
+first sweep the `findings` field is **absent** instead of empty, and the result
+says in words that nothing has looked. A reader would take an empty list for
 "nothing is wrong", which is the measurement this whole package exists to stop
 anything recording.
 
-Beside the findings travels the sweep's own accounting, so a report with no
+Alongside the findings the sweep gives its own accounting, so a report with no
 findings can prove it looked; `clean` is true only when it did. It costs no API
 call anywhere, because it answers from the same snapshot the page renders.
 
 The other tools answer the questions either side of a finding: `gate_status`,
 `gate_verdict`, `triage_status`, `handoff_queue` and `verdict_history`, plus
 `inventory` for what the fleet runs and where. Like the page, the surface is
-read-only and reveals operational metadata and no credential; unlike the page
-it is off by default and refuses to start without a bearer token, because it is
-built to be reached from outside the cluster. [The MCP surface](mcp.md) is the
-whole of it: the tools, the token, and what publishing it discloses.
+read-only and reveals operational metadata and no credential. It is off by
+default and refuses to start without a bearer token, because somebody built it
+to be reached from outside the cluster. [The MCP surface](mcp.md) covers the
+tools, the token, and what publishing it discloses.
 
 ## Alerting
 

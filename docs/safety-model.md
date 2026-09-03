@@ -149,9 +149,9 @@ named them rather than a model.
 | Cannot compare a range it cannot establish | a chart version and the git tags of the project it packages frequently use different numbering. Refs come from the project's own release tags or from the publisher's recorded build revision; when neither meets the promotion's versions, no comparison is made and the note says why. Two refs picked out of the wrong numbering return real commits from a range that is not this one |
 | Cannot mutate the cluster | live reads are `get` and `list` only, and the chart's ClusterRole has no `create`, `update`, `patch` or `delete` verb anywhere. They are off by default: everything else the agent reads is public or already in the pull request, and this reads the operator's cluster |
 | Cannot send its own credentials to the model | the git token, the GitHub App private key, the ArgoCD token, the promotion token and the model API key are read once at start-up by `config.go` and handed to one client each. `prompt/` names none of them, and nothing that builds a prompt has a reference to reach. The API key is the only one that touches the provider at all, as the `Authorization` header of the call; it is not in the body. The model is sent the pull request, the gate's report and the rendered output, and it returns a verdict and a proposal |
-| Cannot publish a credential a host quoted back at it | every credential `config.go` loads primes one process-wide redactor at start-up -- plus one embedded in `GIT_REPO_URL`, which is not loaded as a credential but is handed to a remote as one -- and text this process did not author goes through it before it is logged, posted, or wrapped into an error. Today that is what every subprocess prints: both pushes, including the installation token minted for that one push which start-up never saw; every clone, fetch, merge-base and diff, which talk to a host this process authenticated to; and the chart renders and schema checks, which talk to a registry and inherit every credential on the way. This is the second line and not the first: the first is that each credential is handed to one client and nothing else holds a reference to reach. It is also the narrow claim -- redaction removes this process's own secrets from a string, and does not make a string safe. The binary is not what makes a child's stderr dangerous; repeating what a host it authenticated to said is. What it is not is the first line, and the row below is |
-| Cannot hand a credential to a subprocess that has no use for one | every `cmd.Env` in this process is built from `childenv`, which is `os.Environ()` with the name of every variable `config.go` read a credential from taken out -- both spellings, because `GIT_TOKEN_FILE` names a path and a child that can read the path can read the credential -- plus `GIT_REPO_URL`, which is not loaded as a credential and is the one that may carry one. It was nil at every call site but five, and a nil `Env` means the child gets `os.Environ()` verbatim, so `helm template`, `kustomize build` and `kubeconform` each ran holding `GIT_TOKEN`, `ARGOCD_TOKEN`, the model key, the promotion and MCP tokens and the App private key. The five that did set it appended to `os.Environ()`, which added one scoped credential on top of all of them. This is the **first** line and redaction is the second: redaction filters what a child prints, and a child that writes its environment to a file, sends it somewhere, or is a chart's own `helm` plugin has published a credential without printing a byte. A denylist rather than an allowlist, and that is the load-bearing choice: `helm` needs `HOME`, `PATH`, `XDG_*`, `HELM_*`, `SSL_CERT_FILE`, the proxy variables and whatever a self-hosted install configured for its registry, and an allowlist that missed one would break a chart render in a deployment nobody here can see, with a gate abstaining for a reason no log explains. Removing exactly this process's own credentials has no such failure mode. The commands that do need one still get theirs, added on top of that base and scoped to the one remote they authenticate |
-| Cannot hand a credential to anything that reads a command line | a credential an operator embedded in `GIT_REPO_URL` never reaches git's argv, where `/proc/<pid>/cmdline` is world-readable. `gitprovider.Remote` splits that URL into the address git is given and an `http.<remote>.extraHeader` it is handed through the environment instead, which `/proc` exposes only to the owner. The remote stored as `origin` is clean, so the credential is attached per command, to the commands that contact a host and to no others -- ArgoCD's arrangement, for ArgoCD's reason. Structural rather than reviewed, in one direction: a derived test permits only `gitprovider` to run a git command that contacts a remote, and `agent`, `gateservice` and `supervisor` hold a `Remote` where each used to hold a URL string, so there is nothing in those packages left to pass. The configured string still exists in `config.go`, and `gitprovider.GitHub` still holds it to build a push remote from -- that path strips the userinfo itself, and has since before this. The same URL is stripped before it becomes the status page's repository link |
+| Cannot publish a credential a host quoted back at it | every credential `config.go` loads primes one process-wide redactor at start-up, plus one embedded in `GIT_REPO_URL`, which arrives as part of a URL rather than as a credential and reaches a remote as one, and text this process did not author goes through it before it is logged, posted, or wrapped into an error. Today that is what every subprocess prints: both pushes, including the installation token minted for that one push which start-up never saw; every clone, fetch, merge-base and diff, which talk to a host this process authenticated to; and the chart renders and schema checks, which talk to a registry and inherit every credential on the way. This is the second line and not the first: the first is that each credential is handed to one client and nothing else holds a reference to reach. It is also the narrow claim: redaction removes this process's own secrets from a string, and does not make a string safe. The binary is not what makes a child's stderr dangerous; repeating what a host it authenticated to said is. The row below is the first line |
+| Cannot hand a credential to a subprocess that has no use for one | every `cmd.Env` in this process is built from `childenv`, which is `os.Environ()` with the name of every variable `config.go` read a credential from taken out, both spellings, because `GIT_TOKEN_FILE` names a path and a child that can read the path can read the credential, plus `GIT_REPO_URL`, which arrives as part of a URL rather than as a credential and is the one that may carry one. It was nil at every call site but five, and a nil `Env` gives the child `os.Environ()` verbatim, so `helm template`, `kustomize build` and `kubeconform` each ran holding `GIT_TOKEN`, `ARGOCD_TOKEN`, the model key, the promotion and MCP tokens and the App private key. The five that did set it appended to `os.Environ()`, which added one scoped credential on top of all of them. This is the **first** line and redaction is the second: redaction filters what a child prints, and a child that writes its environment to a file, sends it somewhere, or is a chart's own `helm` plugin has published a credential without printing a byte. A denylist rather than an allowlist, and that choice carries weight: `helm` needs `HOME`, `PATH`, `XDG_*`, `HELM_*`, `SSL_CERT_FILE`, the proxy variables and whatever a self-hosted install configured for its registry, and an allowlist that missed one would break a chart render in a deployment nobody here can see, with a gate abstaining for a reason no log explains. Removing this process's own credentials has no such failure mode. The commands that do need one still get theirs, added on top of that base and scoped to the one remote they authenticate |
+| Cannot hand a credential to anything that reads a command line | a credential an operator embedded in `GIT_REPO_URL` never reaches git's argv, where `/proc/<pid>/cmdline` is world-readable. `gitprovider.Remote` splits that URL into the address git is given and an `http.<remote>.extraHeader` it is handed through the environment instead, which `/proc` exposes only to the owner. The remote stored as `origin` is clean, so the credential is attached per command, to the commands that contact a host and to no others, which is ArgoCD's arrangement for ArgoCD's reason. Structural rather than reviewed, in one direction: a derived test permits only `gitprovider` to run a git command that contacts a remote, and `agent`, `gateservice` and `supervisor` hold a `Remote` where each used to hold a URL string, so there is nothing in those packages left to pass. The configured string still exists in `config.go`, and `gitprovider.GitHub` still holds it to build a push remote from. That path strips the userinfo itself, and has since before this. The same URL is stripped before it becomes the status page's repository link |
 | Cannot read a Secret | with `liveReads.enabled: false` the core API group is not granted at all, and with `liveReads.scope: groups` it is granted no further than `pods, events`. The chart creates no Role over Secrets anywhere. `liveReads.scope: wide` grants `apiGroups: ["*"]` cluster-wide and **can** read Secrets everywhere. RBAC has no deny rules and no way to subtract the core group, which is why "everything except Secrets" is not a setting |
 | Cannot be given a Secret read it does not need | the gate's cluster inventory comes from ArgoCD's API, not from the cluster Secrets those clusters are stored in. That read could not be made small enough: the gate wants four fields, and RBAC has no predicate for "the labels but not the data". There are no deny rules, `resourceNames` does not apply to `list`, and the apiserver applies the request's label selector *after* authorising. `GET /api/v1/clusters` serves the same four fields with the credential block redacted, which draws that line. The trade is real: an ArgoCD account token to mint and rotate, and a component that can be down on its own |
 | Cannot present "nobody looked" as "nothing found" | `cluster.Count` carries a `Known` flag and its rendering prefers the note over the number. A refusal, an unreachable apiserver, or a count where one version answered and another did not all say what was *not* checked. The prompt tells the model in those words that "not permitted to check" is neither zero nor evidence of safety |
@@ -292,108 +292,105 @@ Set `promotionAuth.existingSecret` on the bosun chart and
 opt-in: leaving it unset keeps the endpoint open, and the pod says so in its
 log at every start-up.
 
-## What the MCP surface may reveal, and what it cannot
+## Disclosure and limits of the MCP surface
 
 The read-only MCP listener serves the sweep's own findings to programmatic
 callers. It is off by default, it refuses to start without a bearer token, and
-it is on a port of its own so that admitting a client to it never admits one to
-the endpoint that spends money and writes to the repository. The tools it
-serves, and how to turn it on, are in [the MCP surface](mcp.md).
+it sits on a port of its own, so admitting a client to it never admits one to
+the endpoint that spends money and writes to the repository.
+[The MCP surface](mcp.md) covers the tools and how to turn it on.
 
 **No tool mutates anything, and none reads anything live.** There is no
-mutating tool and no write verb in the ClusterRole to build one on, so a client
-that could ask cannot be answered. Every result comes from the snapshot the
-last sweep left in memory, which is why a call reaches no cluster, no git host
-and no model: a chatty client cannot spend an install's rate limit, and a
-hostile one cannot use this surface to make bosun's credentials issue a request
-on its behalf.
+mutating tool and no write verb in the ClusterRole to build one on, so bosun
+cannot answer a client that asks. Every result comes from the snapshot the last
+sweep left in memory, so a call reaches no cluster, no git host and no model. A
+chatty client cannot spend an install's rate limit, and a hostile one cannot
+use this surface to make bosun's credentials issue a request on its behalf.
 
-What the surface serves, it serves whole: there is no per-project or per-caller
-filtering of the readout here or on any other surface, for the reasons in
+The surface serves its view whole. Bosun applies no per-project or per-caller
+filtering to the readout here or on any other surface, for the reasons in
 [ADR 0014](../adr/0014-an-install-serves-one-trust-domain.md).
 
-Two things about it differ from every surface above, and both come from who is
-reading. Its answers land in another agent -- one that usually holds a shell, a
+Two things set it apart from the surfaces above, and both come from who reads
+it. Its answers land in another agent, and that agent holds a shell, a
 checkout, and tools bosun refuses for itself.
 
-**No field path from a tool result can reach a credential, and that is a
-compile-time rule rather than a filter.** The `mcp` package imports the result
+**No field path from a tool result can reach a credential, and the compiler
+enforces that rather than a filter.** The `mcp` package imports the result
 types and the redactor and nothing else, so it cannot reach a client, a
 configuration, or a file. A reflection walk over every registered result type
-keeps it true on the paths no request exercises, because a behavioural test can
-only sample what a handler happened to produce. Underneath that sits the
-process redactor, applied at the single point where a byte reaches the wire:
-the primary control is that a credential cannot be in a result, and this is the
-second line for the text whose contents nobody chose.
+keeps that true on the paths no request exercises, because a behavioural test
+samples only what a handler happened to produce. Underneath sits the process
+redactor, applied at the single point where a byte reaches the wire. The
+primary control keeps a credential out of a result; the redactor is the second
+line for text whose contents nobody chose.
 
-**Instructions in a result are bosun's own or absent.** A remedy is composed
-only by bosun's code, from pieces checked against a grammar before the command
-is emitted at all -- a piece that fails costs the finding its remedy rather than
-producing a suspect command. Every other free-text field carries an origin
-saying whether bosun wrote all of it or quoted somebody else inside it, and tool
-descriptions are constants, so nothing from a cluster reaches the field a client
-hands its model as instructions.
+**Instructions in a result are bosun's own or absent.** Bosun's code composes a
+remedy from pieces checked against a grammar before it emits the command. A
+piece that fails costs the finding its remedy, and no suspect command reaches
+the wire. Every other free-text field carries an origin saying whether bosun
+wrote all of it or quoted somebody else inside it, and tool descriptions are
+constants, so nothing from a cluster reaches the field a client hands its model
+as instructions.
 
 The origins are a closed vocabulary, and a client fences on the shape rather
 than on the list: a field is `bosun`, or it is `bosun-quoting-` something.
 Today the something is a cluster, this repository, a rendered chart, helm, the
 schema validator, the render as a whole, a pull request's author, or a label
-standing on a pull request. Only the first is a claim that bosun wrote every
-byte.
+standing on a pull request. Only the first claims bosun wrote every byte.
 
-A label is tagged as somebody else's even though bosun writes some of them.
-Attempt labels are the agent's own and a `needs-human` is a maintainer's, and
-in a repository where anybody may label they are anybody's -- so the field
-carries one origin saying the weakest true thing about it, rather than a
-per-label judgement a hostile label would imitate by choosing bosun's prefix.
+Bosun tags a label as somebody else's even though it writes some of them.
+Attempt labels are the agent's own, a `needs-human` is a maintainer's, and in a
+repository where anybody may label they are anybody's. So the field carries one
+origin saying the weakest true thing about it. A per-label judgement would
+invite a hostile label to imitate it by choosing bosun's prefix.
 
-**A verdict's typed facts are vetted, not tagged.** One block on the gate
-verdict carries no origin, and that is deliberate: the dropped-served-version
-detail -- which definition, which versions are gone, which one survives, which
-kind of manifest moves -- is what a repair acts on with no person in between,
-so a tag would be the wrong instrument. Every field of it is matched against
+**Bosun vets a verdict's typed facts instead of tagging them.** One block on
+the gate verdict carries no origin, on purpose. The dropped-served-version
+detail, which definition, which versions are gone, which one survives, which
+kind of manifest moves, is what a repair acts on with no person in between, so
+a tag would be the wrong instrument. Bosun matches every field of it against
 the repair contract's own grammars, which admit no space, no backtick and no
-newline, and a finding whose fields do not hold their shape is published
-without them rather than with them labelled. Absence there means bosun would
-not vouch for the detail, never that there is none.
+newline. A finding whose fields do not hold their shape loses the block rather
+than getting it labelled. Absence there means bosun would not vouch for the
+detail, and never that there is none.
 
 **One answer is read off the git host rather than computed here, and it says
 so.** `verdict_history` publishes the verdicts the gate reached on a pull
 request's earlier head commits, and those rows are the parse of the stamps in
-the gate's own comment on it -- which is bosun's sentence, written by bosun,
-sitting somewhere any repository writer can edit before bosun reads it back.
-The headlines are tagged `bosun` because bosun composed them, and the result
-carries the source of the rows for exactly that reason: a client that needs to
-know who could have touched a string is told, in a field, that this one came
-out of a pull-request comment. It is the only place on this surface where the
-set of people who can choose the bytes is the set of people who can write to
-the gated repository.
+the gate's own comment on it. Bosun wrote that sentence, and it sits somewhere
+any repository writer can edit before bosun reads it back. The headlines are
+tagged `bosun` because bosun composed them, and the result carries the source of
+the rows for that reason: a client that needs to know who could have touched a
+string is told, in a field, that this one came out of a pull-request comment.
+It is the one place on this surface where the set of people who can choose the
+bytes is the set of people who can write to the gated repository.
 
-**The gate's own stamp grammar is stripped from every response.** The gate
+**Bosun strips the gate's own stamp grammar from every response.** The gate
 keeps its memory inside its pull-request comment, because a gate with no
-database has nowhere else to put it: the last verdict, the head it judged and
-the migration a repair performs all travel as HTML comments and are read back
-on the next run. A client of this surface reads a verdict and writes prose onto
-a pull request, so a stamp smuggled through a chart-rendered object name would
-make that client a forgery relay -- republishing a verdict the gate never
-reached, against a commit it never judged. Nothing in that chain is
-compromised, which is why the HTML comment delimiters are broken where a byte
-reaches the wire rather than blamed on the client. Broken visibly, and not
-deleted: an object whose name contains an HTML comment is worth somebody
-looking at the chart that produced it.
+database has nowhere else to put it. It writes the last verdict, the head it
+judged and the migration a repair performs as HTML comments, and reads them
+back on the next run. A client of this surface reads a verdict and writes prose
+onto a pull request. Smuggle a stamp through a chart-rendered object name and
+that client becomes a forgery relay, republishing a verdict the gate never
+reached against a commit it never judged. Nobody in that chain is compromised,
+so bosun breaks the HTML comment delimiters where a byte reaches the wire
+instead of blaming the client. It breaks them visibly and does not delete them:
+an object whose name contains an HTML comment is worth somebody looking at the
+chart that produced it.
 
-**Free-text fields are length-capped.** The client's context is a resource this
-surface can spend without ever seeing the bill, and nothing upstream bounds a
-helm error or a release note. A field that was cut says so, because a note that
-happens to end in an ellipsis would otherwise be indistinguishable from one
+**Bosun caps the length of free-text fields.** The client's context is a
+resource this surface can spend without seeing the bill, and nothing upstream
+bounds a helm error or a release note. A field that got cut says so, because a
+note that happens to end in an ellipsis would otherwise look the same as one
 bosun stopped copying.
 
-**What it does not offer is sanitised text.** Bosun cannot make a careless
-client safe, and text sanitised to harmlessness does not exist. What it
-guarantees is provenance labelling and bosun-authored instructions only; a
-client that treats an origin-tagged quotation as an instruction has made a
-decision bosun cannot take back, in whatever tools that client holds. The
-residual risk is real and it is stated here rather than left implied.
+**The surface does not offer sanitised text.** Bosun cannot make a careless
+client safe, and text sanitised to harmlessness does not exist. It guarantees
+provenance labelling, and instructions that are bosun's own or absent. A client
+that treats an origin-tagged quotation as an instruction has made a decision
+bosun cannot take back, in whatever tools that client holds. The residual risk
+is real, and it is stated here rather than left implied.
 
 ## Why a verdict names a commit
 
