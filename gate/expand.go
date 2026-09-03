@@ -84,6 +84,11 @@ func expandAppSet(as map[string]any, inv *Inventory) ([]Row, []Markdown, error) 
 			warnings = append(warnings, Markdown(Inline(fmt.Sprintf("%s (cluster %s): %v", asName, p.Cluster.Name, err))))
 			continue
 		}
+		// Here rather than inside rowFromApp, because its first argument is
+		// an ApplicationSet name on this path and a config source's name on
+		// the other one. Whichever call site knows which is the one that can
+		// say so.
+		row.FromAppSet = true
 		rows = append(rows, row)
 	}
 

@@ -11,6 +11,37 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.38.0]
+
+**No values change, and no template change.** `appVersion` moves, which is what
+this release is: the agent it deploys says more in one MCP tool. An install that
+has `mcp.enabled: false`, which is every install that has not said otherwise, is
+unaffected in every respect.
+
+### Added
+
+- **`inventory` says what each Application renders from.** Rows gained the
+  chart, the chart repository serving it, the version pinned to it, the source
+  type and the ApplicationSet they were generated from, joined onto the live
+  reading that already said which cluster each one lands on. "What version is
+  prod-eu on" stops needing a cluster credential of its own.
+
+  Two observations behind one row, and each says which gave it what. The live
+  reading decides which rows exist; the gate's last render says what they render
+  from, at the revision that run started from. A row the render did not know of
+  carries no chart detail rather than another Application's, and each half of a
+  row carries its own observation time, so a row whose halves were seen hours
+  apart says exactly that.
+
+  Still names and versions: the render this joins from carries the values files
+  and the values leaves behind every Application, and none of them cross that
+  boundary.
+
+  The disclosure note gains the new fields, and the entry is still the one worth
+  reading twice before publishing the port: unlike every other tool this one is
+  not scoped to the gated repository, so it lists every Application the ArgoCD
+  account you gave bosun can see.
+
 ## [0.37.1]
 
 **Prose only.** No values change, no template change, and `appVersion` does not
@@ -37,6 +68,7 @@ move: the chart deploys the same image 0.37.0 does.
   glossary drops its AI tells.** Em dashes, "not X but Y" contrasts, passive
   constructions with no actor, and adverbs doing no work, run against
   [stop-slop](https://github.com/hardikpandya/stop-slop). No claim changed.
+
 ## [0.37.0]
 
 **No values change, and no template change.** `appVersion` moves, which is what

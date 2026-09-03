@@ -38,6 +38,23 @@
     {
       "cluster": {
         "origin": "bosun-quoting-cluster",
+        "text": "prod-eu"
+      },
+      "name": {
+        "origin": "bosun-quoting-cluster",
+        "text": "observability"
+      },
+      "namespace": {
+        "origin": "bosun-quoting-cluster",
+        "text": "argocd"
+      },
+      "observedAgeSeconds": 390,
+      "observedAt": "2026-08-30T11:55:00Z",
+      "observedIn": "live"
+    },
+    {
+      "cluster": {
+        "origin": "bosun-quoting-cluster",
         "text": "prod-us"
       },
       "name": {
@@ -57,7 +74,7 @@
     "expanded": false,
     "status": {
       "origin": "bosun",
-      "text": "No row says what it renders from. The chart, the pinned version and the ApplicationSet an Application was generated from come from the gate's render expansion, and this build does not retain it. These charts are not unpinned; nothing here has read what they render from."
+      "text": "No row says what it renders from. The chart, the pinned version and the ApplicationSet an Application was generated from come from the gate's render expansion, which is made when the gate renders a pull request, and no run has made one. These charts are not unpinned; nothing here has read what they render from."
     }
   },
   "repository": "example/platform",

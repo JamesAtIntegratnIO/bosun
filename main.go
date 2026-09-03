@@ -725,6 +725,21 @@ func mcpGateStatus(g gateservice.Status) mcp.GateStatus {
 		}
 		out.Fleet = fleet
 	}
+	if g.Expansion != nil {
+		// nil crosses as nil here for the reason it does above, and the
+		// consequence differs: a zero-valued expansion would say a render has
+		// been read and knew none of these Applications, which is a real
+		// answer on this surface and would be a false one.
+		expansion := &mcp.GateExpansion{ObservedAt: g.Expansion.ObservedAt}
+		for _, a := range g.Expansion.Apps {
+			expansion.Apps = append(expansion.Apps, mcp.GateExpansionApp{
+				Name: a.Name, Cluster: a.Cluster, AppSet: a.AppSet,
+				SourceType: string(a.SourceType),
+				Chart:      a.Chart, ChartRepo: a.ChartRepo, Version: a.Version,
+			})
+		}
+		out.Expansion = expansion
+	}
 	for _, pr := range g.Open {
 		out.Open = append(out.Open, mcp.GatePR{
 			Number: pr.Number, Title: pr.Title, URL: pr.URL,

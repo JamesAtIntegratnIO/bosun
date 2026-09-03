@@ -137,6 +137,13 @@ type Service struct {
 	// see retainFleet in status.go.
 	fleet *Fleet
 
+	// What the last run's render expanded this repository into, for Status.
+	// Written by a RUN for the same reason the reading is, and stamped
+	// separately from it: the two are made at different moments of one run and
+	// a reader joining them has to be able to see which is older. See
+	// retainExpansion in status.go.
+	expansion *Expansion
+
 	// history is the verdicts each pull request's own comment recorded, as
 	// the last publish onto it read them. Keyed by pull-request number,
 	// oldest verdict first, dropped when the pull request stops being open.
@@ -547,10 +554,23 @@ func (g *Service) run(ctx context.Context, pr *gitprovider.PullRequest) *Outcome
 	cfg.Log = g.Log
 	g.applyHostPolicy(cfg)
 
+	// Stamped before the render rather than after it, for the reason the
+	// reading above is: what a render describes is the world as it was when
+	// the render started, and a timestamp taken on return overstates how fresh
+	// it is by however long the render took.
+	renderedAt := time.Now()
 	baseTable, err := gate.Render(ctx, base, cfg, inv)
 	if err != nil {
 		return g.broke(ctx, pr, fmt.Errorf("rendering %s: %w", refName(pr.BaseBranch), err))
 	}
+	// Kept, rather than rendered and dropped. This is the only thing in the
+	// process that knows which chart an Application renders from, and the
+	// reader asking that is the one the live reading already half answers.
+	//
+	// The BASE expansion, which is the revision this run started from and
+	// therefore the one the fleet is running. The head is the change under
+	// judgement, and nothing has deployed it.
+	g.retainExpansion(baseTable, renderedAt)
 	headTable, err := gate.Render(ctx, head, cfg, inv)
 	if err != nil {
 		return g.broke(ctx, pr, fmt.Errorf("rendering %s: %w", refName(pr.Branch), err))

@@ -131,9 +131,14 @@ func TestTheResultShapeIsWhatItWas(t *testing.T) {
 				return newFixture(t, nil).withTriage(TriageStatus{MaxAttempts: 2}).
 					callWith(t, "handoff_queue", `{}`)
 			}},
-		{"the fleet", "inventory_fleet.json", func(t *testing.T) any {
-			return newFixture(t, nil).withGate(fleet()).call(t, "inventory")
-		}},
+		{"a live reading with no expansion behind it", "inventory_fleet.json",
+			func(t *testing.T) any {
+				return newFixture(t, nil).withGate(fleet()).call(t, "inventory")
+			}},
+		{"the fleet, with what each row renders from", "inventory_expanded.json",
+			func(t *testing.T) any {
+				return newFixture(t, nil).withGate(expanded()).call(t, "inventory")
+			}},
 		{"a fleet before the first gate sweep", "inventory_unswept.json", func(t *testing.T) any {
 			return newFixture(t, nil).call(t, "inventory")
 		}},

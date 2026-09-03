@@ -118,10 +118,12 @@ model is what asked for the human, the sentence it gave for stopping. Ask
 commits, and a gate that has been flapping becomes data instead of somebody's
 impression of a comment. Ask `inventory` what the fleet runs, and every
 Application the last live reading of ArgoCD served comes back with the cluster
-it lands on: names and clusters, never manifests, each row stamped with when it
-was observed. It computes nothing: every answer comes from the snapshot the
-last sweep already holds, so a request reaches no git host, no cluster and no
-model. Nothing mutates, because no tool does. Text bosun did not write travels
+it lands on and the chart, pinned version and ApplicationSet the gate's last
+render says it comes from: names and versions, never manifests, and each half
+of a row stamped with which reading it came from and when. It computes nothing:
+every answer comes from the snapshot the last sweep already holds, so a request
+reaches no git host, no cluster and no model. Nothing mutates, because no tool
+does. Text bosun did not write travels
 tagged with whose it is, because these answers land in agents holding tools
 bosun refuses for itself. Off by default, and it refuses to start without a
 token. See

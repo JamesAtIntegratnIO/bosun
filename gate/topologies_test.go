@@ -512,3 +512,81 @@ spec:
 		t.Errorf("50 clusters took %s; a gate this slow gets routed around", d)
 	}
 }
+
+// A row says whether its AppSet names an ApplicationSet, because on half these
+// layouts it does not.
+//
+// AppSet carries the ApplicationSet's own name for a generated Application and
+// the config source's name for one this repository commits directly. The diff
+// groups by the field and has no use for the difference; a surface publishing
+// "the ApplicationSet this was generated from" has every use for it, and the
+// two are the same kind of string.
+func TestARowSaysWhetherItsAppSetIsOne(t *testing.T) {
+	root := writeRepo(t, map[string]string{
+		"appsets/cert-manager.yaml": `
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cert-manager
+spec:
+  goTemplate: true
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: 'cert-manager-{{ .name }}'
+    spec:
+      project: default
+      source:
+        repoURL: https://charts.jetstack.io
+        chart: cert-manager
+        targetRevision: v1.21.1
+      destination:
+        namespace: cert-manager
+`,
+		"apps/grafana.yaml": `
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana
+spec:
+  project: default
+  destination:
+    name: prod-eu
+    namespace: monitoring
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: grafana
+    targetRevision: 8.5.0
+`,
+	})
+	cfg := &Config{Concurrency: 4, Sources: []Source{
+		{Name: "everything", Type: SourceManifests, Paths: []string{"appsets/*.yaml", "apps/*.yaml"}},
+	}}
+	inv := fleet(t, root, []Cluster{{Name: "prod-eu"}})
+
+	table, err := Render(context.Background(), root, cfg, inv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := map[string]bool{"cert-manager-prod-eu": true, "grafana": false}
+	seen := 0
+	for _, r := range table.Rows {
+		generated, ok := want[r.App]
+		if !ok {
+			t.Errorf("the render produced an Application this test does not know about: %+v", r)
+			continue
+		}
+		seen++
+		if r.FromAppSet != generated {
+			t.Errorf("%s reports FromAppSet=%v with AppSet %q; a committed Application's "+
+				"AppSet is the config source it was read from, and nothing serves an object "+
+				"of that name", r.App, r.FromAppSet, r.AppSet)
+		}
+	}
+	if seen != len(want) {
+		t.Fatalf("the render produced %d of the %d Applications this test is about, so one "+
+			"side of the distinction went unchecked", seen, len(want))
+	}
+}

@@ -229,6 +229,78 @@ All notable changes to `bosun`. Format follows
   chart README's disclosure notes gain its entry.
 
 
+- **`inventory` says what each Application renders from.** Rows gained the
+  chart, the chart repository serving it, the version pinned to it, the source
+  type and the ApplicationSet they were generated from. Answering "what version
+  is prod-eu on" was a cluster credential and a `kubectl get applications -o
+  yaml` away; it is now the same call that already said where the Application
+  runs.
+
+  **Two observations, and every row says which gave it what.** The live reading
+  knows which Applications exist and where they land, and knows nothing about
+  what they render. That comes from the gate's render expansion -- the
+  repository at the revision the last run started from -- which is a different
+  observation of a different thing, and the run had been throwing it away.
+  Neither source answers the other's question, so both are retained.
+
+  The merge rule is the substance of the change. The live reading is the spine
+  and decides which rows exist. The expansion enriches, joined on an
+  Application's name and the cluster it lands on. A row the expansion did not
+  know of carries **no** chart detail, never another Application's: the rows are
+  every Application the ArgoCD account can list and the expansion covers what
+  the gated repository defines, so rows outside it are the ordinary case rather
+  than the corner. An Application the expansion knows and the reading does not
+  have produces **no row at all**, because it describes an older revision and a
+  fleet member that is not there is the worse error. Two Applications of one
+  name on one cluster leave both without chart detail, which is what
+  apps-in-any-namespace permits and what nothing here can resolve: the
+  expansion knows the namespace an Application deploys *into*, the reading
+  knows the namespace the Application object *lives in*, and they are different
+  namespaces under one word.
+
+  **Staleness is published rather than solved, twice over.** A row's identity
+  and its chart detail carry their own `observedIn`, `observedAt` and
+  `observedAgeSeconds`, so a row whose two halves were observed hours apart says
+  exactly that, and no request path may go and refresh either. `chartDetail` is
+  a claim about the expansion rather than about the rows, which is what makes
+  "nothing has rendered" and "a render was read and knew none of these
+  Applications" two answers instead of one missing key. The base revision is
+  retained rather than the head, because the head is the change under judgement
+  and nothing has deployed it.
+
+  Two fields are held to a shape rather than a tag, because a client branches
+  on them. `sourceType` is published only when it is one of the two words this
+  surface declares, so a third the gate grows reaches a client as an absent
+  field rather than as a case nobody wrote a branch for. And a source that is
+  not a chart carries no chart, no chart repository and no version: the gate's
+  own row holds the git ref a directory source is read at in the same field as
+  a chart's pinned version, and publishing that beside an absent chart would
+  say an Application is on version "main", which is not a version of anything a
+  reader can look up.
+
+  **Still names and versions.** The expansion carries the values files and the
+  values leaves behind every Application, and none of them cross: they are
+  dropped in the one function where the whole rendered row is in scope, and
+  three tests hold the line -- the shapes a document travels in are banned from
+  the result type, the whole set of that type's field names is compared against
+  a written set so a field cannot be added without a reviewer, and the values
+  fields are named where `gate` and `mcp` are visible at once.
+
+  Everything under `renders` came out of `helm template`, which applies
+  nothing, so it is tagged `bosun-quoting-chart`, length-capped and stripped of
+  the gate's stamp grammar like every other string somebody else wrote. The
+  injection corpus grew a case per published field. The one thing the expansion
+  knows that never reaches a client is the Application name it rendered: that
+  is the join key, and the name on the wire is always the reading's, which came
+  off an apiserver.
+
+  `gate.Row` gained `FromAppSet`, because its `AppSet` field does not mean one
+  thing: it is an ApplicationSet's own name for a generated Application and the
+  config source's name for one the repository commits directly. The diff groups
+  by it either way and never cared; a surface publishing "the ApplicationSet
+  this was generated from" cares, and without the flag half those answers would
+  name an object nothing serves.
+
 - **`inventory`, the fleet as the live reading saw it.** The gate reads what
   ArgoCD says this control plane runs on every run it makes, uses a fraction of
   it to decide what to render, and used to throw the rest away. A platform
@@ -255,11 +327,13 @@ All notable changes to `bosun`. Format follows
   operators complain about, is a scheduled fleet read: a change to what the
   sweep does, not to what a tool call may do.
 
-  **No row says what it renders from.** Chart, pinned version and originating
-  ApplicationSet come from the gate's render expansion, which is not retained
-  yet, so `chartDetail.expanded` is `false` and a sentence beside it says the
-  expansion has not run. "These charts are unpinned" and "nothing has read what
-  they render from" are different claims, and only the second is true.
+  **No row said what it renders from**, in the release this landed in. Chart,
+  pinned version and originating ApplicationSet come from the gate's render
+  expansion, which was not retained, so `chartDetail.expanded` was `false` and a
+  sentence beside it said the expansion had not run -- because "these charts are
+  unpinned" and "nothing has read what they render from" are different claims
+  and only the second was true. The entry above is where that half arrived; the
+  flag is what a client reads to tell the two builds apart.
 
   The rows are not filtered by repository, and that is ADR 0014 rather than an
   oversight: an install's horizon is set by what its credentials can read, and

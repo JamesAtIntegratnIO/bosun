@@ -49,9 +49,20 @@ _Avoid_: telemetry, sensitive data
 Every Application an install's ArgoCD serves, and the cluster each lands on,
 as one live reading saw them. Read on every gate run to decide what to render
 and retained whole, so it is broader than what the gate renders: an
-Application of a repository this install does not gate is in the fleet.
+Application of a repository this install does not gate is in the fleet. What
+each one renders from is not in it, and comes from the render expansion.
 _Avoid_: inventory (that is the cluster set the gate expands generators
 against, which is a different list with a different reader), cluster, estate
+
+**Render expansion**:
+The Applications a gate run rendered the gated repository into, at the
+revision that run started from, each with the chart, chart repository, pinned
+version, source type and ApplicationSet behind it. Its own clock and its own
+reach: it describes a git revision rather than a control plane, and it covers
+what the repository defines rather than what ArgoCD serves. Joined onto the
+fleet by name and cluster, and never a source of rows.
+_Avoid_: render (that is the act), expansion alone (an ApplicationSet expands
+against clusters, which is one step inside this), manifest set
 
 **Live reading**:
 One read of what ArgoCD serves, made by a gate run rather than by a sweep. Its
