@@ -127,6 +127,31 @@ the score to optimise is *unsafe actions = 0* rather than accuracy.
 | `gate.argocd.existingSecret` | `ARGOCD_TOKEN` | *(none)* | **Required.** Secret holding the ArgoCD account token, key `tokenKey` |
 | `gate.argocd.caSecret` | `ARGOCD_CA_FILE` | *(none)* | Secret holding the CA that verifies argocd-server, key `caKey` |
 | `gate.argocd.insecureSkipTLSVerify` | `ARGOCD_INSECURE_SKIP_TLS_VERIFY` | `false` | Accept any certificate from argocd-server |
+| `gate.registryAuth.existingSecret` | `HELM_REGISTRY_CONFIG` | *(none)* | Secret holding one Docker config file, key `key`: the registry login helm renders with. For a chart a registry will not serve anonymously; see below |
+| `gate.registryAuth.key` | *(volume only)* | `.dockerconfigjson` | The key in that Secret, which is what a `kubernetes.io/dockerconfigjson` pull secret uses |
+
+### `gate.registryAuth` is for a chart behind a login
+
+Without it, a chart in a private registry is reported as not rendering at the
+new version, with the registry's 401 for the reason, on every pull request that
+moves it.
+
+The Secret holds one Docker config file, which is what `helm registry login`
+writes and what an image pull secret already is:
+
+```json
+{"auths": {"registry.example.com": {"auth": "<base64 of user:password>"}}}
+```
+
+The chart mounts it read-only and names it to helm in `HELM_REGISTRY_CONFIG`.
+That variable is helm's own. The agent checks at start-up that the file is
+there, because helm reads a missing one as no logins, and never opens it.
+
+helm holds this login for every chart the gate renders, and a helm plugin a
+chart brings runs as helm. Give it a credential that can pull and nothing else.
+
+The registry also has to be reachable: add its host to
+`networkPolicy.egress.fqdns`.
 
 ### `gate.argocd` is where the inventory comes from
 

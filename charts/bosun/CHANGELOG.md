@@ -11,6 +11,39 @@ with no artifact behind it; 0.6.0 was never tagged at all. Entries marked
 **never published** were bumped on a branch and bumped again before merging,
 so the version after them is what shipped.
 
+## [0.39.0]
+
+**One new value, off by default.** An install that sets nothing renders the
+Deployment it rendered at 0.38.0, byte for byte.
+
+### Added
+
+- **`gate.registryAuth`: a registry login for the charts the gate renders.** A
+  chart in a registry that will not serve it anonymously could not be rendered
+  at all. The gate reported it as not rendering at the new version, with the
+  registry's 401 for the reason, on every pull request that moved it, and
+  nothing in the values could change that: the chart had nowhere to put a
+  login.
+
+  `existingSecret` names a Secret holding one Docker config file, under `key`
+  (`.dockerconfigjson` by default, so a `kubernetes.io/dockerconfigjson` pull
+  secret is already the right shape). It is mounted read-only at
+  `/etc/bosun/registry/config.json` and named to helm in
+  `HELM_REGISTRY_CONFIG`, which is helm's own variable and one the gate's
+  subprocesses were already built to inherit.
+
+  The agent refuses to start when the variable names a file that is not there.
+  helm reads a missing file as no logins and renders on anonymously, so the
+  other outcome is a healthy pod and a gate that fails the same charts it
+  failed before.
+
+  **What it costs.** helm holds this login for every chart the gate renders,
+  and a helm plugin a chart brings runs as helm. Scope the credential to
+  pulling, and to the registries the gate has to read.
+
+  The registry has to be reachable too: name its host under
+  `networkPolicy.egress.fqdns`.
+
 ## [0.38.0]
 
 **No values change, and no template change.** `appVersion` moves, which is what

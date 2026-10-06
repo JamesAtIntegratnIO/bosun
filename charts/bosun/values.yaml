@@ -489,6 +489,30 @@ gate:
     caKey: ca.crt
     insecureSkipTLSVerify: false
 
+  # A registry login for the charts the gate renders, for a registry that will
+  # not serve a chart anonymously. Without one such a chart is reported as not
+  # rendering at the new version, with the registry's 401 for the reason, on
+  # every pull request that moves it.
+  #
+  # A Secret holding one Docker config file, which is what `helm registry
+  # login` writes and what a `kubernetes.io/dockerconfigjson` pull secret
+  # already is, so the Secret your nodes pull the image with will do:
+  #
+  #   {"auths": {"registry.example.com": {"auth": "<base64 of user:password>"}}}
+  #
+  # It is mounted read-only and named to helm in HELM_REGISTRY_CONFIG. Bosun
+  # checks at start-up that the file is there and never reads it.
+  #
+  # What it costs: helm holds this login for every chart the gate renders, and
+  # a helm plugin a chart brings runs as helm. Give it a credential that can
+  # pull and nothing else, and only the registries the gate has to read.
+  #
+  # The registry has to be reachable as well: name its host under
+  # networkPolicy.egress.fqdns, with any host it redirects a download to.
+  registryAuth:
+    existingSecret: ""
+    key: .dockerconfigjson
+
 triage:
   # Repair a red gate whose only cause is a CRD that stopped serving versions:
   # rewrite every manifest in the repository that still declares one to the
