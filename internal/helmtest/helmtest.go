@@ -325,6 +325,23 @@ func Mounts(t *testing.T, docs []Doc) []string {
 	return out
 }
 
+// Volumes are the volumes the Deployment's pod declares, as rendered.
+//
+// The third half of a file a variable names: Mounts says a path is mounted,
+// and this says from what, and under which key.
+func Volumes(t *testing.T, docs []Doc) []map[string]any {
+	t.Helper()
+	d := One(t, docs, "Deployment")
+	raw, _ := dig(d.Body, "spec", "template", "spec", "volumes").([]any)
+	out := make([]map[string]any, 0, len(raw))
+	for _, v := range raw {
+		if m, ok := v.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 func dig(m map[string]any, path ...string) any {
 	var cur any = m
 	for _, p := range path {

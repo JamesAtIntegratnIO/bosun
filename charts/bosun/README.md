@@ -136,6 +136,25 @@ What it costs, as plainly as the grant it replaces:
 - A network path with two ends and a port that catches people: the next
   section, and the last one on this page.
 
+### A chart behind a registry login
+
+A chart in a registry that will not serve it anonymously needs a login, or the
+gate reports it as not rendering at the new version on every pull request that
+moves it:
+
+```yaml
+gate:
+  registryAuth:
+    existingSecret: bosun-registry   # one Docker config file
+    key: .dockerconfigjson           # the default; an image pull secret fits
+```
+
+It is mounted read-only and named to helm in `HELM_REGISTRY_CONFIG`. The agent
+refuses to start if the file is not there, since helm would read that as no
+logins. helm holds the login for every chart the gate renders, so give it one
+that can pull and nothing else, and add the registry's host to
+`networkPolicy.egress.fqdns`.
+
 ### `gate.argocd.podPort` is the pod's port, not the URL's
 
 The chart writes the NetworkPolicy egress rule to the ArgoCD namespace itself,

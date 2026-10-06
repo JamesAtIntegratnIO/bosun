@@ -267,6 +267,12 @@ spec:
             {{- end }}
             - name: ARGOCD_INSECURE_SKIP_TLS_VERIFY
               value: {{ .Values.gate.argocd.insecureSkipTLSVerify | quote }}
+            {{- if .Values.gate.registryAuth.existingSecret }}
+            # helm's own variable, which the helm this process starts inherits
+            # and reads. The binary checks the file is there and never opens it.
+            - name: HELM_REGISTRY_CONFIG
+              value: /etc/bosun/registry/config.json
+            {{- end }}
             - name: EXPLAIN_GREEN
               value: {{ .Values.triage.explainGreen | quote }}
             - name: MIGRATE_DROPPED_VERSIONS
@@ -349,6 +355,13 @@ spec:
               mountPath: /etc/bosun/argocd-ca
               readOnly: true
             {{- end }}
+            {{- if .Values.gate.registryAuth.existingSecret }}
+            # The registry login helm renders with, for a chart a registry will
+            # not serve anonymously. Read-only: a render pulls and never logs in.
+            - name: registry-auth
+              mountPath: /etc/bosun/registry
+              readOnly: true
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
@@ -426,6 +439,18 @@ spec:
         - name: argocd-ca
           secret:
             secretName: {{ .Values.gate.argocd.caSecret }}
+        {{- end }}
+        {{- if .Values.gate.registryAuth.existingSecret }}
+        # One key, under the one name HELM_REGISTRY_CONFIG gives helm. 0444 for
+        # the reason the credentials volume above is: the files are root's and
+        # this pod runs as 10001.
+        - name: registry-auth
+          secret:
+            secretName: {{ .Values.gate.registryAuth.existingSecret }}
+            defaultMode: 0444
+            items:
+              - key: {{ .Values.gate.registryAuth.key | quote }}
+                path: config.json
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

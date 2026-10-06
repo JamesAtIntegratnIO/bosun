@@ -114,8 +114,25 @@ type Config struct {
 	// answer for the default self-signed argocd-server certificate when
 	// nobody can produce its CA.
 	ArgoCDInsecureSkipTLSVerify bool
-	MaxAttempts                 int
-	GatePoll                    time.Duration
+	// HelmRegistryConfig is the registry login helm renders with: a Docker
+	// config file, for a chart in a registry that will not serve it
+	// anonymously. Empty is helm's own default, which finds no login in this
+	// image.
+	//
+	// The variable is helm's and not this binary's, on purpose. Nothing here
+	// reads the file or passes it on: helm, started as this process's child,
+	// inherits the variable the way childenv's denylist was built to let it,
+	// and reads the file itself. It is read here for one reason, which is
+	// validate()'s: helm treats a file that is not there as no logins at all.
+	//
+	// It is a path to a credential and it is left in every child's
+	// environment, which is the opposite of what happens to GIT_TOKEN_FILE.
+	// That is the point of it: the credentials childenv strips are this
+	// process's own, which no child has a use for, and this one exists only
+	// to be used by a child. What it costs is in docs/safety-model.md.
+	HelmRegistryConfig string
+	MaxAttempts        int
+	GatePoll           time.Duration
 
 	// GateConcurrency caps parallel renders, and is the host's answer rather
 	// than the gated repository's. Zero leaves whatever the repository's own
@@ -318,6 +335,7 @@ func LoadConfig() (*Config, error) {
 	c.ArgoCDToken = secret("ARGOCD_TOKEN")
 	c.ArgoCDCAFile = os.Getenv("ARGOCD_CA_FILE")
 	c.ArgoCDInsecureSkipTLSVerify = b("ARGOCD_INSECURE_SKIP_TLS_VERIFY", false)
+	c.HelmRegistryConfig = os.Getenv("HELM_REGISTRY_CONFIG")
 
 	var err error
 	if c.MaxAttempts, err = envInt("MAX_ATTEMPTS", 2); err != nil {
@@ -513,6 +531,23 @@ func (c *Config) validate() error {
 	// public API on purpose, so this is a Gitea rule rather than a general one.
 	if c.GitProvider == GitGitea && strings.TrimSpace(c.GitAPIBase) == "" {
 		return fmt.Errorf("GIT_API_BASE is required for the gitea provider, e.g. https://gitea.example.com")
+	}
+
+	// helm reads a registry login that is not there as no logins, and renders
+	// on anonymously. So a Secret nobody created, or one mounted under another
+	// key, would be a healthy pod whose gate reports every chart in a private
+	// registry as one that does not render, with a registry's 401 for the
+	// reason, on every pull request that moves one. Checked for being a file
+	// and never opened: what is in it is helm's to read.
+	if c.HelmRegistryConfig != "" {
+		info, err := os.Stat(c.HelmRegistryConfig)
+		switch {
+		case err != nil:
+			return fmt.Errorf("HELM_REGISTRY_CONFIG names a registry login that cannot be read: %w", err)
+		case !info.Mode().IsRegular():
+			return fmt.Errorf("HELM_REGISTRY_CONFIG names %s, which is not a file: "+
+				"helm reads one Docker config file there", c.HelmRegistryConfig)
+		}
 	}
 
 	// An empty allowlist means the agent can write nothing. That is the safe

@@ -535,6 +535,20 @@
               "type": "boolean"
             }
           }
+        },
+        "registryAuth": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "A registry login for the charts the gate renders: a Secret holding one Docker config file.",
+          "properties": {
+            "existingSecret": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
       },
       "required": [

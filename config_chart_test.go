@@ -89,6 +89,9 @@ func envShapes() []struct {
 			helmtest.SetJSON("triage.egressAllowPrivate", `["gitea.internal"]`),
 			helmtest.SetJSON("gate.validate.schemaLocations", `["default"]`),
 			helmtest.SetJSON("gate.validate.skipKinds", `["CustomResourceDefinition"]`)}},
+		// Off by default, so no other render sets helm's own variable.
+		{"a registry login for the gate's helm", []helmtest.Option{base, helmtest.Set(
+			"gate.registryAuth.existingSecret=bosun-registry")}},
 		{"the ArgoCD CA and author identity", []helmtest.Option{base, helmtest.Set(
 			"gate.argocd.caSecret=bosun-argocd-ca", "gate.argocd.caKey=ca.crt",
 			"git.author.name=Bosun", "git.author.email=bosun@example.com")}},
@@ -337,6 +340,60 @@ func TestEveryCredentialFileIsMounted(t *testing.T) {
 	}
 }
 
+// The registry login the chart names is one the pod mounts, under the key the
+// values named, and nothing writes to it.
+//
+// The same two halves as a credential file, with one more way to be wrong: the
+// variable is helm's and not this binary's, so its name carries no _FILE for
+// the check above to find it by. A path nothing is mounted at is refused at
+// start-up, which is the good outcome; a Secret mounted whole, under its own
+// key name, is a file at `.dockerconfigjson` and a variable naming
+// `config.json`, and that is the same refusal over a Secret an operator can
+// see is correct.
+func TestTheRegistryLoginIsMountedWhereHelmIsTold(t *testing.T) {
+	docs := helmtest.Render(t, "bosun",
+		helmtest.Values("ci/lint-values.yaml"),
+		helmtest.Set("gate.registryAuth.existingSecret=bosun-registry",
+			"gate.registryAuth.key=auth.json"))
+
+	path := helmtest.Env(t, docs, "placeholder")["HELM_REGISTRY_CONFIG"]
+	if path == "" {
+		t.Fatal("gate.registryAuth.existingSecret is set and the Deployment sets no HELM_REGISTRY_CONFIG")
+	}
+	if !under(path, helmtest.Mounts(t, docs)) {
+		t.Fatalf("HELM_REGISTRY_CONFIG points at %s and the container mounts nothing there (it mounts %s)",
+			path, strings.Join(helmtest.Mounts(t, docs), ", "))
+	}
+
+	found := false
+	for _, vol := range helmtest.Volumes(t, docs) {
+		secret, _ := vol["secret"].(map[string]any)
+		if secret == nil || secret["secretName"] != "bosun-registry" {
+			continue
+		}
+		found = true
+		items, _ := secret["items"].([]any)
+		if len(items) != 1 {
+			t.Fatalf("the registry login's volume projects %d keys; one file is what helm is told to read", len(items))
+		}
+		item, _ := items[0].(map[string]any)
+		if item["key"] != "auth.json" || item["path"] != filepath.Base(path) {
+			t.Errorf("the volume projects key %v to %v; the values named key auth.json and "+
+				"HELM_REGISTRY_CONFIG names %s", item["key"], item["path"], filepath.Base(path))
+		}
+	}
+	if !found {
+		t.Fatal("no volume in the Deployment is the Secret gate.registryAuth.existingSecret names")
+	}
+
+	// And unset, which is every install that has not said otherwise: no
+	// variable, so helm keeps whatever its own defaults find.
+	bare := helmtest.Render(t, "bosun", helmtest.Values("ci/lint-values.yaml"))
+	if _, set := helmtest.Env(t, bare, "placeholder")["HELM_REGISTRY_CONFIG"]; set {
+		t.Error("HELM_REGISTRY_CONFIG is set on an install that named no registry login")
+	}
+}
+
 func under(path string, dirs []string) bool {
 	for _, d := range dirs {
 		if path == d || strings.HasPrefix(path, strings.TrimSuffix(d, "/")+"/") {
@@ -367,7 +424,9 @@ func withOnly(t *testing.T, env map[string]string) {
 	// a real file holding a placeholder.
 	dir := t.TempDir()
 	for k, v := range env {
-		if strings.HasSuffix(k, "_FILE") && v != "" {
+		// helm's registry login is the same case under a name that is helm's
+		// to choose: a path in a mount, checked at start-up for being there.
+		if (strings.HasSuffix(k, "_FILE") || k == "HELM_REGISTRY_CONFIG") && v != "" {
 			real := filepath.Join(dir, strings.ToLower(k))
 			if err := os.WriteFile(real, []byte("placeholder-credential\n"), 0o600); err != nil {
 				t.Fatal(err)

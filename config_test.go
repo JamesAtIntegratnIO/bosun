@@ -242,6 +242,55 @@ func TestTheInventoryNeedsAnArgoCDURLAndAToken(t *testing.T) {
 	}
 }
 
+// A registry login that names a file which is not there is refused at
+// start-up, by name.
+//
+// HELM_REGISTRY_CONFIG is helm's own variable, and helm treats a missing file
+// as "no logins" rather than as an error. So a Secret that was never created,
+// or one mounted under the wrong key, would start a healthy pod whose gate
+// then reports every chart in a private registry as "does not render at the
+// new version", on every pull request that moves one, with a registry's 401
+// for a reason. The file is checked for being there and being a file. Its
+// contents are helm's to read and are never opened here.
+func TestARegistryLoginThatIsNotThereStopsTheStart(t *testing.T) {
+	base := func() *Config {
+		return &Config{
+			GitOwner: "o", GitRepo: "r", GitRepoURL: "u", GitToken: "t",
+			GitProvider: GitGitHub,
+			LLMProvider: LLMAnthropic, LLMModel: "m",
+			AllowPaths:  []string{"addons/**"},
+			ArgoCDToken: "tok", ArgoCDBaseURL: "https://argocd-server.argocd.svc",
+		}
+	}
+	dir := t.TempDir()
+
+	// Unset is every install that pulls from public registries alone.
+	if err := base().validate(); err != nil {
+		t.Fatalf("no registry login is a working configuration: %v", err)
+	}
+
+	c := base()
+	c.HelmRegistryConfig = filepath.Join(dir, "config.json")
+	if err := c.validate(); err == nil || !strings.Contains(err.Error(), "HELM_REGISTRY_CONFIG") {
+		t.Errorf("a registry login naming a file that is not there must name the setting: %v", err)
+	}
+
+	c = base()
+	c.HelmRegistryConfig = dir
+	if err := c.validate(); err == nil || !strings.Contains(err.Error(), "HELM_REGISTRY_CONFIG") {
+		t.Errorf("a registry login naming a directory must name the setting: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"auths":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c = base()
+	c.HelmRegistryConfig = filepath.Join(dir, "config.json")
+	if err := c.validate(); err != nil {
+		t.Errorf("a registry login that is there must start: %v", err)
+	}
+}
+
 // GitHub defaults to the public API when GIT_API_BASE is empty. Gitea has no
 // public instance to default to, so an empty base URL is a pod that starts
 // healthy and then cannot read a pull request or push a fix, and PushFix says

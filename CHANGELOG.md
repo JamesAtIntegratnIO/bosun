@@ -5,6 +5,36 @@ All notable changes to `bosun`. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **The gate renders a chart from a registry that wants a login.** A chart in a
+  private registry was reported as not rendering at the new version, with the
+  registry's 401 for the reason, on every pull request that moved it. That is a
+  blocking verdict the pull request did nothing to earn, and the chart had
+  nowhere to put a credential that would lift it.
+
+  `gate.registryAuth.existingSecret` names a Secret holding one Docker config
+  file. The chart mounts it read-only and sets `HELM_REGISTRY_CONFIG` to it.
+  Nothing in the agent reads the file or hands it on: the variable is helm's
+  own, and `childenv` was a denylist precisely so that helm would go on
+  inheriting "whatever a self-hosted install has configured for its registry".
+  `gate/childenv_test.go` already held that this variable reaches the renderer.
+
+  `config.go` reads the variable for one check. helm treats a registry config
+  that is not there as no logins at all, so a Secret nobody created would be a
+  healthy pod and an unchanged failure. A path that is not a file now stops the
+  start, by name. The file is never opened.
+
+  This is a credential left in a child's environment on purpose, where every
+  other one is taken out. The ones `childenv` strips are this process's own,
+  which no child has a use for; this one exists only for a child to use. What
+  it reaches is in `docs/safety-model.md`: every chart the gate renders, and
+  any helm plugin one of them brings.
+
+  Held by `TestARegistryLoginThatIsNotThereStopsTheStart` and, across the
+  chart, `TestTheRegistryLoginIsMountedWhereHelmIsTold`: the path the variable
+  names is one the pod mounts, from the Secret and the key the values named.
+
 ### Security
 
 - **No subprocess is handed a credential this process loaded.** `cmd.Env` was
