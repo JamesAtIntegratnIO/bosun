@@ -15,73 +15,53 @@ const REPO = dirname(SITE)
 const W = 1200
 const H = 630
 
-// The palette, same values as src/styles/theme.css.
-const NAVY = '#0a1622'
-const NAVY_MID = '#14293e'
-const TEAL = '#2e8fa0'
-const SKY = '#94d8db'
-const CORAL = '#e0705a'
-const TEXT = '#c6d4e0'
-const MUTED = '#8296ab'
+// The design system's dark surface, the same values as src/styles/theme.css:
+// ground, border, text, said, dim, faint. No gradients; Signal stays in marks.
+const GROUND = '#0a0c10'
+const BORDER = '#393e43'
+const TEXT = '#f3f7fc'
+const SAID = '#cfd5dc'
+const DIM = '#acb2b9'
+const FAINT = '#8d939a'
+const SANS = 'Inter, system-ui, Helvetica, Arial, sans-serif'
+const MONO = 'DejaVu Sans Mono, Menlo, monospace'
 
 const card = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="${NAVY}"/>
-      <stop offset="1" stop-color="${NAVY_MID}"/>
-    </linearGradient>
-    <radialGradient id="glowTeal" cx="0.18" cy="0.28" r="0.55">
-      <stop offset="0" stop-color="${TEAL}" stop-opacity="0.42"/>
-      <stop offset="1" stop-color="${TEAL}" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="glowCoral" cx="0.88" cy="0.12" r="0.5">
-      <stop offset="0" stop-color="${CORAL}" stop-opacity="0.3"/>
-      <stop offset="1" stop-color="${CORAL}" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
+  <rect width="${W}" height="${H}" fill="${GROUND}"/>
 
-  <rect width="${W}" height="${H}" fill="url(#bg)"/>
-  <rect width="${W}" height="${H}" fill="url(#glowTeal)"/>
-  <rect width="${W}" height="${H}" fill="url(#glowCoral)"/>
-
-  <!-- waterline, the same motif the H2 rules use -->
-  <path d="M0,556 Q150,532 300,556 T600,556 T900,556 T1200,556 L1200,630 L0,630 Z"
-        fill="${TEAL}" fill-opacity="0.10"/>
-  <path d="M0,586 Q150,564 300,586 T600,586 T900,586 T1200,586 L1200,630 L0,630 Z"
-        fill="${TEAL}" fill-opacity="0.14"/>
-
-  <text x="196" y="150" font-family="Space Grotesk, Helvetica, Arial, sans-serif"
-        font-size="24" font-weight="600" letter-spacing="3.4" fill="${SKY}">
+  <text x="196" y="136" font-family="${SANS}" font-size="22" font-weight="600" letter-spacing="3" fill="${DIM}">
     THE CREW FOR ARGO AND KARGO
   </text>
 
-  <text x="80" y="268" font-family="Space Grotesk, Helvetica, Arial, sans-serif"
-        font-size="76" font-weight="700" letter-spacing="-2.2" fill="#f2f6f9">
+  <text x="80" y="268" font-family="${SANS}" font-size="72" font-weight="700" letter-spacing="-1.5" fill="${TEXT}">
     One line changed. Four CRDs
   </text>
-  <text x="80" y="356" font-family="Space Grotesk, Helvetica, Arial, sans-serif"
-        font-size="76" font-weight="700" letter-spacing="-2.2" fill="${CORAL}">
+  <text x="80" y="352" font-family="${SANS}" font-size="72" font-weight="700" letter-spacing="-1.5" fill="${DIM}">
     stopped serving the API.
   </text>
 
-  <text x="80" y="436" font-family="Helvetica, Arial, sans-serif" font-size="27" fill="${TEXT}">
+  <text x="80" y="428" font-family="${SANS}" font-size="27" fill="${SAID}">
     A gate that renders what a change deploys and blocks what breaks,
   </text>
-  <text x="80" y="474" font-family="Helvetica, Arial, sans-serif" font-size="27" fill="${TEXT}">
+  <text x="80" y="466" font-family="${SANS}" font-size="27" fill="${SAID}">
     and an agent that repairs what is provable and escalates the rest.
   </text>
 
-  <text x="80" y="576" font-family="Helvetica, Arial, sans-serif" font-size="24" fill="${MUTED}">
+  <line x1="80" y1="530" x2="${W - 80}" y2="530" stroke="${BORDER}" stroke-width="2"/>
+  <text x="80" y="584" font-family="${SANS}" font-size="26" font-weight="600" fill="${TEXT}">
+    Bosun <tspan font-weight="400" fill="${FAINT}">by Integratn</tspan>
+  </text>
+  <text x="${W - 80}" y="584" text-anchor="end" font-family="${MONO}" font-size="22" fill="${DIM}">
     bosun.integratn.io
   </text>
 </svg>`
 
-// The avatar is a square navy badge; rounding it here matches the corner
-// radius the site gives the same mark in its header.
+// The avatar is a square navy badge; rounding it here matches the design
+// system's radius, which the site gives the same mark in its header.
 const MARK = 96
 const roundedMask = Buffer.from(
   `<svg xmlns="http://www.w3.org/2000/svg" width="${MARK}" height="${MARK}">
-     <rect width="${MARK}" height="${MARK}" rx="20" ry="20" fill="#fff"/>
+     <rect width="${MARK}" height="${MARK}" rx="8" ry="8" fill="#fff"/>
    </svg>`
 )
 
@@ -93,7 +73,7 @@ const mark = await sharp(join(REPO, 'docs/avatar/bosun.png'))
 
 const out = join(SITE, 'public/og.png')
 await sharp(Buffer.from(card))
-  .composite([{ input: mark, top: 78, left: 80 }])
+  .composite([{ input: mark, top: 64, left: 80 }])
   .png({ compressionLevel: 9 })
   .toFile(out)
 

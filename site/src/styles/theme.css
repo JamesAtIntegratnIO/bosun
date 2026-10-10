@@ -1,171 +1,134 @@
 /* ---------------------------------------------------------------------------
-   Bosun brand theme.
+   Bosun's docs on the Integratn design system.
 
-   Every colour here comes from docs/avatar/bosun.svg: the badge navy,
-   the two sea tones, the coral of the tentacles, the cream of the sailor cap.
-   The mark and the site are the same palette because they were the same
-   decision.
+   The site wears the same design system as integratn.io and Specmarshal: its
+   tokens (ground, panel, well, border, the four text steps, the status
+   colours, the diff colours, one radius) and its type (the platform's own sans
+   and mono). The values below are the design system's, copied from
+   Specmarshal's src/web/surface.css; Starlight's variables are then pointed at
+   them, so every Starlight component picks the system up without a rule of its
+   own. Bosun keeps its mark; the colour of the page is the system's, and
+   Signal orange stays inside the marks.
 
-   Dark is the primary theme: the badge is navy, and you read these docs next
-   to a terminal. Light is a paper and cream treatment, so a reader who flips
-   the toggle still sees the brand.
+   Dark is the default, as on integratn.io. Light is the design system's light
+   surface, not a separate palette.
    --------------------------------------------------------------------------- */
 
+:root,
+:root[data-theme='dark'] {
+  --ground: #0a0c10;
+  --panel: #1d2126;
+  --well: #14171d;
+  --border: #393e43;
+  --text: #f3f7fc;
+  --ash: #e8ebf1;
+  --said: #cfd5dc;
+  --dim: #acb2b9;
+  --faint: #8d939a;
+  --accent: #f3f7fc;
+  --accent-surface: #262a30;
+  --ok: #42c161;
+  --ok-surface: #0c2b13;
+  --ok-border: #024e1c;
+  --warn: #cf9a43;
+  --warn-surface: #2f210c;
+  --warn-border: #553a08;
+  --bad: #f47983;
+  --bad-surface: #39191b;
+  --bad-border: #67282e;
+  --diff-add: #7dd18b;
+  --diff-remove: #ff969d;
+}
+
+:root[data-theme='light'] {
+  --ground: #dee2e7;
+  --panel: #e8ebf1;
+  --well: #dee2e7;
+  --border: #acb2b9;
+  --text: #0a0c10;
+  --ash: #1d2126;
+  --said: #262a30;
+  --dim: #393e43;
+  --faint: #51565c;
+  --accent: #0a0c10;
+  --accent-surface: #f3f7fc;
+  --ok: #006c24;
+  --ok-surface: #eafaec;
+  --ok-border: #ace5b3;
+  --warn: #764f00;
+  --warn-surface: #fff3e3;
+  --warn-border: #f6cd91;
+  --bad: #8f3640;
+  --bad-surface: #ffefef;
+  --bad-border: #ffbdc0;
+  --diff-add: #024e1c;
+  --diff-remove: #67282e;
+}
+
 :root {
-  /* --- the palette, named once ------------------------------------------- */
-  --bo-navy-900: #0a1622;
-  --bo-navy-800: #0f2032;
-  --bo-navy-700: #14293e; /* the badge ground */
-  --bo-navy-600: #1c3750;
-  --bo-navy-500: #2a4a68;
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius: 6px;
+  --floor: 12px;
 
-  --bo-teal-700: #1b5c6d;
-  --bo-teal-600: #23758a; /* deep sea */
-  --bo-teal-500: #2e8fa0; /* sea */
-  --bo-teal-400: #57aebb;
-  --bo-teal-300: #94d8db; /* sky */
-  --bo-teal-200: #cdefef;
-
-  --bo-coral-700: #7a2a20;
-  --bo-coral-600: #a8442f;
-  --bo-coral-500: #c9604c; /* tentacle */
-  --bo-coral-400: #e0705a;
-  --bo-coral-300: #f2a48e;
-
-  --bo-brass: #d9a45b;
-  --bo-cream: #f7f1e3; /* the cap */
-  --bo-paper: #fbf7ee;
-  --bo-mist: #c7ceda;
-
-  --sl-font: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --sl-font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
-  --bo-font-display: 'Space Grotesk Variable', var(--sl-font);
-
-  --bo-radius: 10px;
+  --sl-font: var(--sans);
+  --sl-font-mono: var(--mono);
 
   /* Wider than Starlight's 45rem default. These docs are table-heavy, the
-     guarantee/mechanism table and the values reference among them, and 45rem forced every
-     one of them into a horizontal scroll. */
+     guarantee/mechanism table and the values reference among them, and 45rem
+     forced every one of them into a horizontal scroll. */
   --sl-content-width: 50rem;
 }
 
-/* --- dark (primary) ------------------------------------------------------ */
+/* --- Starlight, pointed at the tokens ------------------------------------ */
 :root,
-:root[data-theme='dark'] {
-  --sl-color-accent-low: #10303a;
-  --sl-color-accent: var(--bo-teal-500);
-  --sl-color-accent-high: var(--bo-teal-300);
-
-  --sl-color-white: #f2f6f9;
-  --sl-color-gray-1: #dde6ee;
-  --sl-color-gray-2: #b9c6d4;
-  --sl-color-gray-3: #8296ab;
-  --sl-color-gray-4: #566d85;
-  --sl-color-gray-5: #34495f;
-  --sl-color-gray-6: #1d3346;
-  --sl-color-gray-7: #16283a;
-  --sl-color-black: var(--bo-navy-900);
-
-  --sl-color-bg: var(--bo-navy-900);
-  --sl-color-bg-nav: color-mix(in srgb, var(--bo-navy-800) 88%, transparent);
-  --sl-color-bg-sidebar: var(--bo-navy-800);
-  --sl-color-bg-inline-code: color-mix(in srgb, var(--bo-teal-500) 16%, transparent);
-  --sl-color-bg-accent: var(--bo-teal-500);
-
-  --sl-color-text: #c6d4e0;
-  --sl-color-text-accent: var(--bo-teal-300);
-  --sl-color-text-invert: var(--bo-navy-900);
-
-  --sl-color-hairline: color-mix(in srgb, var(--bo-teal-300) 12%, transparent);
-  --sl-color-hairline-light: color-mix(in srgb, var(--bo-teal-300) 20%, transparent);
-  --sl-color-hairline-shade: var(--bo-navy-800);
-
-  --bo-surface: #12243599;
-  --bo-surface-solid: #122435;
-  /* The landing page's alternating section band. A shade off the page: it
-     should read as a change of ground. */
-  --bo-band: #0f2032a8;
-  --bo-rule: color-mix(in srgb, var(--bo-teal-300) 14%, transparent);
-  --bo-glow: color-mix(in srgb, var(--bo-teal-500) 22%, transparent);
-  --bo-code-bg: #0c1a27;
-  --bo-code-tabbar: color-mix(in srgb, var(--bo-navy-800) 80%, transparent);
-  --bo-code-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
-
-  /* Starlight tints asides and badges from this scale. Left at its defaults an
-     indigo `note` box lands in the middle of a teal-and-coral page, so this
-     block remaps the whole scale to the brand in one place. */
-  --sl-color-blue-low: #10303a;
-  --sl-color-blue: var(--bo-teal-500);
-  --sl-color-blue-high: var(--bo-teal-300);
-  --sl-color-green-low: #0f2f24;
-  --sl-color-green: #3f9e6d;
-  --sl-color-green-high: #8fe0ab;
-  --sl-color-orange-low: #33260f;
-  --sl-color-orange: var(--bo-brass);
-  --sl-color-orange-high: #f0cf9a;
-  --sl-color-red-low: #3a1a15;
-  --sl-color-red: var(--bo-coral-500);
-  --sl-color-red-high: var(--bo-coral-300);
-  --sl-color-purple-low: #16303f;
-  --sl-color-purple: var(--bo-teal-600);
-  --sl-color-purple-high: var(--bo-teal-300);
-}
-
-/* --- light --------------------------------------------------------------- */
+:root[data-theme='dark'],
 :root[data-theme='light'] {
-  --sl-color-accent-low: #d9ecef;
-  --sl-color-accent: var(--bo-teal-600);
-  --sl-color-accent-high: var(--bo-teal-700);
+  --sl-color-white: var(--text);
+  --sl-color-gray-1: var(--ash);
+  --sl-color-gray-2: var(--said);
+  --sl-color-gray-3: var(--dim);
+  --sl-color-gray-4: var(--faint);
+  --sl-color-gray-5: var(--border);
+  --sl-color-gray-6: var(--accent-surface);
+  --sl-color-gray-7: var(--panel);
+  --sl-color-black: var(--ground);
 
-  --sl-color-white: var(--bo-navy-700);
-  --sl-color-gray-1: #1b3049;
-  --sl-color-gray-2: #33506c;
-  --sl-color-gray-3: #5b7690;
-  --sl-color-gray-4: #8fa3b6;
-  --sl-color-gray-5: #c3cedb;
-  --sl-color-gray-6: #e3e0d4;
-  --sl-color-gray-7: #efeade;
-  --sl-color-black: var(--bo-paper);
+  --sl-color-accent-low: var(--accent-surface);
+  --sl-color-accent: var(--accent);
+  --sl-color-accent-high: var(--accent);
 
-  --sl-color-bg: var(--bo-paper);
-  --sl-color-bg-nav: color-mix(in srgb, var(--bo-cream) 90%, transparent);
-  --sl-color-bg-sidebar: var(--bo-cream);
-  --sl-color-bg-inline-code: color-mix(in srgb, var(--bo-teal-500) 14%, transparent);
+  --sl-color-bg: var(--ground);
+  --sl-color-bg-nav: var(--panel);
+  --sl-color-bg-sidebar: var(--panel);
+  --sl-color-bg-inline-code: var(--well);
+  --sl-color-bg-accent: var(--accent);
 
-  --sl-color-text: #2c4258;
-  --sl-color-text-accent: var(--bo-teal-700);
-  --sl-color-text-invert: var(--bo-cream);
+  --sl-color-text: var(--said);
+  --sl-color-text-accent: var(--accent);
+  --sl-color-text-invert: var(--ground);
 
-  --sl-color-hairline: color-mix(in srgb, var(--bo-navy-700) 12%, transparent);
-  --sl-color-hairline-light: color-mix(in srgb, var(--bo-navy-700) 20%, transparent);
-  --sl-color-hairline-shade: #e7e1d2;
+  --sl-color-hairline: var(--border);
+  --sl-color-hairline-light: var(--border);
+  --sl-color-hairline-shade: var(--border);
 
-  --bo-surface: #ffffffaa;
-  --bo-surface-solid: #ffffff;
-  --bo-band: #f0e7d3c4;
-  --bo-rule: color-mix(in srgb, var(--bo-navy-700) 12%, transparent);
-  --bo-glow: color-mix(in srgb, var(--bo-teal-600) 16%, transparent);
-  /* Expressive Code switches to its light syntax theme here, and those tokens
-     are dark: they need paper under them. */
-  --bo-code-bg: #f3eee0;
-  --bo-code-tabbar: #e9e2ce;
-  --bo-code-shadow: 0 1px 3px rgb(20 41 62 / 0.08);
-
-  --sl-color-blue-low: #d7eaee;
-  --sl-color-blue: var(--bo-teal-600);
-  --sl-color-blue-high: #17505e;
-  --sl-color-green-low: #d6eee1;
-  --sl-color-green: #2e8560;
-  --sl-color-green-high: #1c5840;
-  --sl-color-orange-low: #f6e9d1;
-  --sl-color-orange: #a9742c;
-  --sl-color-orange-high: #7a5219;
-  --sl-color-red-low: #f8dfd8;
-  --sl-color-red: var(--bo-coral-600);
-  --sl-color-red-high: var(--bo-coral-700);
-  --sl-color-purple-low: #dbe8ec;
-  --sl-color-purple: var(--bo-teal-700);
-  --sl-color-purple-high: #123f4c;
+  /* Asides and badges tint from these. Note and tip are neutral, as the
+     system's plain callout is; caution and danger wear the status tokens. */
+  --sl-color-blue-low: var(--accent-surface);
+  --sl-color-blue: var(--dim);
+  --sl-color-blue-high: var(--text);
+  --sl-color-purple-low: var(--accent-surface);
+  --sl-color-purple: var(--dim);
+  --sl-color-purple-high: var(--text);
+  --sl-color-green-low: var(--ok-surface);
+  --sl-color-green: var(--ok);
+  --sl-color-green-high: var(--ok);
+  --sl-color-orange-low: var(--warn-surface);
+  --sl-color-orange: var(--warn);
+  --sl-color-orange-high: var(--warn);
+  --sl-color-red-low: var(--bad-surface);
+  --sl-color-red: var(--bad);
+  --sl-color-red-high: var(--bad);
 }
 
 /* ---------------------------------------------------------------------------
@@ -177,90 +140,95 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-h1,
-h2,
-h3,
-h4,
-.site-title,
-.sl-markdown-content h1,
-.sl-markdown-content h2,
-.sl-markdown-content h3,
-.sl-markdown-content h4 {
-  font-family: var(--bo-font-display);
-  letter-spacing: -0.018em;
+.sl-markdown-content :is(h1, h2, h3, h4) {
+  color: var(--text);
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
+h1,
 .sl-markdown-content h1 {
-  letter-spacing: -0.03em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
-/* An H2 opens a new section of an argument; give it a waterline. */
-.sl-markdown-content h2 {
+/* An H2 opens a new section of an argument: a hairline under it, drawn on
+   Starlight's heading wrapper so it runs the width of the column and not the
+   width of the heading's last line. */
+.sl-markdown-content .sl-heading-wrapper.level-h2 {
   padding-bottom: 0.3em;
-  border-bottom: 1px solid var(--bo-rule);
-}
-
-.sl-markdown-content h2::before,
-.sl-markdown-content h3::before {
-  content: '';
-  display: inline-block;
-  width: 0.42em;
-  height: 0.42em;
-  margin-inline-end: 0.5em;
-  border-radius: 2px;
-  vertical-align: 0.08em;
-  background: var(--bo-coral-500);
-}
-
-.sl-markdown-content h3::before {
-  background: var(--bo-teal-400);
-  width: 0.34em;
-  height: 0.34em;
+  border-bottom: 1px solid var(--border);
 }
 
 /* ---------------------------------------------------------------------------
-   Chrome: header, sidebar, table of contents
+   Chrome: the bar, the sidebar, the table of contents
    --------------------------------------------------------------------------- */
 
 header.header {
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--bo-rule);
-  box-shadow: 0 1px 0 0 var(--bo-glow);
+  border-bottom: 1px solid var(--border);
 }
 
 .site-title {
-  font-weight: 700;
-  font-size: var(--sl-text-xl);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 19px;
   letter-spacing: -0.02em;
 }
 
 .site-title img {
-  border-radius: 6px;
+  border-radius: var(--radius);
 }
 
-/* The active page in the sidebar gets the coral rule, matching the H2 marker:
-   the same colour means "you are here / this is the point". */
+/* The way back to the parent: a quiet line beside the title, no second mark. */
+.bo-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.bo-parent {
+  margin-inline-start: 0.6rem;
+  padding-inline-start: 0.6rem;
+  border-inline-start: 1px solid var(--border);
+  font-size: var(--floor);
+  font-weight: 600;
+  color: var(--dim);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.bo-parent:hover {
+  color: var(--text);
+}
+@media (max-width: 30rem) {
+  .bo-parent {
+    display: none;
+  }
+}
+
+/* The page you are on: the accent surface, as integratn.io's nav marks it. */
 .sidebar-content a[aria-current='page'],
 .sidebar-content a[aria-current='page']:hover {
-  background: color-mix(in srgb, var(--sl-color-accent) 18%, transparent);
-  color: var(--sl-color-white);
-  border-inline-start: 2px solid var(--bo-coral-500);
-  border-radius: 0 var(--bo-radius) var(--bo-radius) 0;
+  background: var(--accent-surface);
+  color: var(--text);
+  border-radius: var(--radius);
   font-weight: 600;
+}
+
+.sidebar-content a:hover {
+  color: var(--text);
 }
 
 .sidebar-content summary,
 .sidebar-content .large {
-  font-family: var(--bo-font-display);
-  letter-spacing: 0.02em;
+  font-size: var(--floor);
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  font-size: var(--sl-text-xs);
-  color: var(--sl-color-gray-3);
+  color: var(--dim);
 }
 
 starlight-toc a[aria-current='true'] {
-  color: var(--sl-color-text-accent);
+  color: var(--text);
   font-weight: 600;
 }
 
@@ -269,13 +237,13 @@ starlight-toc a[aria-current='true'] {
    --------------------------------------------------------------------------- */
 
 .sl-markdown-content a:not(:where(.not-content *)) {
-  text-underline-offset: 0.22em;
-  text-decoration-thickness: 1px;
-  text-decoration-color: color-mix(in srgb, var(--sl-color-text-accent) 45%, transparent);
+  color: var(--accent);
+  text-underline-offset: 3px;
+  text-decoration-color: var(--border);
 }
 
 .sl-markdown-content a:hover:not(:where(.not-content *)) {
-  text-decoration-color: var(--sl-color-text-accent);
+  text-decoration-color: currentColor;
 }
 
 /* Tables carry most of the content in these docs: the guarantee/mechanism
@@ -283,8 +251,8 @@ starlight-toc a[aria-current='true'] {
 .sl-markdown-content table:not(:where(.not-content *)) {
   display: block;
   overflow-x: auto;
-  border: 1px solid var(--bo-rule);
-  border-radius: var(--bo-radius);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   border-collapse: separate;
   border-spacing: 0;
   font-size: var(--sl-text-sm);
@@ -312,70 +280,67 @@ starlight-toc a[aria-current='true'] {
 
 .sl-markdown-content :is(th, td):not(:where(.not-content *)) {
   border: 0;
-  border-bottom: 1px solid var(--bo-rule);
+  border-bottom: 1px solid var(--border);
   padding: 0.6rem 0.85rem;
   vertical-align: top;
 }
 
 .sl-markdown-content thead th:not(:where(.not-content *)) {
-  background: color-mix(in srgb, var(--sl-color-accent) 12%, transparent);
-  font-family: var(--bo-font-display);
-  font-size: var(--sl-text-xs);
-  letter-spacing: 0.04em;
+  background: var(--panel);
+  font-size: var(--floor);
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--sl-color-white);
-  white-space: nowrap;
+  color: var(--dim);
 }
 
 .sl-markdown-content tbody tr:last-child :is(th, td):not(:where(.not-content *)) {
   border-bottom: 0;
 }
 
-.sl-markdown-content tbody tr:hover:not(:where(.not-content *)) {
-  background: color-mix(in srgb, var(--sl-color-accent) 6%, transparent);
-}
-
 /* The first column of a two-or-more column table names the subject. */
 .sl-markdown-content tbody td:first-child:not(:where(.not-content *)) {
-  color: var(--sl-color-white);
+  color: var(--text);
   font-weight: 500;
 }
 
 .sl-markdown-content blockquote:not(:where(.not-content *)) {
-  border-inline-start: 3px solid var(--bo-coral-500);
-  background: color-mix(in srgb, var(--bo-coral-500) 8%, transparent);
-  border-radius: 0 var(--bo-radius) var(--bo-radius) 0;
+  border-inline-start: 2px solid var(--text);
+  background: var(--panel);
+  border-radius: 0 var(--radius) var(--radius) 0;
   padding: 0.75rem 1.1rem;
   font-style: normal;
-  color: var(--sl-color-gray-2);
+  color: var(--said);
 }
 
 .sl-markdown-content :not(pre) > code:not(:where(.not-content *)) {
-  border: 1px solid color-mix(in srgb, var(--sl-color-accent) 25%, transparent);
-  border-radius: 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
   padding: 0.12em 0.36em;
   font-size: 0.88em;
+  color: var(--text);
 }
 
 .expressive-code .frame pre,
 .sl-markdown-content pre:not(:where(.not-content *)) {
-  border-radius: var(--bo-radius);
+  border-radius: var(--radius);
 }
 
 .expressive-code {
-  --ec-brdRad: var(--bo-radius);
-  --ec-brdCol: var(--bo-rule);
-  --ec-frm-edBg: var(--bo-code-bg);
-  --ec-frm-trmBg: var(--bo-code-bg);
-  --ec-frm-edTabBarBg: var(--bo-code-tabbar);
-  --ec-frm-frameBoxShdCssVal: var(--bo-code-shadow);
+  --ec-brdRad: var(--radius);
+  --ec-brdCol: var(--border);
+  --ec-frm-edBg: var(--well);
+  --ec-frm-trmBg: var(--well);
+  --ec-frm-edTabBarBg: var(--panel);
+  --ec-frm-trmTtbBg: var(--panel);
+  --ec-frm-frameBoxShdCssVal: none;
 }
 
-/* Asides pick their colours up from the remapped scale above; this rule sets
-   only the shape. */
+/* Asides pick their colours up from the scale above; this rule sets only the
+   shape. */
 .starlight-aside {
-  border-radius: var(--bo-radius);
-  border-inline-start-width: 3px;
+  border-radius: var(--radius);
+  border-inline-start-width: 2px;
 }
 
 /* ---------------------------------------------------------------------------
@@ -390,19 +355,16 @@ starlight-toc a[aria-current='true'] {
 }
 
 .bo-card {
-  border: 1px solid var(--bo-rule);
-  border-radius: var(--bo-radius);
-  background: var(--bo-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
   padding: 1.1rem 1.15rem;
 }
 
 .bo-card h3 {
   margin-top: 0;
   font-size: var(--sl-text-base);
-}
-
-.bo-card h3::before {
-  display: none;
+  border: 0;
 }
 
 .bo-card p:last-child {
