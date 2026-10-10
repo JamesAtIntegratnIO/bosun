@@ -20,9 +20,6 @@ export default defineConfig({
       },
       favicon: '/favicon.svg',
       customCss: [
-        '@fontsource-variable/inter',
-        '@fontsource-variable/space-grotesk',
-        '@fontsource-variable/jetbrains-mono',
         './src/styles/theme.css',
         './src/styles/landing.css',
       ],
@@ -37,12 +34,14 @@ export default defineConfig({
       head: [
         { tag: 'meta', attrs: { property: 'og:image', content: 'https://bosun.integratn.io/og.png' } },
         { tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' } },
-        { tag: 'meta', attrs: { name: 'theme-color', content: '#14293E' } },
+        { tag: 'meta', attrs: { name: 'theme-color', content: '#0a0c10' } },
       ],
       components: {
         // The landing page is a full-bleed hero, so it opts out of the
         // two-column docs shell entirely.
         Hero: './src/components/Hero.astro',
+        // Adds the line back to integratn.io beside the title.
+        SiteTitle: './src/components/SiteTitle.astro',
       },
       sidebar: [
         {

@@ -21,7 +21,8 @@ edits something the next build deletes.
 | Which docs are published, their route, title or description | the `PAGES` map in `scripts/sync-docs.mjs` |
 | The sidebar | `astro.config.mjs` |
 | A page that exists only on the site | `src/authored/`: the landing page, quickstart, configuration, troubleshooting, FAQ, licence |
-| Colours, type, tables, asides | `src/styles/theme.css` |
+| Colours, type, tables, asides | `src/styles/theme.css`: the Integratn design system's tokens (shared with integratn.io and Specmarshal), with Starlight's variables pointed at them |
+| The title bar's line back to integratn.io | `src/components/SiteTitle.astro` |
 | The landing page's layout | `src/authored/index.mdx`, `src/components/Hero.astro`, `src/components/LoopDiagram.astro`, `src/styles/landing.css` |
 | The link-preview card | `scripts/og.mjs`, then `npm run og` (output is committed) |
 
